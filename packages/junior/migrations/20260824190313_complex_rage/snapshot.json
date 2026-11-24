@@ -1,0 +1,690 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7afb21c1-f6f3-4369-a7bb-7a29e0af3226",
+  "prevIds": ["7268868b-d27e-4f42-a0f4-6c981de70f1a"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_code_changes"],
+      "writes": [
+        "s|tbl|public.junior_code_changes",
+        "n|tbl|public.junior_code_changes",
+        "e|tbl|public.junior_code_changes",
+        "n|rel|public.junior_code_changes",
+        "n|type|public.junior_code_changes",
+        "n|rel|public.junior_code_changes_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_code_repositories"],
+      "writes": [
+        "s|tbl|public.junior_code_repositories",
+        "n|tbl|public.junior_code_repositories",
+        "e|tbl|public.junior_code_repositories",
+        "n|rel|public.junior_code_repositories",
+        "n|type|public.junior_code_repositories",
+        "n|rel|public.junior_code_repositories_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_provider_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_provider_id_idx",
+        "n|idx|public.junior_code_changes_provider_id_idx",
+        "e|idx|public.junior_code_changes_provider_id_idx",
+        "n|rel|public.junior_code_changes_provider_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.provider",
+        "n|col|public.junior_code_changes.provider_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_opened_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_opened_at_idx",
+        "n|idx|public.junior_code_changes_opened_at_idx",
+        "e|idx|public.junior_code_changes_opened_at_idx",
+        "n|rel|public.junior_code_changes_opened_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.opened_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_merged_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_merged_at_idx",
+        "n|idx|public.junior_code_changes_merged_at_idx",
+        "e|idx|public.junior_code_changes_merged_at_idx",
+        "n|rel|public.junior_code_changes_merged_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.merged_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_closed_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_closed_at_idx",
+        "n|idx|public.junior_code_changes_closed_at_idx",
+        "e|idx|public.junior_code_changes_closed_at_idx",
+        "n|rel|public.junior_code_changes_closed_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.closed_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_open_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_open_idx",
+        "n|idx|public.junior_code_changes_open_idx",
+        "e|idx|public.junior_code_changes_open_idx",
+        "n|rel|public.junior_code_changes_open_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_repositories",
+        "junior_code_repositories_provider_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_repositories_provider_id_idx",
+        "n|idx|public.junior_code_repositories_provider_id_idx",
+        "e|idx|public.junior_code_repositories_provider_id_idx",
+        "n|rel|public.junior_code_repositories_provider_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_repositories",
+        "n|sch|public",
+        "n|col|public.junior_code_repositories.provider",
+        "n|col|public.junior_code_repositories.provider_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_code_changes"],
+      "writes": [
+        "s|fk|public.junior_code_changes.junior_code_changes_repository_id_junior_code_repositories_id_f",
+        "n|fk|public.junior_code_changes.junior_code_changes_repository_id_junior_code_repositories_id_f",
+        "e|fk|public.junior_code_changes.junior_code_changes_repository_id_junior_code_repositories_id_f",
+        "n|con|public.junior_code_changes.junior_code_changes_repository_id_junior_code_repositories_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|tbl|public.junior_code_repositories",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.repository_id",
+        "n|col|public.junior_code_repositories.id",
+        "e|uniqueness|public.junior_code_repositories.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_code_changes",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_code_repositories",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "closed_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "conversation_ids",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 1,
+        "default": "ARRAY[]",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "merged_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "number",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "opened_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "provider_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "repository_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "state",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "url",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "provider_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "url",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_provider_id_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "provider_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_opened_at_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "opened_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_merged_at_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "merged_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_closed_at_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "closed_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_open_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_code_changes\".\"state\" = 'open'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "junior_code_repositories_provider_id_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "provider_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_repository_id_junior_code_repositories_id_f",
+        "nameExplicit": false,
+        "columns": ["repository_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_code_repositories",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "junior_code_repositories_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "71c573af-09c5-4f14-8971-314a17a2631a",
+  "prevIds": ["6b009b62-4fd0-46be-a5e0-f16c490d7769"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_owner_idx",
+        "n|idx|public.junior_review_items_owner_idx",
+        "e|idx|public.junior_review_items_owner_idx",
+        "n|rel|public.junior_review_items_owner_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.owner_kind",
+        "n|col|public.junior_review_items.owner_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_owner_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "owner_kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

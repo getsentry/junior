@@ -1,0 +1,70 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5a444536-4cd9-4f93-9afb-bd986c973f0a",
+  "prevIds": ["1880d763-2db8-4b02-931d-e59c0840186a"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_repository_state_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_repository_state_idx",
+        "n|idx|public.junior_code_changes_repository_state_idx",
+        "e|idx|public.junior_code_changes_repository_state_idx",
+        "n|rel|public.junior_code_changes_repository_state_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.repository_id",
+        "n|col|public.junior_code_changes.state",
+        "n|col|public.junior_code_changes.updated_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_repository_state_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "repository_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "state",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "updated_at",
+            "isExpression": false,
+            "asc": false,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

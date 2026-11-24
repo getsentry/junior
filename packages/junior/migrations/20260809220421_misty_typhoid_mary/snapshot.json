@@ -1,0 +1,191 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5b615b01-1e96-4396-a09d-82c0a70f4a58",
+  "prevIds": ["86dbef33-04cf-4e3d-b324-b321a3af4af8"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_location_configurations"],
+      "writes": [
+        "s|tbl|public.junior_location_configurations",
+        "n|tbl|public.junior_location_configurations",
+        "e|tbl|public.junior_location_configurations",
+        "n|rel|public.junior_location_configurations",
+        "n|type|public.junior_location_configurations",
+        "n|rel|public.junior_location_configurations_location_id_key_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_location_configurations"],
+      "writes": [
+        "s|fk|public.junior_location_configurations.junior_location_configurations_location_id_junior_destinations_",
+        "n|fk|public.junior_location_configurations.junior_location_configurations_location_id_junior_destinations_",
+        "e|fk|public.junior_location_configurations.junior_location_configurations_location_id_junior_destinations_",
+        "n|con|public.junior_location_configurations.junior_location_configurations_location_id_junior_destinations_"
+      ],
+      "reads": [
+        "n|tbl|public.junior_location_configurations",
+        "n|sch|public",
+        "n|tbl|public.junior_destinations",
+        "n|sch|public",
+        "n|col|public.junior_location_configurations.location_id",
+        "n|col|public.junior_destinations.id",
+        "e|uniqueness|public.junior_destinations.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_location_configurations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "location_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "value",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "updated_by",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "source",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "expires_at",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "junior_location_configurations_location_id_junior_destinations_",
+        "nameExplicit": false,
+        "columns": ["location_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_destinations",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_location_configurations",
+        "name": "junior_location_configurations_location_id_key_pk",
+        "columns": ["location_id", "key"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

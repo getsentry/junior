@@ -1,0 +1,539 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5bcf5afe-2cc5-497a-a873-08c54ab1dfb0",
+  "prevIds": ["f4f247d8-7b7d-420b-a78f-7a36ba8c1472"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversation_events"],
+      "writes": [
+        "s|tbl|public.junior_conversation_events",
+        "n|tbl|public.junior_conversation_events",
+        "e|tbl|public.junior_conversation_events",
+        "n|rel|public.junior_conversation_events",
+        "n|type|public.junior_conversation_events",
+        "n|rel|public.junior_conversation_events_conversation_id_seq_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_agent_steps"],
+      "writes": [
+        "s|tbl|public.junior_agent_steps",
+        "n|tbl|public.junior_agent_steps",
+        "e|tbl|public.junior_agent_steps",
+        "n|rel|public.junior_agent_steps",
+        "n|type|public.junior_agent_steps"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_conversation_messages"],
+      "writes": [
+        "s|tbl|public.junior_conversation_messages",
+        "n|tbl|public.junior_conversation_messages",
+        "e|tbl|public.junior_conversation_messages",
+        "n|rel|public.junior_conversation_messages",
+        "n|type|public.junior_conversation_messages"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_history_version_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_history_version_idx",
+        "n|idx|public.junior_conversation_events_history_version_idx",
+        "e|idx|public.junior_conversation_events_history_version_idx",
+        "n|rel|public.junior_conversation_events_history_version_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.history_version",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_type_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_type_idx",
+        "n|idx|public.junior_conversation_events_type_idx",
+        "e|idx|public.junior_conversation_events_type_idx",
+        "n|rel|public.junior_conversation_events_type_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.type",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_message_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_message_search_idx",
+        "n|idx|public.junior_conversation_events_message_search_idx",
+        "e|idx|public.junior_conversation_events_message_search_idx",
+        "n|rel|public.junior_conversation_events_message_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_events", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_idempotency_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_idempotency_idx",
+        "n|idx|public.junior_conversation_events_idempotency_idx",
+        "e|idx|public.junior_conversation_events_idempotency_idx",
+        "n|rel|public.junior_conversation_events_idempotency_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.idempotency_key"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_events"],
+      "writes": [
+        "s|fk|public.junior_conversation_events.junior_conversation_events_conversation_id_junior_conversations",
+        "n|fk|public.junior_conversation_events.junior_conversation_events_conversation_id_junior_conversations",
+        "e|fk|public.junior_conversation_events.junior_conversation_events_conversation_id_junior_conversations",
+        "n|con|public.junior_conversation_events.junior_conversation_events_conversation_id_junior_conversations"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_events",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "history_version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "schema_version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "1",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "idempotency_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "payload",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_history_version_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "history_version",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_type_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "type",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_message_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('english', \"payload\"->>'text')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_events\".\"type\" = 'message'",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_idempotency_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "idempotency_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_conversation_id_junior_conversations",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_conversation_id_seq_pk",
+        "columns": ["conversation_id", "seq"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_agent_steps\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_conversation_messages\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"seq\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"context_epoch\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"type\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"role\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"payload\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_steps\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"message_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"role\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"author_identity_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"text\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"meta\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"replied_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_messages\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_agent_steps_epoch_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_messages_activity_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_messages_search_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_agent_steps\",\"junior_agent_steps_conversation_id_junior_conversations_convers\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_conversation_messages\",\"junior_conversation_messages_conversation_id_junior_conversatio\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_conversation_messages\",\"junior_conversation_messages_author_identity_id_junior_identiti\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_agent_steps\",\"junior_agent_steps_conversation_id_seq_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_conversation_messages\",\"junior_conversation_messages_conversation_id_message_id_pk\"]"
+    }
+  ]
+}

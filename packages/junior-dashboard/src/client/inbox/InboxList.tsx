@@ -871,7 +871,8 @@ export function InboxList(props: {
   // of a list with a heading. The Inbox on a desktop has no heading, so its
   // filters sit above the rows.
   const filterBar = props.phone || headerBar ? null : filters;
-  // One request resolves the code changes of every item row.
+  // The rows that come near the screen together read their cards in one
+  // request.
   return (
     <MessageObjectsProvider>
       <section

@@ -1,0 +1,130 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "eb4205ac-70e2-40fe-b4af-464dad9ac188",
+  "prevIds": ["5fa6dab4-99c4-4a5b-babc-3fccd9db8228"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_idx",
+        "n|idx|public.junior_automations_creator_idx",
+        "e|idx|public.junior_automations_creator_idx",
+        "n|rel|public.junior_automations_creator_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_automations",
+        "n|sch|public",
+        "e|col|public.junior_automations.team_id",
+        "e|col|public.junior_automations.creator_slack_user_id",
+        "e|col|public.junior_automations.created_at_ms",
+        "e|col|public.junior_automations.id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automations",
+        "creator_identity_id"
+      ],
+      "writes": [
+        "s|colprop|public.junior_automations.creator_identity_id.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.creator_identity_id"
+      ],
+      "sqlHash": "fbdaedec82ac8076"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_identity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_identity_idx",
+        "n|idx|public.junior_automations_creator_identity_idx",
+        "e|idx|public.junior_automations_creator_identity_idx",
+        "n|rel|public.junior_automations_creator_identity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.creator_identity_id",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "cc1148f88be0f86b"
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|fk|public.junior_automations.junior_automations_creator_identity_id_junior_identities_id_fk",
+        "n|fk|public.junior_automations.junior_automations_creator_identity_id_junior_identities_id_fk",
+        "e|fk|public.junior_automations.junior_automations_creator_identity_id_junior_identities_id_fk",
+        "n|con|public.junior_automations.junior_automations_creator_identity_id_junior_identities_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_automations.creator_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_creator_identity_id_junior_identities_id_fk",
+        "nameExplicit": false,
+        "columns": ["creator_identity_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_identities",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_automations_creator_idx\"]"
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_automations\",\"creator_identity_id\"]",
+      "set": {
+        "notNull": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_creator_identity_idx\"]",
+      "set": {
+        "where": null
+      }
+    }
+  ]
+}

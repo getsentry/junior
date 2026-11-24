@@ -36,7 +36,7 @@ const toolActions: Record<string, { icon: LucideIcon; verb: string }> = {
   bash: { icon: SquareTerminal, verb: "Running" },
   executeTool: { icon: Wrench, verb: "Calling" },
   loadSkill: { icon: Sparkles, verb: "Loading" },
-  spawnAgent: { icon: Bot, verb: "Starting" },
+  startAgent: { icon: Bot, verb: "Starting" },
   webFetch: { icon: Globe, verb: "Reading" },
   webSearch: { icon: Globe, verb: "Searching" },
 };

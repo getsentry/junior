@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "394b8a22-6d6d-4b95-9e49-5667cc140029",
+  "prevIds": ["0467c4ef-64d2-4496-9691-573866872db4"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_snoozes",
+        "wake_reason"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_snoozes.wake_reason",
+        "n|col|public.junior_inbox_snoozes.wake_reason",
+        "e|col|public.junior_inbox_snoozes.wake_reason"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_snoozes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "wake_reason",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

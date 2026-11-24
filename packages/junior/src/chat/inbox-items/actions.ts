@@ -13,6 +13,7 @@ import { deliverInboxItemChange, type InboxItemDelivery } from "./changes";
 import type { InboxItemChange } from "./messages";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   canUserReadInboxItem,
   inboxItemTodo,
   isAutomationAlertItem,
@@ -193,7 +194,13 @@ export async function actOnInboxItem(args: {
   let closed = item;
   let closedNow = false;
   if (item.status === "open") {
-    if (!canActOnInboxItem(item, user.id)) {
+    // Anyone who can see a public question can answer it. Dismiss keeps the
+    // assignee rule (`canAnswerInboxItem`).
+    const allowed =
+      action === "submit"
+        ? canAnswerInboxItem(item, user.id)
+        : canActOnInboxItem(item, user.id);
+    if (!allowed) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",

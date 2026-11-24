@@ -1,0 +1,605 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "eb2670a5-fe4c-45e3-8842-1430323e49fc",
+  "prevIds": ["92170853-e7fa-4c70-a2a9-bed27e498a9f"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_snooze_triggers"],
+      "writes": [
+        "s|tbl|public.junior_inbox_snooze_triggers",
+        "n|tbl|public.junior_inbox_snooze_triggers",
+        "e|tbl|public.junior_inbox_snooze_triggers",
+        "n|rel|public.junior_inbox_snooze_triggers",
+        "n|type|public.junior_inbox_snooze_triggers"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|tbl|public.junior_inbox_snoozes",
+        "n|tbl|public.junior_inbox_snoozes",
+        "e|tbl|public.junior_inbox_snoozes",
+        "n|rel|public.junior_inbox_snoozes",
+        "n|type|public.junior_inbox_snoozes",
+        "n|rel|public.junior_inbox_snoozes_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snooze_triggers",
+        "junior_inbox_snooze_triggers_event_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snooze_triggers_event_idx",
+        "n|idx|public.junior_inbox_snooze_triggers_event_idx",
+        "e|idx|public.junior_inbox_snooze_triggers_event_idx",
+        "n|rel|public.junior_inbox_snooze_triggers_event_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snooze_triggers",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snooze_triggers.namespace",
+        "n|col|public.junior_inbox_snooze_triggers.identifier",
+        "n|col|public.junior_inbox_snooze_triggers.event_type"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snooze_triggers",
+        "junior_inbox_snooze_triggers_snooze_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snooze_triggers_snooze_idx",
+        "n|idx|public.junior_inbox_snooze_triggers_snooze_idx",
+        "e|idx|public.junior_inbox_snooze_triggers_snooze_idx",
+        "n|rel|public.junior_inbox_snooze_triggers_snooze_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snooze_triggers",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snooze_triggers.snooze_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "e|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|rel|public.junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.user_id",
+        "n|col|public.junior_inbox_snoozes.review_item_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_settled_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_settled_idx",
+        "n|idx|public.junior_inbox_snoozes_settled_idx",
+        "e|idx|public.junior_inbox_snoozes_settled_idx",
+        "n|rel|public.junior_inbox_snoozes_settled_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.created_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_review_item_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_review_item_idx",
+        "n|idx|public.junior_inbox_snoozes_review_item_idx",
+        "e|idx|public.junior_inbox_snoozes_review_item_idx",
+        "n|rel|public.junior_inbox_snoozes_review_item_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.review_item_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_snooze_triggers"],
+      "writes": [
+        "s|fk|public.junior_inbox_snooze_triggers.junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_",
+        "n|fk|public.junior_inbox_snooze_triggers.junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_",
+        "e|fk|public.junior_inbox_snooze_triggers.junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_",
+        "n|con|public.junior_inbox_snooze_triggers.junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snooze_triggers",
+        "n|sch|public",
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snooze_triggers.snooze_id",
+        "n|col|public.junior_inbox_snoozes.id",
+        "e|uniqueness|public.junior_inbox_snoozes.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_user_id_junior_users_id_fk",
+        "n|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_user_id_junior_users_id_fk",
+        "e|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_user_id_junior_users_id_fk",
+        "n|con|public.junior_inbox_snoozes.junior_inbox_snoozes_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "n|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "e|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "n|con|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.review_item_id",
+        "n|col|public.junior_review_items.id",
+        "e|uniqueness|public.junior_review_items.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_snooze_triggers",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_snoozes",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "snooze_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "outcome",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "namespace",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "identifier",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "event_type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "match",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "review_item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "state",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "junior_inbox_snooze_triggers_event_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "namespace",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "identifier",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "event_type",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "junior_inbox_snooze_triggers_snooze_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "snooze_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_snoozed_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "review_item_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_settled_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "created_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_review_item_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "review_item_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_",
+        "nameExplicit": false,
+        "columns": ["snooze_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_inbox_snoozes",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "nameExplicit": false,
+        "columns": ["review_item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_review_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snooze_triggers",
+        "name": "junior_inbox_snooze_triggers_outcome_check",
+        "value": "\"junior_inbox_snooze_triggers\".\"outcome\" in ('wake', 'resolve')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_state_check",
+        "value": "\"junior_inbox_snoozes\".\"state\" in ('snoozed', 'woken', 'cancelled')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

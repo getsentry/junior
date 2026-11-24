@@ -77,6 +77,21 @@ export function webConversationMessage(
 }
 
 /**
+ * Build the transcript Messages of a new web Turn, in input order. The Turn
+ * saves its first input unreplied. `message_handled` records the reply.
+ */
+export function webTurnInputMessages(
+  batch: readonly Pick<MailboxTurnInput, "author" | "message">[],
+): ConversationMessage[] {
+  return batch.map((entry, index) => {
+    const message = webConversationMessage(entry.message, entry.author);
+    return index === 0
+      ? { ...message, meta: { ...message.meta, replied: false } }
+      : message;
+  });
+}
+
+/**
  * Return the saved input Messages of a resumed Turn in input order. A web
  * batch saves each Message apart. An older Turn saved one joined Message, so
  * its other input ids have no saved Message.
@@ -136,8 +151,6 @@ export async function mailboxTurnInputs(
   return {
     eventMeta: {},
     inputs: await webTurnInputs(messages.map((message) => message.input)),
-    webInputMessages: batch.map((entry) =>
-      webConversationMessage(entry.message, entry.author),
-    ),
+    webInputMessages: webTurnInputMessages(batch),
   };
 }

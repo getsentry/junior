@@ -280,8 +280,9 @@ export type AgentEnvironment = {
   /** Queue of the app, for tools that wake other Conversations. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
   /**
-   * Bind spawnAgent to a Run, with the authority of that Run. Tool wiring
-   * binds it only when the Turn's behavior gives it agent tools.
+   * Bind the child-agent start of `startAgent` to a Run, with the
+   * authority of that Run. Tool wiring binds it only when the Turn's
+   * behavior gives it agent tools.
    */
   bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
   /** Bind messageAgent to a Run, for the agent tools that its Turn gets. */

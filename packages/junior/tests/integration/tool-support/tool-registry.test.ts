@@ -268,23 +268,28 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toEqual(
         expect.arrayContaining([
-          "spawnAgent",
+          "startAgent",
           "stopAgent",
           "archiveAgent",
-          "listAgents",
           "messageAgent",
           "reply",
           "reportBlocked",
         ]),
       );
       expect(person.disabled).not.toContain("addInboxItem");
+      // Finding agents and Conversations reports nothing to the parent.
+      expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toContain("setConversationSubscription");
       // Every agent, also a child agent, asks a person with an Inbox item.
       expect(agent.disabled).not.toContain("addInboxItem");
-      expect(agent.disabled).not.toContain("spawnAgent");
+      expect(agent.disabled).not.toContain("startAgent");
+      // A child agent starts child agents, so it sees their arguments.
+      expect(
+        Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
+      ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
       expect(agent.disabled).not.toContain("reply");
 
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
+      for (const name of ["startAgent", "messageAgent", "reply"]) {
         await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );
@@ -328,10 +333,9 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toEqual(
         expect.arrayContaining([
-          "spawnAgent",
+          "startAgent",
           "stopAgent",
           "archiveAgent",
-          "listAgents",
           "messageAgent",
         ]),
       );
@@ -340,9 +344,9 @@ describe("static tool registry", () => {
         expect(turn.disabled).not.toContain("reply");
         expect(turn.disabled).not.toContain("reportBlocked");
       }
-      expect(agent.disabled).not.toContain("spawnAgent");
-      await expect(callTool(person, "spawnAgent")).rejects.toThrow(
-        "spawnAgent is disabled in this Turn.",
+      expect(agent.disabled).not.toContain("startAgent");
+      await expect(callTool(person, "startAgent")).rejects.toThrow(
+        "startAgent is disabled in this Turn.",
       );
       expect(person.spawnAgent).not.toHaveBeenCalled();
     } finally {
@@ -378,7 +382,7 @@ describe("static tool registry", () => {
     expect(person.disabled).toEqual(
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
-    expect(person.disabled).not.toContain("spawnAgent");
+    expect(person.disabled).not.toContain("startAgent");
     expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");

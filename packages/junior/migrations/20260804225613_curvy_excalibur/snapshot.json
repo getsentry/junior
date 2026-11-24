@@ -1,0 +1,223 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "dd0b031f-d92a-4db5-96dd-7f6b77042d4a",
+  "prevIds": ["40cf8479-8a45-4e3d-a267-facc28ebc11d"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversation_bindings"],
+      "writes": [
+        "s|tbl|public.junior_conversation_bindings",
+        "n|tbl|public.junior_conversation_bindings",
+        "e|tbl|public.junior_conversation_bindings",
+        "n|rel|public.junior_conversation_bindings",
+        "n|type|public.junior_conversation_bindings",
+        "n|rel|public.junior_conversation_bindings_provider_conversation_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_bindings",
+        "junior_conversation_bindings_conversation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_bindings_conversation_idx",
+        "n|idx|public.junior_conversation_bindings_conversation_idx",
+        "e|idx|public.junior_conversation_bindings_conversation_idx",
+        "n|rel|public.junior_conversation_bindings_conversation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_bindings",
+        "n|sch|public",
+        "n|col|public.junior_conversation_bindings.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_bindings"],
+      "writes": [
+        "s|fk|public.junior_conversation_bindings.junior_conversation_bindings_conversation_id_junior_conversatio",
+        "n|fk|public.junior_conversation_bindings.junior_conversation_bindings_conversation_id_junior_conversatio",
+        "e|fk|public.junior_conversation_bindings.junior_conversation_bindings_conversation_id_junior_conversatio",
+        "n|con|public.junior_conversation_bindings.junior_conversation_bindings_conversation_id_junior_conversatio"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_bindings",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_bindings.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_bindings",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "provider_tenant_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "''",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "provider_destination_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "provider_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "junior_conversation_bindings_conversation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "junior_conversation_bindings_conversation_id_junior_conversatio",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_bindings",
+        "name": "junior_conversation_bindings_provider_conversation_pk",
+        "columns": [
+          "provider",
+          "provider_tenant_id",
+          "provider_destination_id",
+          "provider_conversation_id"
+        ],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

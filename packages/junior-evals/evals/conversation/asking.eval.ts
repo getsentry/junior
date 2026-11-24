@@ -140,7 +140,7 @@ describe("Asking a Person", () => {
       },
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
     // Only Maya knows the region she picked, so the child asks her in the
     // Inbox itself. The parent gets a `waiting` update and does not ask.
     expect(requestedTools).toContain("addInboxItem");
