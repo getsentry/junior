@@ -3,7 +3,6 @@ import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
-import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
@@ -70,10 +69,9 @@ export async function resumeConversationDelivery(
  */
 export async function isConversationDeliveryPaused(
   conversationId: string,
-  executor: JuniorSqlDatabase = getSqlExecutor(),
 ): Promise<boolean> {
   const root = alias(juniorConversations, "root");
-  const [row] = await executor
+  const [row] = await getSqlExecutor()
     .db()
     .select({ pausedAt: root.deliveryPausedAt })
     .from(juniorConversations)

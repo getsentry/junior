@@ -26,8 +26,6 @@ export type Delivery = {
     destination: Destination;
     text: string;
   }) => Promise<{ providerMessageId?: string }>;
-  /** True while a person has detached the Conversation from its Destination. */
-  isPaused: (conversationId: string) => Promise<boolean>;
 };
 
 /**
@@ -65,14 +63,14 @@ const tryLockResultSchema = z.object({
 /**
  * Delivers the replies of a Turn: it records them in the outbox, then sends
  * the Conversation's pending rows in order. A Turn whose inputs have a
- * Destination delivers there, unless the Conversation's Delivery is paused.
+ * Destination delivers there.
  */
 export async function deliverTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   message: DeliveryMessage,
   delivery: Delivery,
 ): Promise<void> {
-  await recordReplies({ executor }, message, delivery);
+  await recordReplies({ executor }, message);
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
     const next = await executor.transaction(() =>
@@ -91,18 +89,16 @@ export async function deliverTurn(
 
 /**
  * Adds an outbox row for each reply of the Turn that has none, but only while
- * the Turn has a Destination and the Conversation delivers. Rows that already
- * exist still send.
+ * the Turn has a Destination. Rows that already exist still send.
  */
 function recordReplies(
   { executor }: Pick<EngineContext, "executor">,
   message: DeliveryMessage,
-  delivery: Pick<Delivery, "isPaused">,
 ): Promise<void> {
   return executor.transaction(async () => {
     const db = executor.db();
     const destination = await findTurnDestination({ executor }, message.turnId);
-    if (!destination || (await delivery.isPaused(message.conversationId))) {
+    if (!destination) {
       return;
     }
     const replies = await findTurnReplies(
