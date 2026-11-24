@@ -386,8 +386,6 @@ export {
   createSpaceBodySchema,
   spaceListQuerySchema,
   spaceListSchema,
-  spaceMemberListSchema,
-  spaceMemberSchema,
   spaceParamsSchema,
   spaceRefSchema,
   spaceSchema,
@@ -395,10 +393,14 @@ export {
 } from "./schema/space";
 export type {
   SpaceListReport,
-  SpaceMemberListReport,
   SpaceRefReport,
   SpaceReport,
 } from "./schema/space";
+export {
+  spaceMemberListSchema,
+  spaceMemberSchema,
+} from "./schema/space-member";
+export type { SpaceMemberListReport } from "./schema/space-member";
 export {
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,

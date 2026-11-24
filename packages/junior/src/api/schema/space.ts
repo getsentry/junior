@@ -71,22 +71,6 @@ export const spaceListSchema = z
   .object({ spaces: z.array(spaceSchema) })
   .strict();
 
-export const spaceMemberSchema = z
-  .object({
-    userId: z.string().min(1),
-    email: z.string(),
-    displayName: z.string().nullable(),
-    /** Junior API path of the member's profile photo. */
-    avatarUrl: z.string().nullable(),
-    joinedAt: z.iso.datetime(),
-  })
-  .strict();
-
-export const spaceMemberListSchema = z
-  .object({ members: z.array(spaceMemberSchema) })
-  .strict();
-
 export type SpaceRefReport = z.infer<typeof spaceRefSchema>;
 export type SpaceReport = z.infer<typeof spaceSchema>;
 export type SpaceListReport = z.infer<typeof spaceListSchema>;
-export type SpaceMemberListReport = z.infer<typeof spaceMemberListSchema>;
