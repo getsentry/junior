@@ -94,10 +94,7 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
+import { runTurnEndTasks } from "@/chat/task-execution/turn-end-tasks";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import { completeCancelledConversationTurn } from "@/chat/task-execution/turn-cancel";
@@ -867,47 +864,12 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          if (completedSuccessfully && behavior.sessionTasks) {
-            try {
-              await scheduleSessionCompletedPluginTasks(
-                {
-                  conversationId: context.conversationId,
-                  sessionId: turnId,
-                },
-                async (message) => {
-                  try {
-                    await processPluginTask(message);
-                  } catch (error) {
-                    logException(
-                      error,
-                      "conversation.plugin.session_completion_task.failed",
-                      {
-                        conversationId: context.conversationId,
-                        pluginName: message.plugin,
-                        taskName: message.name,
-                        turnId,
-                      },
-                    );
-                  }
-                },
-              );
-            } catch (error) {
-              logException(
-                error,
-                "conversation.plugin.session_completion_task.failed",
-                {
-                  conversationId: context.conversationId,
-                  turnId,
-                },
-              );
-            }
-          } else {
-            // The event search task runs only with the session tasks above.
-            await indexEndedTurnEvents({
-              conversationId: context.conversationId,
-              turnId,
-            });
-          }
+          await runTurnEndTasks({
+            behavior,
+            completed: completedSuccessfully,
+            conversationId: context.conversationId,
+            turnId,
+          });
 
           await acknowledge();
           return { status: "completed" };
