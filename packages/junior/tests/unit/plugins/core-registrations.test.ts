@@ -10,7 +10,7 @@ describe("core registrations", () => {
           defineJuniorPlugin({
             manifest: {
               name: "notifications",
-              displayName: "Briefs",
+              displayName: "Notifications",
               description: "Plugin that claims a core feature name",
             },
             hooks: {},
