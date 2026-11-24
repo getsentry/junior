@@ -45,6 +45,7 @@ function InFlightRow(props: {
   const { conversation } = props;
   const drag = usePinnedRowDrag(conversation.id);
   const actions = useInboxRowActions(conversation, {
+    move: drag?.move,
     selected: props.selected,
   });
   return (
