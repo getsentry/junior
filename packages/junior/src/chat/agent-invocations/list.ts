@@ -220,7 +220,7 @@ async function listAnsweredLoopChildren(
 
 /**
  * List the other child agents of one parent that still run and have not
- * answered. A running child whose open Turn's `reply` is already among
+ * answered. A running child whose open Turn's result is already among
  * `parentMessages`, the child replies and results that reached the parent's
  * mailbox, has answered, so it does not count.
  */

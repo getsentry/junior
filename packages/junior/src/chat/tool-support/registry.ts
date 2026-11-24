@@ -233,9 +233,8 @@ const CORE_TOOLS = {
     definition: () => messageAgentToolDefinition,
   },
   [REPLY_TOOL_NAME]: {
-    when: ({ listedTools }) => listedTools.reply !== "none",
-    definition: ({ listedTools }) =>
-      replyToolDefinition(enabledMode(listedTools.reply)),
+    when: ({ listedTools }) => listedTools.reply,
+    definition: () => replyToolDefinition,
   },
   [REPORT_BLOCKED_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reportBlocked !== "none",

@@ -3,7 +3,6 @@ import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import type { TurnAnswer } from "@/chat/turn-answer";
 import {
   slackInvocationInput,
   slackParentConversationId,
@@ -33,7 +32,7 @@ async function spawn(
   });
 }
 
-/** Run the child's queued task to its end without a `reply`. */
+/** Run the child's queued task to its end with no final text. */
 async function finishTask(harness: Harness, conversationId: string) {
   harness.onRun(finishRun);
   await harness.drain(conversationId);
@@ -57,10 +56,7 @@ describe("nested child agents", () => {
     const replyAfterResult = async (conversationId: string, text: string) => {
       // The result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      harness.onRun(
-        async (run) =>
-          await finishRun(run, { reply: { text, toolCallId: "call-reply" } }),
-      );
+      harness.onRun(async (run) => await finishRun(run, { finalText: text }));
       await harness.processUntilRun(conversationId);
       harness.onRun(undefined);
       return harness.runs.at(-1)!;
@@ -76,9 +72,7 @@ describe("nested child agents", () => {
       }
       harness.onRun(
         async (run) =>
-          await finishRun(run, {
-            reply: { text: "Grand helper fact: 42.", toolCallId: "call-reply" },
-          }),
+          await finishRun(run, { finalText: "Grand helper fact: 42." }),
       );
       await harness.drain(grandHelper);
 
@@ -127,7 +121,7 @@ describe("nested child agents", () => {
     ) =>
       await enqueueChildResultToParent({
         actor,
-        result: { kind: "reply", reply: { text, toolCallId: text } },
+        result: { kind: "completed", text },
         messageKey: text,
         queue: harness.queue,
         sender: { childConversationId: sender, parentConversationId },
@@ -180,7 +174,10 @@ describe("nested child agents", () => {
   it("reports a Task whose helper ended its work with noReply", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
-    const endWith = async (conversationId: string, answer: TurnAnswer) => {
+    const endWith = async (
+      conversationId: string,
+      answer: Parameters<typeof finishRun>[1],
+    ) => {
       harness.onRun(async (run) => await finishRun(run, answer));
       await harness.drain(conversationId);
       harness.onRun(undefined);
@@ -194,9 +191,7 @@ describe("nested child agents", () => {
       const helper = await spawn(harness, "quiet-helper", child);
       // The child replies while its helper works, so the parent reads a
       // message, not the child's result.
-      await endWith(child, {
-        reply: { text: "Partial findings.", toolCallId: "call-reply" },
-      });
+      await endWith(child, { finalText: "Partial findings." });
       await endWith(helper, { noReply: { note: "Helper found nothing." } });
       await expect(texts(child)).resolves.toEqual([
         expect.stringMatching(

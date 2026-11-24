@@ -733,10 +733,6 @@ export function createConversationTurnWorker(
                 await reportFailure(
                   reply.diagnostics.errorMessage ?? reply.text,
                 );
-              } else if (reply.reply && behavior.tools.reply === "parent") {
-                await sendToParent({ kind: "reply", reply: reply.reply });
-                // Keep the reply in the child's transcript, not its Location.
-                await deliverAssistantMessage(reply.reply.text);
               } else if (reply.reply) {
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
@@ -762,8 +758,8 @@ export function createConversationTurnWorker(
                   });
                 }
               } else if (behavior.endResult === "parent" && reply.text) {
-                // A person's Turn in a Thread ends with final text. The
-                // person sees it, and the parent gets it too.
+                // The final text of a child agent's Turn is its reply. It
+                // stays in the child's transcript, and the parent gets it.
                 await sendToParent({ kind: "completed", text: reply.text });
               }
 

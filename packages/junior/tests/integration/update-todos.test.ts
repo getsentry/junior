@@ -330,8 +330,8 @@ describe("updateTodos", () => {
         blocked: await harness.spawn("Hotel"),
       };
       const reply: ParentResult = {
-        kind: "reply",
-        reply: { text: "Reviewed.", toolCallId: "call-reply" },
+        kind: "completed",
+        text: "Reviewed.",
       };
       tick();
       await harness.updateTodos({

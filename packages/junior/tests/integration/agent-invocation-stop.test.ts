@@ -3,10 +3,7 @@ import {
   messageChildAgent,
   spawnChildAgent,
 } from "@/chat/agent-invocations/create";
-import {
-  getAgentReplyMessageId,
-  getTurnReplyKey,
-} from "@/chat/agent-invocations/ids";
+import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import {
   createDeliverToParent,
@@ -146,8 +143,8 @@ describe("stopping child agents", () => {
         actor: invocationInput.actor,
         conversationId: childId,
         result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
+          kind: "completed",
+          text: "Old finding.",
         },
         turnId,
       });
@@ -238,18 +235,15 @@ describe("stopping child agents", () => {
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
         result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
+          kind: "completed",
+          text: "Old finding.",
         },
         turnId: "turn_watch-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
         quietResult,
         expect.objectContaining({
-          inboundMessageId: getAgentReplyMessageId(
-            childId,
-            getTurnReplyKey("turn_watch-event", "call-old-reply"),
-          ),
+          inboundMessageId: getAgentReplyMessageId(childId, "turn_watch-event"),
         }),
       ]);
 
@@ -261,12 +255,12 @@ describe("stopping child agents", () => {
       const sendLateReply = async () =>
         await enqueueChildResultToParent({
           actor: EVENT_SYSTEM_ACTOR,
-          messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
+          messageKey: "turn_watch-event",
           nowMs: beforeStopMs,
           queue: harness.queue,
           result: {
-            kind: "reply",
-            reply: { text: "Late finding.", toolCallId: "call-late-reply" },
+            kind: "completed",
+            text: "Late finding.",
           },
           sender: {
             childConversationId: childId,
@@ -297,8 +291,8 @@ describe("stopping child agents", () => {
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: watcherId,
         result: {
-          kind: "reply",
-          reply: { text: "Build finding.", toolCallId: "call-build-reply" },
+          kind: "completed",
+          text: "Build finding.",
         },
         turnId: "turn_build-event",
       });
@@ -307,7 +301,7 @@ describe("stopping child agents", () => {
         expect.objectContaining({
           inboundMessageId: getAgentReplyMessageId(
             watcherId,
-            getTurnReplyKey("turn_build-event", "call-build-reply"),
+            "turn_build-event",
           ),
         }),
       ]);
@@ -438,8 +432,8 @@ describe("stopping child agents", () => {
         actor: invocationInput.actor,
         conversationId: openHelperId,
         result: {
-          kind: "reply",
-          reply: { text: "Open helper finding.", toolCallId: "call-reply" },
+          kind: "completed",
+          text: "Open helper finding.",
         },
         turnId: "turn_open-helper",
       });

@@ -20,6 +20,7 @@ const FAILURE_REASON_TITLES = {
   empty_output: "Empty model response",
   tool_errors: "Tool failed",
   suppressed_output: "Model output was dropped",
+  cut_off_output: "Model output was cut off",
   unknown: "Model service error",
 } satisfies Record<ConversationTurnFailureReason, string>;
 
@@ -60,6 +61,8 @@ function failureReasonDescriptions(agentName: string) {
     empty_output: `The model returned no usable text before ${agentName} finished this turn.`,
     tool_errors: "A tool failed and the turn could not finish.",
     suppressed_output: `The model produced text that ${agentName} could not deliver.`,
+    cut_off_output:
+      "The model stopped before it finished its reply, at its output limit or on an abort.",
     unknown: "The model service failed for an unknown reason.",
   } satisfies Record<ConversationTurnFailureReason, string>;
 }

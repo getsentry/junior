@@ -2,20 +2,19 @@ import type { Actor } from "@sentry/junior-plugin-api";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { listWatches } from "@/chat/events/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import type { Reply } from "@/chat/turn-answer";
 import { readChildConversationSender } from "./child-input";
 import { listChildMessages } from "./child-message";
 import { hasWaitingParentWork } from "./list";
 import { childAgentStillWorks } from "./store";
 
 /**
- * What one child agent Turn sends its parent agent: its `reply`, a completed
- * result when its work ended with final text or `noReply`, or a blocked,
- * failed, or stopped result.
+ * What one child agent Turn sends its parent agent: a completed result with
+ * its final text or `noReply` note, or a blocked, failed, or stopped result.
  */
-export type ParentResult =
-  | { kind: "reply"; reply: Reply }
-  | { kind: "blocked" | "completed" | "failed" | "stopped"; text: string };
+export type ParentResult = {
+  kind: "blocked" | "completed" | "failed" | "stopped";
+  text: string;
+};
 
 /**
  * Send one child agent Turn's result to the parent agent. `actor` is the
@@ -49,7 +48,7 @@ export function parentResultActor(
  * Return whether a child's work ended with its Turn `turnId`, which ended
  * with no answer: none of its own child agents still works, it has no active
  * Watch or Timer, no input waits to run a later Turn that answers, and the
- * Turn sent its parent nothing. A Turn can send its `reply` and then lose
+ * Turn sent its parent nothing. A Turn can send its result and then lose
  * its worker, so its retry already reported.
  */
 export async function childWorkEnded(

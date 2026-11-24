@@ -406,11 +406,8 @@ describe("agent dispatch conversation work", () => {
       nowMs: Date.now() - 60_000,
       queue,
       result: {
-        kind: "reply",
-        reply: {
-          text: "The release is green.",
-          toolCallId: "call-child-reply",
-        },
+        kind: "completed",
+        text: "The release is green.",
       },
       messageKey: "call-child-reply",
       sender: child,

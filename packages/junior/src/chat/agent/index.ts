@@ -1777,7 +1777,7 @@ async function executeAgentRunInPrivacyContext(
             // answer, so the run history shows it.
             missingAnswerError: run.dispatch
               ? "Automation run ended without an answer."
-              : behavior.missingAnswerError,
+              : undefined,
           }
         : undefined),
     });

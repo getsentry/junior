@@ -273,7 +273,6 @@ describe("static tool registry", () => {
           "archiveAgent",
           "listAgents",
           "messageAgent",
-          "reply",
           "reportBlocked",
         ]),
       );
@@ -287,9 +286,13 @@ describe("static tool registry", () => {
         ]),
       );
       expect(agent.disabled).not.toContain("spawnAgent");
-      expect(agent.disabled).not.toContain("reply");
+      // Final text is the reply of every Thread Turn, so no Turn lists
+      // `reply`.
+      for (const turn of [person, agent]) {
+        expect(turn.piTools.map((tool) => tool.name)).not.toContain("reply");
+      }
 
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
+      for (const name of ["spawnAgent", "messageAgent"]) {
         await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );
