@@ -7,7 +7,13 @@ import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { reconcileTurn, scheduleInput } from "@/core/turn/schedule";
-import { cancelTurn, claimTurn, commitStep, failTurn } from "@/core/turn/state";
+import {
+  cancelTurn,
+  claimTurn,
+  commitStep,
+  failTurn,
+  releaseTurn,
+} from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
@@ -316,6 +322,31 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
       turnId: bob.turnId,
     });
+  });
+
+  it("ends a superseded Turn whose step fails", async () => {
+    const alice = await schedule("event-1");
+    const running = await claim(alice.turnId);
+    await interruptFrom("identity:other", "event-2");
+
+    await expect(releaseTurn(engineCtx, running)).resolves.toBe(true);
+
+    await expect(readEnd(alice.turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+  });
+
+  it("sends later inputs past a superseded Turn", async () => {
+    const alice = await schedule("event-1");
+    await claim(alice.turnId);
+    const bob = await interruptFrom("identity:other", "event-2");
+
+    const bobAgain = await interruptFrom("identity:other", "event-3");
+    const aliceAgain = await interruptFrom("identity:actor", "event-4");
+
+    expect([alice.turnId, bob.turnId]).not.toContain(aliceAgain.turnId);
+    expect(bobAgain.turnId).toBe(bob.turnId);
   });
 
   it("lets a superseding Turn be superseded in turn", async () => {
