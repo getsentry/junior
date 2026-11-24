@@ -77,7 +77,6 @@ import { ConversationEventLogLoading } from "../../conversations/ConversationEve
 import {
   adjacentEventLogSeqs,
   eventLogRows,
-  filterEventLogRows,
 } from "../../conversations/eventLog";
 import {
   TranscriptSearchProvider,
@@ -590,15 +589,12 @@ export function ConversationPage(props: {
     !selectedEvent &&
     (transcriptPending || holdShown || linkedTurnId !== undefined);
   const showEvent = Boolean(selectedEvent) || eventLoading;
-  // Step through the same filtered rows that the event log shows.
+  // Step through the rows that the event log shows. The new UI's log has no
+  // search, so the transcript search must not filter them.
   const events = transcript?.events;
-  const normalizedSearch = search.trim().toLowerCase();
   const eventRows = useMemo(
-    () =>
-      eventOpen && events
-        ? filterEventLogRows(eventLogRows(events), normalizedSearch)
-        : [],
-    [eventOpen, events, normalizedSearch],
+    () => (eventOpen && events ? eventLogRows(events) : []),
+    [eventOpen, events],
   );
   const turnContextPanel = useMemo<TurnContextPanel>(
     () => ({
