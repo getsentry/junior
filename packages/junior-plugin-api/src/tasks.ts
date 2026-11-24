@@ -13,6 +13,7 @@ import type {
   PluginTurnEventReader,
 } from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
+import type { EventPublisher } from "./events";
 import {
   destinationSchema,
   actorSchema,
@@ -122,6 +123,8 @@ export interface PluginStartedTaskContext<
   annotations: PluginConversationAnnotations;
   codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
+  /** Publishes the plugin's Events, as the heartbeat and routes do. */
+  events: EventPublisher;
   /**
    * True on the last delivery that Junior makes. An attempt that throws
    * now is not run again, so a task that waits for a provider can write

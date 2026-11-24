@@ -332,7 +332,7 @@
     "packages/junior-dashboard/e2e/inbox/inbox-question-card.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/inbox-rows.spec.ts": 35,
     "packages/junior-dashboard/e2e/inbox/inbox-snooze.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/inbox-snoozes.spec.ts": 9,
+    "packages/junior-dashboard/e2e/inbox/inbox-snoozes.spec.ts": 6,
     "packages/junior-dashboard/e2e/inbox/inbox-stacks.spec.ts": 29,
     "packages/junior-dashboard/e2e/inbox/inbox-tab-count.spec.ts": 5,
     "packages/junior-dashboard/e2e/inbox/inbox-wake-reasons.spec.ts": 5,

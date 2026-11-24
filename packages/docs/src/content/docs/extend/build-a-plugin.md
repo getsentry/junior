@@ -655,7 +655,9 @@ defineJuniorPlugin({
 ```
 
 The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
-`ctx.codeChanges`, and `ctx.conversationChanges`, as in a plugin route.
+`ctx.codeChanges`, `ctx.conversationChanges`, and `ctx.events`, as in a
+plugin route. Use `ctx.events.publish(...)` to publish an Event that the task
+finds.
 
 ### Wait for a provider with a task
 

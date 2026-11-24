@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -164,7 +165,12 @@ function logPluginTaskQueueMessageRejected(
   });
 }
 
-function pluginTaskCallback(options: { showInboxItem?: ShowInboxItem }) {
+interface PluginTaskCallbackOptions {
+  events?: AppEventPublisher;
+  showInboxItem?: ShowInboxItem;
+}
+
+function pluginTaskCallback(options: PluginTaskCallbackOptions) {
   return queueCallback<PluginTaskQueueMessage>({
     maxDeliveries: PLUGIN_TASK_MAX_DELIVERIES,
     onRejected: logPluginTaskQueueMessageRejected,
@@ -200,7 +206,7 @@ export async function sendVercelPluginTask(
 
 /** Create the HTTP callback for plugin tasks. */
 export function createVercelPluginTaskCallback(
-  options: { showInboxItem?: ShowInboxItem } = {},
+  options: PluginTaskCallbackOptions = {},
 ): (request: Request) => Promise<Response> {
   return pluginTaskCallback(options).create();
 }

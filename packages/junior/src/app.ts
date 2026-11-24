@@ -584,6 +584,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const pluginTaskQueue = options?.pluginTaskQueue?.((message, delivery) =>
     processPluginTask(message, {
       deliveryCount: delivery?.deliveryCount,
+      events,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     }),
   );
@@ -812,6 +813,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback({
+      events,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     return pluginTaskPOST(c.req.raw);

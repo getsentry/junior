@@ -13,8 +13,11 @@
  * (`pull-request-prefetch.ts`).
  */
 import type {
+  EventPublisher,
   PluginCache,
+  PluginLogger,
   PluginStartedTaskDefinition,
+  PluginState,
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -24,6 +27,10 @@ import {
   type GitHubPullRequestFields,
   isOlderGitHubObject,
 } from "./object-cache.js";
+import {
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "./merge-conflict-checks/resolved.js";
 import {
   aliasedPullRequests,
   githubCheckCounts,
@@ -87,15 +94,16 @@ type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 // fields still wait. Return `expire` when the read is of another head
 // commit than the entry, as for a dropped patch. On the last delivery, a
 // merge state that GitHub still computes stays pending only briefly, so
-// the next read asks GitHub.
+// the next read asks GitHub. `written` says whether the read was current.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
   node: HeadFactsNode,
   last: boolean,
-): Promise<"again" | "done" | "expire"> {
+): Promise<{ outcome: "again" | "done" | "expire"; written: boolean }> {
   const mergeable = githubMergeable(node.mergeable);
   let outcome: "again" | "done" | "expire" = "done";
+  let written = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
     if (!current) return undefined;
     if (current.head?.sha !== node.headRefOid) {
@@ -110,6 +118,7 @@ async function writeHeadFacts(
     }
     const computing = mergeable === null && current.mergeable === "pending";
     if (computing && !last) outcome = "again";
+    written = true;
     return {
       ...(computing && last
         ? GITHUB_PULL_REQUEST_PENDING_CACHE
@@ -122,7 +131,45 @@ async function writeHeadFacts(
       },
     };
   });
-  return outcome;
+  return { outcome, written };
+}
+
+// A patch reads the merge state that a push or a new base changes, so it
+// also marks a conflict and publishes its fix
+// (`merge-conflict-checks/resolved.ts`). A failure is logged, and the mark
+// waits for the next read.
+async function observeMergeState(
+  args: {
+    events: Pick<EventPublisher, "publish">;
+    log: PluginLogger;
+    state: PluginState;
+  },
+  ref: PullRequestRef,
+  node: HeadFactsNode,
+): Promise<void> {
+  const mergeable = githubMergeable(node.mergeable);
+  const pullRequest = {
+    number: ref.number,
+    repositoryFullName: `${ref.owner}/${ref.name}`,
+  };
+  try {
+    if (mergeable === false) {
+      await markGitHubConflict(args.state, pullRequest);
+    } else if (mergeable === true) {
+      await publishGitHubConflictResolved({
+        events: args.events,
+        headSha: node.headRefOid,
+        ref: pullRequest,
+        state: args.state,
+      });
+    }
+  } catch (error) {
+    args.log.error(
+      "GitHub merge conflict mark failed",
+      { number: ref.number, repository: pullRequest.repositoryFullName },
+      error,
+    );
+  }
 }
 
 // A dropped patch leaves its pending fields fresh only briefly, so the
@@ -169,9 +216,13 @@ export function githubPullRequestPatchTask(
         if (ctx.lastDelivery) await expirePending(ctx.cache, key);
         throw error;
       }
-      const outcome = node
+      const write = node
         ? await writeHeadFacts(ctx.cache, key, node, ctx.lastDelivery)
-        : "expire";
+        : undefined;
+      // A read that the entry rejects is stale: a newer push or webhook
+      // came after it, so its merge state must not mark or publish.
+      if (node && write?.written) await observeMergeState(ctx, ref, node);
+      const outcome = write?.outcome ?? "expire";
       if (outcome === "again" && !ctx.lastDelivery) {
         throw new GitHubPullRequestPatchPendingError(key, sha);
       }

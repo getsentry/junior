@@ -694,6 +694,10 @@ export async function openRow(head: Locator) {
   await open.click();
 }
 
+/** The open row. Every row has its own quick Snooze, so scope to this one. */
+export const openRowOf = (page: Page) =>
+  page.locator("li[data-inbox-row][data-expanded]");
+
 /**
  * Expand the Inbox row whose head is `head` in place: an item row with its
  * head, a Conversation row with an ask pill.

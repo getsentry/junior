@@ -8,6 +8,7 @@
  */
 import type {
   EventPublisher,
+  PluginCache,
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
@@ -26,6 +27,11 @@ import {
   closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
+import {
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "./resolved.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -133,10 +139,23 @@ async function checkRepository(
     const mergeable: number[] = [];
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
-      if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable === "MERGEABLE") mergeable.push(node.number);
-      if (node.mergeable !== "CONFLICTING") continue;
       const ref = { number: node.number, repositoryFullName };
+      if (node.mergeable === "UNKNOWN") unknown = true;
+      if (node.mergeable === "MERGEABLE") {
+        mergeable.push(node.number);
+        // oxlint-disable-next-line no-await-in-loop -- One entry write per mergeable pull request.
+        await clearGitHubCachedConflict(args.cache, ref, node.headRefOid);
+        // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+        await publishGitHubConflictResolved({
+          events: args.events,
+          headSha: node.headRefOid,
+          ref,
+          state: args.state,
+        });
+      }
+      if (node.mergeable !== "CONFLICTING") continue;
+      // oxlint-disable-next-line no-await-in-loop -- One state write per conflicted pull request.
+      await markGitHubConflict(args.state, ref);
       const conflict: GitHubMergeConflict = {
         baseBranch: node.baseRefName,
         headSha: node.headRefOid,
@@ -168,6 +187,8 @@ async function checkRepository(
 }
 
 interface CheckArgs {
+  /** The plugin cache, whose entry a mergeable pull request clears of a conflict. */
+  cache: PluginCache;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
