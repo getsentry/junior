@@ -248,20 +248,10 @@ function useVersionsStream(args: {
 }) {
   const { conversationId, enabled, lastEventAtMs, onDown } = args;
   const client = useQueryClient();
-  const [visible, setVisible] = useState(
-    () => document.visibilityState === "visible",
-  );
   const [idsKey, setIdsKey] = useState(() =>
     onScreenConversationIds(client, conversationId).join(","),
   );
   const [blocked, setBlocked] = useState(false);
-
-  useEffect(() => {
-    const onVisibility = () =>
-      setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
 
   useEffect(() => {
     let settle: ReturnType<typeof setTimeout> | undefined;
@@ -285,50 +275,66 @@ function useVersionsStream(args: {
   }, [blocked]);
 
   useEffect(() => {
-    if (!enabled || !visible || blocked) return;
+    if (!enabled || blocked) return;
     const conversationIds = idsKey ? idsKey.split(",") : [];
-    const source = new EventSource(
-      versionsPath("/api/versions/stream", conversationIds),
-    );
-    let failures = 0;
-    const heard = () => {
-      lastEventAtMs.current = Date.now();
-      failures = 0;
+    let source: EventSource | undefined;
+    const close = () => {
+      source?.close();
+      source = undefined;
+      lastEventAtMs.current = 0;
     };
-    source.addEventListener("open", heard);
-    source.addEventListener(VERSIONS_STREAM_KEEPALIVE_EVENT, heard);
-    source.addEventListener("message", (event: MessageEvent<string>) => {
-      heard();
-      const next = versionsSchema.safeParse(JSON.parse(event.data));
-      if (!next.success) return;
-      refreshChangedReads(
-        client,
-        client.getQueryData<Versions>(VERSIONS_QUERY_KEY),
-        next.data,
-        conversationIds,
+    const open = () => {
+      if (source) return;
+      const opened = new EventSource(
+        versionsPath("/api/versions/stream", conversationIds),
       );
-      client.setQueryData(VERSIONS_QUERY_KEY, next.data);
-    });
-    // A stream that ends at its cap fires `error` and reconnects. A refused
-    // stream, such as a 204 when push is off, closes for good.
-    source.addEventListener("error", () => {
-      failures += 1;
-      if (
-        source.readyState !== EventSource.CLOSED &&
-        failures < STREAM_MAX_FAILURES
-      ) {
-        return;
-      }
-      source.close();
-      lastEventAtMs.current = 0;
-      setBlocked(true);
-      onDown();
-    });
-    return () => {
-      source.close();
-      lastEventAtMs.current = 0;
+      source = opened;
+      let failures = 0;
+      const heard = () => {
+        lastEventAtMs.current = Date.now();
+        failures = 0;
+      };
+      opened.addEventListener("open", heard);
+      opened.addEventListener(VERSIONS_STREAM_KEEPALIVE_EVENT, heard);
+      opened.addEventListener("message", (event: MessageEvent<string>) => {
+        heard();
+        const next = versionsSchema.safeParse(JSON.parse(event.data));
+        if (!next.success) return;
+        refreshChangedReads(
+          client,
+          client.getQueryData<Versions>(VERSIONS_QUERY_KEY),
+          next.data,
+          conversationIds,
+        );
+        client.setQueryData(VERSIONS_QUERY_KEY, next.data);
+      });
+      // A stream that ends at its cap fires `error` and reconnects. A refused
+      // stream, such as a 204 when push is off, closes for good.
+      opened.addEventListener("error", () => {
+        failures += 1;
+        if (
+          opened.readyState !== EventSource.CLOSED &&
+          failures < STREAM_MAX_FAILURES
+        ) {
+          return;
+        }
+        close();
+        setBlocked(true);
+        onDown();
+      });
     };
-  }, [blocked, client, enabled, idsKey, lastEventAtMs, onDown, visible]);
+    // Visibility opens and closes the stream here, not through state: a
+    // render would reset the poll's timer, and a hidden tab still gets the
+    // check that was due.
+    const sync = () =>
+      document.visibilityState === "visible" ? open() : close();
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      close();
+    };
+  }, [blocked, client, enabled, idsKey, lastEventAtMs, onDown]);
 }
 
 /**
