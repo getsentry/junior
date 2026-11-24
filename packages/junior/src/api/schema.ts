@@ -83,6 +83,15 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
+} from "./schema/conversation-create";
+export type {
+  AcceptedConversationMessage,
+  CreateConversationBody,
+  CreateConversationMessageBody,
+} from "./schema/conversation-create";
+export {
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -98,8 +107,6 @@ export {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
   conversationSummaryReportSchema,
-  createConversationBodySchema,
-  createConversationMessageBodySchema,
 } from "./schema/conversation";
 export {
   forkConversationBodySchema,
@@ -221,7 +228,6 @@ export type {
   RenameConversationResponse,
 } from "./schema/conversation-title";
 export type {
-  AcceptedConversationMessage,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -242,8 +248,6 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
-  CreateConversationBody,
-  CreateConversationMessageBody,
 } from "./schema/conversation";
 export type {
   CancelConversationPendingMessagesBody,
@@ -385,14 +389,24 @@ export {
   spaceMemberListSchema,
   spaceMemberSchema,
   spaceParamsSchema,
+  spaceRefSchema,
   spaceSchema,
   updateSpaceBodySchema,
 } from "./schema/space";
 export type {
   SpaceListReport,
   SpaceMemberListReport,
+  SpaceRefReport,
   SpaceReport,
 } from "./schema/space";
+export {
+  setConversationSpaceBodySchema,
+  setConversationSpaceResponseSchema,
+} from "./schema/conversation-space";
+export type {
+  SetConversationSpaceBody,
+  SetConversationSpaceResponse,
+} from "./schema/conversation-space";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

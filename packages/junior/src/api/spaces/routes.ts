@@ -6,10 +6,11 @@ import {
   listSpaceMembers,
   listSpaces,
   readSpace,
-  setSpaceArchived,
   updateSpace,
   type Space,
 } from "@/chat/spaces/store";
+import { setSpaceArchive } from "@/chat/spaces/conversations";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -75,7 +76,10 @@ const paramsValidator = validateRequest(
 );
 
 /** Create the routes that list, create, change, archive, and join Spaces. */
-export function createSpaceRoutes(): Hono<JuniorApiEnv> {
+export function createSpaceRoutes(options: {
+  /** Archive stops the Conversations of the Space through it. */
+  queue: ConversationWorkQueue;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get(
@@ -133,7 +137,11 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
       await requireMemberSpace(viewerUserId, spaceId);
-      await setSpaceArchived(spaceId, context.req.valid("json").archived);
+      await setSpaceArchive({
+        archived: context.req.valid("json").archived,
+        queue: options.queue,
+        spaceId,
+      });
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

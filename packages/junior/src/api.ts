@@ -165,7 +165,7 @@ export function createJuniorApi(
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/search", createSearchRoutes());
-  app.route("/api/spaces", createSpaceRoutes());
+  app.route("/api/spaces", createSpaceRoutes({ queue }));
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

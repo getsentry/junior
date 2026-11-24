@@ -3,10 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
+  acceptedConversationMessageSchema,
+  conversationDetailReportSchema,
+  conversationFeedSchema,
+  setConversationSpaceResponseSchema,
   spaceListSchema,
   spaceMemberListSchema,
   spaceSchema,
 } from "@/api/schema";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStore } from "@/chat/db";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -23,13 +29,13 @@ function apiFor(email?: string): Hono<JuniorApiEnv> {
   return app;
 }
 
-async function send(
+async function request(
   app: Hono<JuniorApiEnv>,
   method: string,
   path: string,
   body?: unknown,
 ): Promise<Response> {
-  return await app.request(`http://localhost/api/spaces${path}`, {
+  return await app.request(`http://localhost/api${path}`, {
     method,
     ...(body === undefined
       ? undefined
@@ -38,6 +44,83 @@ async function send(
           headers: { "content-type": "application/json" },
         }),
   });
+}
+
+async function send(
+  app: Hono<JuniorApiEnv>,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<Response> {
+  return await request(app, method, `/spaces${path}`, body);
+}
+
+async function createSpace(app: Hono<JuniorApiEnv>, name: string) {
+  return spaceSchema.parse(
+    await (await send(app, "POST", "", { name })).json(),
+  );
+}
+
+async function startConversation(
+  app: Hono<JuniorApiEnv>,
+  key: string,
+  extra: Record<string, unknown> = {},
+): Promise<string> {
+  const response = await request(app, "POST", "/conversations", {
+    idempotencyKey: key,
+    message: `Work for ${key}`,
+    title: key,
+    ...extra,
+  });
+  expect(response.status).toBe(200);
+  return acceptedConversationMessageSchema.parse(await response.json())
+    .conversationId;
+}
+
+async function spaceFeed(
+  app: Hono<JuniorApiEnv>,
+  spaceId: string,
+  status = "active",
+) {
+  const response = await request(
+    app,
+    "GET",
+    `/conversations?spaceId=${spaceId}&status=${status}`,
+  );
+  expect(response.status).toBe(200);
+  return conversationFeedSchema.parse(await response.json()).conversations;
+}
+
+async function detailSpace(app: Hono<JuniorApiEnv>, conversationId: string) {
+  const response = await request(
+    app,
+    "GET",
+    `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  expect(response.status).toBe(200);
+  return conversationDetailReportSchema.parse(await response.json()).space;
+}
+
+async function startThread(parentConversationId: string, id: string) {
+  await getConversationStore().createChild({
+    childConversationId: id,
+    kind: "thread",
+    parentConversationId,
+  });
+  return id;
+}
+
+async function moveTo(
+  app: Hono<JuniorApiEnv>,
+  conversationId: string,
+  spaceId: string | null,
+): Promise<Response> {
+  return await request(
+    app,
+    "PUT",
+    `/conversations/${encodeURIComponent(conversationId)}/space`,
+    { spaceId },
+  );
 }
 
 async function listNames(
@@ -163,5 +246,116 @@ describe("Spaces API", () => {
       (await send(ana, "GET", "/00000000-0000-4000-8000-000000000000")).status,
     ).toBe(404);
     expect((await send(ana, "GET", "/not-a-uuid")).status).toBe(400);
+  });
+
+  it("starts, lists, and moves Conversations in a Space", async () => {
+    const ana = apiFor("spaces-work-ana@example.com");
+    const bo = apiFor("spaces-work-bo@example.com");
+    const space = await createSpace(ana, "Ledger");
+    const other = await createSpace(ana, "Payroll");
+
+    // Only members start work in a Space, and the work is public.
+    expect(
+      (
+        await request(bo, "POST", "/conversations", {
+          idempotencyKey: "bo-in-ledger",
+          message: "Hi",
+          spaceId: space.id,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(ana, "POST", "/conversations", {
+          idempotencyKey: "ana-private",
+          message: "Hi",
+          spaceId: space.id,
+          visibility: "private",
+        })
+      ).status,
+    ).toBe(400);
+
+    const inSpace = await startConversation(ana, "ledger-plan", {
+      spaceId: space.id,
+    });
+    const oneOff = await startConversation(ana, "one-off");
+
+    // Anyone can read the public Space's list. Rows and the detail name the
+    // Space.
+    const rows = await spaceFeed(bo, space.id);
+    expect(rows.map((row) => row.conversationId)).toEqual([inSpace]);
+    expect(rows[0]?.space).toEqual({ id: space.id, name: "Ledger" });
+    expect(await detailSpace(ana, oneOff)).toBeNull();
+    // A child is in the Space of its root, and moves only with it.
+    const thread = await startThread(inSpace, "local:spaces-work-thread");
+    expect(await detailSpace(ana, thread)).toEqual({
+      id: space.id,
+      name: "Ledger",
+    });
+    expect((await moveTo(ana, thread, null)).status).toBe(409);
+
+    // Moving takes membership of both Spaces.
+    expect((await moveTo(bo, oneOff, space.id)).status).toBe(404);
+    const moved = await moveTo(ana, oneOff, space.id);
+    expect(
+      setConversationSpaceResponseSchema.parse(await moved.json()),
+    ).toEqual({ space: { id: space.id, name: "Ledger" } });
+    expect(
+      (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
+    ).toEqual([inSpace, oneOff].sort());
+    await send(ana, "DELETE", `/${other.id}/members/me`);
+    expect((await moveTo(ana, oneOff, other.id)).status).toBe(403);
+    expect(
+      setConversationSpaceResponseSchema.parse(
+        await (await moveTo(ana, oneOff, null)).json(),
+      ),
+    ).toEqual({ space: null });
+    expect(
+      (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
+    ).toEqual([inSpace]);
+  });
+
+  it("stops and archives every Conversation when a Space is archived", async () => {
+    const ana = apiFor("spaces-archive-ana@example.com");
+    const space = await createSpace(ana, "Short project");
+    const first = await startConversation(ana, "short-first", {
+      spaceId: space.id,
+    });
+    const second = await startConversation(ana, "short-second", {
+      spaceId: space.id,
+    });
+    const outside = await startConversation(ana, "short-outside");
+    const thread = await startThread(first, "local:spaces-archive-thread");
+
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    expect(await spaceFeed(ana, space.id)).toEqual([]);
+    expect(
+      (await spaceFeed(ana, space.id, "archived"))
+        .map((row) => row.conversationId)
+        .sort(),
+    ).toEqual([first, second].sort());
+    expect(await getConversationStoppedAtMs(first)).toBeDefined();
+    expect(await getConversationStoppedAtMs(second)).toBeDefined();
+    expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
+    expect(
+      (await getConversationStore().get({ conversationId: thread }))
+        ?.archivedAtMs,
+    ).toBeDefined();
+    // An archived Space takes no new work.
+    expect(
+      (
+        await request(ana, "POST", "/conversations", {
+          idempotencyKey: "short-late",
+          message: "One more",
+          spaceId: space.id,
+        })
+      ).status,
+    ).toBe(409);
+
+    // Restore brings back what the archive archived.
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: false });
+    expect(
+      (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
+    ).toEqual([first, second].sort());
   });
 });
