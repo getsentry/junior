@@ -391,6 +391,23 @@ describe("inbox item push", () => {
     expect(pushes).toHaveLength(1);
     const next = await execute((await turnTools(ana)).add, ASK);
     expect(pushes[1]).toMatchObject({ close: [itemId], tag: next.item.id });
+
+    // When it comes back to Ana, it pushes to her again, and her later
+    // pushes do not close it.
+    await updateTodos({
+      update: [{ id: todo.id, assignee: "ana@example.com" }],
+    });
+    expect(pushes[2]).toEqual({
+      body: "Check the deploy calendar.",
+      tag: itemId,
+      title: "Confirm the rollback week",
+      url: `https://junior.example.com/inbox?item=${itemId}`,
+    });
+    await execute((await turnTools(ana)).add, {
+      ...ASK,
+      dedupe_key: "deploy:db",
+    });
+    expect(pushes[3]?.["close"]).toBeUndefined();
   });
 
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {

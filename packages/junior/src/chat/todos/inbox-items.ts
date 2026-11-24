@@ -19,7 +19,10 @@ import {
 } from "@/api/conversations/access";
 import { conversationIdsWithParticipantUser } from "@/api/conversations/membership";
 import { TODO_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
-import { clearInboxItemDeliveries } from "@/chat/inbox-items/deliveries";
+import {
+  clearInboxItemDeliveries,
+  deleteInboxItemDeliveries,
+} from "@/chat/inbox-items/deliveries";
 import {
   closeInboxItem,
   insertInboxItem,
@@ -196,9 +199,11 @@ export async function syncTodoInboxItems(
       assigneeOf.get(item.id) !== userId
     ) {
       // The item is private to its one assignee, so an earlier assignee
-      // can no longer open it. The next push to them closes its push.
+      // can no longer open it. The next push to them closes its push. A
+      // new assignee who had it before gets it again as new.
       if (assigneeOf.get(item.id) !== userId) {
         await clearInboxItemDeliveries(db, [item.id], nowMs);
+        await deleteInboxItemDeliveries(db, { itemId: item.id, userId });
       }
       await updateInboxItemContent(db, { ...content, id: item.id, nowMs });
       shown.push(item.id);

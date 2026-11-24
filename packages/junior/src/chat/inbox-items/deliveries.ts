@@ -176,6 +176,25 @@ export async function clearInboxItemDeliveries(
 }
 
 /**
+ * Delete every delivery of one item to one User, so it pushes to them as a
+ * new item. A To-do item that comes back to an earlier assignee uses it: a
+ * new push with the item's tag replaces their old one on the device.
+ */
+export async function deleteInboxItemDeliveries(
+  db: JuniorDatabase,
+  input: { itemId: string; userId: string },
+): Promise<void> {
+  await db
+    .delete(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        eq(juniorInboxItemDeliveries.userId, input.userId),
+      ),
+    );
+}
+
+/**
  * Return the items whose web push to this User cleared after `sinceMs`,
  * newest first. A device can still show them, so the next push closes them.
  * An item can have more than one push, such as its creation and a wake, but
