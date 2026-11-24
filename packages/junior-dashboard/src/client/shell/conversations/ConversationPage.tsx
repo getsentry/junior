@@ -100,13 +100,8 @@ import {
   itemConversationId,
   inboxItemIdFromToolCall,
 } from "../../inbox/inboxItemFormat";
-import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
-import {
-  ConversationAnnotations,
-  conversationCost,
-  ConversationPrivacyChip,
-} from "../../conversations/ConversationMeta";
+import { ConversationPrivacyChip } from "../../conversations/ConversationMeta";
 import {
   buildConversations,
   conversationDetailTitle,
@@ -721,14 +716,6 @@ export function ConversationPage(props: {
             <ConversationHeader
               lead={kindKnown ? lead : undefined}
               agentTree={conversationDetail?.agentTree}
-              autoArchive={conversationDetail?.autoArchive}
-              summary={conversationDetail?.summary}
-              summaryMentions={conversationDetail?.summaryMentions}
-              contextTags={conversationContextTags(
-                conversation,
-                conversationDetail?.annotations,
-              )}
-              cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               errors={[
                 // A refused restore names the archived ancestor to restore
@@ -766,9 +753,6 @@ export function ConversationPage(props: {
                     forks={detail.data.forks}
                   />
                 ) : null
-              }
-              linkedWork={
-                links.length ? <ConversationAnnotations links={links} /> : null
               }
               menu={{
                 actions: {

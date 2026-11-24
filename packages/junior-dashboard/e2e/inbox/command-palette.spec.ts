@@ -135,7 +135,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeFocused();
 
     // The open conversation is not a row, so Enter switches away from it.
-    await page.getByRole("button", { name: "Search" }).click();
+    // The sidebar button, not the header's "Search transcript".
+    await page.getByRole("button", { name: /^Search(?! transcript)/ }).click();
     await expect(input).toBeFocused();
     await expect(
       palette.getByRole("option", { name: /Checkout latency triage/ }),
