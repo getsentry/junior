@@ -40,7 +40,7 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1784137322421,
+      "when": 1784137323421,
       "tag": "0005_conversation_events",
       "breakpoints": true
     },
@@ -1216,8 +1216,15 @@
     {
       "idx": 173,
       "version": "7",
-      "when": 1795539338972,
-      "tag": "0173_versions_notify",
+      "when": 1795545232587,
+      "tag": "0173_legacy_brief_metadata_fill",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1795549836904,
+      "tag": "0174_versions_notify",
       "breakpoints": true
     }
   ]

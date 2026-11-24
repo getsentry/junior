@@ -15,7 +15,7 @@ export type GitHubFixture = PostgresTestFixture<GitHubDb> & {
 /** Connect to this worker's migrated GitHub plugin database. */
 export async function createGitHubFixture(): Promise<GitHubFixture> {
   const fixture = await createPostgresTestFixture((pool) =>
-    drizzle(pool, { schema: githubSqlSchema }),
+    drizzle({ client: pool, schema: githubSqlSchema }),
   );
   return { ...fixture, codeIndex: memoryCodeIndex() };
 }
