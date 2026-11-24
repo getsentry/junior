@@ -33,3 +33,21 @@ export const inboxItemRequestSchema = savedUserInputRequestSchema.safeExtend({
 });
 
 export type InboxItemRequest = z.output<typeof inboxItemRequestSchema>;
+
+/**
+ * The request of a notice: only the evidence that says what it is about,
+ * such as a pull request. A notice asks nothing, so it has no question.
+ */
+export interface InboxItemNoticeRequest {
+  evidence: InboxItemEvidence[];
+}
+
+/**
+ * Return the question of an item's request. A notice's request holds only
+ * evidence, so it has none.
+ */
+export function inboxItemQuestion(
+  request: InboxItemRequest | InboxItemNoticeRequest | null | undefined,
+): InboxItemRequest | undefined {
+  return request && "question" in request ? request : undefined;
+}

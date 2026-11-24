@@ -20,6 +20,7 @@ import {
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,
 // so these ids keep the name from before Review items became Inbox items.
@@ -70,14 +71,15 @@ function titleText(item: InboxItem, subjectUrl: string | undefined): string {
 
 /** The title, body, and question of an item, in Slack markdown. */
 function itemText(item: InboxItem, subjectUrl: string | undefined): string {
+  const question = inboxItemQuestion(item.request);
   return normalizeSlackReplyMarkdown(
     [
       titleText(item, subjectUrl),
       // A plugin item asks its body as the question, so it shows once.
-      ...(item.request?.question === item.body
+      ...(question?.question === item.body
         ? []
         : [truncate(item.body, MAX_BODY_CHARS)]),
-      ...(item.request ? [slackUserInputText(item.request)] : []),
+      ...(question ? [slackUserInputText(question)] : []),
     ].join("\n\n"),
   );
 }
@@ -110,8 +112,9 @@ function controls(item: InboxItem): Button[] {
   ];
   // A notice has nothing to answer, and it can close by itself, so a person
   // can only dismiss or snooze it.
-  if (item.kind === "notice" || !item.request) return quiet;
-  const buttonField = buttonUserInputField(item.request);
+  const question = inboxItemQuestion(item.request);
+  if (item.kind === "notice" || !question) return quiet;
+  const buttonField = buttonUserInputField(question);
   if (!buttonField) {
     return [
       ...quiet,
@@ -157,10 +160,11 @@ function closedNote(item: InboxItem): string {
   if (item.closeReason === INBOX_ITEM_REPLIED_REASON) {
     return `${who ?? "A person"} replied in the thread`;
   }
-  if (item.status === "done" && item.request && item.answer && who) {
+  const question = inboxItemQuestion(item.request);
+  if (item.status === "done" && question && item.answer && who) {
     return slackUserInputAnswerNote({
       answer: item.answer,
-      request: item.request,
+      request: question,
       who,
     });
   }
@@ -286,8 +290,9 @@ export function buildSlackInboxItemModal(
   item: InboxItem,
   target: SlackInboxItemFormTarget,
 ): ModalView | undefined {
-  if (!item.request) return undefined;
-  return buildSlackUserInputForm(item.request, {
+  const question = inboxItemQuestion(item.request);
+  if (!question) return undefined;
+  return buildSlackUserInputForm(question, {
     callbackId: SLACK_INBOX_ITEM_VIEW_ID,
     privateMetadata: JSON.stringify(target),
   });

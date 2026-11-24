@@ -10,7 +10,10 @@ import {
   type AnyPgColumn,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRequest,
+} from "@/chat/inbox-items/evidence";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
@@ -67,7 +70,9 @@ export const juniorInboxItems = pgTable(
     visibility: text("visibility").$type<"public" | "private">().notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
-    request: jsonb("request").$type<InboxItemRequest>(),
+    request: jsonb("request").$type<
+      InboxItemRequest | InboxItemNoticeRequest
+    >(),
     answer: jsonb("answer").$type<UserInputAnswer>(),
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
@@ -100,12 +105,13 @@ export const juniorInboxItems = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
-    // An agent's action asks a question. Another action asks for a step
+    // A notice's request holds only evidence, which says what the notice is
+    // about. An agent's action asks a question. Another action asks for a step
     // outside the card, such as a merge, a To-do, or a fix to an Automation,
     // and the code that added it closes it.
     check(
       "junior_inbox_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.subjectKind} not in ('question', 'reply') and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} -> 'question' is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} -> 'question' is not null or (${table.subjectKind} not in ('question', 'reply') and ${table.answer} is null)))`,
     ),
     // Only an Automation owns an Automation alert.
     check(

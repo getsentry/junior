@@ -21,6 +21,7 @@ import {
 } from "@/chat/inbox-items/assignees";
 import type {
   InboxItemEvidence,
+  InboxItemNoticeRequest,
   InboxItemRequest,
 } from "@/chat/inbox-items/evidence";
 import {
@@ -33,9 +34,15 @@ import {
   type InboxItemVisibility,
 } from "@/chat/inbox-items/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import {
+  parseToolInput,
+  zodTool,
+  zodToolDefinition,
+} from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
+  userInputFieldsSchema,
+  userInputQuestionSchema,
   userInputRequestSchema,
   type UserInputRequest,
 } from "@/chat/inbox-items/user-input-request";
@@ -51,6 +58,7 @@ import {
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 const evidenceSchema = z
   .array(
@@ -70,7 +78,7 @@ const evidenceSchema = z
           .nullable()
           .optional()
           .describe(
-            "Link to the source, such as a chart, a log search, or the pull request that the question is about. The card and related work read these links.",
+            "Link to the source, such as a chart, a log search, or the pull request that the item is about. The card and related work read these links.",
           ),
         conversation_id: z
           .string()
@@ -128,14 +136,53 @@ async function defaultAssignees(
   };
 }
 
-function requireRequest(kind: InboxItem["kind"], hasRequest: boolean): void {
-  if (kind === "action" && !hasRequest) {
-    throw new ToolInputError("An action item needs a `request`.");
+const questionRequestSchema = z.object({
+  request: userInputRequestSchema,
+});
+
+/**
+ * Return the question of an action. An action needs one. A notice asks
+ * nothing, so its `request` may hold only evidence.
+ */
+function questionInput(
+  kind: InboxItem["kind"],
+  request: z.output<typeof requestInputSchema> | null | undefined,
+): UserInputRequest | undefined {
+  if (kind === "notice") {
+    if (request?.question || request?.fields) {
+      throw new ToolInputError(
+        "A notice asks nothing, so its `request` holds only `evidence`. To ask, use kind `action`.",
+      );
+    }
+    return undefined;
   }
-  if (kind === "notice" && hasRequest) {
-    throw new ToolInputError("A notice has no `request`. Use kind `action`.");
+  if (!request?.question || !request.fields) {
+    throw new ToolInputError(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
   }
+  const { evidence: _evidence, ...question } = request;
+  return parseToolInput(questionRequestSchema, { request: question }).request;
 }
+
+const requestInputSchema = z.object({
+  question: userInputQuestionSchema
+    .optional()
+    .describe(
+      "The question, in markdown. Include the facts the person needs to decide. Required for an action. Not allowed for a notice.",
+    ),
+  fields: userInputFieldsSchema
+    .optional()
+    .describe(
+      "What to ask, in display order. Use one `choice` field for a simple decision. Required for an action. Not allowed for a notice.",
+    ),
+  evidence: evidenceSchema
+    .nullable()
+    .optional()
+    .describe(
+      "Sources for the facts in the item, and what it is about, such as a pull request. With a suggested answer, cite what supports it and what argues against it. Each entry has a `url` or a `conversation_id`.",
+    ),
+});
 
 export const addInboxItemToolDefinition = zodToolDefinition({
   description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes in the Inbox and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<inbox-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
@@ -170,19 +217,11 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .describe(
           "Stable key for this item, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question. Results show it as the `subject` id.",
         ),
-      request: userInputRequestSchema
-        .safeExtend({
-          evidence: evidenceSchema
-            .nullable()
-            .optional()
-            .describe(
-              "Sources for the facts in the question. With a suggested answer, cite what supports it and what argues against it, such as a Conversation or chart that disagrees. Each entry has a `url` or a `conversation_id`.",
-            ),
-        })
+      request: requestInputSchema
         .nullable()
         .optional()
         .describe(
-          "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
+          "Required for an action item. A notice may have one with only `evidence`. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
         ),
       conversation_ids: conversationIdsSchema
         .nullable()
@@ -219,11 +258,15 @@ function evidenceInput(
   });
 }
 
-/** Store the question with its normalized evidence, if it cites any. */
+/**
+ * Store the question with its normalized evidence, if it cites any. A
+ * notice stores only its evidence.
+ */
 function requestInput(
-  { evidence: _input, ...question }: UserInputRequest & { evidence?: unknown },
+  question: UserInputRequest | undefined,
   evidence: InboxItemEvidence[],
-): InboxItemRequest {
+): InboxItemRequest | InboxItemNoticeRequest | undefined {
+  if (!question) return evidence.length > 0 ? { evidence } : undefined;
   return { ...question, ...(evidence.length > 0 ? { evidence } : undefined) };
 }
 
@@ -235,7 +278,7 @@ export function createAddInboxItemTool(
   return zodTool({
     ...addInboxItemToolDefinition,
     execute: async (input, options) => {
-      requireRequest(input.kind, Boolean(input.request));
+      const question = questionInput(input.kind, input.request);
       const evidence = evidenceInput(input.request?.evidence);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
@@ -323,6 +366,7 @@ export function createAddInboxItemTool(
         scope,
         visibility,
       });
+      const request = requestInput(question, evidence);
       const content: InboxItemContent = {
         assignedToEveryone: assignees.everyone,
         assigneeUserIds: assignees.userIds,
@@ -332,9 +376,7 @@ export function createAddInboxItemTool(
         subject,
         title: input.title,
         visibility,
-        ...(input.request
-          ? { request: requestInput(input.request, evidence) }
-          : undefined),
+        ...(request ? { request } : undefined),
       };
       // Write only the item that the checks above read, so a concurrent add
       // cannot make this call change another item.
@@ -408,7 +450,7 @@ async function publishWaiting(
       queue: services.queue(),
       update: async () => ({
         status: "waiting",
-        text: item.request?.question ?? item.body,
+        text: inboxItemQuestion(item.request)?.question ?? item.body,
       }),
     },
   );

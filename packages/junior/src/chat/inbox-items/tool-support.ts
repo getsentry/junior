@@ -13,7 +13,10 @@ import {
   EVERYONE_ASSIGNEE,
   type FindMentionedUserId,
 } from "@/chat/inbox-items/assignees";
-import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRequest,
+} from "@/chat/inbox-items/evidence";
 import {
   getInboxItem,
   ownerConversationId,
@@ -126,7 +129,10 @@ export function itemResult(item: InboxItem) {
 }
 
 /** Show the stored question with the tool's snake_case evidence keys. */
-function requestResult({ evidence, ...question }: InboxItemRequest) {
+function requestResult({
+  evidence,
+  ...question
+}: InboxItemRequest | InboxItemNoticeRequest) {
   return {
     ...question,
     ...(evidence

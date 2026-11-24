@@ -50,7 +50,7 @@ import {
   type InboxItemReader,
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
-import type { InboxItemRequest } from "./evidence";
+import type { InboxItemNoticeRequest, InboxItemRequest } from "./evidence";
 import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
 
 export type { InboxItemSubject } from "./subjects";
@@ -134,7 +134,7 @@ export interface InboxItem {
   id: string;
   kind: InboxItemKind;
   owner: InboxItemOwner;
-  request?: InboxItemRequest;
+  request?: InboxItemRequest | InboxItemNoticeRequest;
   status: InboxItemStatus;
   subject: InboxItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -152,7 +152,7 @@ export interface InboxItemContent {
   body: string;
   conversationIds: string[];
   kind: InboxItemKind;
-  request?: InboxItemRequest;
+  request?: InboxItemRequest | InboxItemNoticeRequest;
   subject: InboxItemSubject;
   title: string;
   visibility: InboxItemVisibility;
@@ -821,7 +821,10 @@ export async function countInboxItemsNeedingUserBySubject(
         sql<number>`count(*) filter (where ${eq(juniorInboxItems.ownerKind, "automation")})`.mapWith(
           Number,
         ),
-      decisions: count(juniorInboxItems.request),
+      decisions:
+        sql<number>`count(*) filter (where ${juniorInboxItems.request} -> 'question' is not null)`.mapWith(
+          Number,
+        ),
       evidenceUrl: sql<
         string | null
       >`max(jsonb_path_query_first(${juniorInboxItems.request}, '$.evidence[*].url') #>> '{}')`,

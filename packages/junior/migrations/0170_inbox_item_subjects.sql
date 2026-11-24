@@ -87,7 +87,7 @@ CREATE UNIQUE INDEX "junior_inbox_items_open_subject_uidx" ON "junior_inbox_item
 -- lock that blocks reads, then sets NOT NULL.
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" is not null or ("junior_inbox_items"."subject_kind" not in ('question', 'reply') and "junior_inbox_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
+ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" -> 'question' is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" -> 'question' is not null or ("junior_inbox_items"."subject_kind" not in ('question', 'reply') and "junior_inbox_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_owner_check" CHECK (("junior_inbox_items"."owner_kind" = 'automation') = ("junior_inbox_items"."subject_kind" = 'automation')) NOT VALID;
 -- The snapshot no longer has subject_title, subject_url, subject_title_parts,
 -- automation_id, its foreign key, or junior_inbox_items_automation_idx. They

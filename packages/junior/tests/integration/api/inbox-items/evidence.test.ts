@@ -1,8 +1,10 @@
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertInboxItem } from "@/chat/inbox-items/store";
@@ -27,6 +29,7 @@ const SMOKE_ID = "slack:CPUB:1.000008";
 // A question is about the links of its evidence, such as a release page.
 const RELEASE_URL = "https://sentry.example.com/releases/payments-v42";
 const BUSY_URL = "https://sentry.example.com/releases/busy";
+const PR_URL = "https://github.com/getsentry/junior/pull/4164";
 
 const REQUEST = {
   question: "Roll out payments-v42 to every region?",
@@ -281,6 +284,59 @@ describe("inbox item evidence", () => {
       {},
     );
     expect(changed.item.request.evidence).toEqual(evidence);
+  });
+
+  it("links an agent notice to the pull request that it cites", async () => {
+    // The GitHub plugin's link types read pull request links.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const fixture = await createConversationFixture();
+    await slackConversation(ROLLOUT_ID, "CPUB", "public");
+    const ana = await user("ana@example.com");
+    const cites = [{ label: "The pull request", url: PR_URL }];
+    const notice = {
+      assignees: ["ana@example.com"],
+      body: "It merged after the canary passed.",
+      kind: "notice",
+      title: "The payments-v42 pull request merged",
+    };
+
+    // A notice asks nothing, so its request holds only evidence.
+    await expect(
+      add(ROLLOUT_ID, { ...notice, request: { ...REQUEST, evidence: cites } }),
+    ).rejects.toThrow("A notice asks nothing");
+    const merged = await add(ROLLOUT_ID, {
+      ...notice,
+      request: { evidence: cites },
+    });
+    expect(merged.item.request).toEqual({ evidence: cites });
+    const rollout = await add(ROLLOUT_ID, {
+      assignees: ["ana@example.com"],
+      body: "The pull request merged.",
+      kind: "action",
+      request: { ...REQUEST, evidence: cites },
+      title: "Roll out payments-v42?",
+    });
+
+    const list = await (await api(fixture, ana)("")).json();
+    const listed = (id: string) =>
+      list.items.find((item: { id: string }) => item.id === id);
+    // The notice's evidence link is its card, like a question's.
+    expect(listed(merged.item.id)).toMatchObject({
+      kind: "notice",
+      subject: { kind: "question", objectType: "code_change", url: PR_URL },
+    });
+    expect(listed(merged.item.id).request).toBeUndefined();
+    expect(listed(rollout.item.id).related.items).toEqual([
+      { id: merged.item.id, title: "The payments-v42 pull request merged" },
+    ]);
+    expect(listed(merged.item.id).related.items).toEqual([
+      { id: rollout.item.id, title: "Roll out payments-v42?" },
+    ]);
+    // Only the question is a decision.
+    expect(await (await api(fixture, ana)("/count")).json()).toMatchObject({
+      decisions: 1,
+      codeChanges: 1,
+    });
   });
 
   it("keeps a quiet release's related work next to a busy release on the page", async () => {

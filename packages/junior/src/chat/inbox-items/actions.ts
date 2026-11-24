@@ -30,6 +30,7 @@ import {
   takeInboxItem,
   type InboxItem,
 } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only
@@ -97,13 +98,14 @@ function submittedAnswer(
   item: InboxItem,
   answer: UserInputAnswer | undefined,
 ): UserInputAnswer {
-  if (item.kind !== "action" || !item.request) {
+  const question = inboxItemQuestion(item.request);
+  if (item.kind !== "action" || !question) {
     throw new InboxItemActionError(
       "invalid",
       "Only an action item takes an answer.",
     );
   }
-  const normalized = normalizeUserInputAnswer(item.request, {
+  const normalized = normalizeUserInputAnswer(question, {
     other: answer?.other,
     requestId: item.id,
     values: answer?.values ?? {},
@@ -303,8 +305,9 @@ function messageAnswer(
   item: InboxItem,
   text: string,
 ): UserInputAnswer | undefined {
-  if (!item.request) return undefined;
-  const answer = normalizeUserInputAnswer(item.request, {
+  const question = inboxItemQuestion(item.request);
+  if (!question) return undefined;
+  const answer = normalizeUserInputAnswer(question, {
     other: text,
     requestId: item.id,
     values: {},

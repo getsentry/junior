@@ -118,7 +118,9 @@ describe("inbox item tools", () => {
 
     await expect(
       execute(first.add, { ...add, request: undefined }),
-    ).rejects.toThrow("An action item needs a `request`.");
+    ).rejects.toThrow(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
     const recommendBoth = {
       ...REQUEST,
       fields: [

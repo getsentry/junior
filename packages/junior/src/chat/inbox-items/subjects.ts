@@ -58,8 +58,9 @@ export interface InboxItemLinkSource {
 }
 
 /**
- * Return what a question is about: the http(s) links of its evidence, such
- * as a pull request. Its key is no link. Other kinds return none.
+ * Return what an agent's question or notice is about: the http(s) links of
+ * its evidence, such as a pull request. Its key is no link. Other kinds
+ * return none.
  */
 export function questionLinks(item: InboxItemLinkSource): string[] {
   if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return [];

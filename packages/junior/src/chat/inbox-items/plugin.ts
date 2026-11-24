@@ -24,6 +24,7 @@ import {
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
 import { pluginSubjectKind, subjectKindLabel } from "./subjects";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
@@ -272,7 +273,8 @@ export function createPluginInboxItems(args: {
             queue: getVercelConversationWorkQueue(),
             update: async () => ({
               status: "waiting",
-              text: content.request?.question ?? content.body,
+              text:
+                inboxItemQuestion(content.request)?.question ?? content.body,
             }),
           },
         );

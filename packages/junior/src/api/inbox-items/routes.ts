@@ -70,6 +70,7 @@ import {
   resolveInboxItemSubjects,
   type InboxSubjectView,
 } from "./resolve-subjects";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -233,6 +234,7 @@ function inboxItemPayload(
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
   const todo = subjectTodo(item.subject);
+  const question = inboxItemQuestion(item.request);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
@@ -267,7 +269,7 @@ function inboxItemPayload(
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
       : undefined),
-    ...(item.request ? { request: item.request } : undefined),
+    ...(question ? { request: question } : undefined),
     ...(todo ? { todoId: todo.id } : undefined),
     ...(wake ? { wake: wakePayload(wake) } : undefined),
   };

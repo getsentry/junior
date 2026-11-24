@@ -54,6 +54,7 @@ import {
   type SlackInteractionInputFacts,
 } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 /** What an Inbox item interaction handler needs from Slack ingress. */
 export interface SlackInboxItemServices {
@@ -288,7 +289,8 @@ export async function handleSlackInboxItemClick(args: {
     // A card can be stale. Accept the clicked label only while the item
     // still offers it.
     answer: (item) => {
-      const field = item.request && buttonUserInputField(item.request);
+      const request = inboxItemQuestion(item.request);
+      const field = request && buttonUserInputField(request);
       if (!field?.options.some((option) => option.label === click.label)) {
         throw new InboxItemActionError(
           "conflict",
@@ -316,14 +318,16 @@ export async function handleSlackInboxItemSubmission(args: {
   await act({
     action: "submit",
     // `actOnInboxItem` rejects an answer to an item without a request.
-    answer: (item) =>
-      item.request
+    answer: (item) => {
+      const request = inboxItemQuestion(item.request);
+      return request
         ? parseSlackUserInputSubmission({
-            request: item.request,
+            request,
             requestId: item.id,
             values: view.state?.values ?? {},
           })
-        : { requestId: item.id, values: {} },
+        : { requestId: item.id, values: {} };
+    },
     inputTs: slackMessageTsFromMs(Date.now()),
     itemId: formTarget.itemId,
     messageId: `slack-inbox-item:${view.id}`,

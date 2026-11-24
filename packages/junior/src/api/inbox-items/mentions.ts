@@ -2,6 +2,7 @@ import type { InboxItem } from "@/chat/inbox-items/store";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { resolveMentions } from "../mentions";
 import type { ActorIdentity } from "../schema/conversation";
+import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
 
 /**
  * Resolve the people that each Inbox item's title, body, and question
@@ -18,7 +19,7 @@ export async function readInboxItemMentions(
         item.tenant?.provider === "slack"
           ? item.tenant.providerTenantId
           : undefined,
-      texts: [item.title, item.body, item.request?.question],
+      texts: [item.title, item.body, inboxItemQuestion(item.request)?.question],
     })),
   );
 }
