@@ -21,9 +21,15 @@
 // | failTurn               | running, fenced       |             |          |          | cleared  |
 // | releaseTurn            | running, fenced       |             |          |          | cleared  |
 // | cancelTurn             | queued or running     | +1          |          |          | cleared  |
+// | supersedeTurn (queued) | queued                | +1          |          |          |          |
 //
 // commitStep (completed) queues the Turn instead, like commitStep (continue),
 // while the Turn has an input that no step has read.
+//
+// Superseded: supersedeTurn cancels a queued Turn. A running Turn instead
+// moves to normal priority, behind the Turn that supersedes it, and commitStep
+// cancels it in place of queuing its next step. Both set `end_reason` to
+// `superseded`.
 //
 // cancelTurn publishes the Turn after the cancel. That message claims nothing,
 // so the step consumer runs `reconcileTurn` for it.
@@ -48,7 +54,18 @@
 // order, so writers cannot deadlock.
 import { randomUUID } from "node:crypto";
 import type { Source } from "@sentry/junior-plugin-api";
-import { and, asc, eq, inArray, lte, notExists, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  inArray,
+  lte,
+  ne,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
   ConversationTurnFailureCode,
@@ -69,6 +86,14 @@ import type { TurnState } from "@/db/schema/turns";
 
 /** A Turn's id and state. */
 export type Turn = { turnId: string; state: TurnState };
+
+/**
+ * Turn priorities: a lower number runs first. A Turn that supersedes the
+ * running Turn runs before every other queued Turn.
+ */
+export const TURN_PRIORITY = { supersede: 0, normal: 1 } as const;
+
+const SUPERSEDED = "superseded";
 
 /** The lease of one invocation on one step of a Turn. */
 export type TurnLease = { turnId: string; leaseEpoch: number };
@@ -226,6 +251,56 @@ export async function findOpenTurns(
   }));
 }
 
+// Another Turn of the outer Turn's Conversation that runs, or that is queued
+// before it in run order.
+function turnAhead({ executor }: Pick<EngineContext, "executor">) {
+  const ahead = alias(juniorTurns, "ahead");
+  return executor
+    .db()
+    .select({ one: sql`1` })
+    .from(ahead)
+    .where(
+      and(
+        eq(ahead.conversationId, juniorTurns.conversationId),
+        ne(ahead.id, juniorTurns.id),
+        or(
+          eq(ahead.state, "running"),
+          and(
+            eq(ahead.state, "queued"),
+            sql`(${ahead.priority}, ${ahead.createdAt}, ${ahead.id}) < (${juniorTurns.priority}, ${juniorTurns.createdAt}, ${juniorTurns.id})`,
+          ),
+        ),
+      ),
+    );
+}
+
+/**
+ * Makes way for a Turn that supersedes this one. Call it under the
+ * Conversation lock. A queued Turn has no step in flight, so it ends now. A
+ * running Turn moves behind the new Turn, and `commitStep` ends it when its
+ * step commits, so the step's work is kept.
+ */
+export async function supersedeTurn(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<void> {
+  const db = executor.db();
+  await db
+    .update(juniorTurns)
+    .set({
+      state: "cancelled",
+      endReason: SUPERSEDED,
+      leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
+      updatedAt: sql`now()`,
+      endedAt: sql`now()`,
+    })
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")));
+  await db
+    .update(juniorTurns)
+    .set({ priority: TURN_PRIORITY.normal, updatedAt: sql`now()` })
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "running")));
+}
+
 /**
  * Claims a Turn to run its next step: the Conversation's next queued Turn, or
  * a running Turn whose lease expired. Returns undefined for any other Turn, so
@@ -244,23 +319,6 @@ export async function claimTurn(
   if (!turn) {
     return undefined;
   }
-  const ahead = alias(juniorTurns, "ahead");
-  const turnAhead = executor
-    .db()
-    .select({ one: sql`1` })
-    .from(ahead)
-    .where(
-      and(
-        eq(ahead.conversationId, juniorTurns.conversationId),
-        or(
-          eq(ahead.state, "running"),
-          and(
-            eq(ahead.state, "queued"),
-            sql`(${ahead.priority}, ${ahead.createdAt}, ${ahead.id}) < (${juniorTurns.priority}, ${juniorTurns.createdAt}, ${juniorTurns.id})`,
-          ),
-        ),
-      ),
-    );
   const claim = () =>
     executor
       .db()
@@ -277,7 +335,10 @@ export async function claimTurn(
         and(
           eq(juniorTurns.id, turnId),
           or(
-            and(eq(juniorTurns.state, "queued"), notExists(turnAhead)),
+            and(
+              eq(juniorTurns.state, "queued"),
+              notExists(turnAhead({ executor })),
+            ),
             and(
               eq(juniorTurns.state, "running"),
               lte(juniorTurns.leaseExpiresAt, sql`now()`),
@@ -350,7 +411,7 @@ export async function commitStep(
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed" | undefined> {
+): Promise<"continue" | "completed" | "superseded" | undefined> {
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
     attempts: 0,
@@ -372,7 +433,14 @@ export async function commitStep(
         .set(
           outcome === "completed"
             ? { ...nextStep, state: "completed", endedAt: sql`now()` }
-            : { ...nextStep, state: "queued" },
+            : outcome === "superseded"
+              ? {
+                  ...nextStep,
+                  state: "cancelled",
+                  endReason: SUPERSEDED,
+                  endedAt: sql`now()`,
+                }
+              : { ...nextStep, state: "queued" },
         )
         .where(
           and(
@@ -433,19 +501,26 @@ async function commitOutcome(
   turnId: string,
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed"> {
-  if (step.outcome === "continue") {
-    return "continue";
+): Promise<"continue" | "completed" | "superseded"> {
+  if (step.outcome === "completed") {
+    const read = new Set(
+      prompt.flatMap((entry) =>
+        entry.source === "input" ? [entry.inputId] : [],
+      ),
+    );
+    const unread = await findUnreadInputs({ executor }, turnId);
+    if (unread.every((input) => read.has(input.inputId))) {
+      return "completed";
+    }
   }
-  const read = new Set(
-    prompt.flatMap((entry) =>
-      entry.source === "input" ? [entry.inputId] : [],
-    ),
-  );
-  const unread = await findUnreadInputs({ executor }, turnId);
-  return unread.every((input) => read.has(input.inputId))
-    ? "completed"
-    : "continue";
+  // A Turn that would continue makes way for a Turn queued before it, which
+  // `supersedeTurn` puts there. Its unread inputs stay on it and are dropped.
+  const superseded = await executor
+    .db()
+    .select({ id: juniorTurns.id })
+    .from(juniorTurns)
+    .where(and(eq(juniorTurns.id, turnId), exists(turnAhead({ executor }))));
+  return superseded.length > 0 ? "superseded" : "continue";
 }
 
 /**
