@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
-import { isPostgresErrorCode } from "@/db/postgres-error";
+import {
+  pendingMigrations,
+  readMigrationRecords,
+  type MigrationRecord,
+} from "@/db/migrate";
 
 interface PluginMigrationRoot {
   /** Absolute path to the plugin's Drizzle migrations directory. */
@@ -34,28 +38,6 @@ function migrationTable(pluginName: string): string {
     .digest("hex")
     .slice(0, 8);
   return `__drizzle_${label}_${hash}`;
-}
-
-async function appliedMigrationTime(
-  executor: JuniorSqlMigrationExecutor,
-  table: string,
-): Promise<number | undefined> {
-  try {
-    const [row] = await executor.query<{ createdAt: string | null }>(
-      `SELECT created_at::text AS "createdAt"
-       FROM drizzle.${table}
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    );
-    return row?.createdAt === null || row?.createdAt === undefined
-      ? undefined
-      : Number(row.createdAt);
-  } catch (error) {
-    if (isPostgresErrorCode(error, "42P01")) {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 async function legacyMigrationHashes(
@@ -97,7 +79,7 @@ async function adoptLegacyMigrationState(args: {
   migrations: readonly MigrationMeta[];
   pluginName: string;
   table: string;
-}): Promise<number | undefined> {
+}): Promise<MigrationRecord[] | undefined> {
   const legacyHashes = await legacyMigrationHashes(
     args.executor,
     args.pluginName,
@@ -120,17 +102,7 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
       [migration.hash, migration.folderMillis],
     );
   });
-  return migration.folderMillis;
-}
-
-function appliedCount(
-  migrations: readonly MigrationMeta[],
-  createdAt: number | undefined,
-): number {
-  return createdAt === undefined
-    ? 0
-    : migrations.filter((migration) => migration.folderMillis <= createdAt)
-        .length;
+  return [{ createdAt: migration.folderMillis, hash: migration.hash }];
 }
 
 /** Apply enabled plugins' packaged Drizzle migrations in plugin-name order. */
@@ -154,11 +126,13 @@ export async function migratePluginSchemas(
     }
     const table = migrationTable(root.pluginName);
     // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
-    const initialTime = await appliedMigrationTime(executor, table);
-    const initialExisting = appliedCount(migrations, initialTime);
-    if (initialExisting === migrations.length) {
+    const initialRecords = await readMigrationRecords(
+      executor,
+      `drizzle.${table}`,
+    );
+    if (pendingMigrations(migrations, initialRecords ?? []).length === 0) {
       const summary = {
-        existing: initialExisting,
+        existing: migrations.length,
         migrated: 0,
         pluginName: root.pluginName,
         scanned: migrations.length,
@@ -170,24 +144,25 @@ export async function migratePluginSchemas(
     }
     // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
     const summary = await executor.withMigrationLock(table, async () => {
-      const currentTime =
-        (await appliedMigrationTime(executor, table)) ??
-        (await adoptLegacyMigrationState({
-          executor,
-          migrations,
-          pluginName: root.pluginName,
-          table,
-        }));
-      const existing = appliedCount(migrations, currentTime);
-      if (existing < migrations.length) {
+      const current = await readMigrationRecords(executor, `drizzle.${table}`);
+      const records = current?.length
+        ? current
+        : await adoptLegacyMigrationState({
+            executor,
+            migrations,
+            pluginName: root.pluginName,
+            table,
+          });
+      const migrated = pendingMigrations(migrations, records ?? []).length;
+      if (migrated > 0) {
         await executor.migrate({
           migrationsFolder: root.dir,
           migrationsTable: table,
         });
       }
       return {
-        existing,
-        migrated: migrations.length - existing,
+        existing: migrations.length - migrated,
+        migrated,
         pluginName: root.pluginName,
         scanned: migrations.length,
       };

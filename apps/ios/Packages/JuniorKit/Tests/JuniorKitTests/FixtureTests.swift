@@ -14,6 +14,10 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
   @Test func decodesEveryToolResult() throws {
     let list = try fixture("searchConversations", as: ConversationList.self)
     #expect(!list.conversations.isEmpty)
+    // `status` reads `needs_input` for a Conversation that waits on someone,
+    // but only `treeState` says whether that is you.
+    #expect(list.conversations.contains { $0.status == .needsInput && $0.treeState == .done })
+    #expect(list.conversations.contains { $0.status != .needsInput && $0.treeState == .needsYou })
     let state = try fixture("getConversation", as: ConversationState.self)
     #expect(state.conversation.summary?.isEmpty == false)
     #expect(state.lastReply?.isAssistant == true)
@@ -46,7 +50,8 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
   }
 
   @Test func readsConversationsFromAnOlderJunior() throws {
-    // Junior 0.310 and older send their old statuses and no `turnActive`.
+    // Junior 0.310 and older send their old statuses, and no `turnActive` or
+    // `treeState`.
     func row(_ status: String) throws -> MCPConversation {
       let json = """
         {"conversationId":"c1","title":"T","status":"\(status)","surface":"api",\
@@ -56,6 +61,9 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     }
     #expect(try row("active").turnActive)
     #expect(try !row("completed").turnActive)
+    #expect(try row("needs_input").treeState == .needsYou)
+    #expect(try row("active").treeState == .working)
+    #expect(try row("completed").treeState == .done)
   }
 
   @Test func archiveKeepsTheExactLastSeenAt() throws {
