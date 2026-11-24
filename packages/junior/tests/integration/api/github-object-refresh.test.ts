@@ -874,6 +874,59 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
+  it("keeps known checks and patches the merge state after a base retarget", async () => {
+    stubGitHubApp();
+    const queries = stubGraphql({
+      cards: [cardNode(34)],
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 2 }),
+            headRefOid: "ddd444",
+            mergeable: "CONFLICTING",
+            number: 34,
+            updatedAt: "2026-01-02T06:00:10Z",
+          },
+        ],
+      ],
+    });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+
+    // A new base changes the merge state of the same head, not its checks.
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "edited",
+      pull_request: pullRequest(34, {
+        base: { ref: "release" },
+        head: { ref: "feat/34", sha: "ddd444" },
+        mergeable: null,
+        updated_at: new Date(start + 10_000).toISOString(),
+      }),
+    });
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: false,
+    });
+  });
   it("asks GitHub again soon after the last patch attempt finds the merge state still computing", async () => {
     stubGitHubApp();
     const unknown = {
