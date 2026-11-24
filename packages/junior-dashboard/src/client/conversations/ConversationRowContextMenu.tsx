@@ -15,7 +15,8 @@ import {
   ConversationRowMenu,
   type ConversationRowMenuProps,
 } from "./ConversationRowMenu";
-import { ConversationRowSheet, useMenuSheet } from "./ConversationMenuSheet";
+import { ConversationRowSheet } from "./ConversationMenuSheet";
+import { useMenuSheet } from "./useMenuSheet";
 import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";

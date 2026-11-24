@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -29,10 +31,7 @@ import {
 } from "../../conversations/EditableConversationTitle";
 import { ChildAgentTags } from "../../conversations/ChildAgentTags";
 import { ConversationBreadcrumb } from "../../conversations/ConversationBreadcrumb";
-import {
-  ConversationMenuSheet,
-  useMenuSheet,
-} from "../../conversations/ConversationMenuSheet";
+import { useMenuSheet } from "../../conversations/useMenuSheet";
 import {
   CONVERSATION_MENU_BUTTON_CLASS,
   ConversationOverflowMenu,
@@ -52,6 +51,14 @@ import { LeadHeader } from "../../lead/LeadHeader";
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
+
+// The sheet opens only after a tap on a phone, so the drawer loads with the
+// first open instead of with the page.
+const ConversationMenuSheet = lazy(() =>
+  import("../../conversations/ConversationMenuSheet").then((module) => ({
+    default: module.ConversationMenuSheet,
+  })),
+);
 
 /**
  * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
@@ -336,11 +343,13 @@ function ConversationTitleHeader(props: {
           <Ellipsis aria-hidden="true" size={20} strokeWidth={2} />
         </Button>
         {sheet.open ? (
-          <ConversationMenuSheet
-            groups={sheetGroups}
-            onClose={sheet.close}
-            title={props.title}
-          />
+          <Suspense fallback={null}>
+            <ConversationMenuSheet
+              groups={sheetGroups}
+              onClose={sheet.close}
+              title={props.title}
+            />
+          </Suspense>
         ) : null}
       </MobileHeaderActionsPortal>
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu

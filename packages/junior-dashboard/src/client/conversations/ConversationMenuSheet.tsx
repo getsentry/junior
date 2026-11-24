@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 
 import {
   Drawer,
@@ -20,32 +20,6 @@ const ROW_CLASS =
 const PLAIN_ROW_CLASS = cn(ROW_CLASS, "border-0 bg-transparent");
 const GROUP_CLASS =
   "overflow-hidden rounded-xl border border-dashboard-border-subtle bg-dashboard-fill-faint";
-
-/**
- * Hold the open state of a menu sheet. A chosen row runs only after the
- * sheet unmounts and gives focus back, so an action that moves focus, such
- * as Rename or Search, keeps it.
- */
-export function useMenuSheet() {
-  const [open, setOpen] = useState(false);
-  const chosen = useRef<(() => void) | undefined>(undefined);
-  useEffect(() => {
-    if (open) return;
-    const action = chosen.current;
-    chosen.current = undefined;
-    // Base UI gives focus back in a microtask after the unmount, so the
-    // action waits one task more.
-    if (action) setTimeout(action);
-  }, [open]);
-  return {
-    close(action?: () => void) {
-      chosen.current = action;
-      setOpen(false);
-    },
-    open,
-    show: () => setOpen(true),
-  };
-}
 
 /**
  * Show the row menu as a bottom sheet for a long press on a touch screen.
