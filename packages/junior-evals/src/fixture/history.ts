@@ -360,7 +360,9 @@ async function historyUserMessage(args: {
         },
         createdAtMs: args.createdAtMs,
         id: `api-msg:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
-        meta: { explicitMention: true, source: "web" },
+        // A web Turn saves its first input unreplied. `message_handled`
+        // records the reply, so no later row flips `replied`.
+        meta: { explicitMention: true, replied: false, source: "web" },
         role: "user",
         text: input.text,
       },
