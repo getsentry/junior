@@ -132,8 +132,14 @@ export async function sendGitHubWebhook(
 }
 
 /** Create the app with the GitHub plugin and its tables. */
-export async function createGitHubApp() {
+export async function createGitHubApp(
+  options: Pick<
+    NonNullable<Parameters<typeof createApp>[0]>,
+    "pluginTaskQueue"
+  > = {},
+) {
   const app = await createApp({
+    ...options,
     plugins: defineJuniorPlugins([githubPlugin()]),
   });
   // Webhooks record lifecycles in the plugin's tables.

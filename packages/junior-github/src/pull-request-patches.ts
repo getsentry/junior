@@ -5,19 +5,18 @@
  *
  * GitHub computes mergeability shortly after a push, so a webhook often
  * says `mergeable: null`, and check events carry no counts. The entry then
- * shows both as `pending` until a patch reads them. A patch waits in plugin
- * state, and the heartbeat runs the due ones, so the wait survives the end
- * of the webhook request. Events for one pull request inside the wait share
- * one patch. A patch names its pull request by the repository and number
- * of its cache key, and reads like the cards of a page
+ * shows both as `pending` until a patch reads them. A patch is a plugin
+ * task that starts 5 s after its event, so the wait survives the end of
+ * the webhook request. Events for one head commit inside one 5 s window
+ * share one task. A patch names its pull request by the repository and
+ * number of its cache key, and reads like the cards of a page
  * (`pull-request-prefetch.ts`).
  */
 import type {
   PluginCache,
-  PluginLogger,
-  PluginState,
+  PluginStartedTaskDefinition,
+  PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import * as z from "zod";
 import {
   GITHUB_PULL_REQUEST_CACHE,
@@ -29,76 +28,54 @@ import {
   aliasedPullRequests,
   githubCheckCounts,
   githubMergeable,
-  pullRequestChunks,
   pullRequestHeadFactsNodeSchema,
   type PullRequestRef,
   pullRequestRefFromCacheKey,
 } from "./pull-request-graphql.js";
 
-/** Time from the first event to its patch. Later events keep this time. */
-const PULL_REQUEST_PATCH_DELAY_MS = 5_000;
+export const GITHUB_PULL_REQUEST_PATCH_TASK = "patchPullRequest";
 
-// A patch reads again while GitHub still computes mergeability, up to this
-// many times. The heartbeat runs about once a minute.
-const PATCH_MAX_ATTEMPTS = 5;
-// The patches that one heartbeat runs, in queries of 25, and the queries
-// that run at once.
-const PATCHES_PER_HEARTBEAT = 100;
-const PATCH_QUERY_CONCURRENCY = 4;
-const PATCHES_KEY = "pull-request-patches";
-// A patch list that nobody writes for this long was lost with its patches.
-const PATCHES_TTL_MS = 60 * 60_000;
-const LOCK_TTL_MS = 30_000;
-const LOCK_WAIT_MS = 5_000;
+// Time from an event to its patch, and the window of events that share it.
+const PATCH_DELAY_SECONDS = 5;
 
-// A patch saved before reads by repository and number also has a
-// `nodeId`, which parsing leaves out.
-const patchSchema = z.object({
-  attempts: z.number().int().nonnegative(),
-  dueAtMs: z.number(),
-});
-const patchesSchema = z.record(z.string(), patchSchema);
-type Patches = z.output<typeof patchesSchema>;
+const payloadSchema = z
+  .object({
+    /** Cache entry `pulls:owner/repo#N`. */
+    key: z.string().min(1),
+    /** Head commit of the event. */
+    sha: z.string().min(1),
+  })
+  .strict();
 
-async function changePatches<T>(
-  state: PluginState,
-  change: (patches: Patches) => T,
-): Promise<T> {
-  const result = await state.withLock(
-    `${PATCHES_KEY}:lock`,
-    LOCK_TTL_MS,
-    async () => {
-      const parsed = patchesSchema.safeParse(await state.get(PATCHES_KEY));
-      const patches = parsed.success ? parsed.data : {};
-      const value = change(patches);
-      await state.set(PATCHES_KEY, patches, PATCHES_TTL_MS);
-      return value;
-    },
-    { waitMs: LOCK_WAIT_MS },
-  );
-  if (!result.acquired) throw new Error("GitHub patch list is locked");
-  return result.value;
+/**
+ * The patch read is not final yet: GitHub still computes the merge state,
+ * or a webhook came after the read. The queue delivers the task again.
+ */
+class GitHubPullRequestPatchPendingError extends Error {
+  constructor(key: string, sha: string) {
+    super(`GitHub pull request ${key} at ${sha} has no final read yet`);
+    this.name = "GitHubPullRequestPatchPendingError";
+  }
 }
 
 /**
- * Add a patch for the pull request in cache entry `key`. A patch that
- * already waits keeps its time, so a burst of pushes makes one query. Its
- * attempts start again, because each event can start a new computation.
- * The heartbeat runs due patches. Once plugin tasks run on Queues
- * (getsentry/junior#4109), this becomes one delayed plugin task per pull
- * request and head commit.
+ * Start the patch of the pull request in cache entry `key`. A second event
+ * for the same head commit in the same 5 s window does nothing, so a burst
+ * makes one query. A later event starts a new patch with its own retries,
+ * because each event can start a new computation.
  */
-export async function scheduleGitHubPullRequestPatch(args: {
+export async function startGitHubPullRequestPatch(args: {
   key: string;
   nowMs: number;
-  state: PluginState;
+  sha: string;
+  tasks: PluginTaskStarter;
 }): Promise<void> {
-  await changePatches(args.state, (patches) => {
-    patches[args.key] = {
-      attempts: 0,
-      dueAtMs:
-        patches[args.key]?.dueAtMs ?? args.nowMs + PULL_REQUEST_PATCH_DELAY_MS,
-    };
+  const window = Math.floor(args.nowMs / (PATCH_DELAY_SECONDS * 1000));
+  await args.tasks.start({
+    delaySeconds: PATCH_DELAY_SECONDS,
+    key: `${args.key}:${args.sha}:${window}`,
+    name: GITHUB_PULL_REQUEST_PATCH_TASK,
+    payload: { key: args.key, sha: args.sha },
   });
 }
 
@@ -108,7 +85,7 @@ type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 // is not newer than the read. Return `again` to read again: GitHub still
 // computes the merge state, or a webhook came after the read and its
 // fields still wait. Return `expire` when the read is of another head
-// commit than the entry, as for a dropped patch. After the last attempt, a
+// commit than the entry, as for a dropped patch. On the last delivery, a
 // merge state that GitHub still computes stays pending only briefly, so
 // the next read asks GitHub.
 async function writeHeadFacts(
@@ -159,91 +136,42 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
 }
 
 /**
- * Run the due patches: one query reads the merge state and checks of up
- * to 25 pull requests. A patch whose merge state GitHub still computes,
- * whose read is older than its entry, or whose query fails, waits for the
- * next heartbeat. A failed query does not split, so an outage costs one
- * query per chunk. A patch with no pull request in the answer, of another
- * head commit, or out of attempts, is dropped, and its entry is read again
- * soon. A failed query is logged, not thrown, so the rest of the heartbeat
- * still runs.
+ * Read the merge state and checks of one pull request and write them into
+ * its entry. While the read is not final, the task throws, and the queue
+ * delivers it again with backoff. On the last delivery, a merge state
+ * that GitHub still computes stays pending only briefly, so the next read
+ * asks GitHub. A pull request missing from the answer, of another head
+ * commit, or whose query fails on the last delivery, leaves its pending
+ * fields fresh only briefly too.
  */
-export async function runGitHubPullRequestPatches(args: {
-  cache: PluginCache;
-  loadHeadFacts(refs: PullRequestRef[]): Promise<unknown>;
-  log: PluginLogger;
-  nowMs: number;
-  state: PluginState;
-}): Promise<void> {
-  const due = await changePatches(args.state, (patches) => {
-    const taken = Object.entries(patches)
-      .filter(([, patch]) => patch.dueAtMs <= args.nowMs)
-      .slice(0, PATCHES_PER_HEARTBEAT);
-    for (const [key] of taken) delete patches[key];
-    return taken;
-  });
-  if (due.length === 0) return;
-  type Due = (typeof due)[number];
-  const again: Due[] = [];
-  const dropped: string[] = [];
-  const reads = due.flatMap(([key, patch]) => {
-    const ref = pullRequestRefFromCacheKey(key);
-    if (!ref) dropped.push(key);
-    return ref ? [{ due: [key, patch] satisfies Due, ref }] : [];
-  });
-  await pLimit(PATCH_QUERY_CONCURRENCY).map(
-    pullRequestChunks(reads),
-    async (chunk) => {
-      let response: unknown;
+export function githubPullRequestPatchTask(
+  loadHeadFacts: (refs: PullRequestRef[]) => Promise<unknown>,
+): PluginStartedTaskDefinition<typeof payloadSchema> {
+  return {
+    payload: payloadSchema,
+    async run(ctx) {
+      const { key, sha } = ctx.payload;
+      const ref = pullRequestRefFromCacheKey(key);
+      if (!ref)
+        throw new Error(`GitHub patch key ${key} names no pull request`);
+      let node: HeadFactsNode | undefined;
       try {
-        response = await args.loadHeadFacts(chunk.map((read) => read.ref));
-      } catch (error) {
-        again.push(...chunk.map((read) => read.due));
-        args.log.error(
-          "GitHub pull request patch query failed",
-          { pullRequests: chunk.length },
-          error,
+        [node] = aliasedPullRequests(
+          await loadHeadFacts([ref]),
+          1,
+          pullRequestHeadFactsNodeSchema,
         );
-        return;
+      } catch (error) {
+        if (ctx.lastDelivery) await expirePending(ctx.cache, key);
+        throw error;
       }
-      // Answer `p<i>` is the pull request of `chunk[i]`.
-      const nodes = aliasedPullRequests(
-        response,
-        chunk.length,
-        pullRequestHeadFactsNodeSchema,
-      );
-      for (const [index, { due: entry }] of chunk.entries()) {
-        const [key, patch] = entry;
-        const node = nodes[index];
-        if (!node) {
-          dropped.push(key);
-          continue;
-        }
-        const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
-        // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-        const outcome = await writeHeadFacts(args.cache, key, node, last);
-        if (outcome === "again") again.push(entry);
-        if (outcome === "expire") dropped.push(key);
+      const outcome = node
+        ? await writeHeadFacts(ctx.cache, key, node, ctx.lastDelivery)
+        : "expire";
+      if (outcome === "again" && !ctx.lastDelivery) {
+        throw new GitHubPullRequestPatchPendingError(key, sha);
       }
+      if (outcome !== "done") await expirePending(ctx.cache, key);
     },
-  );
-  const retries = again.filter(
-    ([, patch]) => patch.attempts + 1 < PATCH_MAX_ATTEMPTS,
-  );
-  const retried = new Set(retries.map(([key]) => key));
-  const expired = [...dropped, ...again.map(([key]) => key)].filter(
-    (key) => !retried.has(key),
-  );
-  for (const key of new Set(expired)) {
-    // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-    await expirePending(args.cache, key);
-  }
-  if (retries.length > 0) {
-    await changePatches(args.state, (patches) => {
-      for (const [key, patch] of retries) {
-        // A newer event already added its own patch.
-        patches[key] ??= { ...patch, attempts: patch.attempts + 1 };
-      }
-    });
-  }
+  };
 }
