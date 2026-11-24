@@ -113,11 +113,14 @@ jobs:
           # With regular width, lists and the open item show side by side.
           - device: ipad
             simulator: iPad Pro 13-inch (M4)
-          # Two displays and a fold.
+          # Two displays and a fold. Display 1 is the outer display, where
+          # the app opens.
           - device: iphone-duo
             simulator: iPhone Duo
+            display: "1"
     env:
       JUNIOR_IOS_DEVICE: ${{ matrix.simulator }}
+      JUNIOR_IOS_DISPLAY: ${{ matrix.display }}
       ORIENTATION: ${{ matrix.orientation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
