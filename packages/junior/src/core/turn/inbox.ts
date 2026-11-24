@@ -20,7 +20,6 @@ import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
 export type TurnInput = {
   conversationId: string;
   actorIdentityId: string;
-  /** The kind of the Source that sent the input. */
   source: Source["kind"];
   payload: Record<string, unknown>;
   /**
