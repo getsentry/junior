@@ -14,9 +14,12 @@ struct JuniorApp: App {
         .environment(app)
         .preferredColorScheme(app.theme.colorScheme)
         .task { await app.refreshShell() }
-        .onChange(of: scenePhase, initial: true) { _, phase in
+        .onChange(of: scenePhase, initial: true) { old, phase in
           app.isActive = phase == .active
           if phase == .active { app.startTicking() } else { app.stopTicking() }
+          // Back in front: the server may have deployed since. The launch
+          // load above covers the first activation.
+          if phase == .active, old != .active { Task { await app.refreshShell() } }
         }
     }
   }

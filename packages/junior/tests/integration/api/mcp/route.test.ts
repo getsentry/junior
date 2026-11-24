@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { JUNIOR_IOS_CLIENT } from "@/api/mcp/oauth/client-metadata";
 import { createPersonalToken } from "@/personal-tokens/store";
+import { JUNIOR_VERSION } from "@/version";
 import {
   approveMcpClient,
   approveMcpConsent,
@@ -59,6 +60,7 @@ function refresh(app: Hono, refreshToken: string): Promise<Response> {
 describe("remote MCP HTTP", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("connects a CIMD client and lists only the signed-in user's Conversations", async () => {
@@ -186,6 +188,8 @@ describe("remote MCP HTTP", () => {
   });
 
   it("signs in Junior's iOS app with no client document and its URL scheme redirect", async () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", commit);
     const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const pkce = createPkce();
     const [redirectUri] = JUNIOR_IOS_CLIENT.redirectUris;
@@ -215,6 +219,11 @@ describe("remote MCP HTTP", () => {
       redirect_uri: redirectUri ?? "",
       resource: MCP_TEST_URL,
     });
+    const tokens = (await issued.json()) as McpTokenBody;
+    // The app shows the deployed release and commit from `initialize`.
+    const serverInfo = await withMcpClient(app, tokens.access_token, (client) =>
+      Promise.resolve(client.getServerVersion()),
+    );
 
     expect(page.html).toContain("Connect iOS app");
     expect(page.html).toContain("junior.sentry.dev");
@@ -227,6 +236,10 @@ describe("remote MCP HTTP", () => {
     );
     expect(callback.searchParams.get("state")).toBe("app-state");
     expect(issued.status).toBe(200);
+    expect(serverInfo).toMatchObject({
+      name: "junior",
+      version: `${JUNIOR_VERSION}+${commit}`,
+    });
   });
 
   it("rejects a personal token and a token for a domain that is no longer allowed", async () => {

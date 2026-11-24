@@ -36,12 +36,21 @@ export function getDeploymentServiceVersion(): string | undefined {
     return configuredRelease;
   }
 
-  const deploymentRevision = toOptionalTrimmed(
-    process.env["VERCEL_GIT_COMMIT_SHA"],
-  );
-  return deploymentRevision
-    ? `${JUNIOR_VERSION}+${deploymentRevision}`
-    : undefined;
+  return getDeploymentCommit() ? getJuniorBuildVersion() : undefined;
+}
+
+/** Git commit that Vercel deployed. Unset outside Vercel. */
+function getDeploymentCommit(): string | undefined {
+  return toOptionalTrimmed(process.env["VERCEL_GIT_COMMIT_SHA"]);
+}
+
+/**
+ * The Junior version with the deployed commit as semver build metadata, such
+ * as `0.314.0+<sha>`, so clients can tell two deploys of one release apart.
+ */
+export function getJuniorBuildVersion(): string {
+  const commit = getDeploymentCommit();
+  return commit ? `${JUNIOR_VERSION}+${commit}` : JUNIOR_VERSION;
 }
 
 /** Vercel deployment that runs this process. Unset outside Vercel. */

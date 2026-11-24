@@ -41,7 +41,7 @@ struct SettingsScreen: View {
               Text(app.server.isDemo ? "Demo" : app.server.baseURL.absoluteString)
                 .type(.sm, .medium).foregroundStyle(Tokens.text)
               if let version = app.serverVersion {
-                Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+                Text("junior version \(serverVersionLabel(version))").type(.xs).foregroundStyle(Tokens.textMuted)
               }
             }
             if let error = app.shellError { InlineError(text: error.localizedDescription) }
