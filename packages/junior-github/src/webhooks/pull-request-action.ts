@@ -72,6 +72,11 @@ import {
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
 import { checkSuitePullRequests } from "./check-suite.js";
+import {
+  dropGitHubReviewRequested,
+  markGitHubReviewRequested,
+  readGitHubReviewRequested,
+} from "./review-requests.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 import {
   loadPullRequestMergeState,
@@ -456,6 +461,11 @@ async function syncOne(
   ) {
     return;
   }
+  // Save the reviewer before the claim, so the check that runs asks them,
+  // also when another webhook's check holds the claim.
+  if (target.reviewRequested) {
+    await markGitHubReviewRequested(args.state, target, target.reviewRequested);
+  }
   // One webhook at a time checks a pull request. A webhook that arrives
   // during a check asks again, and the running webhook checks once more with
   // a new GitHub read. No connection or lock stays open during the calls.
@@ -470,9 +480,6 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
-  // The reviewers of the check before. A webhook that came in during it
-  // gave the review requests that are new since.
-  let checked: ReadonlySet<string> | undefined;
   // One check: read GitHub, change the item, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
@@ -507,13 +514,11 @@ async function syncOne(
     const reviewers = state.requestedReviewers.filter(
       (login) => !sameLogin(login, requesterLogin),
     );
-    const requested = new Set(reviewers.map((login) => login.toLowerCase()));
-    const newlyRequested = checked
-      ? [...requested].filter((login) => !checked!.has(login))
-      : target.reviewRequested
-        ? [target.reviewRequested.toLowerCase()]
-        : [];
-    checked = requested;
+    const newlyRequested = await readGitHubReviewRequested(
+      args.state,
+      target,
+      reviewers,
+    );
     const linked = await args.findLinkedIdentityIds(reviewers);
     await showPullRequestItem(items, {
       action,
@@ -528,11 +533,14 @@ async function syncOne(
         asked: changed && next.action !== undefined,
         identityId: opener.identityId,
       },
-      reviewerIdentityIds: [...requested].flatMap(
-        (login) => linked.get(login) ?? [],
+      reviewerIdentityIds: reviewers.flatMap(
+        (login) => linked.get(login.toLowerCase()) ?? [],
       ),
       state,
     });
+    // Drop the requests only after the item shows them, so a failure asks
+    // again in the next check.
+    await dropGitHubReviewRequested(args.state, target, newlyRequested);
     // The same read closes the merge conflict item from
     // `merge-conflict-checks/policy.ts` when the conflict is gone.
     if (

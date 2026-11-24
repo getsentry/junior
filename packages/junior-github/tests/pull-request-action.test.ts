@@ -369,6 +369,58 @@ describe("next action item", () => {
     }
   });
 
+  it("asks both reviewers when their review requests arrive together", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Alice", "bob"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], undefined, {
+        alice: "identity-alice",
+        bob: "identity-bob",
+      });
+      // GitHub sends one webhook per reviewer. Bob's arrives while Alice's
+      // checks, so Alice's check asks him in its next read.
+      let release!: () => void;
+      github.holdNextPullRead = new Promise((resolve) => {
+        release = resolve;
+      });
+      const first = webhook.handler(
+        pullRequestAction("review_requested", false, "Alice"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const second = webhook.handler(
+        pullRequestAction("review_requested", false, "bob"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      release();
+      await Promise.all([first, second]);
+      const asked = calls.flatMap((call) =>
+        call.kind === "upsert"
+          ? (call.notice as { askedIdentityIds: string[] }).askedIdentityIds
+          : [],
+      );
+      expect(asked.sort()).toEqual(["identity-alice", "identity-bob"]);
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: expect.objectContaining({
+          assigneeIdentityIds: ["identity-alice", "identity-bob"],
+        }),
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reuses one installation token for later webhooks", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];

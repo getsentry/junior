@@ -404,6 +404,11 @@ function graphqlCard(
 ): ObjectAnnotation | undefined {
   const parsed = graphqlObjectSchema.safeParse(value);
   if (!parsed.success) return undefined;
+  // GitHub reads an issue at a pull number too. That card is not the pull
+  // link's, so the pulls API answers for it.
+  if (link.kind === "pull_request" && !("draft" in parsed.data)) {
+    return undefined;
+  }
   return "draft" in parsed.data
     ? pullRequestCard(
         { ...link, kind: "pull_request" },

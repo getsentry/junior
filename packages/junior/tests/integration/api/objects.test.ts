@@ -326,6 +326,10 @@ describe("object links API", () => {
         }
         return HttpResponse.json({ message: "Not Found" }, { status: 404 });
       }),
+      http.get(`${api}/pulls/12`, () => {
+        reads.push("pulls/12");
+        return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+      }),
       http.get(`${api}/pulls/34`, () => {
         reads.push("pulls/34");
         return HttpResponse.json({
@@ -439,6 +443,8 @@ describe("object links API", () => {
         `${repo}/issues/34`,
         `${repo}/issues/99`,
         `${repo}/issues/56`,
+        // GraphQL reads the issue for a pull link to an issue number.
+        `${repo}/pull/12`,
       );
       // One query reads the page. Only the objects that it misses, such as
       // a transferred issue, are read one at a time.
@@ -483,6 +489,10 @@ describe("object links API", () => {
         url: `${repo}/pull/34`,
       });
       expect(member.objects.has(`${repo}/issues/99`)).toBe(false);
+      // The issue card is not cached for the pull link, so the pulls API
+      // answers that there is no such pull request.
+      expect(reads).toContain("pulls/12");
+      expect(member.objects.has(`${repo}/pull/12`)).toBe(false);
       // A transferred issue shows only when the viewer can see its new
       // repository.
       expect(member.objects.has(`${repo}/issues/56`)).toBe(false);
