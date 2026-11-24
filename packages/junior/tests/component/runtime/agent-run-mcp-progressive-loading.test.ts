@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import {
@@ -512,7 +513,9 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: () => "System prompt",
+    buildCoreSystemPromptSections: () => [
+      { name: "core", text: "System prompt" },
+    ],
     buildCapabilitySections: (
       input: Parameters<typeof actual.buildCapabilitySections>[0],
     ) => {
@@ -696,6 +699,7 @@ import {
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -860,6 +864,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       threadTs: "1712345.0001",
       turnId: "turn-1",
     });
+    await recordTurnStart(context.conversationId, context.turnId);
 
     const firstError = await executeAgentRun(context);
 
@@ -1288,7 +1293,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-restore-auth",
         },
         {
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     ).catch((error) => error);
@@ -1303,7 +1308,8 @@ describe("executeAgentRun progressive MCP loading", () => {
       state: "paused",
       resumeReason: "auth",
     });
-    expect(pausedSessionRecord?.turnStartMessageIndex).toBeUndefined();
+    // It paused before its prompt, so the resumed slice adds the prompt.
+    expect(pausedSessionRecord?.promptSaved).toBeUndefined();
     expect(pausedSessionRecord?.piMessages).toHaveLength(2);
     expect(pausedSessionRecord?.piMessages[0]).toMatchObject({
       role: "user",
@@ -1327,7 +1333,7 @@ describe("executeAgentRun progressive MCP loading", () => {
             turnId: "turn-restore-auth",
           },
           {
-            history: priorMessages,
+            history: committedHistory(priorMessages),
           },
         ),
       ),
@@ -1381,7 +1387,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           instruction: {
             context: "duplicated prior transcript",
           },
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     );
@@ -1504,7 +1510,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-crash-retry",
         },
         {
-          history: strippedHistory,
+          history: committedHistory(strippedHistory),
         },
       ),
     );
@@ -1549,7 +1555,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-history-with-context",
         },
         {
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     );
@@ -1600,6 +1606,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       threadTs: "1712345.0004",
       turnId: "turn-4",
     });
+    await recordTurnStart(context.conversationId, context.turnId);
 
     const firstError = await executeAgentRun(context);
 

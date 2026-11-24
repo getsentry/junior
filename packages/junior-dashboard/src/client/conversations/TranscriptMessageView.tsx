@@ -8,7 +8,7 @@ import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { memo, type ReactNode } from "react";
 import { useHref } from "react-router";
 import { Link } from "lucide-react";
@@ -60,6 +60,7 @@ export const TranscriptMessageView = memo(
               chat={chatText}
               key={index}
               mentions={props.message.mentions}
+              skills={roleKind === "user"}
               text={part.text ?? ""}
             />
           ) : null,
@@ -72,6 +73,7 @@ export const TranscriptMessageView = memo(
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
         fromAgent={Boolean(props.message.agentInvocationId)}
+        lead={props.conversation.kind === "lead"}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
         }
@@ -93,7 +95,7 @@ export const TranscriptMessageView = memo(
         />
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
-              <ReviewItemChangeRow
+              <InboxItemChangeRow
                 conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
@@ -123,9 +125,7 @@ export const TranscriptMessageView = memo(
           }
         })}
         {props.footer}
-        {roleKind === "assistant" &&
-        !props.message.pending &&
-        (rawText || forkMessageId) ? (
+        {chatText && !props.message.pending && (rawText || forkMessageId) ? (
           // The margins line the first icon up with the text edge and let the
           // icon padding use the space that is already around the message.
           <MessageActions className="-mt-1.5 -mb-2.5 -ml-2 [&>button]:size-8">
@@ -144,7 +144,7 @@ export const TranscriptMessageView = memo(
                 messageId={forkMessageId}
               />
             ) : null}
-            {props.message.messageId ? (
+            {roleKind === "assistant" && props.message.messageId ? (
               <ReplyRatingActions
                 conversationId={props.conversation.conversationId}
                 messageId={props.message.messageId}
@@ -192,6 +192,7 @@ export function RedactedMessageView(props: {
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
       fromAgent={Boolean(props.message.agentInvocationId)}
+      lead={props.conversation.kind === "lead"}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
       }

@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 const ZERO_SNAPSHOT_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -106,23 +105,7 @@ function migrationDirectories(root) {
     );
 }
 
-function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
-  const directories = migrationDirectories(root);
-  const errors = directories.flatMap(checkDrizzleMigrationDirectory);
-  if (errors.length === 0) {
-    console.log(
-      `Drizzle migration metadata is valid in ${directories.length} packages.`,
-    );
-    return;
-  }
-  console.error(
-    ["Drizzle migration metadata check failed:", ...errors].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+/** Check the journal and snapshots of each package's Drizzle migrations. */
+export function run({ root }) {
+  return migrationDirectories(root).flatMap(checkDrizzleMigrationDirectory);
 }

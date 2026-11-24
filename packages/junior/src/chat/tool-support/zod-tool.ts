@@ -5,8 +5,8 @@ import type {
   AnyToolDefinition,
   JsonSchemaObject,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   AnyToolDefinition,
@@ -43,6 +43,14 @@ export interface ContentOnlyToolResult {
   details?: never;
 }
 
+/**
+ * Structured mode, the default. `outputSchema` describes the success value,
+ * and `execute` returns that object. The helper derives model content,
+ * transcript details, telemetry, and success metadata from it.
+ * `privateTraceResult` may select only static, public, or non-conversation
+ * data. Omit it for metadata-only traces, and return `undefined` to record
+ * nothing.
+ */
 type StructuredZodToolDefinition<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodTypeAny,
@@ -56,6 +64,11 @@ type StructuredZodToolDefinition<
   ) => Promise<TExecuteResult> | TExecuteResult;
 };
 
+/**
+ * Native content mode, only when native model content is the contract, such
+ * as MCP images. It has no `outputSchema` and returns `{ content }`. A
+ * provider bridge records its own trace before it adapts to this shape.
+ */
 type ContentZodToolDefinition<TInputSchema extends ZodTypeAny> =
   ZodToolDefinitionBase<TInputSchema> & {
     outputSchema?: undefined;

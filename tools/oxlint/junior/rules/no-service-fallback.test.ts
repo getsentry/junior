@@ -40,7 +40,7 @@ new RuleTester().run("no-service-fallback", noServiceFallbackRule, {
      }
      export const hash = (value) => hashJson(value);`,
     // A table, or a subquery over it, that the helper reads columns from
-    // (junior-memory/src/embedding.ts).
+    // (junior/src/chat/memory/embedding.ts).
     `import { juniorMemoryEmbeddings } from "./schema";
      export function sameModel(embedding, columns = juniorMemoryEmbeddings) {
        return and(

@@ -165,7 +165,8 @@ describe("Vercel actions", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "vercel.alias.get failed with HTTP 404",
+      message:
+        "vercel.alias.get failed with HTTP 404. Check the ids and names in the arguments.",
     });
   });
 

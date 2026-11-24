@@ -11,11 +11,14 @@ import {
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
+  mockCodeChangeLiveCard,
   readMockConversationDetail,
   readMockPeopleCode,
   readMockPeopleDirectory,
   readMockPeopleProfile,
 } from "./fixtures";
+import { mockCodeChangeCard } from "./code-change-search";
+import { PIN_PULL_REQUEST_DESCRIPTION } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
 // configured dashboard origin.
@@ -24,9 +27,26 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
-// The live cards of mock pull requests that conflict with main, so their
-// asks in the Inbox say "Merge conflict".
+// The live cards of mock pull requests. Those that conflict with main make
+// their asks in the Inbox say "Merge conflict".
 const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/3052": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#3052",
+    label: "getsentry/junior#3052",
+    title: "feat(dashboard): Tabs in the dashboard sidebar",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "feat/sidebar-tabs",
+      targetBranch: "main",
+      mergeable: true,
+    },
+    plugin: "github",
+  },
   "https://github.com/getsentry/junior/pull/2188": {
     kind: "object",
     objectType: "code_change",
@@ -44,6 +64,26 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     },
     plugin: "github",
   },
+  "https://github.com/getsentry/payments/pull/42": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#42",
+    label: "getsentry/payments#42",
+    title: "Retry checkout writes after lock timeouts",
+    displayType: "Pull request",
+    status: "draft",
+    facts: {
+      type: "code_change",
+      additions: 86,
+      author: "junior",
+      changedFiles: 4,
+      deletions: 12,
+      sourceBranch: "fix/checkout-lock-retry",
+      targetBranch: "main",
+      mergeable: true,
+    },
+    plugin: "github",
+  },
   "https://github.com/getsentry/payments/pull/91": {
     kind: "object",
     objectType: "code_change",
@@ -52,9 +92,13 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     title: "Pin the release train to payments 4.2",
     displayType: "Pull request",
     status: "open",
+    description: PIN_PULL_REQUEST_DESCRIPTION,
     facts: {
       type: "code_change",
+      additions: 48,
       author: "junior",
+      changedFiles: 3,
+      deletions: 9,
       sourceBranch: "release/pin-payments-4.2",
       targetBranch: "main",
       mergeable: false,
@@ -506,6 +550,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   const url = new URL(href);
   if (url.href === SENTAUR_PULL_REQUEST.url)
     return [{ object: SENTAUR_PULL_REQUEST, url: href }];
+  const codeChange = mockCodeChangeCard(url.href);
+  if (codeChange) return [{ object: codeChange, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);
@@ -513,6 +559,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   const pull = GITHUB_PULLS[url.href];
   if (pull) return [{ object: { ...pull, url: href }, url: href }];
+  const listed = mockCodeChangeLiveCard(url.href);
+  if (listed) return [{ object: listed, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
@@ -575,7 +623,7 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   // Match the API: a private Conversation resolves only for a participant.
   if (detail && (detail.visibility !== "private" || detail.isParticipant)) {
     const object = conversationObjectCard({
-      brief: detail.brief?.content.summary,
+      description: detail.summary,
       participants: detail.participants ?? [],
       summary: detail,
       url: href,

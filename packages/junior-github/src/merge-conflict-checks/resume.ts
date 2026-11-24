@@ -1,11 +1,12 @@
 /**
- * Resume on the stopped merge conflict item (`policy.ts`). It counts as
- * activity by a person, so the fix count starts again, and it starts a fix
- * at once, through the same `pull_request.merge_conflict` event as a fix
- * that the policy allows.
+ * Resume on the merge conflict item of a fix that did not land
+ * (`policy.ts`). It counts as activity by a person, so the fix count starts
+ * again, and it starts a fix at once, through the same
+ * `pull_request.merge_conflict` event as a fix that the policy allows.
  */
 import type {
   EventPublisher,
+  PluginCodeChanges,
   PluginConversationWatches,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
@@ -16,7 +17,7 @@ import {
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
-import { pullRequestRow } from "../pull-request-outcomes/store.js";
+import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import { withGitHubConflictFix } from "./policy.js";
 import {
   gitHubMergeConflictEvents,
@@ -30,6 +31,7 @@ import {
  * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
  */
 export async function resumeGitHubConflictFixes(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
   /** The answered item. */
@@ -42,31 +44,31 @@ export async function resumeGitHubConflictFixes(args: {
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
 }): Promise<void> {
+  const change = await findGitHubPullRequest(args.codeChanges, args.ref);
+  if (change?.state !== "open") return;
   const t = juniorGitHubPullRequests;
+  const pullRequest = eq(t.pullRequestId, change.providerId);
   const [row] = await args.db
     .select({
       fixes: t.conflictFixes,
       resumedAt: t.conflictFixesResumedAt,
     })
     .from(t)
-    .where(and(pullRequestRow(args.ref), eq(t.state, "open")));
+    .where(pullRequest);
   if (!row) return;
   // Save the Resume before the GitHub read. Core closed the item already,
   // and until the Resume is saved a conflict check would add it again.
   const resumedAt = new Date(args.nowMs);
-  const resumed = await args.db
+  await args.db
     .update(t)
     .set({ conflictFixesResumedAt: resumedAt })
-    .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
-    .returning({ pullRequestId: t.pullRequestId });
-  if (resumed.length === 0) return;
+    .where(pullRequest);
+  // Core closed the item, so an undo also lets the policy ask again.
   const undo = () =>
     args.db
       .update(t)
-      .set({ conflictFixesResumedAt: row.resumedAt })
-      .where(
-        and(pullRequestRow(args.ref), eq(t.conflictFixesResumedAt, resumedAt)),
-      );
+      .set({ conflictFixAskedAt: null, conflictFixesResumedAt: row.resumedAt })
+      .where(and(pullRequest, eq(t.conflictFixesResumedAt, resumedAt)));
   const loaded = gitHubPullRequestMergeSchema.parse(
     await args.loadPullRequest(args.ref),
   );
@@ -139,5 +141,5 @@ export async function resumeGitHubConflictFixes(args: {
         headSha: loaded.head.sha,
       }),
     })
-    .where(pullRequestRow(args.ref));
+    .where(pullRequest);
 }

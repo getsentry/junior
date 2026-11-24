@@ -4,10 +4,13 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 const URL_PATTERN = /https?:\/\/[^\s<>|"'`]+/g;
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}*_~]+$/;
+// The trailing punctuation that core's message links drop.
+const TRAILING_PUNCTUATION = new Set(".,;:!?)]}*_~");
 
 function cleanUrl(match: string): string | undefined {
-  const trimmed = match.replace(TRAILING_PUNCTUATION, "");
+  let end = match.length;
+  while (end > 0 && TRAILING_PUNCTUATION.has(match[end - 1]!)) end -= 1;
+  const trimmed = match.slice(0, end);
   return URL.canParse(trimmed) ? new URL(trimmed).href : undefined;
 }
 

@@ -5,9 +5,9 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
-import { juniorConversations, juniorReviewItems } from "@/db/schema";
+import { juniorConversations, juniorInboxItems } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
@@ -45,10 +45,12 @@ describe("conversation status", () => {
 
     await fixture.drain();
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    // The feed reads the same status as the detail.
-    await expect(fixture.feedStatus(conversationId)).resolves.toBe(
-      "needs_input",
-    );
+    // The feed reads the same status as the detail, and says the Turn
+    // failed.
+    await expect(fixture.feedRow(conversationId)).resolves.toMatchObject({
+      latestTurnFailed: true,
+      status: "needs_input",
+    });
 
     // A failure does not hold input.
     await expect(
@@ -74,11 +76,11 @@ describe("conversation status", () => {
     const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
     expect(version).toBeTruthy();
 
-    // addReviewItem assigns a Participant by default. A Slack Actor without
+    // addInboxItem assigns a Participant by default. A Slack Actor without
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
-    const unassigned = await insertReviewItem(getDb(), {
-      addedByConversationId: conversationId,
+    const unassigned = await insertInboxItem(getDb(), {
+      owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone in the thread can answer.",
@@ -98,7 +100,7 @@ describe("conversation status", () => {
     expect(
       conversationDetailReportSchema.parse(await polled.json()).status,
     ).toBe("needs_input");
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: unassigned!.id,
       nowMs: Date.now(),
       status: "dismissed",
@@ -110,7 +112,7 @@ describe("conversation status", () => {
       assignees: ["everyone"],
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),
       status: "dismissed",
@@ -121,7 +123,7 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     // The person's answer is input for a new Turn.
     const answered = await fixture.request(
-      `/api/review-items/${assigned}/actions`,
+      `/api/inbox-items/${assigned}/actions`,
       {
         body: JSON.stringify({
           action: "submit",
@@ -190,7 +192,7 @@ describe("conversation status", () => {
       turnActive: true,
     });
     await expect(fixture.feedTurnActive(conversationId)).resolves.toBe(true);
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item,
       nowMs: Date.now(),
       status: "dismissed",
@@ -368,7 +370,7 @@ describe("conversation status", () => {
 
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(
-      fixture.status(running.invocation.childConversationId),
+      fixture.status(running.child.childConversationId),
     ).resolves.toBe("working");
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
@@ -423,9 +425,9 @@ describe("conversation status", () => {
     expect(archived.status).toBe(200);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     const [item] = await getDb()
-      .select({ status: juniorReviewItems.status })
-      .from(juniorReviewItems)
-      .where(eq(juniorReviewItems.addedByConversationId, conversationId));
+      .select({ status: juniorInboxItems.status })
+      .from(juniorInboxItems)
+      .where(eq(juniorInboxItems.ownerId, conversationId));
     expect(item?.status).toBe("open");
   });
 });

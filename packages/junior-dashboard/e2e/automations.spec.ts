@@ -886,8 +886,13 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     page.getByText("Edit the trigger, or enable its plugin again."),
   ).toBeVisible();
   // The notice owns the fix, so it opens edit mode.
+  const editRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/automations/event-2/edit",
+  );
   await page.getByRole("link", { name: "Change trigger", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
+  await editRead;
 });
 
 test("groups automations by what needs attention on the landing page", async ({

@@ -3,13 +3,12 @@ import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
   ConversationDetailReport,
-  ConversationWatch,
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
+import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
 import { Button } from "../components/ui/button";
-import { ConversationBrief } from "./ConversationBrief";
+import { ConversationSummary } from "./ConversationSummary";
 import {
   ConversationTasks,
   ConversationThreads,
@@ -17,7 +16,7 @@ import {
 } from "./ConversationChildAgents";
 import { conversationPath } from "./conversationRoutes";
 import {
-  ConversationLinkedWork,
+  ConversationLinkedWorkCard,
   type ConversationLink,
 } from "./ConversationLinkedWork";
 import {
@@ -29,32 +28,24 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "./conversationMemory";
-import { ConversationPlan } from "./ConversationPlan";
-import {
-  ConversationWatches,
-  useConversationWatches,
-} from "./ConversationWatches";
+import { ConversationTodos } from "./ConversationTodos";
 import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
-import { formatRelativeTime, formatTime } from "../time";
-
-type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
 /**
- * Surface work that needs the reader, then the Brief and its linked work.
+ * Surface work that needs the reader, then the summary and linked work.
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
-  brief?: Brief | undefined;
-  /** True when the viewer can close or reopen Plan items. */
-  canEditPlan: boolean;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
+  /** True when the viewer can close To-dos and cancel Watches. */
+  isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
@@ -62,6 +53,8 @@ export function ConversationDetails(props: {
   onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show the Turn that recalled or captured one memory. */
   onSelectMemory(entry: ConversationMemoryEntry): void;
+  summary?: string | undefined;
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   overview: ReactNode;
   usage: ReactNode;
 }) {
@@ -80,22 +73,6 @@ export function ConversationDetails(props: {
   const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
   // The last node is this Conversation, so the one before it is the parent.
   const parent = props.agentTree?.at(-2);
-  const allWatches =
-    useConversationWatches(props.conversationId).data?.watches ?? [];
-  // A Watch on linked work shows in that row, so the resource shows once.
-  const linkUrls = new Set(props.links.map((link) => link.url));
-  const watchesByUrl = new Map<string, ConversationWatch[]>();
-  const watches: ConversationWatch[] = [];
-  for (const watch of allWatches) {
-    if (watch.url && linkUrls.has(watch.url)) {
-      watchesByUrl.set(watch.url, [
-        ...(watchesByUrl.get(watch.url) ?? []),
-        watch,
-      ]);
-    } else {
-      watches.push(watch);
-    }
-  }
 
   if (memoriesOpen && memoryList) {
     // The list replaces details in place, so nothing stacks over the panel.
@@ -141,26 +118,7 @@ export function ConversationDetails(props: {
           aria-label="Conversation details"
           className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm"
         >
-          {props.brief ? (
-            <>
-              <span className="font-semibold text-dashboard-text">Brief</span>
-              <span aria-hidden="true" className="text-dashboard-text-faint">
-                ·
-              </span>
-              <time
-                className="truncate text-xs font-normal text-dashboard-text-muted"
-                dateTime={props.brief.updatedAt}
-                title={formatTime(props.brief.updatedAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                Updated {formatRelativeTime(props.brief.updatedAt)}
-              </time>
-            </>
-          ) : (
-            <span className="font-semibold text-dashboard-text">Details</span>
-          )}
+          <span className="font-semibold text-dashboard-text">Details</span>
         </h2>
       }
       onClose={props.onClose}
@@ -175,43 +133,28 @@ export function ConversationDetails(props: {
             />
           </DetailsCard>
         ) : null}
-        <ConversationReviewItems
+        <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        {props.brief ? (
+        {props.summary ? (
           <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-            <ConversationBrief brief={props.brief} variant="summary" />
+            <ConversationSummary
+              mentions={props.summaryMentions}
+              summary={props.summary}
+            />
           </div>
         ) : null}
-        <ConversationPlan
-          canEdit={props.canEditPlan}
+        <ConversationTodos
+          canEdit={props.isParticipant}
           conversationId={props.conversationId}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
-        {props.links.length > 0 || watches.length > 0 ? (
-          // A Watch waits on something. It shows with linked work, so the
-          // work and what Junior waits on read as one list.
-          <DetailsCard
-            count={props.links.length || watches.length}
-            title={props.links.length > 0 ? "Linked work" : "Waiting on"}
-          >
-            {props.links.length > 0 ? (
-              <ConversationLinkedWork
-                links={props.links}
-                watchesByUrl={watchesByUrl}
-              />
-            ) : null}
-            {props.links.length > 0 && watches.length > 0 ? (
-              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
-                Also waiting on
-              </h4>
-            ) : null}
-            {watches.length > 0 ? (
-              <ConversationWatches watches={watches} />
-            ) : null}
-          </DetailsCard>
-        ) : null}
+        <ConversationLinkedWorkCard
+          canCancelWatches={props.isParticipant}
+          conversationId={props.conversationId}
+          links={props.links}
+        />
         {/* Linked work decides when auto-archive runs, so it follows. */}
         {props.autoArchive != null ? (
           <DetailsCard>{props.autoArchive}</DetailsCard>

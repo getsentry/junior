@@ -3,6 +3,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { conversationSubscriptionResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import { conversationDetailQueryKey } from "./queries";
 import { invalidateConversationFeeds } from "./conversationFeedCache";
 
@@ -26,21 +27,21 @@ export function useConversationSubscription(
         { subscribed },
       ),
     onSuccess: (result) => {
-      // Clear the etag so the next read gets a full body, not a 304 that
-      // keeps this local value.
       queryClient.setQueryData<
         ConversationDetailReport & { detailEtag?: string }
       >(detailQueryKey, (detail) =>
         detail
-          ? {
-              ...detail,
-              archivedAt: result.archivedAt,
-              ...(result.subscribed
-                ? undefined
-                : { pinnedAt: null, pinPosition: undefined }),
-              subscribed: result.subscribed,
-              detailEtag: undefined,
-            }
+          ? withoutVersion(
+              {
+                ...detail,
+                archivedAt: result.archivedAt,
+                ...(result.subscribed
+                  ? undefined
+                  : { pinnedAt: null, pinPosition: undefined }),
+                subscribed: result.subscribed,
+              },
+              "detailEtag",
+            )
           : detail,
       );
     },

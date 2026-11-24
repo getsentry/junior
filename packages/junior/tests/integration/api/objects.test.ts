@@ -1,14 +1,8 @@
-import { generateKeyPairSync } from "node:crypto";
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
-import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
-import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
@@ -22,7 +16,16 @@ import {
 } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
-import { conversationBriefFixture } from "../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
+import {
+  createGitHubApp,
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  sendGitHubWebhook,
+  stubGitHubApp,
+  viewerApi,
+} from "../../fixtures/github-objects";
 import {
   conversationsInfoOk,
   conversationsMembersPage,
@@ -31,41 +34,13 @@ import {
   usersInfoOk,
 } from "../../fixtures/slack/factories/api";
 import { linkSlackUser } from "../../fixtures/slack-user";
-import { signedInViewer } from "../../fixtures/user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const CONVERSATION_URL = `${DASHBOARD}/conversations/${encodeURIComponent(CONVERSATION_ID)}`;
-const PRIVATE_BRIEF = "The private launch waits on legal review.";
-
-async function viewerApi(email: string) {
-  const viewer = await signedInViewer(email);
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  return async (...urls: string[]) => {
-    const query = new URLSearchParams(urls.map((url) => ["url", url]));
-    const response = await app.request(`http://localhost/api/objects?${query}`);
-    expect(response.status).toBe(200);
-    // The browser may keep a card as long as the server cache does.
-    expect(response.headers.get("cache-control")).toBe("private, max-age=60");
-    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
-    const body = await response.text();
-    return {
-      body,
-      objects: new Map(
-        objectLinksReportSchema
-          .parse(JSON.parse(body))
-          .objects.map((item) => [item.url, item.object]),
-      ),
-    };
-  };
-}
+const PRIVATE_SUMMARY = "The private launch waits on legal review.";
 
 async function recordPrivateConversation() {
   await getConversationStore().recordActivity({
@@ -83,13 +58,9 @@ async function recordPrivateConversation() {
     title: "Plan the private launch",
     visibility: "private",
   });
-  await appendConversationBrief(getDb(), {
+  await storeConversationMetadataFixture(getDb(), {
     conversationId: CONVERSATION_ID,
-    turnId: "brief-turn",
-    throughSeq: 0,
-    content: conversationBriefFixture({ summary: PRIVATE_BRIEF }),
-    searchText: PRIVATE_BRIEF,
-    modelId: "test-model",
+    summary: PRIVATE_SUMMARY,
   });
 }
 
@@ -115,7 +86,7 @@ describe("object links API", () => {
       await viewerApi("alice@example.com")
     )(CONVERSATION_URL, `${CONVERSATION_URL}/`);
     expect(participant.objects.get(CONVERSATION_URL)).toMatchObject({
-      description: PRIVATE_BRIEF,
+      description: PRIVATE_SUMMARY,
       facts: {
         lastActivityAt: "2026-01-02T03:04:05.000Z",
         participants: ["Alice Example"],
@@ -135,7 +106,7 @@ describe("object links API", () => {
     });
 
     // Not a participant: no card, so the response does not show that the
-    // Conversation exists, and the private Brief stays hidden.
+    // Conversation exists, and the private summary stays hidden.
     const outsider = await (
       await viewerApi("bob@example.com")
     )(CONVERSATION_URL);
@@ -244,16 +215,9 @@ describe("object links API", () => {
   });
 
   it("resolves GitHub issue and pull request links for viewers who can see the repository", async () => {
-    vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
-    vi.stubEnv(
-      "GITHUB_APP_PRIVATE_KEY",
-      generateKeyPairSync("rsa", { modulusLength: 2048 })
-        .privateKey.export({ format: "pem", type: "pkcs1" })
-        .toString(),
-    );
-    const repo = "https://github.com/getsentry/junior";
-    const api = "https://api.github.com/repos/getsentry/junior";
+    stubGitHubApp();
+    const repo = GITHUB_REPO;
+    const api = GITHUB_API;
     const reads: string[] = [];
     const publicPage = (title: string) =>
       new HttpResponse(
@@ -261,28 +225,6 @@ describe("object links API", () => {
         { headers: { "content-type": "text/html" } },
       );
     mswServer.use(
-      http.get("https://api.github.com/app/installations/456", () =>
-        HttpResponse.json({
-          permissions: {
-            issues: "read",
-            metadata: "read",
-            pull_requests: "read",
-          },
-        }),
-      ),
-      http.post(
-        "https://api.github.com/app/installations/456/access_tokens",
-        () =>
-          HttpResponse.json({
-            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-            token: "app-token",
-          }),
-      ),
-      http.get(`${api}/collaborators/:login/permission`, ({ params }) =>
-        HttpResponse.json({
-          permission: params["login"] === "alice_acme" ? "read" : "none",
-        }),
-      ),
       http.get(
         "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
         () => HttpResponse.json({ permission: "none" }),
@@ -364,13 +306,7 @@ describe("object links API", () => {
     try {
       await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
       setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
-      const alice = await linkSlackUser("alice@example.com", "UALICE");
-      await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
-        handle: "alice_acme",
-        kind: "user",
-        provider: "github",
-        providerSubjectId: "1001",
-      });
+      await linkGitHubMember();
       const bob = await linkSlackUser("bob@example.com", "UBOB");
       await upsertLinkedIdentity(getSqlExecutor(), bob.id, {
         handle: "outsider",
@@ -445,6 +381,275 @@ describe("object links API", () => {
       });
       expect(outsider.body).not.toContain("GitHub links as cards");
       expect(reads.slice(readsBefore)).toEqual([]);
+
+      // When GitHub fails after the card TTL, the card keeps the last read.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 61_000);
+      mswServer.use(
+        http.get(`${api}/issues/:number`, () =>
+          HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+        ),
+        http.get(`${api}/pulls/34`, () =>
+          HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+        ),
+      );
+      const outage = await (
+        await viewerApi("alice@example.com")
+      )(`${repo}/issues/12`, `${repo}/pull/34`);
+      expect(outage.objects.get(`${repo}/issues/12`)).toMatchObject({
+        objectType: "task",
+        title: "Show GitHub links as cards",
+      });
+      expect(outage.objects.get(`${repo}/pull/34`)).toMatchObject({
+        objectType: "code_change",
+        status: "draft",
+        title: "Add GitHub link cards",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    const before = "2026-01-02T03:04:05Z";
+    const after = "2026-01-02T04:00:00Z";
+    const issue = {
+      closed_at: null,
+      created_at: "2026-01-01T00:00:00Z",
+      html_url: `${GITHUB_REPO}/issues/12`,
+      id: 12_000,
+      number: 12,
+      state: "open",
+      title: "Show GitHub links as cards",
+      updated_at: before,
+      user: { login: "byk" },
+    };
+    const pullRequest = (number: number) => ({
+      additions: 120,
+      base: { ref: "main" },
+      changed_files: 4,
+      closed_at: null,
+      created_at: "2026-01-01T00:00:00Z",
+      deletions: 8,
+      draft: true,
+      head: { ref: "feat/github-link-cards", sha: "aaa111" },
+      html_url: `${GITHUB_REPO}/pull/${number}`,
+      id: number * 1000,
+      mergeable: false,
+      merged: false,
+      merged_at: null,
+      number,
+      state: "open",
+      title: "Add GitHub link cards",
+      updated_at: before,
+      user: { login: "byk" },
+    });
+    const deleted = {
+      ...issue,
+      html_url: `${GITHUB_REPO}/issues/13`,
+      id: 13_000,
+      number: 13,
+    };
+    const moving = {
+      ...issue,
+      html_url: `${GITHUB_REPO}/issues/14`,
+      id: 14_000,
+      number: 14,
+      title: "Move this issue",
+    };
+    let moved = false;
+    mswServer.use(
+      http.get(`${GITHUB_API}/issues/14`, () => {
+        reads.push("issues/14");
+        return moved
+          ? new HttpResponse(null, {
+              headers: {
+                location: "https://api.github.com/repositories/2002/issues/9",
+              },
+              status: 301,
+            })
+          : HttpResponse.json(moving);
+      }),
+      // The moved issue, in a repository that the viewer can also see.
+      http.get("https://api.github.com/repositories/2002/issues/9", () =>
+        HttpResponse.json({
+          ...moving,
+          html_url: "https://github.com/getsentry/relay/issues/9",
+          number: 9,
+          updated_at: after,
+        }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/relay/collaborators/:login/permission",
+        ({ params }) =>
+          HttpResponse.json({
+            permission: params["login"] === "alice_acme" ? "read" : "none",
+          }),
+      ),
+      http.get(`${GITHUB_API}/issues/12`, () => {
+        reads.push("issues/12");
+        return HttpResponse.json(issue);
+      }),
+      http.get(`${GITHUB_API}/issues/13`, () => {
+        reads.push("issues/13");
+        return HttpResponse.json(deleted);
+      }),
+      http.get(
+        `${GITHUB_REPO}/issues/13`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+      http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
+        reads.push(`pulls/${params["number"]}`);
+        return ["34", "56", "90"].includes(String(params["number"]))
+          ? HttpResponse.json(pullRequest(Number(params["number"])))
+          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
+    );
+    try {
+      const app = await createGitHubApp();
+      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      await linkGitHubMember();
+      const read = await viewerApi("alice@example.com");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = Date.now();
+      const first = await read(
+        `${GITHUB_REPO}/issues/12`,
+        `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
+        `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
+        `${GITHUB_REPO}/pull/90`,
+      );
+      expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
+        status: "open",
+      });
+      expect(first.objects.get(`${GITHUB_REPO}/pull/34`)).toMatchObject({
+        facts: { additions: 120, mergeable: false },
+        status: "draft",
+      });
+
+      vi.setSystemTime(start + 50_000);
+      await sendGitHubWebhook(app, "issues", {
+        action: "closed",
+        issue: {
+          ...issue,
+          closed_at: after,
+          state: "closed",
+          updated_at: after,
+        },
+      });
+      await sendGitHubWebhook(app, "issues", {
+        action: "deleted",
+        issue: deleted,
+      });
+      // A delivery from before the delete comes late.
+      await sendGitHubWebhook(app, "issues", {
+        action: "edited",
+        changes: { title: { from: "Show links" } },
+        issue: deleted,
+      });
+      moved = true;
+      await sendGitHubWebhook(app, "issues", {
+        action: "transferred",
+        issue: { ...moving, updated_at: after },
+      });
+      // A push marks the pull request ready. The payload leaves out the
+      // size and the merge state.
+      const { additions: _, mergeable: __, ...pushed } = pullRequest(34);
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: {
+          ...pushed,
+          draft: false,
+          head: { ref: "feat/github-link-cards", sha: "bbb222" },
+          updated_at: after,
+        },
+      });
+      // A delivery from before the push comes late.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "edited",
+        changes: { title: { from: "Add link cards" } },
+        pull_request: { ...pullRequest(34), title: "Older title" },
+      });
+      // A label on the same head commit. The payload has a null merge
+      // state, but nothing that GitHub computes changed.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "labeled",
+        pull_request: {
+          ...pullRequest(56),
+          mergeable: null,
+          updated_at: after,
+        },
+      });
+      // A new base on the same head commit. The merge state is about the
+      // old base.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "edited",
+        changes: { base: { ref: { from: "main" } } },
+        pull_request: {
+          ...pullRequest(90),
+          base: { ref: "release" },
+          mergeable: null,
+          updated_at: after,
+        },
+      });
+      // No card has read #78 yet.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "opened",
+        pull_request: { ...pullRequest(78), title: "Cache GitHub objects" },
+      });
+
+      // Past the TTL of the first read, but each webhook started it again.
+      vi.setSystemTime(start + 100_000);
+      const readsBefore = reads.length;
+      const next = await read(
+        `${GITHUB_REPO}/issues/12`,
+        `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
+        `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
+        `${GITHUB_REPO}/pull/78`,
+        `${GITHUB_REPO}/pull/90`,
+      );
+      // Only the moved issue is read again.
+      expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
+      expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
+        status: "closed",
+      });
+      // The deleted issue has no card.
+      expect(next.objects.has(`${GITHUB_REPO}/issues/13`)).toBe(false);
+      // The moved issue shows where GitHub redirects it.
+      expect(next.objects.get(`${GITHUB_REPO}/issues/14`)).toMatchObject({
+        title: "Move this issue",
+        url: "https://github.com/getsentry/relay/issues/9",
+      });
+      const pull = next.objects.get(`${GITHUB_REPO}/pull/34`);
+      expect(pull).toMatchObject({
+        // A field that the payload leaves out stays as cached.
+        facts: { additions: 120, deletions: 8 },
+        status: "open",
+        title: "Add GitHub link cards",
+      });
+      // The merge state and checks were about the old head commit.
+      expect(pull?.facts).toMatchObject({
+        checks: "pending",
+        mergeable: "pending",
+      });
+      // A null merge state on the same head and base is a missing field,
+      // so the known one stays.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
+        facts: { mergeable: false },
+      });
+      // A merge state that was about the old base turns pending.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/90`)).toMatchObject({
+        facts: { mergeable: "pending" },
+      });
+      expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
+        status: "draft",
+        title: "Cache GitHub objects",
+      });
     } finally {
       vi.unstubAllEnvs();
     }

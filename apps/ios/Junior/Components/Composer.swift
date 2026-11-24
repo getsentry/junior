@@ -11,11 +11,12 @@ struct ComposerDock<Above: View, Content: View>: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      above
+      above.readableWidth()
       content
         .padding(.horizontal, 8)
         .padding(.top, hasAbove ? 0 : 6)
         .padding(.bottom, 6)
+        .readableWidth()
     }
     .background(Tokens.bg)
     .hairline(.top, hasAbove ? .clear : Tokens.borderSubtle)
@@ -50,24 +51,28 @@ struct ComposerSurface<Content: View>: View {
   }
 }
 
-/// The message field: 16pt text, 1.625 line height, 48-112pt tall.
+/// The message field: 16pt text, 1.625 line height, 48-112pt tall. With
+/// `onSubmit`, Return calls it, and it sends when the composer can.
 struct ComposerField: View {
   @Binding var text: String
   let placeholder: String
-  var focused: FocusState<Bool>.Binding
+  @Binding var focused: Bool
+  var onSubmit: (() -> Void)?
 
   var body: some View {
-    TextField(
-      "", text: $text, prompt: Text(placeholder).foregroundStyle(Tokens.textFaint), axis: .vertical
-    )
-    .type(.base, lineHeight: 1.625)
-    .foregroundStyle(Tokens.text)
-    .lineLimit(1...4)
-    .focused(focused)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 12)
-    .frame(minHeight: 48, alignment: .topLeading)
-    .accessibilityLabel(placeholder)
+    MessageTextView(text: $text, focused: $focused, placeholder: placeholder, onSubmit: onSubmit)
+      .overlay(alignment: .topLeading) {
+        if text.isEmpty {
+          Text(placeholder)
+            .type(.base, lineHeight: 1.625)
+            .foregroundStyle(Tokens.textFaint)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 12)
+      .frame(minHeight: 48, alignment: .topLeading)
   }
 }
 
@@ -89,6 +94,8 @@ struct SendButton: View {
     .buttonStyle(UndimmedButtonStyle())
     .disabled(!enabled)
     .accessibilityLabel("Send")
+    // The software keyboard's Return key is "Send" too.
+    .accessibilityIdentifier("composer-send")
   }
 }
 
@@ -107,35 +114,44 @@ extension View {
 }
 
 /// The home composer: start a new Conversation (`createConversation`).
-/// Attachments are not part of the public API.
+/// Attachments are not part of the public API. `docked` puts it at the
+/// bottom of the screen, under the list.
 struct NewConversationComposer: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
+  var docked = true
   @State private var text = ""
   @State private var visibility: ConversationVisibility = .private
   @State private var sending = false
   @State private var error: String?
   @State private var idempotencyKey = UUID()
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   private var canSend: Bool {
     !sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   var body: some View {
-    ComposerDock {
-      VStack(alignment: .leading, spacing: 6) {
-        if let error { InlineError(text: error).padding(.horizontal, 4) }
-        ComposerSurface(focused: focused) {
-          VStack(alignment: .leading, spacing: 0) {
-            ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
-            HStack(spacing: 12) {
-              VisibilityMenu(visibility: $visibility)
-              Spacer()
-              SendButton(enabled: canSend, action: send)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+    if docked {
+      ComposerDock { form }
+    } else {
+      form
+    }
+  }
+
+  private var form: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if let error { InlineError(text: error).padding(.horizontal, 4) }
+      ComposerSurface(focused: focused) {
+        VStack(alignment: .leading, spacing: 0) {
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          HStack(spacing: 12) {
+            VisibilityMenu(visibility: $visibility)
+            Spacer()
+            SendButton(enabled: canSend, action: send)
           }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 6)
         }
       }
     }
@@ -158,7 +174,7 @@ struct NewConversationComposer: View {
         idempotencyKey = UUID()
         focused = false
         app.didWrite()
-        app.path.append(.conversation(accepted.conversationId))
+        window.path = [.conversation(accepted.conversationId)]
       } catch {
         self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Message failed to send. Try again."
       }

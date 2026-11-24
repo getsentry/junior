@@ -6,7 +6,7 @@ import { completeAcpAuthorization } from "@/api/acp/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { createAcpConversations } from "@/api/acp/conversations";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -413,7 +413,11 @@ describe("remote ACP recovery", () => {
           {
             type: "toolCall",
             name: "searchMcpTools",
-            arguments: { provider: "eval-auth", query: "budget echo" },
+            arguments: {
+              provider: "eval-auth",
+              query: "budget echo",
+              intent: "look up the budget",
+            },
           },
           { type: "text", text: "Auth-paused Turn must not reply." },
         ]),
@@ -805,9 +809,7 @@ describe("remote ACP recovery", () => {
     if (second.status !== "accepted") {
       throw new Error(`Second ACP prompt was ${second.status}`);
     }
-    await new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    ).start({
+    await getTurnLifecycle().start({
       conversationId,
       createdAtMs: Date.now(),
       inputMessageIds: [second.messageId],

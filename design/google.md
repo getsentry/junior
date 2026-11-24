@@ -29,20 +29,29 @@ Workspace account, so the user connects nothing.
 
 - Junior edits an existing Doc or presentation only when the requester can
   edit it through their own email, their domain, or a link that anyone can
-  edit. Access through a Google group is not checked, so that request is
-  refused.
+  edit.
 - Junior refuses an edit when the file changed after Junior read it, so it
   never changes content that it did not see.
 - Junior changes or cancels only events that it organizes, and only for a
   requester who is invited to the event.
 - Junior checks availability for and invites only people in the allowed
   domains.
+- Junior reads a colleague's calendar only as far as its sharing settings
+  let Junior's account see it. Junior never returns event descriptions.
+- To find meeting times, Junior reads only the times, attendees, and
+  responses of a person's past events. It keeps no copy and returns only the
+  working hours that it learns from them.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
-- Junior reads a file or its comments only for a requester who can open it
-  through their own email, their domain when that domain owns the file, or
-  a link that anyone can open.
-  Access through a Google group does not count.
+- A presentation that Junior creates goes to the requester as its owner.
+  Junior's account stays an editor, so Junior can keep building it.
+- An image from the Sandbox that Junior puts in a presentation is public
+  only during the edit.
+- Junior reads a file or its comments for a requester if, and only if, they
+  can open it through their own email, their domain when that domain owns
+  the file, or a link that anyone can open. A file shared with everyone in
+  the domain needs no share with Junior's account. For a read or an edit,
+  access through a Google group does not count.
 - Junior tells a requester who cannot open a file nothing about it, not even
   its title or type.
 - Search finds only files that any employee could find in Drive, or that are
@@ -50,5 +59,16 @@ Workspace account, so the user connects nothing.
   allowed domains owns, and it finds nothing for a requester outside them.
 - A file or event card shows only to a viewer who can open the file or is on
   the event.
-- Only an admin connects Junior's account. A requester cannot connect it or
-  use their own account instead.
+- Only an admin connects Junior's account.
+
+## Gaps
+
+- Junior reads a Meet transcript for any requester who is invited to the
+  meeting, also when the requester cannot open the transcript Doc. This
+  breaks "never reads or changes a file for a person who could not read or
+  change it themselves" and "reads a file or its comments for a requester
+  if, and only if, they can open it".
+- Junior refuses a read, and hides a file card, when the requester can open
+  the file only through their domain or a link that anyone can open and the
+  file is not shared with Junior's account by name. This breaks "reads a
+  file or its comments for a requester if, and only if, they can open it".

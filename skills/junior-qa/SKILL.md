@@ -195,8 +195,8 @@ pnpm build
 ```
 
 Start `pnpm dev` with the Docker settings. When the dev server is ready, run
-`snapshot create` with the same state settings as the dev server. With the
-BullMQ queue, the dev server keeps the snapshot pointer in the Compose Redis.
+`snapshot create` with the same state settings as the dev server. The dev
+server keeps the snapshot pointer in the Compose Redis.
 `pnpm cli` uses memory state by default, so it cannot find that pointer:
 
 ```sh
@@ -295,11 +295,11 @@ pnpm --filter @sentry/junior-evals evals:integration evals/integration/auth
 For SQL conversation storage changes, verify the resumed turn rebuilds context
 from SQL, not `thread-state` mirrors: conversation context must hydrate from
 `junior_conversation_messages` (`hydrateConversationMessages`) and pi history
-from `junior_conversation_events` through the Pi adapter (`loadProjection`). In
-those tests, transcripts seeded only into `thread-state` must also be persisted
-to SQL (`persistConversationMessages`) before the callback runs, and the
-resumed agent-run input `conversationContext` must contain the SQL-seeded
-messages.
+from `junior_conversation_events` through the Pi adapter
+(`loadConversationProjection`). In those tests, transcripts seeded only into
+`thread-state` must also be persisted to SQL (`persistConversationMessages`)
+before the callback runs, and the resumed agent-run input
+`conversationContext` must contain the SQL-seeded messages.
 
 ## Failure Handling
 

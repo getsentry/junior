@@ -5,6 +5,7 @@ import {
   inArray,
   isNotNull,
   not,
+  or,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -12,6 +13,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorDestinations,
   juniorUsers,
 } from "@/db/schema";
 
@@ -57,6 +59,18 @@ function memberParticipantRow(member: ConversationMember, condition?: SQL) {
 /** True when the viewer is a materialized participant on this root conversation. */
 export function conversationHasParticipantUser(userId: string): SQL {
   return exists(memberParticipantRow({ userId }));
+}
+
+/**
+ * True when the viewer may find the outer root conversation by a link to
+ * it: its Destination, joined as `juniorDestinations`, is public, or the
+ * viewer is a Participant.
+ */
+export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
+  return or(
+    eq(juniorDestinations.visibility, "public"),
+    viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+  )!;
 }
 
 /**

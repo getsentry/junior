@@ -8,8 +8,9 @@ struct AppHeader<Trailing: View, Below: View>: View {
     case back
   }
 
-  @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.splitColumn) private var column
   var title: String
   var leading: Leading = .menu
   /// Outfit 14 medium (Conversation titles) instead of Inter 14 semibold.
@@ -34,19 +35,25 @@ struct AppHeader<Trailing: View, Below: View>: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 8) {
-        Button {
-          switch leading {
-          case .menu: withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = true }
-          case .back: dismiss()
+        if column == .detailRoot {
+          // The open item beside the list has nothing to go back to, and the
+          // list's header has the menu. The slot keeps titles aligned.
+          Color.clear.frame(width: 40, height: 40)
+        } else {
+          Button {
+            switch leading {
+            case .menu: withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
+            case .back: dismiss()
+            }
+          } label: {
+            Icon(leading == .menu ? "menu" : "arrow-left", size: 20)
+              .foregroundStyle(Tokens.text)
+              .frame(width: 40, height: 40)
+              .contentShape(Rectangle())
           }
-        } label: {
-          Icon(leading == .menu ? "menu" : "arrow-left", size: 20)
-            .foregroundStyle(Tokens.text)
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
+          .buttonStyle(PressableStyle())
+          .accessibilityLabel(leading == .menu ? "Open navigation" : "Back")
         }
-        .buttonStyle(PressableStyle())
-        .accessibilityLabel(leading == .menu ? "Open navigation" : "Back")
 
         Text(title)
           .font(displayTitle ? .dashboard(.sm, .medium, family: .display) : .dashboard(.sm, .semibold))
@@ -54,6 +61,9 @@ struct AppHeader<Trailing: View, Below: View>: View {
           .lineLimit(1)
           .frame(maxWidth: .infinity, alignment: titleAlignment)
           .accessibilityAddTraits(.isHeader)
+          // A menu header's title is the agent name, which the list's header shows.
+          .opacity(repeatsListTitle ? 0 : 1)
+          .accessibilityHidden(repeatsListTitle)
 
         trailing
           .frame(width: 40, height: 40)
@@ -67,6 +77,8 @@ struct AppHeader<Trailing: View, Below: View>: View {
     .background(Tokens.bg.opacity(0.95))
     .hairline(.bottom, Tokens.borderStrong)
   }
+
+  private var repeatsListTitle: Bool { column == .detailRoot && leading == .menu }
 }
 
 extension AppHeader where Trailing == Color, Below == EmptyView {

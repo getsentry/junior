@@ -37,13 +37,8 @@ import {
   invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
-import {
-  DashboardApiError,
-  del,
-  fetchDashboardJson,
-  post,
-  readDashboardResponse,
-} from "../http";
+import { DashboardApiError, del, fetchDashboardJson, post } from "../http";
+import { readRevalidated } from "../revalidation";
 import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
@@ -832,39 +827,47 @@ export async function readConversationData(
   if (after) query.set("after", after);
   const search = query.size ? `?${query}` : "";
   const mailboxReadAtMs = Date.now();
-  const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
-    signal,
-    previous?.detailEtag
-      ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
-      : undefined,
+  return readRevalidated(
+    {
+      header: CONVERSATION_DETAIL_VERSION_HEADER,
+      path: `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
+      signal,
+    },
+    previous && { data: previous, version: previous.detailEtag },
+    async (response, detailEtag) => {
+      const tokens = {
+        conversationVersion:
+          response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
+        detailEtag,
+      };
+      if (!options?.mailbox) {
+        return {
+          ...withCachedEvents(
+            await readResponseJson(response, conversationDetailReportSchema),
+            previous,
+          ),
+          ...tokens,
+        };
+      }
+      const report = await readResponseJson(
+        response,
+        z.union([
+          conversationUnchangedDetailWithMailboxSchema,
+          conversationDetailWithMailboxReportSchema,
+        ]),
+      );
+      if (!("unchanged" in report)) {
+        return {
+          ...withCachedEvents(report, previous),
+          ...tokens,
+          mailboxReadAtMs,
+        };
+      }
+      // Only a request that sent a version can get this answer.
+      if (!previous) throw new Error("Unchanged detail without a cached copy");
+      return { ...previous, mailbox: report.mailbox, mailboxReadAtMs };
+    },
   );
-  if (response.status === 304 && previous) return previous;
-  if (!options?.mailbox) {
-    return withDetailEtag(
-      withCachedEvents(
-        await readResponseJson(response, conversationDetailReportSchema),
-        previous,
-      ),
-      response,
-    );
-  }
-  const report = await readResponseJson(
-    response,
-    z.union([
-      conversationUnchangedDetailWithMailboxSchema,
-      conversationDetailWithMailboxReportSchema,
-    ]),
-  );
-  if (!("unchanged" in report)) {
-    return {
-      ...withDetailEtag(withCachedEvents(report, previous), response),
-      mailboxReadAtMs,
-    };
-  }
-  // Only a request that sent a version can get this answer.
-  if (!previous) throw new Error("Unchanged detail without a cached copy");
-  return { ...previous, mailbox: report.mailbox, mailboxReadAtMs };
 }
 
 /**
@@ -899,22 +902,6 @@ function withCachedEvents(
     ...(behind && previous.unreadCursor
       ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
       : undefined),
-  };
-}
-
-function withDetailEtag<T extends ConversationDetailReport>(
-  report: T,
-  response: Response,
-): T & {
-  conversationVersion?: string | undefined;
-  detailEtag?: string | undefined;
-} {
-  return {
-    ...report,
-    conversationVersion:
-      response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
-    detailEtag:
-      response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
   };
 }
 

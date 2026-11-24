@@ -8,7 +8,7 @@ export const MCP_SCOPES = [
   "conversations:read",
   "conversations:manage",
   "conversations:write",
-  "review_items:read",
+  "inbox_items:read",
   "automations:read",
 ];
 
@@ -17,6 +17,23 @@ const AFTER_EVENT_SCAN_LIMIT = 200;
 const AFTER_MESSAGE_LIMIT = 20;
 const EVENT_SCAN_LIMIT = 200;
 const RECENT_RUN_LIMIT = 10;
+
+// The dashboard mock has no reply notice: the Inbox item that a reply in a
+// Conversation without a Location adds for its starter (`reply-notice.ts`).
+// Its body is the preview of the latest reply.
+const REPLY_NOTICE = {
+  id: "qa-reply-dashboard-qa",
+  kind: "notice",
+  status: "open",
+  title: "Dashboard QA edge cases",
+  body: "I mean the empty, loading, and failed transcript states.",
+  assignedToEveryone: false,
+  assignees: [{ displayName: "Dashboard User" }],
+  canAct: true,
+  conversationIds: ["internal:dashboard-qa"],
+  createdAt: "2026-08-07T07:00:58.000Z",
+  updatedAt: "2026-08-07T07:01:09.000Z",
+};
 
 /** A tool error that the client model can read, like `mcpToolError`. */
 class ToolError extends Error {}
@@ -49,6 +66,7 @@ const messageText = {
   max: 32_000,
   description: "Message text.",
 };
+const conversationTitle = { type: "string", trim: true, min: 1, max: 200 };
 const idempotencyKey = {
   type: "string",
   trim: true,
@@ -166,6 +184,7 @@ export function createMockMcpTools({ app, origin }) {
     return {
       conversationId: id,
       title: summary.displayTitle,
+      summary: summary.summary,
       status: stopped.has(id) ? "done" : summary.status,
       turnActive: summary.turnActive && !stopped.has(id),
       treeState: summary.treeState,
@@ -267,7 +286,7 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function mcpReviewItem(item) {
+  function mcpInboxItem(item) {
     return {
       id: item.id,
       kind: item.kind,
@@ -289,7 +308,7 @@ export function createMockMcpTools({ app, origin }) {
         : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-      url: `${origin}/review?item=${enc(item.id)}`,
+      url: `${origin}/inbox?item=${enc(item.id)}`,
     };
   }
 
@@ -340,7 +359,8 @@ export function createMockMcpTools({ app, origin }) {
           trim: true,
           max: 200,
           optional: true,
-          description: "Text to search for in titles and Briefs.",
+          description:
+            "Text to search for in titles, summaries, and Annotation labels and titles.",
         },
         status: {
           enum: ["active", "archived"],
@@ -361,7 +381,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, including its summary, the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -388,20 +408,8 @@ export function createMockMcpTools({ app, origin }) {
           : mcpMessages(detail.events)
               .filter((message) => message.role === "assistant")
               .at(-1);
-        const brief = detail.brief?.content;
         return {
           conversation: mcpConversation(detail),
-          brief: brief
-            ? {
-                summary: brief.summary,
-                intent: brief.intent,
-                outcome: brief.outcome,
-                decisions: brief.decisions,
-                facts: brief.facts,
-                links: brief.links,
-                updatedAt: detail.brief.updatedAt,
-              }
-            : undefined,
           lastReply,
           messages: newer?.messages,
           hasMore: newer?.hasMore ? true : undefined,
@@ -551,6 +559,26 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
+      name: "renameConversation",
+      scope: "conversations:manage",
+      title: "Rename conversation",
+      description:
+        "Rename one of your conversations for everyone in it. Later turns keep the new title. The Slack thread does not change. Returns the stored title.",
+      annotations: MANAGE,
+      input: {
+        conversationId,
+        title: conversationTitle,
+      },
+      async run({ conversationId: id, title }) {
+        const result = await apiJson(
+          "PATCH",
+          `/conversations/${enc(id)}/title`,
+          { title },
+        );
+        return { title: result.title };
+      },
+    },
+    {
       name: "setConversationAutoArchive",
       scope: "conversations:manage",
       title: "Set conversation auto-archive",
@@ -636,8 +664,12 @@ export function createMockMcpTools({ app, origin }) {
         stopped.add(id);
         if (running) droppedPending.add(id);
         return {
+          conversationId: id,
           status: running ? "requested" : "no_work",
-          droppedMessages: running ? pendingMessages.length : 0,
+          stoppedInboundMessageIds: running
+            ? pendingMessages.map((message) => message.messageId)
+            : [],
+          stoppedMessages: [],
         };
       },
     },
@@ -653,7 +685,13 @@ export function createMockMcpTools({ app, origin }) {
         await requireDetail(id);
         const { pendingMessages } = await readPendingWork(id);
         droppedPending.add(id);
-        return { cancelledMessages: pendingMessages.length };
+        return {
+          cancelledCount: pendingMessages.length,
+          cancelledInboundMessageIds: pendingMessages.map(
+            (message) => message.messageId,
+          ),
+          conversationId: id,
+        };
       },
     },
     {
@@ -666,10 +704,7 @@ export function createMockMcpTools({ app, origin }) {
       input: {
         message: messageText,
         title: {
-          type: "string",
-          trim: true,
-          min: 1,
-          max: 200,
+          ...conversationTitle,
           optional: true,
           description:
             "Short title for the conversation. Omit it to generate one from the message.",
@@ -753,11 +788,11 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
-      name: "searchReviewItems",
-      scope: "review_items:read",
-      title: "Search review items",
+      name: "searchInboxItems",
+      scope: "inbox_items:read",
+      title: "Search inbox items",
       description:
-        "Search the open review items that you can see, newest change first. A review item is a question or notice that waits for a person.",
+        "Search the open inbox items that you can see, newest change first. An inbox item is a question or notice that waits for a person.",
       annotations: READ_ONLY,
       input: {
         q: {
@@ -785,9 +820,13 @@ export function createMockMcpTools({ app, origin }) {
       async run({ conversationId: id, limit, q }) {
         const query = new URLSearchParams();
         if (id) query.set("conversationId", id);
-        const list = await apiJson("GET", `/review-items?${query}`);
+        const list = await apiJson("GET", `/inbox-items?${query}`);
         const words = q?.toLowerCase();
-        const items = list.items
+        const notice =
+          !id || REPLY_NOTICE.conversationIds.includes(id)
+            ? [REPLY_NOTICE]
+            : [];
+        const items = [...list.items, ...notice]
           .filter(
             (item) =>
               item.status === "open" &&
@@ -796,31 +835,32 @@ export function createMockMcpTools({ app, origin }) {
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         return {
-          items: items.slice(0, limit).map(mcpReviewItem),
+          items: items.slice(0, limit).map(mcpInboxItem),
           truncated: items.length > limit,
         };
       },
     },
     {
-      name: "getReviewItem",
-      scope: "review_items:read",
-      title: "Get review item",
-      description: "Get one review item, open or closed.",
+      name: "getInboxItem",
+      scope: "inbox_items:read",
+      title: "Get inbox item",
+      description: "Get one inbox item, open or closed.",
       annotations: READ_ONLY,
       input: {
         id: {
           type: "string",
           min: 1,
-          description: "Review item id from searchReviewItems.",
+          description: "Inbox item id from searchInboxItems.",
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/review-items/${enc(id)}`);
+        if (id === REPLY_NOTICE.id) return { item: mcpInboxItem(REPLY_NOTICE) };
+        const result = await api("GET", `/inbox-items/${enc(id)}`);
         if (result.status === 404) {
-          throw new ToolError("Review item not found.");
+          throw new ToolError("Inbox item not found.");
         }
         if (!result.ok) throw apiFailure(result);
-        return { item: mcpReviewItem(result.json) };
+        return { item: mcpInboxItem(result.json) };
       },
     },
     {

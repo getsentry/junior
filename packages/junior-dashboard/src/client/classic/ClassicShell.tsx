@@ -31,6 +31,7 @@ import { isNewConversationPath } from "../conversations/conversationRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "../conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "../conversations/ConversationWorkspaceLoading";
+import { useLead } from "../lead/Lead";
 import { useConversationData } from "../conversations/queries";
 import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
@@ -51,13 +52,11 @@ import {
   AutomationsRouteLoading,
 } from "../pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "../primaryNav";
+import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { TracedRoutes } from "../TracedRoutes";
-import {
-  ReviewDeskLoading,
-  ReviewDeskPage,
-} from "../review-desk/ReviewDeskPage";
-import { useReviewItemCountData } from "../review-desk/queries";
-import { useInboxTabCount } from "../review-desk/inboxTabIcon";
+import { InboxLoading, InboxPage } from "../inbox/InboxPage";
+import { useInboxItemCountData } from "../inbox/queries";
+import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { useVersionsPoll } from "../versions";
 import { getDashboardAgentName } from "../agentName";
 
@@ -181,15 +180,22 @@ export function ClassicShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  // The Conversations nav item goes to the list. Home is the Lead, not the list.
+  const conversationsActive = workspace && location.pathname !== "/";
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
+  // Home shows the viewer's Lead, and so does the wide conversation list.
+  const home =
+    location.pathname === "/" || location.pathname === "/conversations";
+  const leadId = useLead(loggedIn && home).data?.conversationId;
+  const openConversationId = conversationId ?? (home ? leadId : undefined);
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.
-  const conversationDetail = useConversationData(conversationId, {
+  const conversationDetail = useConversationData(openConversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
   });
-  useVersionsPoll(conversationId, Boolean(data));
+  useVersionsPoll(openConversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -202,7 +208,7 @@ export function ClassicShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const reviewCount = useReviewItemCountData(loggedIn).data?.needsViewer;
+  const reviewCount = useInboxItemCountData(loggedIn).data?.needsViewer;
   useInboxTabCount(reviewCount);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
@@ -262,14 +268,14 @@ export function ClassicShell() {
                 />
               ) : undefined
             }
-            workspaceActive={workspace}
+            workspaceActive={conversationsActive}
           />
         )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
-            location.pathname === "/review" ||
+            location.pathname === "/inbox" ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
@@ -286,7 +292,7 @@ export function ClassicShell() {
             header={
               <DashboardHeader
                 desktopTopBar={desktopTopBar}
-                mobileBackTo={conversationId ? "/" : undefined}
+                mobileBackTo={conversationId ? "/conversations" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
@@ -337,7 +343,7 @@ export function ClassicShell() {
                   ) : undefined
                 }
                 version={data?.config.version}
-                workspaceActive={workspace}
+                workspaceActive={conversationsActive}
               />
             }
           />
@@ -483,12 +489,22 @@ export function ClassicShell() {
             <Route
               element={
                 loading ? (
-                  <ReviewDeskLoading />
+                  <InboxLoading />
                 ) : loggedIn ? (
-                  <ReviewDeskPage />
+                  <InboxPage />
                 ) : (
                   <Navigate replace to="/" />
                 )
+              }
+              path="/inbox"
+            />
+            {/* Links from before the rename, such as in Slack threads. */}
+            <Route
+              element={
+                <Navigate
+                  replace
+                  to={{ pathname: "/inbox", search: location.search }}
+                />
               }
               path="/review"
             />
@@ -523,7 +539,17 @@ export function ClassicShell() {
               path="/conversations/:conversationId"
             />
             <Route
-              element={<Navigate replace to="/" />}
+              element={
+                loading ? (
+                  <ConversationWorkspaceLoading detail={false} />
+                ) : data ? (
+                  <ConversationWorkspace detail={conversationDetail} />
+                ) : (
+                  <LoadingView
+                    label={query.error?.message ?? "Dashboard unavailable"}
+                  />
+                )
+              }
               path="/conversations"
             />
             <Route
@@ -701,6 +727,7 @@ export function ClassicShell() {
             />
             <Route element={<Navigate replace to="/" />} path="*" />
           </TracedRoutes>
+          <LinkedSnooze />
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"

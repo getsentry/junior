@@ -13,9 +13,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-
-/** Deploy topic name. Keep stable for Vercel queue wiring. */
-export const BACKGROUND_COMPACTION_QUEUE_TOPIC = "junior_context_compaction";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 const backgroundCompactionMessageSchema = z
   .object({

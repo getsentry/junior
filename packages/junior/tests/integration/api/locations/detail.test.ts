@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { readLocationDetailFromSql } from "@/api/locations/query";
@@ -59,6 +60,29 @@ describe("location detail API", () => {
       );
       expect(response.status).toBe(200);
       locationDetailReportSchema.parse(await response.json());
+
+      await store.recordActivity({
+        conversationId: "local:web:detail",
+        destination: { platform: "local", conversationId: "local:web:detail" },
+        nowMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        source: "web",
+        visibility: "public",
+      });
+      expect(await readLocationDetailFromSql("dashboard")).toMatchObject({
+        conversations: 1,
+        label: "Dashboard",
+        recentConversations: [
+          expect.objectContaining({ conversationId: "local:web:detail" }),
+        ],
+      });
+      const [localDestination] = await fixture.sql
+        .db()
+        .select()
+        .from(juniorDestinations)
+        .where(eq(juniorDestinations.provider, "local"));
+      expect(
+        await readLocationDetailFromSql(localDestination?.id ?? ""),
+      ).toBeUndefined();
 
       const missing = await createJuniorApi().request(
         "http://localhost/api/locations/missing",

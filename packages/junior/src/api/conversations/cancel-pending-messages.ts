@@ -26,11 +26,9 @@ export async function cancelConversationPendingMessagesForViewer(
     [conversationId],
     viewer,
   );
+  // A non-participant learns nothing, not even that the Conversation exists.
   if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(
-      403,
-      "Only conversation participants can cancel queued messages.",
-    );
+    throwApiError(404, "Conversation not found.");
   }
 
   try {

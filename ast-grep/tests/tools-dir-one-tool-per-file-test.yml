@@ -1,0 +1,10 @@
+id: tools-dir-one-tool-per-file
+valid:
+  - "export const readFileTool = definePluginTool({});"
+  - "export const bashToolDefinition = zodToolDefinition({}); export function createBashTool(deps) { return zodTool(bashToolDefinition, deps); }"
+  - "export function registerSearchTool(server) { server.registerTool('search', {}, run); }"
+invalid:
+  - "export const readTool = definePluginTool({}); export const writeTool = definePluginTool({});"
+  - "export const tools = { read: definePluginTool({}), write: definePluginTool({}) };"
+  - "export function createTools(deps) { return [zodTool(a, deps), zodTool(b, deps)]; }"
+  - "export function registerTools(server) { server.registerTool('a', {}, run); server.registerTool('b', {}, run); }"

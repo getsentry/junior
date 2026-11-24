@@ -1,15 +1,14 @@
 import * as z from "zod";
 import {
   AgentInvocationLimitError,
-  AgentMessagePausedError,
-  AgentMessageQueueFullError,
   AgentMessageTargetError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 /** Bound the text of one message so a loop cannot fill a mailbox quickly. */
 const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
@@ -17,9 +16,9 @@ const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
 const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Target conversation ID"),
   delivery: z
-    .enum(["started", "queued"])
+    .enum(["started", "queued", "noted"])
     .describe(
-      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work.",
+      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work. noted: this conversation is stopped, so the child agent got the message as a note that it sees when it next runs, and it started no work. Do not send it again.",
     ),
 });
 
@@ -68,7 +67,7 @@ export function createMessageAgentTool(
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError(
-          "messageAgent requires an active tool call ID",
+          "messageAgent requires an active tool call ID. No change to the call can fix this.",
         );
       }
       let result;
@@ -87,15 +86,9 @@ export function createMessageAgentTool(
             { cause: error },
           );
         }
-        if (error instanceof AgentMessagePausedError) {
+        if (error instanceof AgentStoppedError) {
           throw new ToolInputError(
-            `${error.message}. Do not send it more messages. Tell the user instead.`,
-            { cause: error },
-          );
-        }
-        if (error instanceof AgentMessageQueueFullError) {
-          throw new ToolInputError(
-            `${error.message}. Wait for its result, then send one message with everything it needs.`,
+            `${error.message}. Do not start more work. End this turn.`,
             { cause: error },
           );
         }

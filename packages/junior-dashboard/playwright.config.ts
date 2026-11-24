@@ -12,13 +12,10 @@ const chrome = {
 };
 
 // A spec under e2e/inbox/ tests the new UI, so its namesake in e2e/ is
-// for the current UI only. The review desk exists only in the current UI.
-const currentUiSpecs = [
-  ...readdirSync(new URL("./e2e/inbox", import.meta.url)).filter((name) =>
-    name.endsWith(".spec.ts"),
-  ),
-  "review-desk.spec.ts",
-].map((name) => `**/e2e/${name}`);
+// for the current UI only.
+const currentUiSpecs = readdirSync(new URL("./e2e/inbox", import.meta.url))
+  .filter((name) => name.endsWith(".spec.ts"))
+  .map((name) => `**/e2e/${name}`);
 
 export default defineConfig<{ ui: DashboardShell }>({
   testDir: "./e2e",
@@ -37,6 +34,10 @@ export default defineConfig<{ ui: DashboardShell }>({
   use: {
     // Dark is the default dashboard theme. Light theme journeys opt in.
     colorScheme: "dark",
+    // Reduced motion stops the dashboard's transitions, animations, and
+    // smooth scrolls, so journeys act on UI that has stopped moving. Specs
+    // do not test motion; visual QA covers it.
+    contextOptions: { reducedMotion: "reduce" },
     launchOptions: {
       // Partial raster repaints only the changed part of a tile, so pixels
       // depend on paint history. Full tile raster keeps screenshots stable.

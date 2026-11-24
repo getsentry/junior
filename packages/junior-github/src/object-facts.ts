@@ -19,7 +19,16 @@ const responseSchema = z.object({
     .optional(),
   head: z.object({ ref: z.string() }).optional(),
   base: z.object({ ref: z.string() }).optional(),
-  mergeable: z.boolean().nullable().optional(),
+  mergeable: z
+    .union([z.boolean(), z.literal("pending")])
+    .nullable()
+    .optional(),
+  checks: z
+    .union([
+      z.object({ passed: z.number(), failed: z.number(), pending: z.number() }),
+      z.literal("pending"),
+    ])
+    .optional(),
   state: z.string().optional(),
   changed_files: z.number().int().nonnegative().optional(),
   additions: z.number().int().nonnegative().optional(),
@@ -160,7 +169,7 @@ export function withGitHubPreviewImages(
   return previewImageUrls.length > 0 ? { ...facts, previewImageUrls } : facts;
 }
 
-/** Select card facts from GitHub REST responses; never infer reviews or checks. */
+/** Select card facts from cached GitHub fields; never infer reviews or checks. */
 export function githubObjectFacts(
   type: "task" | "code_change",
   response: unknown,
@@ -184,11 +193,13 @@ export function githubObjectFacts(
                 .filter(Boolean),
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
-              // A merge state matters only while the pull request is open.
+              // Merge state and checks matter only while the pull request
+              // is open.
               mergeable:
                 data.state === "open"
                   ? (data.mergeable ?? undefined)
                   : undefined,
+              checks: data.state === "open" ? data.checks : undefined,
               changedFiles: data.changed_files,
               additions: data.additions,
               deletions: data.deletions,

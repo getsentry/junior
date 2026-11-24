@@ -3,7 +3,7 @@ import {
   CONVERSATION_VERSION_HEADER,
 } from "@sentry/junior/api/schema";
 import { requestedConversationIds, withRequestedMailbox } from "./harness";
-import { mockReviewItems, prReview, rowHead } from "./inbox/inbox-fixture";
+import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
 
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -19,7 +19,7 @@ test("refreshes idle reads only when their version moves", async ({
     conversation: "1:1",
     conversationIds: [] as string[],
     conversations: "feed-1",
-    reviewItems: "review-1",
+    inboxItems: "review-1",
     spend: "spend-1",
   };
   let versionReads = 0;
@@ -47,12 +47,13 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
+  const inboxItemStatuses: number[] = [];
   page.on("response", (response) => {
-    if (
-      response.request().method() === "GET" &&
-      new URL(response.url()).pathname === "/api/conversations"
-    ) {
-      feedStatuses.push(response.status());
+    if (response.request().method() !== "GET") return;
+    const { pathname } = new URL(response.url());
+    if (pathname === "/api/conversations") feedStatuses.push(response.status());
+    if (pathname.startsWith("/api/inbox-items/")) {
+      inboxItemStatuses.push(response.status());
     }
   });
   await page.route(
@@ -119,6 +120,12 @@ test("refreshes idle reads only when their version moves", async ({
   await expect(
     page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
   ).toBeVisible();
+  // The Inbox item reads did not change either.
+  const inboxItemReads = inboxItemStatuses.length;
+  versions.inboxItems = "review-2";
+  await expect
+    .poll(() => inboxItemStatuses.slice(inboxItemReads), { timeout: 15_000 })
+    .toContain(304);
 });
 
 test.describe("checks less often while the reader is away", () => {
@@ -141,7 +148,7 @@ test.describe("checks less often while the reader is away", () => {
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -181,7 +188,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions",
       rootConversationId: releaseId,
     };
@@ -194,6 +201,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Inbox items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       const ids = requestedConversationIds(route);
       await route.fulfill({
@@ -202,7 +212,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
             ids.filter((id) => id === releaseId).map((id) => [id, token]),
           ),
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -232,9 +242,21 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await mockReviewItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    // The card reads the pull request live.
+    await page.route(/\/api\/objects\?/, async (route) => {
+      const response = await route.fetch();
+      const report: {
+        objects: { object?: { status?: string }; url: string }[];
+      } = await response.json();
+      for (const entry of report.objects) {
+        if (merged && entry.url.endsWith("/getsentry/payments/pull/91")) {
+          entry.object = { ...entry.object, status: "merged" };
+        }
+      }
+      await route.fulfill({ response, json: report });
+    });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
+    await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -254,7 +276,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     for (let step = 0; step < 6; step += 1) await tick();
     expect(detailReads).toBe(settled);
 
-    // The moved token refreshes the card.
+    // The moved token refreshes the Conversation and the live card.
     merged = true;
     token = "1:2";
     await page.clock.fastForward(5_000);
@@ -270,7 +292,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions-retry",
       rootConversationId: releaseId,
     };
@@ -284,12 +306,15 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks).toBeGreaterThan(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Inbox items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       await route.fulfill({
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -307,9 +332,8 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await mockReviewItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
+    await rowHead(page, "Pin the release train").click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);
     // The reads that mounting the row starts are done after one check.
     await tick();

@@ -20,7 +20,6 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
-  Platform,
   Event,
   EventData,
   EventPublisher,
@@ -32,13 +31,16 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
+import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
+import { findLinkedHandle } from "@/chat/identities/user-lookup";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import {
   annotateToolResult,
   saveObjectAnnotations,
@@ -70,15 +72,20 @@ import {
   createPluginModel,
   createPluginReranker,
 } from "@/chat/plugins/model";
-import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
+import { runPluginHooksAtOnce } from "@/chat/plugins/hook-runner";
+import {
+  PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS,
+  toPromptContributionContext,
+  type PluginPromptContributionContext,
+} from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
   AnyToolDefinition,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { createPluginWatches } from "@/chat/plugins/watches";
 
@@ -88,7 +95,7 @@ import {
   readIdentityById,
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
@@ -99,16 +106,19 @@ import {
   getWorkspace,
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
-import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
+import type { SendPluginTask } from "./task-runner";
+import { createPluginTaskStarter } from "./task-start";
 import {
+  apiRoutePrefix,
   coreRegistrations,
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
+import { createPluginArtifacts } from "@/chat/plugins/artifacts";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -129,6 +139,8 @@ export interface PluginRouteRegistration extends PluginRoute {
 export interface PluginApiRouteRegistration {
   app: PluginRouteApp;
   pluginName: string;
+  /** Path where the dashboard mounts the app. */
+  prefix: string;
 }
 
 export interface AfterMcpToolHookInput {
@@ -177,14 +189,10 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "OPTIONS",
   "ALL",
 ]);
-const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
 const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
-const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const promptContextContentSchema = z.record(z.string(), z.unknown());
 
 /** Convert manifest names into model-facing tool namespaces. */
 function pluginToolNamespace(pluginName: string): string {
@@ -193,12 +201,6 @@ function pluginToolNamespace(pluginName: string): string {
   return `${first}${rest
     .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
     .join("")}`;
-}
-
-function systemPromptPluginContext(plugin: PluginRegistration) {
-  return {
-    ...basePluginContext(plugin),
-  };
 }
 
 /** Bind Source, Destination, and Actor for one plugin invocation. */
@@ -246,7 +248,7 @@ function pluginInvocationContext(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return {
         ...common,
         actor: context.actor,
@@ -386,19 +388,6 @@ function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function toPromptContributionContext(args: {
-  hookName: "systemPrompt" | "userPrompt";
-  index: number;
-  message: z.output<typeof promptMessageSchema>;
-  pluginName: string;
-}): PluginPromptContributionContext {
-  return {
-    id: `${args.hookName}:${args.index}`,
-    pluginName: args.pluginName,
-    text: args.message.text,
-  };
-}
-
 function normalizePromptContext(value: unknown): Record<string, unknown> {
   const serialized = JSON.stringify(value);
   if (
@@ -407,11 +396,11 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed: unknown = JSON.parse(serialized);
-  if (!isRecord(parsed)) {
+  const parsed = promptContextContentSchema.safeParse(JSON.parse(serialized));
+  if (!parsed.success) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
-  return parsed;
+  return parsed.data;
 }
 
 function toUserPromptContributionContext(args: {
@@ -428,22 +417,26 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
+  const { value } = args;
   if (
-    !isRecord(args.value) ||
-    typeof args.value["renderPrompt"] !== "function"
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    !("renderPrompt" in value) ||
+    typeof value.renderPrompt !== "function"
   ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value["context"]);
+  const context = promptContextSchema.safeParse(
+    "context" in value ? value.context : undefined,
+  );
   if (!context.success) {
     return undefined;
   }
-  const renderPrompt = args.value["renderPrompt"] as () => unknown;
   // Call it on its object: plugins may write renderPrompt as a method that
   // reads `this`.
-  const text = promptMessageSchema.safeParse({
-    text: renderPrompt.call(args.value),
-  });
+  const rendered: unknown = value.renderPrompt.call(value);
+  const text = promptMessageSchema.safeParse({ text: rendered });
   if (!text.success) {
     return undefined;
   }
@@ -503,6 +496,14 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       if (typeof task.run !== "function") {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
+        );
+      }
+      if (
+        task.payload !== undefined &&
+        typeof task.payload.safeParse !== "function"
+      ) {
+        throw new Error(
+          `Plugin task "${taskName}" from plugin "${name}" must use a Zod schema for payload`,
         );
       }
     }
@@ -591,94 +592,6 @@ export function applyPluginFormatMarkdown(
     }
   }
   return transformed;
-}
-
-type PluginHookOutcome<T> =
-  | { error: unknown; plugin: PluginRegistration }
-  | { plugin: PluginRegistration; value: T };
-
-/**
- * Run one hook of each plugin at once. `start` gives the call for a plugin,
- * or nothing when the plugin has no such hook. The outcomes keep plugin
- * order, so budgets and output order do not depend on which hook ends first.
- */
-async function runPluginHooksAtOnce<T>(
-  plugins: readonly PluginRegistration[],
-  start: (plugin: PluginRegistration) => (() => Promise<T> | T) | undefined,
-): Promise<PluginHookOutcome<T>[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  return await Promise.all(
-    plugins.flatMap((plugin) => {
-      const run = start(plugin);
-      return run
-        ? [
-            limit(run).then(
-              (value): PluginHookOutcome<T> => ({ plugin, value }),
-              (error: unknown): PluginHookOutcome<T> => ({ error, plugin }),
-            ),
-          ]
-        : [];
-    }),
-  );
-}
-
-/** Collect stable plugin prompt contributions for the static system prompt. */
-export async function getPluginSystemPromptContributions(
-  platform: Platform,
-): Promise<PluginPromptContributionContext[]> {
-  const contributions: PluginPromptContributionContext[] = [];
-  let totalChars = 0;
-  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
-    const hook = plugin.hooks?.systemPrompt;
-    return (
-      hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
-    );
-  });
-  for (const outcome of outcomes) {
-    const pluginName = outcome.plugin.manifest.name;
-    try {
-      if ("error" in outcome) throw outcome.error;
-      const pluginContributions = outcome.value;
-      const result =
-        systemPromptMessageArraySchema.safeParse(pluginContributions);
-      if (!result.success) {
-        logInvalidPromptContributions({
-          hookName: "systemPrompt",
-          pluginName,
-        });
-        continue;
-      }
-      const acceptedContributions = result.data.map((message, index) =>
-        toPromptContributionContext({
-          hookName: "systemPrompt",
-          index,
-          message,
-          pluginName,
-        }),
-      );
-      const pluginContributionChars = acceptedContributions.reduce(
-        (sum, contribution) => sum + contribution.text.length,
-        0,
-      );
-      if (
-        totalChars + pluginContributionChars >
-        PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
-      ) {
-        logWarn("plugin.system_prompt.contribution_budget_exceeded", {
-          "app.plugin.name": pluginName,
-        });
-        continue;
-      }
-      totalChars += pluginContributionChars;
-      contributions.push(...acceptedContributions);
-    } catch (error) {
-      logWarn("plugin.system_prompt.hook.failed", {
-        "app.plugin.name": pluginName,
-        "exception.message": safeErrorMessage(error),
-      });
-    }
-  }
-  return contributions;
 }
 
 /** Collect request-scoped plugin prompt contributions. */
@@ -842,6 +755,10 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
+  const artifacts = createPluginArtifacts(
+    context.attachmentStorage,
+    context.conversationId,
+  );
   for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
@@ -892,6 +809,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           resolveActor,
         }),
+      ...(artifacts ? { artifacts } : undefined),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -923,6 +841,22 @@ export function getPluginTools(
           });
         },
         replaceSlackMentions,
+        async findLinkedHandle(query: string, provider: string) {
+          const teamId =
+            slackToolContext?.teamId ??
+            (context.actor?.platform === "slack"
+              ? parseSlackTeamId(context.actor.teamId)
+              : undefined);
+          // People are found through a Slack workspace's directory.
+          if (!teamId) return { status: "not_found" } as const;
+          return await findLinkedHandle({
+            egress: context.egress,
+            provider,
+            providers: userLookupIdentityProviders(),
+            query,
+            teamId,
+          });
+        },
       },
       workspaces: {
         async active() {
@@ -978,7 +912,7 @@ export function getPluginTools(
       case "scheduled_automation":
       case "event_automation":
       case "plugin_dispatch":
-      case "agent_invocation":
+      case "parent_message":
         pluginContext = {
           ...common,
           actor: context.actor,
@@ -1170,9 +1104,11 @@ export function createPluginEventPublisher(
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   dispatchForIdentity: IdentityDispatcher;
-  /** Shows a Review item that a plugin route changed. App setup supplies it. */
-  showReviewItem?: ShowReviewItem;
+  /** Shows an Inbox item that a plugin route changed. App setup supplies it. */
+  showInboxItem?: ShowInboxItem;
   events: AppEventPublisher;
+  /** Sends the tasks that routes start. */
+  sendPluginTask: SendPluginTask;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -1198,16 +1134,25 @@ export function getPluginRoutes(options: {
             plugin: pluginName,
           }),
       },
-      codeChanges: createCodeChangePublisher(pluginName),
+      codeChanges: createPluginCodeChanges(pluginName),
+      conversationChanges: createPluginConversationChanges({
+        plugin: pluginName,
+        show: options.showInboxItem ?? (async () => {}),
+      }),
       state: createPluginState(pluginName),
-      reviewItems: {
+      inboxItems: {
         forConversation: (conversationId) =>
-          createPluginReviewItems({
+          createPluginInboxItems({
             conversationId,
             plugin: pluginName,
-            show: options.showReviewItem ?? (async () => {}),
+            show: options.showInboxItem ?? (async () => {}),
           }),
       },
+      tasks: createPluginTaskStarter({
+        plugin: pluginName,
+        send: options.sendPluginTask,
+        tasks: plugin.tasks,
+      }),
       users: { readIdentity: readIdentityById },
       events: createPluginEventPublisher(plugin, options.events),
     });
@@ -1217,7 +1162,7 @@ export function getPluginRoutes(options: {
       );
     }
     for (const route of pluginRoutes) {
-      if (!isRecord(route)) {
+      if (typeof route !== "object" || route === null || Array.isArray(route)) {
         throw new Error(
           `Plugin route from plugin "${pluginName}" must be an object`,
         );
@@ -1261,11 +1206,11 @@ export function getPluginRoutes(options: {
   return routes;
 }
 
-/** Collect authenticated product API route apps exposed by plugins. */
+/** Collect authenticated product API route apps of plugins and core features. */
 export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
   const routes: PluginApiRouteRegistration[] = [];
 
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.apiRoutes;
     if (!hook) {
@@ -1280,12 +1225,17 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     if (app === undefined) {
       continue;
     }
-    if (!isRecord(app) || typeof app.fetch !== "function") {
+    if (
+      typeof app !== "object" ||
+      app === null ||
+      Array.isArray(app) ||
+      typeof app.fetch !== "function"
+    ) {
       throw new Error(
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
-    routes.push({ app, pluginName });
+    routes.push({ app, pluginName, prefix: apiRoutePrefix(pluginName) });
   }
 
   return routes;
@@ -1716,7 +1666,7 @@ export async function getPluginProfileReports(args: {
 }
 
 function normalizeEnv(value: unknown): Record<string, string> {
-  if (!isRecord(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
   }
   const env: Record<string, string> = {};
@@ -1949,7 +1899,11 @@ export function createPluginHookRunner(
           throw blocked;
         }
         if (replacement !== undefined) {
-          if (!isRecord(replacement)) {
+          if (
+            typeof replacement !== "object" ||
+            replacement === null ||
+            Array.isArray(replacement)
+          ) {
             throw new Error(
               `Plugin "${pluginName}" replaced tool input with a non-object value`,
             );

@@ -7,6 +7,7 @@ import {
   jsonb,
   pgTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
@@ -55,6 +56,12 @@ export const juniorConversations = pgTable(
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
+    // Conversation metadata, refreshed in the background after each Turn.
+    // Search, lists, details, unfurls, and the Conversation embedding read it.
+    summary: text("summary"),
+    // The last event that `summary` covers. A Turn whose terminal event is
+    // at or before it has nothing new to add.
+    metadataThroughSeq: integer("metadata_through_seq"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
     /**
@@ -75,27 +82,21 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root` or `automation` exactly when parent_conversation_id is null. Set
-    // once at create.
+    // `root`, `automation`, or `lead` exactly when parent_conversation_id is
+    // null. Set once at create.
     // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
     // The agent settings that every Turn keeps, typed as `AgentConfig` for
-    // every kind. Set once at create. Today only a spawn that creates a child
-    // without an Agent invocation row writes it, so a non-null value marks
-    // a child that a spawn created; readers that list or stop children
-    // without rows read only these. Agent invocation rows also hold the
-    // settings until #3060 step 7 drops the rows; readers read the row first.
+    // every kind. Set once at create. Today only a spawn writes it, so a
+    // non-null value marks a child agent; readers that list or stop child
+    // agents read only these.
     agentConfig: jsonb("agent_config_json").$type<AgentConfig>(),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),
-    // The old child archive, copied into `archived_at`. Runtime code must not
-    // read or write it. A later migration drops it, so the release before
-    // still reads it while it rolls out.
-    legacyChildArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -135,11 +136,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'automation', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'automation', 'lead', 'thread', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
@@ -165,5 +166,21 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
+    // Maps a Conversation to its root with an index-only scan, so time-bounded
+    // reads such as People activity do not read every wide row of this table.
+    index("junior_conversations_root_lookup_idx").on(
+      table.conversationId,
+      table.rootConversationId,
+    ),
+    // One lead per Identity. Only web creates a lead, so its root Actor is
+    // the web Identity of its User.
+    uniqueIndex("junior_conversations_lead_actor_idx")
+      .on(table.actorIdentityId)
+      .where(sql`${table.kind} = 'lead'`),
+    // Search reads this exact expression: `conversationSearchVector`.
+    index("junior_conversations_search_idx").using(
+      "gin",
+      sql`to_tsvector('english', coalesce(${table.title}, '') || ' ' || coalesce(${table.summary}, ''))`,
+    ),
   ],
 );

@@ -6,6 +6,7 @@ export * from "./images";
 export * from "./object-links";
 export * from "./annotations";
 export * from "./code";
+export * from "./conversation-changes";
 export * from "./conversation-events";
 export * from "./schemas";
 export * from "./cache";
@@ -20,7 +21,7 @@ export {
   type PromptHistory,
   type PromptHistoryContext,
   type PromptMessage,
-  type SystemPromptContext,
+  type SystemPromptBuildContext,
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
@@ -38,5 +39,6 @@ export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
-export * from "./review-items";
+export * from "./inbox-items";
+export * from "./markdown";
 export * from "./user-pages";

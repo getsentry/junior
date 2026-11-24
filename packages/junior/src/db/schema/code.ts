@@ -1,6 +1,6 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
-  boolean,
+  type AnyPgColumn,
   index,
   integer,
   pgTable,
@@ -11,6 +11,24 @@ import {
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { timestamptz } from "./timestamps";
 
+/**
+ * Words of a repository name, for prefix search. `owner/repo` is one token
+ * to the text parser, so the slash becomes a space.
+ */
+export function codeRepositorySearchDocument(table: {
+  name: AnyPgColumn;
+}): SQL {
+  return sql`to_tsvector('simple', translate(${table.name}, '/', ' '))`;
+}
+
+/** The number and the title words of a code change, for prefix search. */
+export function codeChangeSearchDocument(table: {
+  number: AnyPgColumn;
+  title: AnyPgColumn;
+}): SQL {
+  return sql`to_tsvector('simple', ${table.number}::text || ' ' || coalesce(${table.title}, ''))`;
+}
+
 /** Repository known to Junior through an installed code plugin. */
 export const juniorCodeRepositories = pgTable(
   "junior_code_repositories",
@@ -19,13 +37,16 @@ export const juniorCodeRepositories = pgTable(
     name: text("name").notNull(),
     provider: text("provider").notNull(),
     providerId: text("provider_id").notNull(),
-    url: text("url"),
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
     uniqueIndex("junior_code_repositories_provider_id_idx").on(
       table.provider,
       table.providerId,
+    ),
+    index("junior_code_repositories_search_idx").using(
+      "gin",
+      codeRepositorySearchDocument(table),
     ),
   ],
 );
@@ -35,16 +56,11 @@ export const juniorCodeChanges = pgTable(
   "junior_code_changes",
   {
     id: uuid("id").primaryKey(),
-    // The size, as the code plugin last counted it. Null when unknown.
-    additions: integer("additions"),
-    changedFiles: integer("changed_files"),
     closedAt: timestamptz("closed_at"),
     conversationIds: text("conversation_ids")
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    deletions: integer("deletions"),
-    draft: boolean("draft").notNull().default(false),
     /** Latest push, review, or comment by a person, from the code plugin. */
     lastActivityAt: timestamptz("last_activity_at"),
     mergedAt: timestamptz("merged_at"),
@@ -58,7 +74,6 @@ export const juniorCodeChanges = pgTable(
     state: text("state").$type<CodeChangeState>().notNull(),
     title: text("title"),
     updatedAt: timestamptz("updated_at").notNull(),
-    url: text("url"),
   },
   (table) => [
     uniqueIndex("junior_code_changes_provider_id_idx").on(
@@ -74,6 +89,15 @@ export const juniorCodeChanges = pgTable(
       table.repositoryId,
       table.state,
       table.updatedAt.desc(),
+    ),
+    index("junior_code_changes_search_idx").using(
+      "gin",
+      codeChangeSearchDocument(table),
+    ),
+    // Plugins read the code changes of some Conversations.
+    index("junior_code_changes_conversation_ids_idx").using(
+      "gin",
+      table.conversationIds,
     ),
     index("junior_code_changes_open_idx")
       .on(table.id)

@@ -1,0 +1,5 @@
+-- The snapshot no longer has junior_conversation_participants.archived_at or
+-- junior_conversations.child_archived_at. Runtime code stopped reading and
+-- writing them in #2900. They stay in the database for one release, because
+-- old workers still name them in every insert while this migration runs. The
+-- next release drops them with DROP COLUMN IF EXISTS, as 0101 does.

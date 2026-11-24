@@ -29,6 +29,35 @@ function ContextMenuTrigger({
   );
 }
 
+/**
+ * Trigger props that leave a right-click or a long press on a link or an
+ * image to the browser, so its own menu can open the link in a new tab or
+ * copy it. A row's own link, such as its title, sets `data-row-menu` and
+ * keeps the row menu.
+ */
+const browserMenuOnLinks = {
+  onContextMenu: leaveToBrowser,
+  onTouchStart: leaveToBrowser,
+  // The trigger turns the iOS link callout off, and its links inherit that.
+  style: { WebkitTouchCallout: "default" },
+} satisfies Pick<
+  ContextMenuPrimitive.Trigger.Props,
+  "onContextMenu" | "onTouchStart" | "style"
+>;
+
+function leaveToBrowser(
+  event: React.SyntheticEvent & { preventBaseUIHandler(): void },
+) {
+  const { target } = event;
+  if (!(target instanceof Element)) return;
+  const hit = target.closest("a[href], img");
+  if (!hit || hit.closest("[data-row-menu]")) return;
+  event.preventBaseUIHandler();
+  // Base UI cancels each right-click in a trigger at the document, and an
+  // outer trigger, such as a stack, would take the event.
+  event.stopPropagation();
+}
+
 /** Place menu items at the pointer on the popover surface. */
 function ContextMenuContent({
   className,
@@ -280,6 +309,7 @@ function ContextMenuShortcut({
 }
 
 export {
+  browserMenuOnLinks,
   ContextMenu,
   ContextMenuTrigger,
   ContextMenuContent,

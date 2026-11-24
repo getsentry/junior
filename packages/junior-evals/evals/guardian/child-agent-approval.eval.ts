@@ -52,7 +52,7 @@ function childProposal(args: {
   return proposal({
     context: slackContext(args.intent, {
       conversationId: "agent:guardian-eval-child",
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
       ...args.context,
     }),
     evidence: evidence(args.entries),

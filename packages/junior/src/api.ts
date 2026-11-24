@@ -2,6 +2,10 @@ import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
+import {
+  REVALIDATED_READ_PATHS,
+  revalidateContent,
+} from "./api/content-version";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
@@ -10,18 +14,21 @@ import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
+import { createLeadRoutes } from "./api/lead/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createSearchRoutes } from "./api/search/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
 import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
-import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxItemRoutes } from "./api/inbox-items/routes";
+import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
-import { apiErrorSchema } from "./api/schema/common";
+import { apiErrorSchema } from "./api/schema/response";
 import {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
@@ -38,7 +45,7 @@ import { requireViewer } from "./api/viewer";
 import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
-import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
+import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import type { WaitUntilFn } from "./handlers/types";
@@ -65,7 +72,7 @@ export {
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
 export type { ConversationWorkQueue, JuniorApiVariables };
-export { jsonResponse };
+export { jsonResponse, REVALIDATED_READ_PATHS, revalidateContent };
 
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
@@ -119,6 +126,8 @@ export function createJuniorApi(
       ),
   );
 
+  for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
+
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
   const waitUntil: WaitUntilFn =
@@ -133,14 +142,15 @@ export function createJuniorApi(
     }),
   );
   app.route(
-    "/api/review-items",
-    createReviewItemRoutes({
+    "/api/inbox-items",
+    createInboxItemRoutes({
       delivery: {
         queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
     }),
   );
+  app.route("/api/inbox/snoozes", createInboxSnoozeRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());
@@ -149,9 +159,11 @@ export function createJuniorApi(
   app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
+  app.route("/api/lead", createLeadRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
+  app.route("/api/search", createSearchRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

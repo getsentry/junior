@@ -140,7 +140,7 @@ test("renders an empty registered plugin page", async ({ page, dashboard }) => {
 });
 
 test("shows the memory overview error state", async ({ page, dashboard }) => {
-  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+  await page.route("**/api/memory/dashboard", async (route) => {
     await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
   });
 
@@ -159,7 +159,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   let forgotMemory = false;
   let forgetRequests = 0;
   let dashboardRequestCount = 0;
-  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+  await page.route("**/api/memory/dashboard", async (route) => {
     dashboardRequestCount += 1;
     await route.fallback();
   });
@@ -178,7 +178,7 @@ test("searches, paginates, and forgets plugin page records", async ({
               actions: [
                 {
                   confirmation: "Forget this memory for everyone?",
-                  href: "/api/plugins/memory/memories/memory-search",
+                  href: "/api/memory/memories/memory-search",
                   label: "Forget",
                   method: "DELETE",
                   tone: "danger",
@@ -203,36 +203,33 @@ test("searches, paginates, and forgets plugin page records", async ({
       },
     });
   });
-  await page.route(
-    "**/api/plugins/memory/memories/memory-search",
-    async (route) => {
-      if (route.request().method() === "GET") {
-        if (forgotMemory) {
-          await route.fulfill({
-            json: { error: "Memory was not found." },
-            status: 404,
-          });
-          return;
-        }
+  await page.route("**/api/memory/memories/memory-search", async (route) => {
+    if (route.request().method() === "GET") {
+      if (forgotMemory) {
         await route.fulfill({
-          json: {
-            content: "Deploy runbooks live in Notion.",
-            createdAt: "2026-07-30T12:00:00.000Z",
-            id: "memory-search",
-            kind: "knowledge",
-            observedAt: "2026-07-30T12:00:00.000Z",
-            origin: "explicit",
-            sourcePlatform: "slack",
-          },
+          json: { error: "Memory was not found." },
+          status: 404,
         });
         return;
       }
-      forgetRequests += 1;
-      expect(route.request().method()).toBe("DELETE");
-      forgotMemory = true;
-      await route.fulfill({ status: 204 });
-    },
-  );
+      await route.fulfill({
+        json: {
+          content: "Deploy runbooks live in Notion.",
+          createdAt: "2026-07-30T12:00:00.000Z",
+          id: "memory-search",
+          kind: "knowledge",
+          observedAt: "2026-07-30T12:00:00.000Z",
+          origin: "explicit",
+          sourcePlatform: "slack",
+        },
+      });
+      return;
+    }
+    forgetRequests += 1;
+    expect(route.request().method()).toBe("DELETE");
+    forgotMemory = true;
+    await route.fulfill({ status: 204 });
+  });
 
   // Load the summary first, so the forget must invalidate a cached copy.
   await page.goto(`${dashboard.baseURL}/memories`);
@@ -308,8 +305,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
 
+  // The Overview reads its summary again.
+  const overviewRead = page.waitForResponse("**/api/memory/dashboard");
   await memoryNavigation.getByRole("link", { name: "Overview" }).click();
-  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+  await overviewRead;
 });
 
 test("lists archived memories and restores one", async ({
@@ -358,7 +357,7 @@ test("lists archived memories and restores one", async ({
     });
   });
   await page.route(
-    "**/api/plugins/memory/memories/memory-archived**",
+    "**/api/memory/memories/memory-archived**",
     async (route) => {
       if (route.request().method() === "PATCH") {
         restoreMethod = route.request().method();

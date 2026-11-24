@@ -5,10 +5,13 @@ import SwiftUI
 /// transcript pinned to the latest message, queued messages, and the composer.
 struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
+  @State private var renaming: MCPConversation?
   @State private var atBottom = true
+  @State private var width: CGFloat = 0
 
   init(conversationId: String) {
     _model = State(initialValue: ConversationModel(conversationId: conversationId))
@@ -22,6 +25,13 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .background(Tokens.bgElevated)
+        .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+    }
+    // Measured around the panel, so opening it does not change where it shows.
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .task { await model.open(app) }
     .task(id: app.isActive) {
       // Follow every 2s while a Turn runs or messages wait, and every 15s
@@ -33,21 +43,37 @@ struct ConversationScreen: View {
       }
     }
     .onChange(of: model.state != nil) { _, loaded in
-      if loaded, app.openDetails {
-        app.openDetails = false
+      if loaded, window.openDetails {
+        window.openDetails = false
         showDetails = true
       }
-    }
-    .sheet(isPresented: $showDetails) {
-      if let state = model.state {
-        ConversationDetailsSheet(state: state)
-          .presentationDetents([.fraction(0.85), .large])
-          .presentationDragIndicator(.visible)
-          .presentationBackground(Tokens.bgElevated)
+      if loaded, window.openRename {
+        window.openRename = false
+        renaming = model.conversation
       }
+    }
+    .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Tokens.bgElevated)
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+    .onChange(of: app.savedTitleVersion) { model.state = model.state?.applying(app.savedTitle) }
+    .renameAlert($renaming) { _, title in
+      Task { await model.write("renameConversation", ["title": .string(title)], as: RenameResult.self, app: app) }
+    }
+  }
+
+  /// Room for the details panel beside a transcript at least 400pt wide;
+  /// narrower screens get the sheet.
+  private var detailsBeside: Bool { width >= 720 }
+
+  @ViewBuilder private var details: some View {
+    if let state = model.state {
+      ConversationDetailsSheet(state: state) { showDetails = false }
     }
   }
 
@@ -67,7 +93,7 @@ struct ConversationScreen: View {
       Button("Conversation details", systemImage: "info.circle") { showDetails = true }
       if let url = model.conversation?.url.flatMap(URL.init(string:)) {
         Button("Share", systemImage: "square.and.arrow.up") { shareURL = url }
-        Button("Open on the web", systemImage: "safari") { app.openLink(url.absoluteString) }
+        Button("Open on the web", systemImage: "safari") { window.openLink(url.absoluteString) }
       }
       Button("Copy as Markdown", systemImage: "doc.on.doc") {
         UIPasteboard.general.string = model.markdown(agentName: app.agentName)
@@ -83,12 +109,13 @@ struct ConversationScreen: View {
             Task { await model.write("pinConversation", ["pinned": .bool(!pinned)], as: PinResult.self, app: app) }
           }
         }
+        Button("Rename", systemImage: "pencil") { renaming = conversation }
         Button("Unfollow", systemImage: "bell.slash") {
           Task {
             if await model.write(
               "setConversationSubscription", ["subscribed": false], as: SubscriptionResult.self, app: app)
             {
-              app.path.removeLast()
+              window.path.removeLast()
             }
           }
         }
@@ -106,7 +133,7 @@ struct ConversationScreen: View {
         }
       }
       Button("App menu", systemImage: "line.3.horizontal") {
-        withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = true }
+        withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
       }
     } label: {
       Icon("ellipsis", size: 18)
@@ -157,6 +184,7 @@ struct ConversationScreen: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
+          .readableWidth()
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
@@ -183,6 +211,7 @@ struct ConversationScreen: View {
 }
 
 private struct PinResult: Decodable, Sendable { var pinnedAt: Timestamp? }
+private struct RenameResult: Decodable, Sendable { var title: String }
 private struct ArchiveResult: Decodable, Sendable { var archivedAt: Timestamp? }
 private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
 
@@ -304,7 +333,7 @@ private struct ConversationComposer: View {
   @Environment(AppModel.self) private var app
   let model: ConversationModel
   @State private var text = ""
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   private var canSend: Bool {
     // Not before the page loads: the send's refresh needs the cursor.
@@ -322,7 +351,9 @@ private struct ConversationComposer: View {
     } content: {
       ComposerSurface(focused: focused) {
         HStack(alignment: .bottom, spacing: 0) {
-          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
+            if canSend { send(interrupt: false) }
+          }
           HStack(spacing: 12) {
             if working {
               Button {

@@ -5,39 +5,31 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversations, juniorIdentities } from "@/db/schema";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationEventStore } from "@/chat/db";
+import {
+  clearInboxItemDeliveries,
+  recordRepeatInboxItemPush,
+} from "@/chat/inbox-items/deliveries";
+import {
+  closeReadReplyNotice,
+  hasReadLatestReply,
+  upsertReplyNotice,
+} from "@/chat/inbox-items/reply-notice";
+import { isInboxItemOpen } from "@/chat/inbox-items/store";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
-import { isWithinNotificationSchedule } from "./schedule";
-import { isPausedBySlack } from "./slack";
-import { readNotificationSchedule } from "./store";
-import { resolveNotificationTimezone } from "./timezone";
+import { readNotificationPause } from "./pause";
+import { notificationPreview } from "./preview";
 import {
   readWebPushConfig,
   sendPushNotificationToUser,
   type PushNotificationPayload,
 } from "./web-push";
 import { botConfig } from "@/chat/config";
-
-const PREVIEW_MAX_CHARS = 180;
-
-/** Turn Markdown reply text into one short plain line for a notification. */
-function notificationPreview(text: string): string {
-  const plain = text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[`*_~>#|]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return plain.length > PREVIEW_MAX_CHARS
-    ? `${plain.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…`
-    : plain;
-}
 
 /**
  * Return the stored reply of the Turn: the text that the person sees. The
@@ -59,14 +51,26 @@ async function readTurnReply(
 }
 
 /**
- * Return the user to notify. The run context links Slack Actors to users. A
- * dashboard Actor carries the verified sign-in email, so read its user by
- * that email.
+ * Return the starter: the User of the root's actor. Only a root runs
+ * session tasks, so the run's Conversation is the root. A root from before
+ * Conversations stored their actor has none, so the Actor of the run, who
+ * sent the message, stands in. A dashboard Actor carries the verified
+ * sign-in email, so read its user by that email.
  */
-async function recipientUserId(
+async function starterUserId(
   db: JuniorDatabase,
   run: PluginRunContext,
 ): Promise<string | undefined> {
+  const [root] = await db
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .where(eq(juniorConversations.conversationId, run.conversationId))
+    .limit(1);
+  if (root?.userId) return root.userId;
   if (run.actorUserId) return run.actorUserId;
   if (run.actor?.platform !== "web" || !run.actor.email) return undefined;
   return (await findUserByEmailFromSql(db, run.actor.email))?.id;
@@ -91,6 +95,7 @@ type SkipReason =
   | "no_user"
   | "not_configured"
   | "outside_hours"
+  | "read"
   | "slack_paused";
 
 function skip(reason: SkipReason): void {
@@ -104,52 +109,70 @@ function skip(reason: SkipReason): void {
 }
 
 /**
- * Send a push notification to the Actor's user when a Turn finishes.
+ * Turn the reply of a finished Turn into the reply notice of its starter,
+ * and push the notice to them.
  *
  * Only Conversations without a Location qualify. A Conversation with a
  * Location, such as a Slack thread, already notifies people there.
  */
 async function notifyReply(context: PluginTaskContext): Promise<void> {
-  const config = readWebPushConfig();
-  if (!config) return skip("not_configured");
   const run = await context.run.load();
   if (run.locationId) return skip("has_location");
-  const url = getDashboardConversationLink(run.conversationId);
-  if (!url) return skip("no_dashboard");
   const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
   const db = context.db as JuniorDatabase;
-  const userId = await recipientUserId(db, run);
+  const userId = await starterUserId(db, run);
   if (!userId) return skip("no_user");
 
-  const nowMs = Date.now();
-  const schedule = await readNotificationSchedule(db, userId);
-  const pausedBySlack =
-    schedule.followSlack !== false
-      ? await isPausedBySlack(db, userId, nowMs)
-      : undefined;
-  if (pausedBySlack) return skip("slack_paused");
-  if (pausedBySlack === undefined) {
-    const { timezone } = await resolveNotificationTimezone({
-      db,
-      nowMs,
-      schedule,
+  // A starter who watched the reply arrive has read it already. Their read
+  // came before the notice, so it closes the open one now.
+  if (await hasReadLatestReply(db, run.conversationId, userId)) {
+    await closeReadReplyNotice(db, {
+      conversationId: run.conversationId,
+      nowMs: Date.now(),
       userId,
     });
-    if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
-      return skip("outside_hours");
-    }
+    return skip("read");
   }
 
-  // The payload holds only a short plain-text preview. Logs hold only counts.
-  const payload: PushNotificationPayload = {
-    body: notificationPreview(reply.text) || "New reply",
-    tag: run.conversationId,
-    title:
-      (await readConversationTitle(db, run.conversationId)) ??
-      botConfig.userName,
-    url,
-  };
+  // The notice and the push hold only a short plain-text preview. Logs
+  // hold only counts.
+  const title =
+    (await readConversationTitle(db, run.conversationId)) ?? botConfig.userName;
+  const body = notificationPreview(reply.text) || "New reply";
+  const itemId = await upsertReplyNotice(db, {
+    body,
+    conversationId: run.conversationId,
+    nowMs: Date.now(),
+    starterUserId: userId,
+    title,
+    turnId: run.runId,
+  });
+
+  const config = readWebPushConfig();
+  if (!config) return skip("not_configured");
+  const url = getDashboardConversationLink(run.conversationId);
+  if (!url) return skip("no_dashboard");
+  const nowMs = Date.now();
+  const pause = await readNotificationPause(db, userId, nowMs);
+  await recordRepeatInboxItemPush(db, {
+    event: "reply",
+    itemId,
+    nowMs,
+    skipReason: pause,
+    userId,
+  });
+  if (pause) return skip(pause);
+  // The starter can read the reply before the record. That close cleared
+  // no row, so clear it now and send nothing.
+  if (!(await isInboxItemOpen(db, itemId))) {
+    await clearInboxItemDeliveries(db, [itemId], Date.now());
+    return skip("read");
+  }
+
+  // The notice's tag replaces the push of an earlier reply on the device,
+  // and the push goes away when the starter reads the reply.
+  const payload: PushNotificationPayload = { body, tag: itemId, title, url };
   const result = await sendPushNotificationToUser({
     config,
     db,

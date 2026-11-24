@@ -15,6 +15,16 @@ export function usdToMicroUsd(usd: number): number {
   return Math.round(usd * MICRO_USD_PER_USD);
 }
 
+/**
+ * Round a USD amount to whole micro-USD, up with the chance of its fraction.
+ * Use it for amounts far below one micro-USD, such as one short embedding
+ * call: plain rounding stores zero each time, and this keeps a sum of many
+ * amounts right on average.
+ */
+export function usdToMicroUsdUnbiased(usd: number): number {
+  return Math.floor(usd * MICRO_USD_PER_USD + Math.random());
+}
+
 /** Convert stored micro-USD to USD for an API response. */
 export function microUsdToUsd(microUsd: number): number {
   return microUsd / MICRO_USD_PER_USD;

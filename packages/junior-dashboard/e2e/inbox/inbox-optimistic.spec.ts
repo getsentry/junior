@@ -6,7 +6,7 @@ import {
   conversationId,
   digest,
   license,
-  mockReviewItems,
+  mockInboxItems,
   pinChecks,
   pinReview,
   prReview,
@@ -21,13 +21,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     { ...rollout, createdAt: "2026-08-07T08:00:00.000Z" },
     {
       ...license,
-      addedByConversationId: "slack:CLICENSE:1770003600.000400",
+      owner: { id: "slack:CLICENSE:1770003600.000400", kind: "conversation" },
       rootConversationId: "slack:CLICENSE:1770003600.000400",
       createdAt: "2026-08-07T08:10:00.000Z",
     },
     {
       ...audit,
-      addedByConversationId: "slack:CAUDIT:1770003600.000500",
+      owner: { id: "slack:CAUDIT:1770003600.000500", kind: "conversation" },
       rootConversationId: "slack:CAUDIT:1770003600.000500",
       createdAt: "2026-08-07T08:20:00.000Z",
     },
@@ -57,7 +57,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
     const sent: string[] = [];
-    await page.route("**/api/review-items/*/actions", async (route) => {
+    await page.route("**/api/inbox-items/*/actions", async (route) => {
       sent.push(new URL(route.request().url()).pathname.split("/").at(-2)!);
       await held;
       await route.fallback();
@@ -69,14 +69,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     const actions = await holdActions(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
-    // A button answer.
+    // A button answer: a click picks, and Send sends.
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Roll out" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, form!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, buttons!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 3 waiting");
@@ -111,11 +114,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [plain!.id];
-    const done = await mockReviewItems(page, {
+    const done = await mockInboxItems(page, {
       failActions,
       open: [...asks],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const rows = page
       .getByRole("region", { name: "To do" })
       .locator(":scope > ul > li[data-inbox-row]");
@@ -146,15 +149,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [form!.id, buttons!.id];
-    const done = await mockReviewItems(page, { failActions, open: [...asks] });
-    await page.goto(`${dashboard.baseURL}/`);
+    const done = await mockInboxItems(page, { failActions, open: [...asks] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     // The viewer opens another row before the failure lands, so the row
     // comes back shut.
     let fail = () => {};
     const failing = new Promise<void>((resolve) => (fail = resolve));
     await page.route(
-      `**/api/review-items/${buttons!.id}/actions`,
+      `**/api/inbox-items/${buttons!.id}/actions`,
       async (route) => {
         await failing;
         await route.fallback();
@@ -162,6 +165,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Hold" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, buttons!)).toHaveCount(0);
     await open(page, plain!);
     fail();
@@ -210,55 +216,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
   });
 
-  test("Snooze and Wake open the next row as the row starts to leave", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockReviewItems(page, { open: [...asks] });
-    await page.goto(`${dashboard.baseURL}/`);
-    // Slow the leave motion, so the test sees the next row open before the
-    // row that leaves is gone.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Animation.enable");
-    await cdp.send("Animation.setPlaybackRate", { playbackRate: 0.05 });
-
-    await open(page, buttons!);
-    await row(page, buttons!).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    await expect(row(page, form!)).toHaveAttribute("data-expanded", "true", {
-      timeout: 1000,
-    });
-    await expect(row(page, buttons!)).toHaveCount(1);
-    await expect(row(page, buttons!)).toHaveCount(0);
-
-    await row(page, form!).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    await expect(row(page, form!)).toHaveCount(0);
-
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Snoozed/ })
-      .click();
-    const snoozed = (ask: (typeof asks)[number]) =>
-      page.locator(`li[data-inbox-row="${ask.id}"]`);
-    await snoozed(buttons!)
-      .locator('[aria-controls^="inbox-row-"]')
-      .first()
-      .click();
-    await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
-    await expect(snoozed(form!)).toHaveAttribute("data-expanded", "true", {
-      timeout: 1000,
-    });
-    await expect(snoozed(buttons!)).toHaveCount(1);
-    await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
-    await expect(snoozed(buttons!)).toHaveCount(0);
-  });
-
   test("a pin that fails to save shows a toast whose Retry pins it", async ({
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     let fails = true;
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}/pin`,
@@ -268,7 +230,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           : route.fallback(),
     );
     // Item rows have no Pin: the Conversations view pins a Conversation.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const conversationRow = page.locator(
       `li[data-inbox-row="conversation:${conversationId}"]`,
     );
@@ -295,11 +257,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, digest] });
+    await mockInboxItems(page, { open: [license, digest] });
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${digest.id}/actions`,
+      `**/api/inbox-items/${digest.id}/actions`,
       async (route) => {
         sent.push(digest.id);
         await (fails
@@ -307,7 +269,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           : route.fallback());
       },
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const digestFyi = page
       .getByRole("region", { name: "FYI" })
       .locator("[data-inbox-row]")
@@ -335,13 +297,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinChecks] });
+    await mockInboxItems(page, { open: [pinReview, pinChecks] });
     let answer = () => {};
     const answered = new Promise<void>((resolve) => (answer = resolve));
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${pinChecks.id}/actions`,
+      `**/api/inbox-items/${pinChecks.id}/actions`,
       async (route) => {
         sent.push(pinChecks.id);
         if (!fails) return route.fallback();
@@ -349,7 +311,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fulfill({ json: { error: "Failed" }, status: 500 });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const checks = asks.getByRole("region", { name: pinChecks.title });
     await checks.getByRole("button", { name: "Checks failed" }).click();

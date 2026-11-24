@@ -1,0 +1,21 @@
+id: e2e-option-click-through-pick-option
+language: TypeScript
+severity: error
+message: "Pick a dashboard e2e option with pickOption from packages/junior-dashboard/e2e/pick-option.ts, not with a raw click. pickOption waits for the list to close. A list closes with a transition, and a press on another control before it ends can be lost, which makes the test flaky."
+files:
+  - packages/junior-dashboard/e2e/**/*.ts
+rule:
+  pattern: $OPTION.click($$$)
+constraints:
+  OPTION:
+    any:
+      - matches: option-locator
+      - has:
+          stopBy: end
+          matches: option-locator
+utils:
+  option-locator:
+    any:
+      - pattern: $LIST.getByRole("option")
+      - pattern: $LIST.getByRole("option", $$$)
+fix: pickOption($OPTION)

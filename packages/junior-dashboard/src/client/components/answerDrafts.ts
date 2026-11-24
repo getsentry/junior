@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-// Unsent answers by Review item id, so a form that unmounts (a row that
+// Unsent answers by Inbox item id, so a form that unmounts (a row that
 // collapses, a question that closes, a reload) shows them again when it
 // mounts. The session store keeps them for the tab only.
 const STORAGE_KEY = "junior:review-desk:answer-drafts";
@@ -48,13 +48,13 @@ function isEmptyDraft(draft: AnswerDraft): boolean {
   );
 }
 
-/** Return the unsent answers of a Review item, or an empty draft. */
+/** Return the unsent answers of an Inbox item, or an empty draft. */
 export function readAnswerDraft(itemId: string): AnswerDraft {
   return readDrafts()[itemId] ?? EMPTY_DRAFT;
 }
 
 /**
- * Save a change to the unsent answers of a Review item. The note and the
+ * Save a change to the unsent answers of an Inbox item. The note and the
  * fields that the change leaves out keep their saved value, so a second
  * form for the same item cannot write back its older picks. An empty
  * draft is removed.
@@ -75,7 +75,7 @@ export function saveAnswerDraft(itemId: string, change: Partial<AnswerDraft>) {
   );
 }
 
-/** Drop the unsent answers of a Review item that closed. */
+/** Drop the unsent answers of an Inbox item that closed. */
 export function clearAnswerDraft(itemId: string) {
   const drafts = readDrafts();
   if (!(itemId in drafts)) return;

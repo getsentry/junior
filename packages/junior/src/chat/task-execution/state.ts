@@ -12,11 +12,11 @@ import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -25,6 +25,7 @@ import {
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
 import { mapBounded } from "@/chat/fan-out";
+import { isAttemptInterrupt } from "./attempt-selection";
 import {
   normalizeMessageSenders,
   withMessageSenders,
@@ -99,8 +100,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** Review item change that this input reports, on any Source. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this input reports, on any Source. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -155,6 +156,8 @@ type StoredInboundMessage = z.output<typeof storedInboundMessageSchema>;
 
 export interface Lease {
   acquiredAtMs: number;
+  /** Input of the attempt that the lease holder runs. A stop leaves it. */
+  attemptInboundMessageIds?: string[] | undefined;
   expiresAtMs: number;
   lastCheckInAtMs: number;
   token: string;
@@ -175,6 +178,11 @@ export interface ConversationExecution {
   lastProgressAtMs?: number | undefined;
   retryCount?: number | undefined;
   lease?: Lease | undefined;
+  /**
+   * Input of a running attempt that a stop held. Its Turn saves it, or the
+   * next claim holds it when the attempt ended without saving it.
+   */
+  heldInboundMessageIds?: string[] | undefined;
   pendingCount: number;
   pendingMessages: InboundMessage[];
   runId?: string | undefined;
@@ -209,6 +217,11 @@ export interface ConversationWorkState extends ConversationExecutionState {
   lease?: ConversationWorkLease;
   messages: InboundMessage[];
   needsRun: boolean;
+  /**
+   * Ids in `messages` that the active attempt took. They stay in the
+   * mailbox until its Turn acks them.
+   */
+  runningInboundMessageIds: string[];
 }
 
 export interface StartConversationWorkAcquired {
@@ -437,78 +450,99 @@ function normalizeActor(value: unknown): StoredSlackActor | undefined {
   return parseStoredSlackActor(value);
 }
 
+const storedNonEmptyStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0);
+// Optional stored fields drop an invalid value instead of failing the record.
+const storedOptionalStringSchema = storedNonEmptyStringSchema
+  .optional()
+  .catch(undefined);
+const storedOptionalNumberSchema = z.number().optional().catch(undefined);
+const storedIdListSchema = z.array(z.unknown()).catch([]);
+
+const storedLeaseSchema = z.object({
+  token: storedNonEmptyStringSchema,
+  acquiredAtMs: z.number(),
+  attemptInboundMessageIds: z.array(z.string()).optional().catch(undefined),
+  lastCheckInAtMs: z.number(),
+  expiresAtMs: z.number(),
+});
+
 function normalizeLease(value: unknown): Lease | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const token = toOptionalString(value["token"]);
-  const acquiredAtMs = toOptionalNumber(value["acquiredAtMs"]);
-  const lastCheckInAtMs = toOptionalNumber(value["lastCheckInAtMs"]);
-  const expiresAtMs = toOptionalNumber(value["expiresAtMs"]);
-  if (
-    !token ||
-    typeof acquiredAtMs !== "number" ||
-    typeof lastCheckInAtMs !== "number" ||
-    typeof expiresAtMs !== "number"
-  ) {
+  const parsed = storedLeaseSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+const storedStopSchema = z.object({
+  inboundMessageIds: storedIdListSchema,
+  runId: storedNonEmptyStringSchema,
+});
+
+function normalizeStop(value: unknown): ConversationStop | undefined {
+  const parsed = storedStopSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
   return {
-    token,
-    acquiredAtMs,
-    lastCheckInAtMs,
-    expiresAtMs,
+    inboundMessageIds: uniqueStrings(
+      parsed.data.inboundMessageIds.filter(
+        (id): id is string => typeof id === "string",
+      ),
+    ),
+    runId: parsed.data.runId,
   };
 }
 
-function normalizeStop(value: unknown): ConversationStop | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
-    ? uniqueStrings(
-        value["inboundMessageIds"].filter(
-          (id): id is string => typeof id === "string",
-        ),
-      )
-    : [];
-  const runId = toOptionalString(value["runId"]);
-  return runId ? { inboundMessageIds, runId } : undefined;
-}
+const storedExecutionSchema = z.object({
+  status: z.unknown().optional(),
+  pendingMessages: z.array(z.unknown()).catch([]),
+  inboundMessageIds: storedIdListSchema,
+  messageSenders: z.unknown().optional(),
+  lease: z.unknown().optional(),
+  heldInboundMessageIds: z.array(z.string()).optional().catch(undefined),
+  lastCheckpointAtMs: storedOptionalNumberSchema,
+  lastEnqueuedAtMs: storedOptionalNumberSchema,
+  lastProgressAtMs: storedOptionalNumberSchema,
+  retryCount: storedOptionalNumberSchema,
+  runId: storedOptionalStringSchema,
+  updatedAtMs: storedOptionalNumberSchema,
+});
 
 /** Decode stored execution state. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
 ): ConversationExecution | undefined {
-  if (!isRecord(value)) {
+  const parsed = storedExecutionSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const status = normalizeExecutionStatus(value["status"]);
+  const stored = parsed.data;
+  const status = normalizeExecutionStatus(stored.status);
   if (!status) {
     return undefined;
   }
   const pendingMessages: InboundMessage[] = [];
-  if (Array.isArray(value["pendingMessages"])) {
-    for (const rawMessage of value["pendingMessages"]) {
-      const message = normalizeMessage(rawMessage);
-      if (!message || message.conversationId !== conversationId) {
-        return undefined;
-      }
-      pendingMessages.push(message);
+  for (const rawMessage of stored.pendingMessages) {
+    const message = normalizeMessage(rawMessage);
+    if (!message || message.conversationId !== conversationId) {
+      return undefined;
     }
-    pendingMessages.sort(compareMessages);
+    pendingMessages.push(message);
   }
-  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
-    ? uniqueStrings(
-        value["inboundMessageIds"]
-          .map((id) => (typeof id === "string" ? id : undefined))
-          .filter((id): id is string => Boolean(id)),
-      )
-    : [];
+  pendingMessages.sort(compareMessages);
+  const inboundMessageIds = uniqueStrings(
+    stored.inboundMessageIds.filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    ),
+  );
   const messageSenders = withMessageSenders(
-    normalizeMessageSenders(value["messageSenders"]),
+    normalizeMessageSenders(stored.messageSenders),
     pendingMessages,
+  );
+  // Held input that is no longer pending was saved by its Turn.
+  const heldInboundMessageIds = stored.heldInboundMessageIds?.filter((id) =>
+    pendingMessages.some((message) => message.inboundMessageId === id),
   );
 
   return {
@@ -520,43 +554,50 @@ function normalizeExecution(
     ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    lease: normalizeLease(value["lease"]),
-    lastCheckpointAtMs: toOptionalNumber(value["lastCheckpointAtMs"]),
-    lastEnqueuedAtMs: toOptionalNumber(value["lastEnqueuedAtMs"]),
-    lastProgressAtMs: toOptionalNumber(value["lastProgressAtMs"]),
-    retryCount: toOptionalNumber(value["retryCount"]),
-    runId: toOptionalString(value["runId"]),
-    updatedAtMs: toOptionalNumber(value["updatedAtMs"]),
+    lease: normalizeLease(stored.lease),
+    ...(heldInboundMessageIds?.length ? { heldInboundMessageIds } : undefined),
+    lastCheckpointAtMs: stored.lastCheckpointAtMs,
+    lastEnqueuedAtMs: stored.lastEnqueuedAtMs,
+    lastProgressAtMs: stored.lastProgressAtMs,
+    retryCount: stored.retryCount,
+    runId: stored.runId,
+    updatedAtMs: stored.updatedAtMs,
   };
 }
+
+const storedConversationSchema = z.object({
+  schemaVersion: z.literal(CONVERSATION_SCHEMA_VERSION),
+  conversationId: storedNonEmptyStringSchema,
+  createdAtMs: z.number(),
+  lastActivityAtMs: z.number(),
+  updatedAtMs: z.number(),
+  execution: z.unknown().optional(),
+  destination: z.unknown().optional(),
+  title: storedOptionalStringSchema,
+  channelName: storedOptionalStringSchema,
+  actor: z.unknown().optional(),
+  source: z.unknown().optional(),
+});
 
 /** Decode current conversation records. */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): ConversationExecutionState | undefined {
-  if (
-    !isRecord(value) ||
-    value["schemaVersion"] !== CONVERSATION_SCHEMA_VERSION
-  ) {
+  const parsed = storedConversationSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const storedConversationId = toOptionalString(value["conversationId"]);
-  const createdAtMs = toOptionalNumber(value["createdAtMs"]);
-  const lastActivityAtMs = toOptionalNumber(value["lastActivityAtMs"]);
-  const updatedAtMs = toOptionalNumber(value["updatedAtMs"]);
-  const execution = normalizeExecution(conversationId, value["execution"]);
+  const stored = parsed.data;
+  const execution = normalizeExecution(conversationId, stored.execution);
   const destination =
-    value["destination"] === undefined
+    stored.destination === undefined
       ? undefined
-      : parseDestination(value["destination"]);
+      : parseDestination(stored.destination);
   if (
-    storedConversationId !== conversationId ||
-    typeof createdAtMs !== "number" ||
-    typeof lastActivityAtMs !== "number" ||
-    typeof updatedAtMs !== "number" ||
+    stored.conversationId !== conversationId ||
     !execution ||
-    (value["destination"] !== undefined && !destination)
+    (stored.destination !== undefined && !destination)
   ) {
     return undefined;
   }
@@ -576,22 +617,18 @@ function normalizeConversation(
   return {
     schemaVersion: CONVERSATION_SCHEMA_VERSION,
     conversationId,
-    createdAtMs,
-    lastActivityAtMs,
-    updatedAtMs,
+    createdAtMs: stored.createdAtMs,
+    lastActivityAtMs: stored.lastActivityAtMs,
+    updatedAtMs: stored.updatedAtMs,
     execution,
     ...(destination ? { destination } : undefined),
-    ...(toOptionalString(value["title"])
-      ? { title: toOptionalString(value["title"]) }
+    ...(stored.title ? { title: stored.title } : undefined),
+    ...(stored.channelName ? { channelName: stored.channelName } : undefined),
+    ...(normalizeActor(stored.actor)
+      ? { actor: normalizeActor(stored.actor) }
       : undefined),
-    ...(toOptionalString(value["channelName"])
-      ? { channelName: toOptionalString(value["channelName"]) }
-      : undefined),
-    ...(normalizeActor(value["actor"])
-      ? { actor: normalizeActor(value["actor"]) }
-      : undefined),
-    ...(normalizeSource(value["source"])
-      ? { source: normalizeSource(value["source"]) }
+    ...(normalizeSource(stored.source)
+      ? { source: normalizeSource(stored.source) }
       : undefined),
   };
 }
@@ -745,18 +782,16 @@ async function withIndexLock<T>(
   }
 }
 
+const storedIndexEntrySchema = z.object({
+  conversationId: storedNonEmptyStringSchema,
+  score: z.number(),
+});
+
 function normalizeIndexEntry(
   value: unknown,
 ): ConversationIndexEntry | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const conversationId = toOptionalString(value["conversationId"]);
-  const score = toOptionalNumber(value["score"]);
-  if (!conversationId || typeof score !== "number") {
-    return undefined;
-  }
-  return { conversationId, score };
+  const parsed = storedIndexEntrySchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function uniqueIndexEntries(value: unknown): ConversationIndexEntry[] {
@@ -1177,6 +1212,9 @@ function conversationWorkState(
       : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
+    runningInboundMessageIds: isLeaseActive(lease, now())
+      ? [...(lease?.attemptInboundMessageIds ?? [])]
+      : [],
   };
 }
 
@@ -1352,7 +1390,8 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        args.message.delivery === "defer"
+        // Input that cannot start its own attempt waits for the yielded Turn.
+        !isAttemptInterrupt(args.message, current)
       ) {
         status = "paused";
       } else {
@@ -1692,6 +1731,29 @@ export async function moveIdleConversationDestination(args: {
       });
     }
     return "moved";
+  });
+}
+
+/**
+ * Run `work` while no Run holds the Conversation and no work waits for one.
+ * A Run takes its lease under the same mutation lock, so none can start until
+ * `work` ends. Returns `busy` without calling `work` when a Run holds the
+ * Conversation or work waits, such as a pending mailbox message: that Run
+ * reads the history next, so `work` must not change it first. `work` calls
+ * `fence` right before its durable write; it throws when the lock expired.
+ */
+export async function withIdleConversation<T>(
+  args: { conversationId: string; state?: StateAdapter },
+  work: (fence: () => Promise<void>) => Promise<T>,
+): Promise<T | "busy"> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && (isHeldByRun(existing) || hasRunnableWork(existing))) {
+      return "busy";
+    }
+    return await work(() =>
+      fenceConversationMutation(state, lock, args.conversationId),
+    );
   });
 }
 
@@ -2195,6 +2257,151 @@ export async function dropPendingMessages(args: {
     ids.has(message.inboundMessageId),
   );
   return dropped.map((message) => message.inboundMessageId);
+}
+
+/** Outcome of claiming the input of the attempt that a lease holder starts. */
+export type ClaimConversationAttemptResult =
+  | { status: "claimed" }
+  | { status: "reselect" }
+  | { status: "held"; messages: InboundMessage[]; pendingCount: number };
+
+/**
+ * Record the input of the attempt that the lease holder starts. Returns
+ * `reselect` when the lease is lost or a stop already took some of the input.
+ * Returns `held` with the input that a stop held from an attempt that ended
+ * without saving it, so the worker saves it as held before it selects again.
+ */
+export async function claimConversationAttempt(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<ClaimConversationAttemptResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    const lease = current?.execution.lease;
+    if (!current || !lease || lease.token !== args.leaseToken) {
+      return { status: "reselect" };
+    }
+    const heldIds = new Set(current.execution.heldInboundMessageIds);
+    if (heldIds.size > 0) {
+      const messages = current.execution.pendingMessages.filter((message) =>
+        heldIds.has(message.inboundMessageId),
+      );
+      const pendingMessages = current.execution.pendingMessages.filter(
+        (message) => !heldIds.has(message.inboundMessageId),
+      );
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            heldInboundMessageIds: undefined,
+            pendingMessages,
+          },
+          nowMs,
+        ),
+      );
+      return {
+        status: "held",
+        messages,
+        pendingCount: pendingMessages.length,
+      };
+    }
+    const pendingIds = new Set(
+      current.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
+    );
+    if (!args.inboundMessageIds.every((id) => pendingIds.has(id))) {
+      return { status: "reselect" };
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lease: {
+            ...lease,
+            attemptInboundMessageIds: [...args.inboundMessageIds],
+          },
+        },
+        nowMs,
+      ),
+    );
+    return { status: "claimed" };
+  });
+}
+
+/**
+ * Remove the pending Event input of a Conversation and return it, so a stop
+ * can hold input that reached the mailbox before it. The input of a running
+ * attempt stays and is marked held: that Turn saves it, or the next claim
+ * holds it.
+ */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return [];
+    }
+    const lease = current.execution.lease;
+    const runningIds = new Set(
+      isLeaseActive(lease, nowMs) ? lease?.attemptInboundMessageIds : [],
+    );
+    const events = current.execution.pendingMessages.filter(
+      (message) => message.source === "event",
+    );
+    const removed = events.filter(
+      (message) => !runningIds.has(message.inboundMessageId),
+    );
+    const held = events
+      .filter((message) => runningIds.has(message.inboundMessageId))
+      .map((message) => message.inboundMessageId);
+    if (removed.length === 0 && held.length === 0) {
+      return [];
+    }
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !removed.includes(message),
+    );
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          heldInboundMessageIds: uniqueStrings([
+            ...(current.execution.heldInboundMessageIds ?? []),
+            ...held,
+          ]),
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
+        },
+        nowMs,
+      ),
+    );
+    return removed;
+  });
 }
 
 async function removePendingMessages(

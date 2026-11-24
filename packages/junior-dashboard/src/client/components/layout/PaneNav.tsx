@@ -29,23 +29,25 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
-import { useInboxConversationOrigin } from "../../review-desk/inboxListState";
+import { useInboxConversationOrigin } from "../../inbox/inboxListState";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
-} from "../../inbox/components/CommandPalette";
+} from "../../shell/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
-import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import {
   isInboxView,
   isOldAutomationsPath,
   paneRowForPath,
   paneRowLabel,
+  paneRowMark,
   paneRowRoot,
   type PaneRow,
+  type PaneRowMark,
 } from "./paneRows";
 import { NAV_PAGES } from "../../navPages";
 
@@ -77,6 +79,8 @@ type PaneNavValue = {
   workspaceActive: boolean;
   /** The row that owns the page now, if any. */
   currentRow?: PaneRow;
+  /** How `currentRow` marks the page. */
+  currentMark?: PaneRowMark;
   /** The row the reader was on last, for the way back from other pages. */
   lastRow: PaneRow;
   /** The last path and search that each row showed, so a row reopens there. */
@@ -133,6 +137,8 @@ function usePaneNav(): PaneNavValue {
  */
 export function PaneNavProvider(props: {
   children: ReactNode;
+  /** The Lead's id has not loaded, so a Conversation may be the Lead. */
+  leadPending: boolean;
   navItems: DashboardHeaderNavItem[];
   onOpenChange(open: boolean): void;
   onSearch(): void;
@@ -152,7 +158,12 @@ export function PaneNavProvider(props: {
   // search, and (through `scroll`) its list position.
   const [lastRow, setLastRow] = useState<PaneRow>("inbox");
   const origin = useInboxConversationOrigin();
-  const row = paneRowForPath(location, props.navItems, origin);
+  // Until the Lead's id loads, a Conversation is no row's place yet: it may
+  // be the Lead, and Conversations would then reopen it.
+  const row =
+    props.leadPending && location.pathname.startsWith("/conversations/")
+      ? undefined
+      : paneRowForPath(location, props.navItems, origin);
   const here = `${location.pathname}${location.search}`;
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},
@@ -202,6 +213,7 @@ export function PaneNavProvider(props: {
   }, [open, setOpen, toggleZen, zenActive, zenAvailable]);
   const value = useMemo(
     () => ({
+      currentMark: row ? paneRowMark(location.pathname, row) : undefined,
       currentRow: row,
       lastRow,
       navItems: props.navItems,
@@ -222,6 +234,7 @@ export function PaneNavProvider(props: {
     }),
     [
       lastRow,
+      location.pathname,
       open,
       props.navItems,
       props.onSearch,
@@ -265,18 +278,21 @@ export function usePaneBack(): { label: string; to: string } {
 }
 
 /**
- * Where a row's link goes, and whether it owns the page that shows. From
- * another destination, a row reopens where the reader left it. A row that
- * owns the page goes back to its top level, and inside the Inbox each view
- * opens its list.
+ * Where a row's link goes, and how it marks the page that shows, if it owns
+ * it. From another destination, a row reopens where the reader left it. A
+ * row that owns the page goes back to its top level, and inside the Inbox
+ * each view opens its list.
  */
-export function usePaneRowLink(row: PaneRow): { current: boolean; to: string } {
+export function usePaneRowLink(row: PaneRow): {
+  mark?: PaneRowMark;
+  to: string;
+} {
   const pane = usePaneNav();
   const root = paneRowRoot(row, pane.navItems);
   const current = pane.currentRow === row;
   const sameInbox = isInboxView(row) && isInboxView(pane.currentRow);
   return {
-    current,
+    mark: current ? pane.currentMark : undefined,
     to: current || sameInbox ? root : (pane.rowPaths[row] ?? root),
   };
 }

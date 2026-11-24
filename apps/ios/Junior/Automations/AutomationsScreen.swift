@@ -197,11 +197,12 @@ struct PageTitle: View {
 
 private struct AutomationRow: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let automation: Automation
 
   var body: some View {
     Button {
-      app.path.append(.automation(automation.id))
+      window.path = [.automation(automation.id)]
     } label: {
       HStack(alignment: .center, spacing: 24) {
         VStack(alignment: .leading, spacing: 4) {
@@ -232,11 +233,16 @@ private struct AutomationRow: View {
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 12)
+      .background(selected ? Tokens.fillHover : .clear)
       .contentShape(Rectangle())
     }
     .buttonStyle(PressableStyle(radius: 0, pressedFill: Tokens.fillSoft))
     .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? .isSelected : [])
   }
+
+  /// Open beside the list.
+  private var selected: Bool { window.path.first == .automation(automation.id) }
 
   private var statusLine: String {
     switch automation.status {

@@ -74,7 +74,7 @@ final class ConversationModel {
         let next = try await app.call(
           "getConversation", ["conversationId": id, "after": .string(after)], as: ConversationState.self)
         messages = mergeMessages(messages, next.messages ?? [])
-        // `brief` and the conversation come with every read.
+        // The conversation and its summary come with every read.
         state = next
         after = next.cursor
         if next.hasMore != true { break }
@@ -181,7 +181,7 @@ final class ConversationModel {
 
   /// `cancelQueuedMessages`: drop waiting messages; the Turn continues.
   func cancelQueued(_ app: AppModel) async {
-    struct Cancelled: Decodable, Sendable { var cancelledMessages: Int }
+    struct Cancelled: Decodable, Sendable { var cancelledCount: Int }
     do {
       _ = try await app.call("cancelQueuedMessages", ["conversationId": id], as: Cancelled.self)
       await refresh(app)
