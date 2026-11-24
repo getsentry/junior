@@ -35,24 +35,36 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    // Only the live card that comes with the page knows this change, so its
-    // size shows on the card.
-    const sized = {
-      ...prReview,
-      subject: {
-        ...prReview.subject,
-        object: {
-          ...prReview.subject.object,
-          facts: {
-            type: "code_change" as const,
-            additions: 1204,
-            changedFiles: 12,
-            deletions: 340,
-          },
+    await mockInboxItems(page, { open: [prReview] });
+    // Only a live read knows this change, so its size shows on the card.
+    await page.route("**/api/objects?**", (route) =>
+      route.fulfill({
+        json: {
+          objects: [
+            {
+              object: {
+                displayType: "Pull request",
+                facts: {
+                  type: "code_change",
+                  additions: 1204,
+                  changedFiles: 12,
+                  deletions: 340,
+                },
+                key: "getsentry/payments#91",
+                kind: "object",
+                label: "getsentry/payments#91",
+                objectType: "code_change",
+                plugin: "github",
+                status: "open",
+                title: "Pin the release train",
+                url: prReview.subject.url,
+              },
+              url: prReview.subject.url,
+            },
+          ],
         },
-      },
-    };
-    await mockInboxItems(page, { open: [sized] });
+      }),
+    );
     await page.goto(`${dashboard.baseURL}/inbox?item=${prReview.id}`);
     const size = "1,204 lines added, 340 removed, 12 files changed";
     const pull = page
