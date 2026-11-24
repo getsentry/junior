@@ -91,8 +91,8 @@ export async function enqueueAutomatedInput(
 }
 
 /**
- * Stop each Conversation of a tree until a person sends it input or its
- * parent gives it new work. Every stop path ends here: a person's stop,
+ * Stop each Conversation of a tree until a person sends it input, or its
+ * parent or Lead gives it new work. Every stop path ends here: a person's stop,
  * `stopAgent`, and the automated-turn limit. It writes the stop in one
  * transaction with row locks, holds the automated input that already waits
  * in each mailbox, ends a Turn that waits for sign-in, and asks each running
@@ -206,7 +206,8 @@ export async function stopConversationTree(
 
 /**
  * End the stop of a Conversation and of the child agents below it, for new
- * work sent at `sentAtMs`: a person's input, or new work from its parent.
+ * work sent at `sentAtMs`: a person's input, or new work from its parent
+ * or Lead.
  * Nothing changes for work sent at or before the stop, so the input that a
  * stop drops does not undo it. Only Conversations that stopped no later than
  * this Conversation change, so a later stop of one child agent stays.

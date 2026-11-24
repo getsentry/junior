@@ -10,7 +10,10 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import { stopConversationTree } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  stopConversationTree,
+} from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { NewConversationEvent } from "@/chat/conversations/history";
@@ -245,6 +248,32 @@ describe("Lead", () => {
     await expect(
       stop.execute!({ conversation_id: notOurs }, {}),
     ).rejects.toThrow("is not an agent that you started");
+
+    // The Lead's next message is new work, so it ends the stop. A replay of
+    // that message is not new work, so it does not end a later stop.
+    const leadRun: AgentRun = {
+      actor: webActorFromUser(ana),
+      conversationId: lead.conversationId,
+      destination: lead.destination!,
+      instruction: { text: "Pick the deploy check back up." },
+      source: createWebSource(lead.conversationId, "private"),
+      turnId: "lead-team-steer-turn",
+    };
+    const steer = async () =>
+      await createMessageAgentTool(
+        bindMessageAgent(leadRun, {
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+      ).execute!(
+        { text: "Check the deploy again.", to: taken },
+        { toolCallId: "call-steer" },
+      );
+    await steer();
+    expect(await getConversationStoppedAtMs(taken)).toBeUndefined();
+    await stop.execute!({ conversation_id: taken }, {});
+    await steer();
+    expect(await getConversationStoppedAtMs(taken)).toEqual(expect.any(Number));
   });
 
   it("finds and steers only the public roots that its person takes part in", async () => {

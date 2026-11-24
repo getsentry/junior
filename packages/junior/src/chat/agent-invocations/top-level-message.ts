@@ -18,7 +18,11 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderDataTag } from "@/chat/input-tags";
 import { leadPersonParticipates } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
+import {
+  enqueueAutomatedInput,
+  resumeConversationTree,
+} from "@/chat/conversations/session-stop";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { AgentMessageTargetError } from "./errors";
 import { PARENT_AGENT_TARGET } from "./types";
 
@@ -39,7 +43,7 @@ export const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
 async function requireTopLevelAgentAccess(args: {
   senderConversationId: string;
   to: string;
-}): Promise<void> {
+}): Promise<{ fromLead: boolean }> {
   const notReachable = new AgentMessageTargetError(
     `"${args.to}" is not "${PARENT_AGENT_TARGET}", a child agent of this conversation, or a top-level agent that you can message`,
   );
@@ -88,6 +92,7 @@ async function requireTopLevelAgentAccess(args: {
       `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
     );
   }
+  return { fromLead: target.leadConversationId === args.senderConversationId };
 }
 
 // Another agent wrote the text, so it is escaped data. The system prompt
@@ -111,8 +116,9 @@ function renderTopLevelMessageInput(args: {
  * Send one message from a top-level agent to another top-level agent and
  * wake the target. The access check runs on each call. A stopped target
  * holds the message, so once the automated-turn limit stops one of two
- * agents, they cannot keep each other running. Repeat calls with the same
- * `messageKey` are safe.
+ * agents, they cannot keep each other running. A Lead's message to a root
+ * that it started is the exception: it ends the stop. Repeat calls with the
+ * same `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
   messageKey: string;
@@ -123,9 +129,17 @@ export async function enqueueTopLevelAgentMessage(args: {
   text: string;
   to: string;
 }): Promise<void> {
-  await requireTopLevelAgentAccess(args);
+  const { fromLead } = await requireTopLevelAgentAccess(args);
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
+  if (fromLead) {
+    await endStopForLeadMessage({
+      conversationId: args.to,
+      inboundMessageId,
+      sentAtMs: nowMs,
+      state: args.state,
+    });
+  }
   const summary = `Top-level agent ${args.senderConversationId} sent a message.`;
   const metadata: EventMailboxMetadata = {
     kind: "event",
@@ -161,4 +175,23 @@ export async function enqueueTopLevelAgentMessage(args: {
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
   });
+}
+
+// A Lead's message is new work for a root that it started, as a parent's
+// message is for a child, so it ends the root's stop. A replay is not new
+// work: the mailbox keeps the id, even of held input.
+async function endStopForLeadMessage(args: {
+  conversationId: string;
+  inboundMessageId: string;
+  sentAtMs: number;
+  state?: StateAdapter | undefined;
+}): Promise<void> {
+  const work = await getConversationWorkState({
+    conversationId: args.conversationId,
+    state: args.state,
+  });
+  if (work?.execution.inboundMessageIds.includes(args.inboundMessageId)) {
+    return;
+  }
+  await resumeConversationTree(args.conversationId, args.sentAtMs);
 }
