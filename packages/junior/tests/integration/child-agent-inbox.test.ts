@@ -428,6 +428,56 @@ describe("a child agent asks a person", () => {
     }
   });
 
+  it("closes a root's own question on a dismiss with nothing to report", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const add = createAddInboxItemTool(
+        {
+          conversationId: slackParentConversationId,
+          resolveActorIdentity: async () => undefined,
+          source: { kind: "scheduled_automation" },
+          turnId: "turn-root-ask",
+        },
+        createSlackInboxItemToolServices(() => harness.queue),
+      );
+      const added = await add.execute!(
+        add.prepareArguments!({
+          kind: "action",
+          title: "Delete preview-42",
+          body: "The root needs approval to delete preview-42.",
+          assignees: ["maya@example.com"],
+          request: {
+            question: QUESTION,
+            fields: [
+              {
+                id: "decision",
+                kind: "choice",
+                label: "Decision",
+                options: [{ label: "Delete" }, { label: "Keep" }],
+              },
+            ],
+          },
+        }) as never,
+        { toolCallId: "ask-root" } as never,
+      );
+      const itemId = (added as { item: { id: string } }).item.id;
+
+      // The root has no parent agent, so the dismiss only closes the item.
+      await expect(
+        actOnInboxItem({
+          action: "dismiss",
+          delivery: { queue: harness.queue, show: async () => {} },
+          id: itemId,
+          user: person,
+        }),
+      ).resolves.toBeDefined();
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("sends no second result when a person dismisses a child's notice after it reported", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

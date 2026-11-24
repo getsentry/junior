@@ -359,6 +359,8 @@ export async function enqueueChildDismissToParent(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
   const closed = `${args.text}\nIt closed with no answer`;
   const turnId = await turnEndedByDismiss(args);
   if (turnId) {
@@ -375,8 +377,6 @@ export async function enqueueChildDismissToParent(args: {
   }
   // A Turn that still runs, such as the one that asked, reports its own end,
   // and other work reports when it ends.
-  const sender = await readChildConversationSender(args.conversationId);
-  if (!sender) return;
   await enqueueAgentMessageToParent({
     actor: EVENT_SYSTEM_ACTOR,
     messageKey: `dismissed:${args.inboxItemId}`,
