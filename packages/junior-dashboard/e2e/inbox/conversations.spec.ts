@@ -242,7 +242,8 @@ test.describe("new UI", () => {
             .first(),
         ).toBeVisible();
       },
-      { requests: 8, serialRounds: 1 },
+      // The rows' GitHub and Linear links read their live state (#4162).
+      { requests: 12, serialRounds: 3 },
     );
     expect(requests).toBe(1);
 
