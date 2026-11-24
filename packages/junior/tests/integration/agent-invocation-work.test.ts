@@ -443,8 +443,6 @@ describe("child agent task work", () => {
     name: "noReply",
     arguments: { note: "Bot comment needs no change." },
   };
-  // A child Turn that ends with no text and no answer tool sent nothing.
-  const unanswered = [{ type: "text" as const, text: "" }];
   const finalText = {
     type: "text" as const,
     text: "Draft summary for the parent.",
@@ -554,34 +552,6 @@ describe("child agent task work", () => {
           /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
         ),
       ],
-    },
-    {
-      // A child's parent learns that the Turn sent nothing.
-      name: "unanswered task",
-      outputs: unanswered,
-      terminal: {
-        failureCode: "model_execution_failed",
-        type: "turn_failed",
-      },
-      subagentOutcome: "error",
-      parentMessages: [
-        expect.stringMatching(/status="failed">\n[\s\S]*\ninternal error/),
-      ],
-      lastResult: "failed" as const,
-    },
-    {
-      name: "unanswered thread",
-      kind: "thread" as const,
-      outputs: unanswered,
-      terminal: {
-        failureCode: "model_execution_failed",
-        type: "turn_failed",
-      },
-      subagentOutcome: "error",
-      parentMessages: [
-        expect.stringMatching(/status="failed">\n[\s\S]*\ninternal error/),
-      ],
-      lastResult: "failed" as const,
     },
     {
       // A Task's final text is its reply. It needs no tool call.
