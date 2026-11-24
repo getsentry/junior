@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DeliveryRetryableError } from "@/core/delivery/deliver";
 import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
@@ -8,8 +9,7 @@ import { deliveryConsumer } from "@/turn-steps/delivery";
 import { modelOverloaded, setModelReplies } from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
 import { createAssistantMessage } from "../fixtures/model-stream";
-import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { FakeSlackAdapter } from "../fixtures/slack-harness";
+import { createRecordingDelivery } from "../fixtures/recording-delivery";
 import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import {
   CONVERSATION_ID,
@@ -19,14 +19,10 @@ import {
   type TurnEngine,
 } from "../fixtures/turn-engine";
 import { createTurnHarness, type TurnHarness } from "../fixtures/turn-harness";
-import {
-  queueSlackApiError,
-  queueSlackRateLimit,
-} from "../msw/handlers/slack-api";
 
-// Delivery of core Turn replies to Slack: a committed step sends a delivery
-// message, and the app's delivery consumer posts the Turn's replies. The test
-// delivers the messages from the in-process queue.
+// Delivery of core Turn replies to their Destination: a committed step sends a
+// delivery message, and the delivery consumer sends the Turn's replies with a
+// recording Delivery. The test delivers the messages from the in-process queue.
 
 // Longer than the longest delivery backoff, so every delayed check is due.
 const AFTER_EVERY_BACKOFF_SECONDS = 60;
@@ -122,14 +118,14 @@ describe("Turn delivery", () => {
   }
 
   it("checks back when another delivery holds the Conversation, and posts the reply once", async () => {
-    const { engineCtx, conversationId, location, queue } = harness;
+    const { engineCtx, conversationId, destination, queue } = harness;
     const release = await holdDeliveryLock(engineCtx, conversationId);
 
     const { turnId } = await sendForReply("Three.");
     await harness.runUntilIdle();
     expect(handledDeliveries(queue, turnId)).toBe(1);
 
-    expect(harness.slackPosts()).toEqual([]);
+    expect(harness.sends()).toEqual([]);
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({ state: "pending" }),
     ]);
@@ -138,14 +134,12 @@ describe("Turn delivery", () => {
     await runAfterBackoff();
     await expect(allSent(engineCtx, conversationId)).resolves.toBe(true);
     expect(handledDeliveries(queue, turnId)).toBe(2);
-    expect(harness.slackPosts()).toEqual([
-      { text: "Three.", thread: location.threadTs },
-    ]);
+    expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
   });
 
-  it("retries a reply after a retryable Slack failure, then posts it", async () => {
-    const { engineCtx, conversationId, location } = harness;
-    queueSlackApiError("chat.postMessage", { error: "fatal_error" });
+  it("retries a reply after a retryable failure, then sends it", async () => {
+    const { engineCtx, conversationId, destination } = harness;
+    harness.failNextSend(new DeliveryRetryableError("Slack is unavailable"));
 
     await sendForReply("Three.");
     await harness.runUntilIdle();
@@ -154,19 +148,18 @@ describe("Turn delivery", () => {
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
     ]);
-    // The failed post and the post that Slack took.
-    expect(harness.slackPosts()).toEqual([
-      { text: "Three.", thread: location.threadTs },
-      { text: "Three.", thread: location.threadTs },
+    // The failed try and the try that worked.
+    expect(harness.sends()).toEqual([
+      { text: "Three.", destination },
+      { text: "Three.", destination },
     ]);
   });
 
-  it("waits the Retry-After of a Slack rate limit before it tries a reply again", async () => {
+  it("waits the Retry-After of a retryable failure before it tries a reply again", async () => {
     const { engineCtx, conversationId, queue } = harness;
-    // Every try of one post: the Slack client retries a rate limit itself.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      queueSlackRateLimit("chat.postMessage", 2);
-    }
+    harness.failNextSend(
+      new DeliveryRetryableError("Rate limited", { retryAfterMs: 2000 }),
+    );
 
     await sendForReply("Three.");
     await harness.runUntilIdle();
@@ -180,9 +173,9 @@ describe("Turn delivery", () => {
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
     ]);
-    // Three rate-limited posts, then the post that Slack took.
-    expect(harness.slackPosts()).toHaveLength(4);
-  }, 20_000);
+    // The rate-limited try, then the try that worked.
+    expect(harness.sends()).toHaveLength(2);
+  });
 
   it("records nothing for an input whose answer is only the history", async () => {
     const { engineCtx, conversationId, queue } = harness;
@@ -200,10 +193,10 @@ describe("Turn delivery", () => {
     expect(handledDeliveries(queue, turnId)).toBe(1);
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([]);
-    expect(harness.slackPosts()).toEqual([]);
+    expect(harness.sends()).toEqual([]);
   });
 
-  it("posts to the input's Destination, not the Conversation's Location", async () => {
+  it("sends to the input's Destination, not the Conversation's Location", async () => {
     const { conversationId, location } = harness;
     const threadTs = "1718123999.000000";
     await setModelReplies([reply("Three.")]);
@@ -219,9 +212,9 @@ describe("Turn delivery", () => {
     });
     await harness.runUntilIdle();
 
-    expect(
-      slackApiOutbox.messages().map((call) => call.params["thread_ts"]),
-    ).toEqual([threadTs]);
+    expect(harness.sends().map((send) => send.destination)).toEqual([
+      expect.objectContaining({ threadTs }),
+    ]);
     await expect(
       readOutbox(harness.engineCtx, conversationId),
     ).resolves.toEqual([
@@ -232,27 +225,26 @@ describe("Turn delivery", () => {
     ]);
   });
 
-  it("fails a reply whose Destination has no sender", async () => {
+  it("fails a reply whose send throws an error that is not retryable", async () => {
     const { engineCtx, conversationId } = harness;
-    await setModelReplies([reply("Three.")]);
+    harness.failNextSend(new Error("channel_not_found"));
 
-    await harness.send({
-      text: "How many Turns?",
-      destination: { platform: "local", conversationId: "local:cli:other" },
-    });
+    await sendForReply("Three.");
     await harness.runUntilIdle();
+    await runAfterBackoff();
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({
         state: "failed",
-        error: "No sender for local Destinations",
+        attempts: 1,
+        error: "channel_not_found",
       }),
     ]);
-    expect(harness.slackPosts()).toEqual([]);
+    expect(harness.sends()).toHaveLength(1);
   });
 
   it("posts the reply on a redelivered step message after a crash before the delivery message", async () => {
-    const { engineCtx, conversationId, location, queue } = harness;
+    const { engineCtx, conversationId, destination, queue } = harness;
     const { turnId } = await sendForReply("Three.");
     // Stands in for the process dying after the end commit, before the
     // delivery message is sent.
@@ -273,9 +265,7 @@ describe("Turn delivery", () => {
     await harness.runUntilIdle();
     await expect(allSent(engineCtx, conversationId)).resolves.toBe(true);
 
-    expect(harness.slackPosts()).toEqual([
-      { text: "Three.", thread: location.threadTs },
-    ]);
+    expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
   });
 });
 
@@ -293,15 +283,15 @@ describe("Turn delivery with a test step", () => {
   let engine: TurnEngine;
   let fixture: LocalJuniorSqlFixture;
   let turnId: string;
+  let recording: ReturnType<typeof createRecordingDelivery>;
 
   beforeEach(async () => {
     engine = await startTurnEngine();
     ({ fixture, turnId } = engine);
+    recording = createRecordingDelivery();
     engine.queue.mount(
       DELIVERY_TOPIC,
-      deliveryConsumer(engine.engineCtx, {
-        getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
-      }),
+      deliveryConsumer(engine.engineCtx, recording.delivery),
     );
   });
 
@@ -318,13 +308,6 @@ describe("Turn delivery with a test step", () => {
   function deliverAfterBackoff() {
     engine.queue.advanceTime(AFTER_EVERY_BACKOFF_SECONDS);
     return deliver();
-  }
-
-  function postedTexts() {
-    return slackApiOutbox.messages().map((call) => ({
-      text: call.params["text"],
-      thread: call.params["thread_ts"],
-    }));
   }
 
   /** Runs a step that replies `text` and commits "continue". */
@@ -349,7 +332,7 @@ describe("Turn delivery with a test step", () => {
     await engine.advance(stepWith([reply(second)]));
   }
 
-  it("posts the replies of one Turn to its Slack thread in order", async () => {
+  it("sends the replies of one Turn to its Destination in order", async () => {
     await advanceTwoReplies("Three.", "None.");
 
     await expect(engine.readTurn()).resolves.toMatchObject({
@@ -360,9 +343,9 @@ describe("Turn delivery with a test step", () => {
     await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(
       true,
     );
-    expect(postedTexts()).toEqual([
-      { text: "Three.", thread: THREAD_TS },
-      { text: "None.", thread: THREAD_TS },
+    expect(recording.sends()).toEqual([
+      { text: "Three.", destination: DESTINATION },
+      { text: "None.", destination: DESTINATION },
     ]);
     await expect(
       readOutbox(engine.engineCtx, CONVERSATION_ID),
@@ -390,7 +373,7 @@ describe("Turn delivery with a test step", () => {
       .update(juniorTurnOutbox)
       .set({ attempts: 4 })
       .where(eq(juniorTurnOutbox.id, head!.id));
-    queueSlackApiError("chat.postMessage", { error: "fatal_error" });
+    recording.failNext(new DeliveryRetryableError("Slack is unavailable"));
 
     await release();
     await deliverAfterBackoff();
@@ -406,9 +389,9 @@ describe("Turn delivery with a test step", () => {
       }),
       expect.objectContaining({ state: "sent", attempts: 0 }),
     ]);
-    expect(postedTexts()).toEqual([
-      { text: "Three.", thread: THREAD_TS },
-      { text: "None.", thread: THREAD_TS },
+    expect(recording.sends()).toEqual([
+      { text: "Three.", destination: DESTINATION },
+      { text: "None.", destination: DESTINATION },
     ]);
   });
 
@@ -430,6 +413,8 @@ describe("Turn delivery with a test step", () => {
       true,
     );
 
-    expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
+    expect(recording.sends()).toEqual([
+      { text: "Three.", destination: DESTINATION },
+    ]);
   });
 });

@@ -115,7 +115,7 @@ import {
   createGatewayModelClient,
   turnStepConsumer,
 } from "@/turn-steps/consumer";
-import { deliveryConsumer } from "@/turn-steps/delivery";
+import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
@@ -807,9 +807,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // Core Turns have no tools yet.
     tools: [],
   });
-  const deliveries = deliveryConsumer(engineCtx, {
-    getSlackAdapter: getProductionSlackAdapter,
-  });
+  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),

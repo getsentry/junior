@@ -29,8 +29,10 @@ import { deliveryConsumer } from "@/turn-steps/delivery";
 import type { TurnInputPayload } from "@/turn-steps/prompt";
 import { emulatedModelClient } from "./ai-emulator";
 import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
-import { slackApiOutbox } from "./slack-api-outbox";
-import { FakeSlackAdapter } from "./slack-harness";
+import {
+  createRecordingDelivery,
+  type RecordedSend,
+} from "./recording-delivery";
 import { buildJuniorSqlConversation, createJuniorSqlFixture } from "./sql";
 
 const LEASE_MS = 60_000;
@@ -50,9 +52,6 @@ export const ACTOR = {
 
 /** An input that `send` scheduled: its Turn and its inbox row. */
 type SentInput = { turnId: string; inputId: string };
-
-/** One Slack post that delivery made in the harness's thread. */
-type SlackPost = { text: unknown; thread: unknown };
 
 /** One Conversation on the real Turn engine path, and its queue. */
 export type TurnHarness = {
@@ -87,8 +86,12 @@ export type TurnHarness = {
   history: () => Promise<
     ReturnType<typeof projectConversationEvents>["messages"]
   >;
-  /** The Slack posts in the Conversation's thread, oldest first. */
-  slackPosts: () => SlackPost[];
+  /** Where `send` says its inputs' answers go unless a test names another. */
+  destination: Destination;
+  /** Every try of a reply's send, oldest first. */
+  sends: () => RecordedSend[];
+  /** Makes the next try of a send throw `error`. */
+  failNextSend: (error: Error) => void;
   close: () => Promise<void>;
 };
 
@@ -127,6 +130,7 @@ export async function createTurnHarness({
     );
 
   const queue = createInProcessQueue();
+  const recording = createRecordingDelivery();
   const engineCtx: EngineContext = {
     executor: fixture.sql,
     queue,
@@ -141,12 +145,7 @@ export async function createTurnHarness({
       tools,
     }),
   );
-  queue.mount(
-    DELIVERY_TOPIC,
-    deliveryConsumer(engineCtx, {
-      getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
-    }),
-  );
+  queue.mount(DELIVERY_TOPIC, deliveryConsumer(engineCtx, recording.delivery));
 
   const slackSource: Source = {
     kind: "slack",
@@ -235,14 +234,9 @@ export async function createTurnHarness({
     turn,
     events,
     history: async () => projectConversationEvents(await events()).messages,
-    slackPosts: () =>
-      slackApiOutbox
-        .messages()
-        .filter((call) => call.params["thread_ts"] === threadTs)
-        .map((call) => ({
-          text: call.params["text"],
-          thread: call.params["thread_ts"],
-        })),
+    destination: slackDestination,
+    sends: recording.sends,
+    failNextSend: recording.failNext,
     close: () => fixture.close(),
   };
 }
