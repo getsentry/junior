@@ -261,11 +261,11 @@ test.describe("conversation sections", () => {
     // The row menu shows the rows of the `⋯` menu, in the same order.
     await expect(page.getByRole("menuitem")).toHaveText([
       "Share",
-      "Copy as Markdown",
-      "Open event log",
       "Pin",
       "Rename",
+      "Copy as Markdown",
       "Subscribe",
+      "Open event log",
       "Archive",
     ]);
     await screenshot(page, "conversation-sidebar-context-menu", {

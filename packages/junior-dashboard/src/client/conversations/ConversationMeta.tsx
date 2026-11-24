@@ -649,6 +649,11 @@ export function liveModelId(
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport | undefined;
+  /**
+   * The page shows cost, tokens, runtime, and location in its glance, so
+   * the list leaves them out.
+   */
+  glance?: boolean;
   showUsageBreakdown?: boolean;
 };
 
@@ -739,28 +744,112 @@ export function conversationCost(
   );
 }
 
+/**
+ * Show cost, tokens, and runtime on one line: cost first, the rest muted.
+ * Each value keeps its breakdown tooltip. Null when none has a value.
+ */
+export function ConversationGlanceMetrics(props: {
+  conversation: Conversation | undefined;
+  detail: ConversationDetailReport | undefined;
+}) {
+  if (!props.conversation) return null;
+  const cost = conversationCost(props.conversation, props.detail, "below");
+  const tokens = tokenMetric({ ...props, conversation: props.conversation });
+  // Named, like "1.9k tokens", so a runtime alone still says what it is.
+  const duration = durationMetric(props.conversation, props.detail, " runtime");
+  const rest = [tokens, duration].filter(Boolean);
+  if (!cost && rest.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-sans text-sm leading-5 tabular-nums">
+      {cost ? (
+        <span className="font-medium text-dashboard-text">{cost}</span>
+      ) : null}
+      {rest.length ? (
+        <span className="flex min-w-0 items-baseline gap-1.5 text-xs text-dashboard-text-muted">
+          {tokens}
+          {tokens && duration ? <span aria-hidden="true">·</span> : null}
+          {duration}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function tokenMetric(props: {
+  conversation: Conversation;
+  detail?: ConversationDetailReport | undefined;
+}): ReactNode {
+  const usage =
+    props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
+  const summary =
+    summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
+  if (!summary) return null;
+  const completeDetail = props.detail?.previousCursor
+    ? undefined
+    : props.detail;
+  return (
+    <TokenMetric
+      childAgentTotals={
+        props.detail?.childAgentTotals ?? props.conversation.childAgentTotals
+      }
+      compactionCount={
+        completeDetail
+          ? completeDetail.events.filter(
+              (event) => event.data.type === "compaction",
+            ).length
+          : undefined
+      }
+      live={conversationTurnIsActive(props.detail, props.conversation)}
+      liveModelId={liveModelId(props.detail)}
+      modelUsage={props.detail?.modelUsage}
+      summary={summary}
+    />
+  );
+}
+
+function durationMetric(
+  conversation: Conversation,
+  detail: ConversationDetailReport | undefined,
+  labelSuffix = "",
+): ReactNode {
+  const label = formatConversationDuration(conversation);
+  if (label === "none") return null;
+  return (
+    <DurationMetric
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      durationMs={conversation.cumulativeDurationMs}
+      endedAt={conversation.lastSeenAt}
+      label={`${label}${labelSuffix}`}
+      startedAt={conversation.startedAt}
+    />
+  );
+}
+
 function conversationStatItems(
   props: ConversationStatsProps,
 ): ConversationStatItem[] {
   if (!props.conversation) return [];
-  const completeDetail = props.detail?.previousCursor
-    ? undefined
-    : props.detail;
-  const usage =
-    props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
-  const tokenSummary =
-    summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const durationLabel = formatConversationDuration(props.conversation);
-  const live = conversationTurnIsActive(props.detail, props.conversation);
-  const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
-  const location = conversationLocation(props.conversation, props.detail);
-  const cost = props.showUsageBreakdown
+  // The glance shows these four.
+  const location = props.glance
     ? null
-    : conversationCost(props.conversation, props.detail);
+    : conversationLocation(props.conversation, props.detail);
+  const duration = props.glance
+    ? null
+    : durationMetric(props.conversation, props.detail);
+  const tokens =
+    props.glance || props.showUsageBreakdown
+      ? null
+      : tokenMetric({ conversation: props.conversation, detail: props.detail });
+  const cost =
+    props.glance || props.showUsageBreakdown
+      ? null
+      : conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
     // The desktop title bar shows the location. Mobile hides that bar.
     location
@@ -795,39 +884,16 @@ function conversationStatItems(
           label: "Last activity",
         }
       : undefined,
-    durationLabel !== "none"
+    duration
       ? {
-          content: (
-            <DurationMetric
-              childAgentTotals={childAgentTotals}
-              durationMs={props.conversation.cumulativeDurationMs}
-              endedAt={props.conversation.lastSeenAt}
-              label={durationLabel}
-              startedAt={props.conversation.startedAt}
-            />
-          ),
+          content: duration,
           key: "duration",
           label: "Runtime",
         }
       : undefined,
-    tokenSummary && !props.showUsageBreakdown
+    tokens
       ? {
-          content: (
-            <TokenMetric
-              childAgentTotals={childAgentTotals}
-              compactionCount={
-                completeDetail
-                  ? completeDetail.events.filter(
-                      (event) => event.data.type === "compaction",
-                    ).length
-                  : undefined
-              }
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={tokenSummary}
-            />
-          ),
+          content: tokens,
           key: "tokens",
           label: "Tokens",
         }
