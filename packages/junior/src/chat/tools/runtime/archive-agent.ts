@@ -8,6 +8,7 @@ import {
   readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { getConversationStore, getDb } from "@/chat/db";
+import { mapBounded } from "@/chat/fan-out";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -114,11 +115,12 @@ export function createArchiveAgentTool(conversationId: string) {
             childConversationId,
           ).filter((node) => !node.archivedAt)
         : [];
-      await Promise.all(
+      await mapBounded(
         [
           childConversationId,
           ...descendants.map((node) => node.conversationId),
-        ].map(requireNoPersonUse),
+        ],
+        requireNoPersonUse,
       );
       const result = await setConversationArchive({
         applyToChildren: input.apply_to_children ?? false,
