@@ -370,8 +370,12 @@ export function useVersionsPoll(
       );
       const next = await readResponseJson(response, versionsSchema);
       setStreamAvailable(response.headers.get(VERSIONS_STREAM_HEADER) === "1");
-      refreshChangedReads(client, previous, next, conversationIds);
       retryFailedDetails(client);
+      // The stream wrote tokens while this check was in flight and refreshed
+      // their reads. This answer can be older, so keep the stream's.
+      const current = client.getQueryData<Versions>(VERSIONS_QUERY_KEY);
+      if (current && current !== previous) return current;
+      refreshChangedReads(client, previous, next, conversationIds);
       return next;
     },
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
