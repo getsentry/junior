@@ -52,7 +52,7 @@ final class AppModel {
 
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
-  /// Badges the drawer's Changelog after an update, until the person opens it.
+  /// Badges the drawer's Changelog after an install or update, until the person opens it.
   var changelogBadge = false
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
