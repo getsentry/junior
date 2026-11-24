@@ -299,4 +299,75 @@ describe("GitHub pull request cache refresh", () => {
     });
     expect(reads).toEqual(["pulls/36"]);
   });
+
+  it("shows an unknown merge state from a page read as pending, then a patch reads it", async () => {
+    stubGitHubApp();
+    vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
+    const queries = stubGraphql([
+      [
+        {
+          additions: 34,
+          author: { login: "junior-test[bot]" },
+          baseRefName: "main",
+          body: "Cache GitHub objects.",
+          changedFiles: 2,
+          commits: checkRuns({ SUCCESS: 2 }),
+          deletions: 1,
+          headRefName: "feat/object-cache",
+          headRefOid: "ddd444",
+          id: "PR_34",
+          isDraft: false,
+          // GitHub still computes it.
+          mergeable: "UNKNOWN",
+          merged: false,
+          number: 34,
+          reviewRequests: { nodes: [] },
+          state: "OPEN",
+          title: "Cache GitHub objects",
+          updatedAt: "2026-01-02T03:30:00Z",
+          url: `${GITHUB_REPO}/pull/34`,
+        },
+      ],
+      [
+        {
+          commits: checkRuns({ SUCCESS: 2 }),
+          headRefOid: "ddd444",
+          id: "PR_34",
+          mergeable: "MERGEABLE",
+          updatedAt: "2026-01-02T03:30:00Z",
+        },
+      ],
+    ]);
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    // Junior's own pull request: the webhook stores its GraphQL id.
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "opened",
+      pull_request: pullRequest(34, {
+        body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+        user: { login: "junior-test[bot]" },
+      }),
+    });
+
+    vi.setSystemTime(start + 61 * 60_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 62 * 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+  });
 });

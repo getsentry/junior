@@ -16,6 +16,7 @@ import {
   githubObjectCacheKey,
   isOlderGitHubObject,
 } from "./object-cache.js";
+import { scheduleGitHubPullRequestPatch } from "./pull-request-patches.js";
 import {
   GITHUB_NODES_MAX,
   githubPullRequestFieldsFromNode,
@@ -106,11 +107,32 @@ async function loadChunk(
     const key = keysByNodeId.get(node.id);
     if (!key) return;
     const fields = githubPullRequestFieldsFromNode(node);
-    await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) =>
-      isOlderGitHubObject(current, fields)
-        ? undefined
-        : { ...GITHUB_PULL_REQUEST_CACHE, value: { ...current, ...fields } },
-    );
+    // GitHub still computes the merge state, so it shows pending until a
+    // patch reads it.
+    const computing = fields.mergeable === null && fields.state === "open";
+    let patchNodeId: string | undefined;
+    await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+      if (isOlderGitHubObject(current, fields)) return undefined;
+      if (!computing) {
+        return {
+          ...GITHUB_PULL_REQUEST_CACHE,
+          value: { ...current, ...fields },
+        };
+      }
+      patchNodeId = node.id;
+      return {
+        ...GITHUB_PULL_REQUEST_CACHE,
+        value: { ...current, ...fields, mergeable: "pending" },
+      };
+    });
+    if (patchNodeId) {
+      await scheduleGitHubPullRequestPatch({
+        key,
+        nodeId: patchNodeId,
+        nowMs: Date.now(),
+        state: ctx.state,
+      });
+    }
   });
 }
 
