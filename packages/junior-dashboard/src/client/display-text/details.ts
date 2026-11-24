@@ -18,6 +18,7 @@ const OPEN_RE =
   /^<details(?:\s[^>]*)?>\s*(?:<summary>([\s\S]*?)<\/summary>)?\s*$/i;
 const SUMMARY_RE = /^<summary>([\s\S]*?)<\/summary>\s*$/i;
 const CLOSE_RE = /^<\/details>\s*$/i;
+const OPEN_LINE_RE = /^<details(?:\s[^>]*)?>/i;
 
 function html(node: MarkdownNode | undefined, re: RegExp) {
   return node?.type === "html" ? node.value?.trim().match(re) : null;
@@ -39,10 +40,38 @@ function summaryNode(text: string | undefined): MarkdownNode {
 export function spaceDetailsTags(text: string): string {
   return text
     .replace(
-      /^([ \t]*<\/summary>|[ \t]*<summary>.*<\/summary>)[ \t]*$/gim,
+      /^([ \t]*<\/summary>|[ \t]*(?:<details(?:\s[^>]*)?>[ \t]*)?<summary>.*<\/summary>)[ \t]*$/gim,
       "$1\n",
     )
     .replace(/^[ \t]*<\/details>[ \t]*$/gim, "\n</details>\n");
+}
+
+/**
+ * Return the `[start, end)` range of each closed top-level `<details>`
+ * section. Tags on lines inside a fence range do not count.
+ */
+export function detailsRanges(
+  text: string,
+  fences: readonly { end: number; start: number }[],
+): { end: number; start: number }[] {
+  const ranges: { end: number; start: number }[] = [];
+  let open: number | undefined;
+  let lineStart = 0;
+  for (const line of text.split("\n")) {
+    const start = lineStart;
+    lineStart += line.length + 1;
+    if (fences.some((fence) => start >= fence.start && start < fence.end)) {
+      continue;
+    }
+    const trimmed = line.trim();
+    if (open === undefined && OPEN_LINE_RE.test(trimmed)) {
+      open = start;
+    } else if (open !== undefined && CLOSE_RE.test(trimmed)) {
+      ranges.push({ end: start + line.length, start: open });
+      open = undefined;
+    }
+  }
+  return ranges;
 }
 
 /** Turn top-level `<details>` sections into disclosure elements. */

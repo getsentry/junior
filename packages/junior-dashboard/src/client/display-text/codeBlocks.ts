@@ -3,6 +3,7 @@ import type { BundledLanguage } from "shiki/bundle/web";
 
 import { dashboardCodeLanguages } from "../code-languages";
 import { detectOutputLanguage, prettyJsonData } from "../format";
+import { detailsRanges } from "./details";
 import type { CodeBlock } from "../types";
 
 // Shiki has no language detection, and agents often leave fences untagged.
@@ -67,11 +68,24 @@ export function markdownFences(text: string): MarkdownFence[] {
   );
 }
 
-/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
+/**
+ * Parse transcript prose as Markdown or JSON while preserving fenced code. A
+ * fence inside a closed `<details>` section stays in its prose block, so the
+ * section renders as one disclosure.
+ */
 export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
+  const fences = markdownFences(text);
+  const sections = detailsRanges(text, fences);
   let cursor = 0;
-  for (const fence of markdownFences(text)) {
+  for (const fence of fences) {
+    if (
+      sections.some(
+        (section) => fence.start >= section.start && fence.end <= section.end,
+      )
+    ) {
+      continue;
+    }
     const prose = text.slice(cursor, fence.start).trim();
     if (prose) blocks.push(proseBlock(prose));
     const language = fence.language

@@ -647,4 +647,37 @@ describe("display text details sections", () => {
 
     expect(html).not.toMatch(/<details[\s>]/);
   });
+
+  it("renders a summary on the opening line as a disclosure", () => {
+    const html = markup(
+      <DisplayText
+        text={
+          "<details><summary>Logs</summary>\n- **State:** paused.\n</details>"
+        }
+      />,
+    );
+
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>.*Logs<\/summary>/s);
+    expect(html).toMatch(/<details[^>]*>.*State:.*<\/details>/s);
+  });
+
+  it("keeps a code fence inside its details section", () => {
+    const html = markup(
+      <DisplayText
+        text={[
+          "<details>",
+          "<summary>Logs</summary>",
+          "",
+          "```",
+          "pod crashed",
+          "```",
+          "</details>",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toMatch(
+      /<details[^>]*><summary[^>]*>.*Logs<\/summary>.*pod crashed.*<\/details>/s,
+    );
+  });
 });
