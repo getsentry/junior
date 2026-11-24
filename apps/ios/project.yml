@@ -60,6 +60,11 @@ targets:
         CFBundleDisplayName: Junior
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # `beta` or `rc`, and the short git commit, which the TestFlight lane
+        # sets (fastlane/Fastfile). Local builds leave them empty. The idea
+        # comes from inject-git-info in armcknight/tools.
+        JuniorChannel: $(JUNIOR_CHANNEL)
+        JuniorCommit: $(JUNIOR_COMMIT)
         # Only standard HTTPS, so TestFlight asks no export-compliance question.
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true

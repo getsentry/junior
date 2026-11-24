@@ -177,6 +177,7 @@ private struct ServerFooter: View {
         if let version {
           Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
         }
+        Text("iOS app \(AppBuild.current.label)").type(.xs).foregroundStyle(Tokens.textMuted)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .combine)

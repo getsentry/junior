@@ -10,14 +10,10 @@ enum BundledChangelog {
     return ChangelogParser.parse(from: markdown ?? "")
   }
 
-  private static var version: String? {
-    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-  }
-
   /// True on a fresh install, and after an update that added releases, until
   /// the person opens the changelog.
   static func hasUnseen(_ defaults: UserDefaults = .standard) -> Bool {
-    guard let version = Self.version else { return false }
+    let version = AppBuild.current.changelogVersion
     guard let last = defaults.string(forKey: "lastSeenVersion") else { return !releases.isEmpty }
     let unseen = ChangelogParser.whatsNew(in: releases, lastSeenVersion: last, currentVersion: version)
     return !unseen.isEmpty
@@ -25,7 +21,7 @@ enum BundledChangelog {
 
   /// Records that the person saw the changelog of this version.
   static func markSeen(_ defaults: UserDefaults = .standard) {
-    if let version = Self.version { defaults.set(version, forKey: "lastSeenVersion") }
+    defaults.set(AppBuild.current.changelogVersion, forKey: "lastSeenVersion")
   }
 }
 

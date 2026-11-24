@@ -121,4 +121,14 @@ private let pull = "https://github.com/getsentry/junior/pull"
     let update = ChangelogParser.whatsNew(in: releases, lastSeenVersion: "0.312.0", currentVersion: "0.313.0")
     #expect(update.map(\.version) == ["0.313.0"])
   }
+
+  @Test func eachBetaShowsItsUpcomingSectionOnce() {
+    let all = [ChangelogRelease(version: ChangelogParser.upcoming, groups: [])] + releases
+    func whatsNew(_ last: String, _ current: String) -> [String] {
+      ChangelogParser.whatsNew(in: all, lastSeenVersion: last, currentVersion: current).map(\.version)
+    }
+    #expect(whatsNew("0.313.0+aaaaaaa", "0.313.0+bbbbbbb") == ["Upcoming"])
+    #expect(whatsNew("0.312.0+aaaaaaa", "0.313.0+bbbbbbb") == ["Upcoming", "0.313.0"])
+    #expect(whatsNew("0.313.0+bbbbbbb", "0.313.0+bbbbbbb").isEmpty)
+  }
 }
