@@ -1,13 +1,29 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  isNotNull,
+  isNull,
+  notLike,
+  or,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   readConversationAccessFromSql,
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
+import { UPDATE_TODOS_TOOL_NAME } from "@/chat/todos/types";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorDestinations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
@@ -79,16 +95,94 @@ export function inboxItemOwnedByConversation(
   )!;
 }
 
-/** SQL: the Inbox item has this assigned User. */
+const todoOwner = alias(juniorConversations, "todo_owner");
+const todoRoot = alias(juniorConversations, "todo_root");
+const todoDestination = alias(juniorDestinations, "todo_destination");
+
+/** SQL: the User is a Participant of this root Conversation. */
+function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
+  return exists(
+    getDb()
+      .select({ one: sql`1` })
+      .from(juniorConversationParticipants)
+      .where(
+        and(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+          eq(juniorConversationParticipants.userId, userId),
+        ),
+      ),
+  );
+}
+
+/**
+ * SQL: the User can see the private content of the Conversation that owns
+ * the item. This is the rule of `conversationAccessFromRows`: the User is a
+ * Participant of the owner when it has no parent, even with no stored root.
+ * Otherwise the owner needs a valid stored root, whose Destination is public
+ * or whose Participants include the User.
+ */
+function ownerConversationOpenTo(userId: string): SQL {
+  return exists(
+    getDb()
+      .select({ one: sql`1` })
+      .from(todoOwner)
+      .leftJoin(
+        todoRoot,
+        and(
+          eq(todoRoot.conversationId, todoOwner.rootConversationId),
+          eq(todoRoot.rootConversationId, todoRoot.conversationId),
+          isNull(todoRoot.parentConversationId),
+          or(
+            isNotNull(todoOwner.parentConversationId),
+            eq(todoOwner.rootConversationId, todoOwner.conversationId),
+          ),
+        ),
+      )
+      .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
+      .where(
+        and(
+          eq(todoOwner.conversationId, juniorInboxItems.ownerId),
+          or(
+            and(
+              isNull(todoOwner.parentConversationId),
+              participantOf(userId, todoOwner.conversationId),
+            ),
+            and(
+              isNotNull(todoRoot.conversationId),
+              or(
+                eq(todoDestination.visibility, "public"),
+                participantOf(userId, todoRoot.conversationId),
+              ),
+            ),
+          ),
+        ),
+      ),
+  );
+}
+
+/**
+ * SQL: the Inbox item has this assigned User. A To-do's item counts only
+ * while the User can see its Conversation's private content, so a person
+ * who loses access to the Conversation no longer sees or acts on it.
+ */
 export function inboxItemAssignedTo(userId: string): SQL {
-  return sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`;
+  return and(
+    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
+    or(
+      notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+      ownerConversationOpenTo(userId),
+    ),
+  )!;
 }
 
 /**
  * SQL: the Inbox item needs this User. Only an open `action` item that is
  * assigned to the User needs them. A notice, an item for Everyone, and an
- * item without assignees need no one. An assigned User can always see the
- * item, so this rule needs no visibility check. The nav count and the
+ * item without assignees need no one. An assigned User can see the item
+ * (`inboxItemAssignedTo`), so this rule needs no other visibility check. The nav count and the
  * "Waiting on you" marker use this rule.
  */
 export function inboxItemNeedsUser(userId: string): SQL {
@@ -194,6 +288,20 @@ export async function canUserReadInboxItem(
   item: InboxItem,
   user: User,
 ): Promise<boolean> {
+  const todo = inboxItemTodo(item);
+  if (todo) {
+    // Only its assignee reads a To-do's item, while they can see the
+    // Conversation (`inboxItemAssignedTo`).
+    if (!item.assignees.some((assignee) => assignee.userId === user.id)) {
+      return false;
+    }
+    const access = await readConversationAccessFromSql(
+      getDb(),
+      [todo.conversationId],
+      user,
+    );
+    return access.get(todo.conversationId)?.canViewPrivateContent === true;
+  }
   if (canReadInboxItem(item, inboxItemReaderForUser(user))) return true;
   const access = await readConversationAccessFromSql(
     getDb(),
@@ -289,20 +397,63 @@ export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
 export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
 
 /**
+ * Dedupe keys with this prefix belong to To-dos for a person, which core
+ * adds and closes as the To-do changes (`syncTodoInboxItems`). An agent
+ * cannot use the prefix.
+ */
+export const TODO_INBOX_ITEM_KEY_PREFIX = "todo:";
+
+/**
+ * Return the To-do that an item shows, or undefined for any other item. The
+ * key is `todo:<conversationId>:<todoId>`, and a Conversation id can hold
+ * colons.
+ */
+export function inboxItemTodo(
+  item: Pick<InboxItem, "dedupeKey">,
+): { conversationId: string; id: number } | undefined {
+  if (!item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return undefined;
+  const rest = item.dedupeKey.slice(TODO_INBOX_ITEM_KEY_PREFIX.length);
+  const split = rest.lastIndexOf(":");
+  const id = Number(rest.slice(split + 1));
+  if (split <= 0 || !Number.isSafeInteger(id) || id <= 0) return undefined;
+  return { conversationId: rest.slice(0, split), id };
+}
+
+/**
  * Dedupe keys with this prefix belong to reply notices, which core adds for
  * the starter of a dashboard Conversation and closes when they read the
  * reply. An agent cannot use the prefix or change the item.
  */
 export const REPLY_NOTICE_KEY_PREFIX = "reply:";
 
+const USE_ANOTHER_KEY = "Use a different key.";
+
 /**
- * The dedupe key prefixes that core and plugins own, with their owner. The
- * add tool's input schema rejects a key that starts with one of them.
+ * The dedupe key prefixes that core and plugins own, with their owner and
+ * what to do instead. The add tool's input schema rejects a key that starts
+ * with one of them.
  */
 export const RESERVED_INBOX_ITEM_KEY_PREFIXES = [
-  { owner: "a plugin", prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX },
-  { owner: "an Automation alert", prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX },
-  { owner: "a reply notice", prefix: REPLY_NOTICE_KEY_PREFIX },
+  {
+    owner: "a plugin",
+    prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX,
+    instead: USE_ANOTHER_KEY,
+  },
+  {
+    owner: "an Automation alert",
+    prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX,
+    instead: USE_ANOTHER_KEY,
+  },
+  {
+    owner: "a reply notice",
+    prefix: REPLY_NOTICE_KEY_PREFIX,
+    instead: USE_ANOTHER_KEY,
+  },
+  {
+    owner: "a To-do",
+    prefix: TODO_INBOX_ITEM_KEY_PREFIX,
+    instead: `Assign a To-do to the person with ${UPDATE_TODOS_TOOL_NAME} instead.`,
+  },
 ] as const;
 
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
@@ -337,6 +488,7 @@ export function canAgentChangeInboxItem(
   scope: InboxItemAgentScope,
 ): boolean {
   if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
+  if (item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return false;
   if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;

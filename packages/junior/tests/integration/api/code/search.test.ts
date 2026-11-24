@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -71,11 +73,15 @@ async function codeChange(args: {
     state: "open",
     title: args.title,
     updatedAt: at,
-    url: `https://github.com/${repository}/pull/${args.number}`,
   } satisfies CodeChangeInput);
 }
 
 describe("code change search API", () => {
+  // The GitHub plugin builds the code links.
+  beforeEach(async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+  });
+
   afterEach(async () => {
     await closeDb();
   });

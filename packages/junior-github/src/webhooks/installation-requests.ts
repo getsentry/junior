@@ -17,6 +17,7 @@ import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
   ADD_REVIEW_REACTION,
@@ -142,7 +143,7 @@ export async function loadPullRequestLifecycles(
     repository.full_name,
     "pull request lifecycle",
   );
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...pullRequestLifecycles(input.numbers.length),
       variables: {
@@ -153,7 +154,6 @@ export async function loadPullRequestLifecycles(
         ),
       },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -179,7 +179,7 @@ export async function searchOpenPullRequestMergeability(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...OPEN_PULL_REQUEST_MERGEABILITY,
       variables: {
@@ -187,7 +187,6 @@ export async function searchOpenPullRequestMergeability(
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -206,12 +205,11 @@ export async function loadPullRequestConflictHistory(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...PULL_REQUEST_CONFLICT_HISTORY,
       variables: { name, number: pullRequest.number, owner },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -542,9 +540,8 @@ export async function loadPullRequestMergeState(
     document: typeof PULL_REQUEST_NEXT_ACTION,
     extra?: { before: string },
   ) =>
-    await githubRequest("https://api.github.com", "/graphql", {
+    await githubGraphqlRequest({
       body: { ...document, variables: { ...variables, ...extra } },
-      method: "POST",
       token: token.token,
     });
   const readPull = async () =>

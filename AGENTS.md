@@ -21,10 +21,12 @@ the check first. A rule that only review enforces is a judgment call.
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
+| Read GitHub state from GitHub through the plugin cache. Do not copy it into tables. | `provider-state:check` |
 | Group files by feature and name paths by role. No feature-directory barrels. | Review |
 | Exported functions get a brief JSDoc that states intent. | Review |
 | Docs use ASD-STE100 English: common words, active voice, short sentences. | Review |
 | A check baseline may only shrink. Fix the new violation. Do not add or raise an entry. | `baseline-growth:check` |
+| A Frameshift screenshot change that your diff did not cause is a bug. Find why the shot changed and fix it, or open an issue with the before and after. Do not ignore it or call it noise. | Review, `e2e/screenshot.ts` fails a shot that keeps changing |
 | This is the only `AGENTS.md`. Do not add one in a directory. Put intent in a code comment next to the code that it governs. | `file-length:check` |
 | Change this file or a `README.md` only when intent, an invariant, or a boundary changes. Do not commit implementation plans. Track planned work in GitHub issues. | Review |
 | `design/` states the intent that people set for each system. Add, change, or remove a line there only after the person you work for confirms that exact text and its intent. Never change it as part of other work. | Review |

@@ -41,15 +41,16 @@ struct ConversationThreadList: View {
 
 private struct ThreadRowView: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let row: ThreadRow
 
   private var conversation: MCPConversation { row.conversation }
   private var route: Route { .conversation(conversation.conversationId) }
-  private var selected: Bool { app.path.first == route }
+  private var selected: Bool { window.path.first == route }
 
   var body: some View {
     Button {
-      app.path = [route]
+      window.path = [route]
     } label: {
       HStack(spacing: 8) {
         statusIcon
@@ -71,7 +72,7 @@ private struct ThreadRowView: View {
     .accessibilityLabel(accessibilityText)
     .accessibilityAddTraits(.isButton)
     .accessibilityAddTraits(selected ? .isSelected : [])
-    .accessibilityAction { app.path = [route] }
+    .accessibilityAction { window.path = [route] }
   }
 
   private var accessibilityText: String {

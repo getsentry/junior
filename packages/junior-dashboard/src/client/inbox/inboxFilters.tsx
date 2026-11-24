@@ -1,27 +1,34 @@
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import { parsePath } from "react-router";
 import {
   Check,
   CircleHelp,
   Ellipsis,
   Eye,
   GitPullRequest,
+  ListTodo,
   LoaderCircle,
   MessageCircleQuestion,
   Pin,
   type LucideIcon,
 } from "lucide-react";
 
-import { ScopeTabs } from "../components/filters/ScopeTabs";
+import { ScopeTabs, type ScopeTab } from "../components/filters/ScopeTabs";
 import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import type { Conversation } from "../types";
-import { isCodeChangeItem, isDecisionItem, type InboxView } from "./inboxModel";
+import {
+  isCodeChangeItem,
+  isDecisionItem,
+  isTodoItem,
+  type InboxView,
+} from "./inboxModel";
 
 /**
  * The type of an ask, as the Inbox filters split them. A pull request ask
  * is a Pull request even when it asks a question. Other holds the rest,
- * such as To-dos, text questions, and Resume.
+ * such as text questions and Resume.
  */
-export type AskType = "decisions" | "other" | "prs";
+export type AskType = "decisions" | "other" | "prs" | "todos";
 
 /** The Inbox filter: every ask, or the asks of one type. */
 export type InboxTypeFilter = AskType | "all";
@@ -47,19 +54,22 @@ const TYPE_PARAM = "type";
 const STATE_PARAM = "state";
 const PINNED_PARAM = "pinned";
 
+// All, the default, sits at the right edge, and Pinned just before it. The
+// tab order follows the order on screen.
 const TYPE_FILTERS: readonly Filter<InboxTypeFilter>[] = [
-  { key: "all", label: "All" },
+  { icon: Ellipsis, key: "other", label: "Other" },
   { icon: GitPullRequest, key: "prs", label: "PRs" },
   { icon: MessageCircleQuestion, key: "decisions", label: "Decisions" },
-  { icon: Ellipsis, key: "other", label: "Other" },
+  { icon: ListTodo, key: "todos", label: "To-dos" },
+  { key: "all", label: "All" },
 ];
 
 const STATE_FILTERS: readonly Filter<ConversationStateFilter>[] = [
-  { key: "all", label: "All" },
-  { icon: CircleHelp, key: "needs_you", label: "Needs you" },
-  { icon: LoaderCircle, key: "working", label: "Working" },
-  { icon: Eye, key: "watching", label: "Watching" },
   { icon: Check, key: "done", label: "Done" },
+  { icon: Eye, key: "watching", label: "Watching" },
+  { icon: LoaderCircle, key: "working", label: "Working" },
+  { icon: CircleHelp, key: "needs_you", label: "Needs you" },
+  { key: "all", label: "All" },
 ];
 
 /**
@@ -77,13 +87,13 @@ function filterSearch(search: string) {
  * hide stays on screen once the `item` link leaves the URL.
  */
 export function withoutFilters(path: string): string {
-  const [pathname, search = ""] = path.split("?", 2);
+  const { pathname = "/", search = "" } = parsePath(path);
   const params = new URLSearchParams(search);
   for (const param of [TYPE_PARAM, STATE_PARAM, PINNED_PARAM]) {
     params.delete(param);
   }
   const rest = params.toString();
-  return rest ? `${pathname}?${rest}` : (pathname ?? path);
+  return rest ? `${pathname}?${rest}` : pathname;
 }
 
 /**
@@ -112,27 +122,33 @@ function filterTabs<Key extends string>(
 }
 
 /**
- * Link the Pinned tab, which shows only the viewer's pinned Conversations
- * and turns the other filters off.
+ * Add the Pinned tab just before All. It shows only the viewer's pinned
+ * Conversations and turns the other filters off.
  */
-function pinnedTab(search: string, on: boolean) {
+function withPinnedTab(
+  tabs: readonly (ScopeTab & { key: string })[],
+  search: string,
+  on: boolean,
+): ScopeTab[] {
   const params = filterSearch(search);
   params.delete(TYPE_PARAM);
   params.delete(STATE_PARAM);
   params.set(PINNED_PARAM, "1");
-  return {
+  const pinned: ScopeTab = {
     icon: Pin,
     iconOnlyOnPhone: true,
     label: "Pinned",
     on,
     search: params.toString(),
   };
+  return tabs.flatMap((tab) => (tab.key === "all" ? [pinned, tab] : [tab]));
 }
 
 /** Say which type an ask is. */
 export function askTypeOf(item: InboxItemPayload): AskType {
   if (isCodeChangeItem(item)) return "prs";
   if (isDecisionItem(item)) return "decisions";
+  if (isTodoItem(item)) return "todos";
   return "other";
 }
 
@@ -177,7 +193,7 @@ function InboxTypeFilters(props: {
   return (
     <ScopeTabs
       label="Asks to show"
-      tabs={[...tabs, pinnedTab(props.search, props.pinned)]}
+      tabs={withPinnedTab(tabs, props.search, props.pinned)}
     />
   );
 }
@@ -263,7 +279,7 @@ export function ConversationStateFilters(props: {
       tabs={
         props.pinned === undefined
           ? tabs
-          : [...tabs, pinnedTab(props.search, props.pinned)]
+          : withPinnedTab(tabs, props.search, props.pinned)
       }
     />
   );

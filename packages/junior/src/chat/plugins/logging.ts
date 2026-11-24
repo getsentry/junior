@@ -18,8 +18,8 @@ export function createPluginLogger(plugin: string): PluginLogger {
         ...metadata,
       });
     },
-    error(message, metadata) {
-      logException(new Error(message), "plugin.log.error", {
+    error(message, metadata, cause) {
+      logException(new Error(message, { cause }), "plugin.log.error", {
         "app.plugin.name": plugin,
         ...metadata,
       });

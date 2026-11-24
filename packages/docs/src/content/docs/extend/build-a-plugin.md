@@ -158,19 +158,54 @@ accounts:
 - `accounts.user-oauth` is `true` by default. Set it to `false` when people
   must not use their own accounts. Then Junior uses only the service account,
   never asks a person to connect, and ignores connections that people already
-  made. Junior hides the tools that the service account does not list. Until
+  made. Junior hides the MCP tools that the service account does not list. Until
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
-  Plugins with only a top-level `oauth` block do not support a service
-  account yet.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
+A plugin with a top-level `oauth` block and `oauth-bearer` credentials, and
+no `mcp`, lists operations instead of tools. An operation is the `operation`
+name that the plugin's host code passes to `ctx.egress.fetch`:
+
+```yaml title="plugin.yaml"
+credentials:
+  type: oauth-bearer
+  domains:
+    - api.my-provider.example
+
+oauth:
+  client-id-env: MY_PROVIDER_CLIENT_ID
+  client-secret-env: MY_PROVIDER_CLIENT_SECRET
+  authorize-endpoint: https://my-provider.example/oauth/authorize
+  token-endpoint: https://my-provider.example/oauth/token
+  scope: read upload
+
+accounts:
+  user-oauth: false
+  service-account:
+    operations:
+      - my-provider.upload
+```
+
+- `auth-token-env` is optional when the plugin has `oauth`. Leave it out
+  when only host code calls the provider: then there is no env token
+  fallback and no Sandbox placeholder.
+- Junior adds the service account's token only to `ctx.egress.fetch` calls
+  that name a listed operation. Commands in the sandbox name no operation,
+  so they never get the service account.
+- Junior refreshes the token when the provider returns `expires_in` and a
+  refresh token. A token without `expires_in` does not expire. If the
+  provider rejects the refresh, Junior removes the account, and an admin
+  must connect it again.
 The declaration has no effect until a Junior admin connects the account. In
 the dashboard, open **Admin**, find the plugin under **Service accounts**, and
 click **Connect**. Sign in as the account that Junior uses, not as yourself.
 The same card shows who connected the account and lets an admin disconnect it.
+For a plugin with a top-level `oauth` block, add
+`<base URL>/api/service-accounts/<plugin>/callback` as a redirect URI in the
+provider's OAuth app first.
 
 If the dashboard is not available, an operator can use the CLI on a machine
 with a browser and the deployment `REDIS_URL`:
@@ -181,8 +216,12 @@ junior service-account status my-provider
 junior service-account disconnect my-provider
 ```
 
+The CLI uses a loopback redirect URI on a random port. Use it only with a
+provider that accepts that redirect URI.
+
 When the account is connected, Junior uses it only for an actor who has not
-connected their own account, and only for the tools that it lists.
+connected their own account, and only for the tools or operations that it
+lists.
 Other requests ask the actor to connect their own account, as before. An
 actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
@@ -494,6 +533,11 @@ Use `ctx.state` for plugin-namespaced durable state. Use
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
 `ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
 `ctx.conversationChanges` as from a plugin route.
+
+A plugin that records code changes with `ctx.codeChanges` also sets
+`codeLinks` in its registration. Junior does not store links. It calls
+`codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
+link each code change and repository.
 
 Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
 Inbox item changes together, such as a chip that shows a merged pull request

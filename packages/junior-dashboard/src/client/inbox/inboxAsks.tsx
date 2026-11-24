@@ -14,6 +14,7 @@ const PLURALS: Record<string, string> = {
   Approval: "Approvals",
   FYI: "FYIs",
   Question: "Questions",
+  "To do for you": "To dos for you",
 };
 
 // The kind of a pull request ask in short words, before its change's title.

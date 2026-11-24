@@ -3,10 +3,12 @@ import { GitHubRequestError } from "../src/credential-support.js";
 import { logFailOpenFailure } from "../src/webhooks/fail-open-log.js";
 
 function capture(error: unknown) {
-  const logs: Array<[string, Record<string, unknown> | undefined]> = [];
+  const logs: Array<[string, Record<string, unknown> | undefined, unknown?]> =
+    [];
   logFailOpenFailure(
     {
-      error: (_message, metadata) => logs.push(["error", metadata]),
+      error: (_message, metadata, cause) =>
+        logs.push(["error", metadata, cause]),
       warn: (_message, metadata) => logs.push(["warn", metadata]),
     },
     "GitHub check suite load failed",
@@ -30,11 +32,13 @@ describe("logFailOpenFailure", () => {
     ]);
   });
 
-  it("logs other failures as errors", () => {
-    expect(capture(new GitHubRequestError("Not found", 404))).toEqual([
+  it("logs other failures as errors with the failure as the cause", () => {
+    const error = new GitHubRequestError("Not found", 404);
+    expect(capture(error)).toEqual([
       [
         "error",
         { errorType: "GitHubRequestError", repository: "getsentry/junior" },
+        error,
       ],
     ]);
     expect(capture(new TypeError("bad response"))[0]?.[0]).toBe("error");

@@ -37,7 +37,7 @@ final class NavigationUITests: XCTestCase {
   }
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
-  /// loopback redirect, the token exchange, and a Keychain that survives a
+  /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
   /// relaunch. Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
@@ -52,6 +52,21 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(signOut.waitForExistence(timeout: 10))
     signOut.tap()
     XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
+  }
+
+  /// Sign in suggests Sentry's Junior until the app has signed in to another
+  /// server. `-serverURL` stands in for the server that the app remembers.
+  func testSignInSuggestsProduction() {
+    let production = "https://junior-prod.sentry.dev"
+    for (saved, shown) in [("", production), ("https://demo.junior.invalid", production), (server, server)] {
+      let app = XCUIApplication()
+      app.launchArguments = ["-serverURL", saved, "-JuniorSignOut", "YES", "-JuniorTheme", "dark"]
+      app.launch()
+      let field = app.textFields["Dashboard URL"]
+      XCTAssertTrue(field.waitForExistence(timeout: 10))
+      XCTAssertEqual(field.value as? String, shown, "remembered: \(saved)")
+      app.terminate()
+    }
   }
 
   /// The built-in demo answers without the mock server: a reply to a sent

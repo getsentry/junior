@@ -180,7 +180,7 @@ export async function handleMcpAuthorize(args: {
       "The client ID is not a valid client metadata document URL.",
     );
   }
-  if (!redirectUriMatches(client.redirectUris, redirectUri)) {
+  if (!redirectUriMatches(client, redirectUri)) {
     return invalidClientPage(
       "The redirect URI is not registered by this client.",
     );

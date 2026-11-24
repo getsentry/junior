@@ -68,7 +68,7 @@ test("an Inbox question row links its evidence and related items @new", async ({
   page,
 }) => {
   await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}/?view=inbox&item=qa-rollout`);
+  await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
   const related = await expectEvidence(
     page.getByRole("region", { name: "Approve the payments-v42 rollout" }),
   );

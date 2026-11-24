@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { codeRepositoryUrl } from "@/chat/code/links";
 import { getDb } from "@/chat/db";
 import { listWorkspacesByRepository } from "@/chat/workspaces/store";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
@@ -44,7 +45,6 @@ export async function readCodeRepository(
       name: juniorCodeRepositories.name,
       open: countState("open"),
       provider: juniorCodeRepositories.provider,
-      url: juniorCodeRepositories.url,
     })
     .from(juniorCodeRepositories)
     .leftJoin(
@@ -88,7 +88,7 @@ export async function readCodeRepository(
     generatedAt: windows.windowEnd.toISOString(),
     repository: {
       ...repository,
-      url: repository.url ?? undefined,
+      url: codeRepositoryUrl(repository),
     },
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
