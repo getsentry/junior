@@ -10,6 +10,7 @@ import {
 
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 const issueEventSchema = z.object({
+  action: z.string().optional(),
   issue: githubIssueFieldsSchema,
   repository: repositorySchema,
 });
@@ -40,9 +41,14 @@ export async function refreshGitHubObjectCache(args: {
     "issue" in event.data
       ? (["issues", event.data.issue] as const)
       : (["pulls", event.data.pull_request] as const);
+  // A deleted or moved issue is gone from its URL, as a read would find.
+  const gone =
+    "issue" in event.data &&
+    (event.data.action === "deleted" || event.data.action === "transferred");
   await args.cache.update<typeof payload | null>(
     githubObjectCacheKey(collection, repository.full_name, payload.number),
     (current) => {
+      if (gone) return { ...GITHUB_OBJECT_CACHE, value: null };
       const value = mergeGitHubObject(current, payload);
       return value && { ...GITHUB_OBJECT_CACHE, value };
     },
