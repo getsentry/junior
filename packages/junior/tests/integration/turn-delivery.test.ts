@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
-import { juniorConversations, juniorTurnOutbox } from "@/db/schema";
+import { juniorTurnOutbox } from "@/db/schema";
 import { deliveryConsumer } from "@/turn-steps/delivery";
 import { modelOverloaded, setModelReplies } from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
@@ -60,18 +60,6 @@ async function allSent(
 ) {
   const rows = await readOutbox(engineCtx, conversationId);
   return rows.length > 0 && rows.every((row) => row.state === "sent");
-}
-
-function setConversation(
-  { executor }: Pick<EngineContext, "executor">,
-  conversationId: string,
-  values: Partial<typeof juniorConversations.$inferInsert>,
-) {
-  return executor
-    .db()
-    .update(juniorConversations)
-    .set(values)
-    .where(eq(juniorConversations.conversationId, conversationId));
 }
 
 /**
@@ -283,45 +271,6 @@ describe("Turn delivery", () => {
 
     // The queue delivers the same step message again. Its claim misses.
     await harness.runUntilIdle();
-    await expect(allSent(engineCtx, conversationId)).resolves.toBe(true);
-
-    expect(harness.slackPosts()).toEqual([
-      { text: "Three.", thread: location.threadTs },
-    ]);
-  });
-
-  it("posts nothing while the Conversation's Delivery is paused", async () => {
-    const { engineCtx, conversationId, queue } = harness;
-    await setConversation(engineCtx, conversationId, {
-      deliveryPausedAt: new Date(),
-    });
-
-    const { turnId } = await sendForReply("Three.");
-    await harness.runUntilIdle();
-    await expect(harness.turn(turnId)).resolves.toMatchObject({
-      state: "completed",
-    });
-    expect(handledDeliveries(queue, turnId)).toBe(1);
-
-    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([]);
-    expect(harness.slackPosts()).toEqual([]);
-  });
-
-  it("still posts a reply recorded before the Conversation's Delivery was paused", async () => {
-    const { engineCtx, conversationId, location, queue } = harness;
-    const release = await holdDeliveryLock(engineCtx, conversationId);
-    const { turnId } = await sendForReply("Three.");
-    await harness.runUntilIdle();
-    expect(handledDeliveries(queue, turnId)).toBe(1);
-    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
-      expect.objectContaining({ state: "pending" }),
-    ]);
-
-    await setConversation(engineCtx, conversationId, {
-      deliveryPausedAt: new Date(),
-    });
-    await release();
-    await runAfterBackoff();
     await expect(allSent(engineCtx, conversationId)).resolves.toBe(true);
 
     expect(harness.slackPosts()).toEqual([

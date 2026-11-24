@@ -2,7 +2,6 @@
 // delivery messages, with the sender of each Destination platform.
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { RetryableDeliveryError } from "@/chat/agent/types";
-import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import type { QueueConsumer } from "@/chat/queue/provider";
 import { postSlackSystemReply } from "@/chat/providers/slack/system-turn";
 import { SlackActionError } from "@/chat/slack/client";
@@ -37,8 +36,6 @@ export function deliveryConsumer(
       const providerMessageId = messageIds.at(-1);
       return providerMessageId ? { providerMessageId } : {};
     },
-    isPaused: (conversationId) =>
-      isConversationDeliveryPaused(conversationId, engineCtx.executor),
   };
   return createDeliveryConsumer(engineCtx, (message) =>
     deliverTurn(engineCtx, message, delivery),
