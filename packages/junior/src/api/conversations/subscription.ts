@@ -1,14 +1,16 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
-import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import {
+  readMentionedUserIds,
+  resolveRootConversationId,
+} from "@/chat/conversations/sql/participants";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorIdentities,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -56,18 +58,19 @@ import {
  *   MCP tool act only on the signed-in person or the Turn actor. No argument
  *   of theirs names a person.
  * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person they mention, or send a dashboard Message that
- *   mentions them, then that person becomes a subscribed Participant. This
- *   is the only way to subscribe another person. It gives no access: anyone
- *   can already read a public Conversation and join it by posting. A
- *   private Conversation refuses Invite with the same error as a missing
- *   one, so Invite never shares private content. An archived root refuses
- *   Invite, because no feed shows it and a restore is for everyone. A
- *   Message that mentions someone in an archived root still adds them,
- *   because that Message restores the root. The mention names a Slack user
- *   of the Conversation's workspace. An existing Participant keeps their
- *   row, so Invite does not undo their unsubscribe. Nobody can unsubscribe
- *   another person.
+ *   they Invite a person they mention, or send a dashboard or Slack Message
+ *   that mentions them, then that person becomes a subscribed Participant.
+ *   A dashboard Message adds them when it is accepted. Any Message adds them
+ *   when it starts or joins a Turn, like its author. This is the only way to
+ *   subscribe another person. It gives no access: anyone can already read a
+ *   public Conversation and join it by posting. A private Conversation
+ *   refuses Invite with the same error as a missing one, so Invite never
+ *   shares private content. An archived root refuses Invite, because no
+ *   feed shows it and a restore is for everyone. A Message that mentions
+ *   someone in an archived root still adds them, because that Message
+ *   restores the root. The mention names a Slack user of the Conversation's
+ *   workspace. An existing Participant keeps their row, so Invite does not
+ *   undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
@@ -213,6 +216,7 @@ export async function inviteToConversation(
   const conversation = await readInvitableConversation(viewer, conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
   const [userId] = await readMentionedUserIds(
+    getSqlExecutor(),
     [body.slackUserId],
     conversation.slackTeamId,
   );
@@ -241,6 +245,7 @@ export async function inviteMentionedPeople(
   const conversation = await readInvitableConversation(viewer, conversationId);
   if (!conversation) return;
   const userIds = await readMentionedUserIds(
+    getSqlExecutor(),
     slackUserIds,
     conversation.slackTeamId,
   );
@@ -272,28 +277,6 @@ async function readInvitableConversation(
     return undefined;
   }
   return { rootConversationId, slackTeamId: readableSlackTeamId(access) };
-}
-
-/** The Users of the mentioned Slack people, in the Conversation's workspace. */
-async function readMentionedUserIds(
-  slackUserIds: readonly string[],
-  slackTeamId: string | undefined,
-): Promise<string[]> {
-  const rows = await getDb()
-    .select({ userId: juniorIdentities.userId })
-    .from(juniorIdentities)
-    .where(
-      and(
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.kind, "user"),
-        inArray(juniorIdentities.providerSubjectId, [...slackUserIds]),
-        isNotNull(juniorIdentities.userId),
-        slackTeamId
-          ? eq(juniorIdentities.providerTenantId, slackTeamId)
-          : undefined,
-      ),
-    );
-  return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
 }
 
 /**

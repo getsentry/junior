@@ -85,10 +85,11 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
-- **Invite**: a person subscribes someone they mention in the composer to a
-  public Conversation's feed, with the mention card or by sending the
-  Message. Access stays the same, because anyone can already read a public
-  Conversation and join it by posting. A private Conversation refuses it.
+- **Invite**: a person subscribes someone they mention to a public
+  Conversation's feed, with the composer's mention card or by sending a
+  dashboard or Slack Message that mentions them. Access stays the same,
+  because anyone can already read a public Conversation and join it by
+  posting. A private Conversation refuses it.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.

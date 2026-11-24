@@ -150,7 +150,7 @@ async function agentSetsSubscription(actor: Person, subscribed: boolean) {
 }
 
 /** Store one Slack Message from the person, and a Turn that reads it. */
-async function say(someone: Person, mentionsJunior: boolean) {
+async function say(someone: Person, mentionsJunior: boolean, text?: string) {
   nowMs += 1_000;
   const messageId = `message-${nowMs}`;
   await getConversationEventStore().append(CONVERSATION_ID, [
@@ -161,7 +161,7 @@ async function say(someone: Person, mentionsJunior: boolean) {
         messageId,
         meta: { explicitMention: mentionsJunior, source: "slack" },
         role: "user",
-        text: messageId,
+        text: text ?? messageId,
         type: "message",
       },
       idempotencyKey: `message:${messageId}`,
@@ -335,11 +335,26 @@ describe("conversation subscription", () => {
     expect(await ben.feed()).toEqual([]);
   });
 
-  it("a dashboard Message in a private conversation adds nobody", async () => {
+  it("a Slack Message that mentions a person adds them, like Invite", async () => {
+    const { ana, ben } = await sharedThread();
+    const cleo = await person("cleo");
+    await ben.setSubscribed(false);
+
+    await say(
+      ana,
+      false,
+      `<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`,
+    );
+    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ben.feed()).toEqual([]);
+  });
+
+  it("a Message in a private conversation adds nobody it mentions", async () => {
     const { ana } = await sharedThread(undefined, "private");
     const cleo = await person("cleo");
 
     await ana.post(`<@${slackUserId("cleo")}> look`);
+    await say(ana, true, `<@${slackUserId("cleo")}> look`);
     expect(await cleo.feed("?q=shared")).toEqual([]);
   });
 
