@@ -7,6 +7,7 @@ import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { spawnChildAgent } from "./create";
 import { AgentDepthLimitError } from "./errors";
+import { listWorkingChildAgents } from "./list";
 
 type SpawnOptions = {
   conversationStore?: ConversationStore;
@@ -58,7 +59,7 @@ export function bindSpawnAgent(
     );
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
-    return await spawnChildAgent(
+    const { childConversationId } = await spawnChildAgent(
       {
         actor,
         ...(input.name ? { agentName: input.name } : undefined),
@@ -80,5 +81,9 @@ export function bindSpawnAgent(
       },
       { ...options, queue },
     );
+    return {
+      childConversationId,
+      workingChildAgents: await listWorkingChildAgents(run.conversationId),
+    };
   };
 }

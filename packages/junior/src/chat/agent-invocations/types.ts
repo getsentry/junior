@@ -85,3 +85,9 @@ export type ChildAgent = {
   title?: string;
   updatedAtMs: number;
 };
+
+/** What model-read text names a child agent by. */
+export type ChildAgentRef = Pick<
+  ChildAgent,
+  "agentName" | "childConversationId" | "title"
+>;

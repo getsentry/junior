@@ -183,7 +183,13 @@ describe("spawn and messageAgent", () => {
             state: harness.state,
           },
         )!({ task: "Check the rollback." }, { toolCallId: "call-1" }),
-      ).resolves.toEqual({ childConversationId: first });
+      ).resolves.toEqual({
+        childConversationId: first,
+        // The replay reads the state again: the first task still waits.
+        workingChildAgents: [
+          expect.objectContaining({ childConversationId: first }),
+        ],
+      });
       harness.onRun(finishRun);
       await harness.processUntilRun(first);
 
@@ -388,6 +394,9 @@ describe("spawn and messageAgent", () => {
       await expect(message(harness, childId, "call-2")).resolves.toEqual({
         conversationId: childId,
         delivery: "queued",
+        workingChildAgents: [
+          expect.objectContaining({ childConversationId: childId }),
+        ],
       });
       await expect(mailboxTexts(harness, childId)).resolves.toEqual([
         "Check the deploy.",
@@ -417,6 +426,9 @@ describe("spawn and messageAgent", () => {
       await expect(message(harness, childId, "call-2")).resolves.toEqual({
         conversationId: childId,
         delivery: "started",
+        workingChildAgents: [
+          expect.objectContaining({ childConversationId: childId }),
+        ],
       });
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         undefined,
@@ -594,7 +606,12 @@ describe("spawn and messageAgent", () => {
             { text: "Check it again.", to: childId },
             { toolCallId: "call-2" },
           ),
-        ).resolves.toEqual({ conversation_id: childId, delivery: "noted" });
+        ).resolves.toEqual({
+          conversation_id: childId,
+          delivery: "noted",
+          next_step:
+            "This conversation is stopped, so the child agent started no work and sends no result. End this turn.",
+        });
       }
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         1_800_000_000_000,
@@ -698,7 +715,13 @@ describe("spawn and messageAgent", () => {
       // The Thread's task still waits, so the message queues behind it.
       await expect(
         message(harness, threadId, "call-2", "parent-turn-2"),
-      ).resolves.toEqual({ conversationId: threadId, delivery: "queued" });
+      ).resolves.toEqual({
+        conversationId: threadId,
+        delivery: "queued",
+        workingChildAgents: [
+          expect.objectContaining({ childConversationId: threadId }),
+        ],
+      });
       await expect(mailboxTexts(harness, threadId)).resolves.toEqual([
         "Check the deploy.",
         "Check it again.",
@@ -741,7 +764,7 @@ describe("spawn and messageAgent", () => {
       });
 
       vi.setSystemTime(1_800_000_003_000);
-      await expect(message(harness, childId, "call-2")).resolves.toEqual({
+      await expect(message(harness, childId, "call-2")).resolves.toMatchObject({
         conversationId: childId,
         delivery: "noted",
       });
@@ -776,7 +799,7 @@ describe("spawn and messageAgent", () => {
       vi.setSystemTime(1_800_000_002_000);
       await resumeConversationTree(slackParentConversationId, Date.now());
 
-      await expect(message(harness, childId, "call-2")).resolves.toEqual({
+      await expect(message(harness, childId, "call-2")).resolves.toMatchObject({
         conversationId: childId,
         delivery: "noted",
       });

@@ -130,18 +130,22 @@ describe("messageAgent", () => {
           { text: "Also check the retry path.", to },
           { toolCallId },
         );
+      // The child's result arrives by itself, so the result steers the
+      // parent to wait for it.
+      const queued = {
+        conversation_id: childId,
+        delivery: "queued",
+        next_step:
+          'Child agent "researcher" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.',
+      };
       await expect(
         sendFromParent("researcher", "call-message"),
-      ).resolves.toEqual({
-        conversation_id: childId,
-        delivery: "queued",
-      });
+      ).resolves.toEqual(queued);
       // A replayed tool call, here by conversation id, queues no second
       // message.
-      await expect(sendFromParent(childId, "call-message")).resolves.toEqual({
-        conversation_id: childId,
-        delivery: "queued",
-      });
+      await expect(sendFromParent(childId, "call-message")).resolves.toEqual(
+        queued,
+      );
       expect(await mailbox(childId)).toHaveLength(2);
       await expect(sendFromParent("nobody", "call-unknown")).rejects.toThrow(
         /"nobody" is not "parent", a child agent/,

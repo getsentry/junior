@@ -1,4 +1,12 @@
 import * as z from "zod";
+import {
+  childAgentWorks,
+  listChildAgents,
+} from "@/chat/agent-invocations/list";
+import {
+  childAgentDisplayName,
+  waitForChildAgentsStep,
+} from "@/chat/agent-invocations/next-step";
 import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
@@ -18,7 +26,7 @@ export const stopAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Stop a child agent that this conversation started, and every child agent it started. Use it when the child agent's work is no longer needed or goes in the wrong direction. A stopped child agent sends no result. To give it new work later, use messageAgent.",
+    "Stop a child agent that this conversation started, and every child agent it started. Use it when the child agent's work is no longer needed or goes in the wrong direction. To give it new work later, use messageAgent.",
   annotations: {
     destructiveHint: true,
     idempotentHint: true,
@@ -53,9 +61,22 @@ export function createStopAgentTool(conversationId: string) {
           `${input.conversation_id} is not a child agent of this conversation. Use listAgents to find its conversation_id.`,
         );
       }
+      const children = await listChildAgents(conversationId);
+      const child = children.find(
+        (agent) => agent.childConversationId === input.conversation_id,
+      );
+      const name = `"${child ? childAgentDisplayName(child) : input.conversation_id}"`;
       return {
         conversation_id: input.conversation_id,
         stopped: stopped.stopped,
+        next_step: [
+          stopped.stopped
+            ? `Child agent ${name} stopped and sends no result.`
+            : `Child agent ${name} had already stopped and sends no result.`,
+          waitForChildAgentsStep(children.filter(childAgentWorks)),
+        ]
+          .filter(Boolean)
+          .join(" "),
       };
     },
   });

@@ -10,6 +10,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
+import { listWorkingChildAgents } from "./list";
 import { enqueueAgentMessageToParent } from "./result";
 import { messageChildAgent } from "./create";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
@@ -92,6 +93,10 @@ export function bindMessageAgent(
       },
       { ...options, queue },
     );
-    return { conversationId: childConversationId, delivery };
+    return {
+      conversationId: childConversationId,
+      delivery,
+      workingChildAgents: await listWorkingChildAgents(run.conversationId),
+    };
   };
 }

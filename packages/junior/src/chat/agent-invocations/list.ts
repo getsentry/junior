@@ -124,13 +124,29 @@ export async function listChildAgents(
   return children.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
 }
 
+/** Return whether a child agent has work whose result will reach its parent. */
+export function childAgentWorks(agent: Pick<ChildAgent, "status">): boolean {
+  return (
+    agent.status === "pending" ||
+    agent.status === "running" ||
+    agent.status === "paused"
+  );
+}
+
+/** List the child agents of one parent that have open work. */
+export async function listWorkingChildAgents(
+  parentConversationId: string,
+): Promise<ChildAgent[]> {
+  return (await listChildAgents(parentConversationId)).filter(childAgentWorks);
+}
+
 /** List the ids of the child agents of one parent that have open work. */
 export async function listOpenChildAgents(
   parentConversationId: string,
 ): Promise<string[]> {
-  return (await listChildAgents(parentConversationId))
-    .filter((child) => child.status === "running")
-    .map((child) => child.childConversationId);
+  return (await listWorkingChildAgents(parentConversationId)).map(
+    (child) => child.childConversationId,
+  );
 }
 
 /**

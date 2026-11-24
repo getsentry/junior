@@ -46,6 +46,7 @@ import {
 import { childAgentStillWorks } from "./store";
 import { renderDataTag } from "@/chat/input-tags";
 import { listUnreportedSiblingAgents } from "./list";
+import { childAgentDisplayName } from "./next-step";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
@@ -81,13 +82,9 @@ function renderResultInput(
     // Fan-out: one Turn per result would post partial findings. Name the
     // open siblings so the parent can wait for them.
     waitingOn: openSiblings.length
-      ? openSiblings.map(siblingLabel).join(", ")
+      ? openSiblings.map(childAgentDisplayName).join(", ")
       : undefined,
   });
-}
-
-function siblingLabel(sibling: ChildAgent): string {
-  return sibling.agentName ?? sibling.title ?? sibling.childConversationId;
 }
 
 /**
