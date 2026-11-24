@@ -14,16 +14,11 @@ enum BundledChangelog {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
   }
 
-  /// True after an update that added releases, until the person opens the
-  /// changelog. A fresh install records its version and gets no badge, and
-  /// Debug builds always have one version (`project.yml`), so UI tests and
-  /// screenshots never get it.
+  /// True on a fresh install, and after an update that added releases, until
+  /// the person opens the changelog.
   static func hasUnseen(_ defaults: UserDefaults = .standard) -> Bool {
     guard let version = Self.version else { return false }
-    guard let last = defaults.string(forKey: "lastSeenVersion") else {
-      defaults.set(version, forKey: "lastSeenVersion")
-      return false
-    }
+    guard let last = defaults.string(forKey: "lastSeenVersion") else { return !releases.isEmpty }
     let unseen = ChangelogParser.whatsNew(in: releases, lastSeenVersion: last, currentVersion: version)
     return !unseen.isEmpty
   }
