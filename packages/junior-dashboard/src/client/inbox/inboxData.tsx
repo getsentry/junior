@@ -84,11 +84,13 @@ export type InboxFeedPages = {
 
 function useBuildInboxData(input: {
   conversations: Conversation[];
+  /** The first feed page has not loaded yet. */
+  conversationsPending: boolean;
   feed: InboxFeedPages;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
-  const { conversations, feed, signedIn } = input;
+  const { conversations, conversationsPending, feed, signedIn } = input;
   // To do shows the first page even while collapsed, and the waiting sort
   // puts what needs the viewer on it.
   const { items: loaded, query: itemsQuery } = useInboxItemsData({
@@ -240,19 +242,23 @@ function useBuildInboxData(input: {
     [conversations],
   );
   // Items can come from Conversations outside the loaded feed, such as an
-  // Automation run. Those titles load on their own.
+  // Automation run. Those titles load on their own, after the first feed
+  // page, so that a feed still in flight does not read every title.
   const missingIds = useMemo(
-    () => [
-      ...new Set(
-        list.flatMap((item) =>
-          item.rootConversationId &&
-          !conversationById.has(item.rootConversationId)
-            ? [item.rootConversationId]
-            : [],
-        ),
-      ),
-    ],
-    [conversationById, list],
+    () =>
+      conversationsPending
+        ? []
+        : [
+            ...new Set(
+              list.flatMap((item) =>
+                item.rootConversationId &&
+                !conversationById.has(item.rootConversationId)
+                  ? [item.rootConversationId]
+                  : [],
+              ),
+            ),
+          ],
+    [conversationById, conversationsPending, list],
   );
   const missingTitles = useLinkedConversationTitles(missingIds);
   // An item that no Conversation owns has no Conversation title.
@@ -457,6 +463,7 @@ export function InboxDataProvider(props: {
   const { conversations, feed } = useInboxConversations();
   const value = useBuildInboxData({
     conversations,
+    conversationsPending: feed.isPending,
     // A failed feed page waits for Try again, as the other lists do. A list
     // end can still ask for more after the failure renders.
     feed: scrollPages({
