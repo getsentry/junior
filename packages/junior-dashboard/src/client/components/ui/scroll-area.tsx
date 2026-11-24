@@ -28,7 +28,9 @@ function ScrollArea({
           viewportClassName,
         )}
       >
-        {children}
+        {/* The viewport only watches its own size. Content also watches the
+            rows, so a list that grows after mount still gets a scrollbar. */}
+        <ScrollAreaPrimitive.Content>{children}</ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollAreaPrimitive.Scrollbar
         data-slot="scroll-area-scrollbar"
