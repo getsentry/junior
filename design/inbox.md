@@ -29,20 +29,6 @@ how the dashboard groups and acts on its rows.
 - "Needs you" means one thing on every surface: an ask or a Conversation
   tree that waits on you.
 
-## Entry points
-
-- Slack: the item card in each linked thread, and a thread reply.
-- Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
-  the question card in the Conversation transcript, the questions pill, and
-  a push.
-  Done and Dismiss on a "To do for you" row.
-- Dashboard filters: Other, PRs, Decisions, To-dos, Pinned, and All in the
-  Inbox; Done, Watching, Working, Needs you, Pinned, and All in
-  Conversations and a repository's Conversations tab. All, the default, is
-  at the right edge, and the tab order follows the order on screen.
-- Settings: "Show the Inbox count in the tab".
-- MCP server: read-only search and fetch with the `inbox_items:read` scope.
-
 ## Rules
 
 - The Inbox filters its asks by type: PRs (asks about a code
