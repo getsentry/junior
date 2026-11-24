@@ -23,14 +23,18 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { useAnchorClass } from "./links";
-import { SameTabLink } from "../components/SameTabLink";
+import { MessageLink } from "../components/MessageLink";
 import { PersonInline, PersonReference } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
 const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
-const KnownObjectsContext = createContext<KnownObjects>(new Map());
+const KnownObjectsContext = createContext<{
+  // The URL keys whose Annotation saves only the link, such as an Attach.
+  links: ReadonlySet<string>;
+  objects: KnownObjects;
+}>({ links: new Set(), objects: new Map() });
 
 /**
  * Let display text show the saved object of each link that points to an
@@ -46,12 +50,23 @@ export function KnownObjectsProvider(props: {
   children: ReactNode;
 }) {
   const value = useMemo(() => {
+    // The first Annotation for a URL wins, as in `knownObjectsFromAnnotations`.
+    const kinds = new Map<string, string>();
+    for (const annotation of props.annotations ?? []) {
+      const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
+      if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
+    }
     const objects = new Map(knownObjectsFromAnnotations(props.annotations));
     for (const card of props.cards ?? []) {
       const key = card.url ? objectUrlKey(card.url) : undefined;
       if (key && !objects.has(key)) objects.set(key, card);
     }
-    return objects;
+    const links = new Set(
+      [...kinds].flatMap(([key, kind]) =>
+        kind === "resource_link" ? [key] : [],
+      ),
+    );
+    return { links, objects };
   }, [props.annotations, props.cards]);
   const saved = useMemo(
     () => savedObjectsFromAnnotations(props.annotations),
@@ -66,13 +81,21 @@ export function KnownObjectsProvider(props: {
   );
 }
 
-/** Return the saved object that a link points to, when one is known. */
+/**
+ * Return the saved object that a link points to, when one is known.
+ * `linkOnly` is true when the Annotation saves only the link, such as an
+ * Attach.
+ */
 export function useKnownObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
+  linkOnly: boolean;
 } {
-  const objects = useContext(KnownObjectsContext);
+  const { links, objects } = useContext(KnownObjectsContext);
   const key = href ? objectUrlKey(href) : undefined;
-  return { card: key ? objects.get(key) : undefined };
+  return {
+    card: key ? objects.get(key) : undefined,
+    linkOnly: key ? links.has(key) : false,
+  };
 }
 
 /**
@@ -157,7 +180,7 @@ export function ObjectLinkPreview(props: {
       }
       // Running text links carry no outbound icon, so a paragraph of links
       // reads as text.
-      trigger={<SameTabLink className={props.className} href={props.href} />}
+      trigger={<MessageLink className={props.className} href={props.href} />}
     >
       {props.children}
     </HoverPreview>

@@ -34,7 +34,6 @@ import {
   aliasedPullRequests,
   githubCheckCounts,
   githubMergeable,
-  loadInHalves,
   pullRequestChunks,
   pullRequestHeadFactsNodeSchema,
   type PullRequestRef,
@@ -111,29 +110,35 @@ export async function scheduleGitHubPullRequestPatch(args: {
 type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
-// is not newer than the read. Return whether it wrote, and whether to read
-// again: GitHub still computes the merge state, or a webhook came after the
-// read and its fields still wait. After the last attempt, a merge state that
-// GitHub still computes stays pending only briefly, so the next read asks
-// GitHub.
+// is not newer than the read. Return `again` to read again: GitHub still
+// computes the merge state, or a webhook came after the read and its
+// fields still wait. Return `expire` when the read is of another head
+// commit than the entry, as for a dropped patch. After the last attempt, a
+// merge state that GitHub still computes stays pending only briefly, so
+// the next read asks GitHub. `written` says whether the read was current.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
   node: HeadFactsNode,
   last: boolean,
-): Promise<{ readAgain: boolean; written: boolean }> {
+): Promise<{ outcome: "again" | "done" | "expire"; written: boolean }> {
   const mergeable = githubMergeable(node.mergeable);
-  let readAgain = false;
+  let outcome: "again" | "done" | "expire" = "done";
   let written = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    if (!current || current.head?.sha !== node.headRefOid) return undefined;
+    if (!current) return undefined;
+    if (current.head?.sha !== node.headRefOid) {
+      outcome = "expire";
+      return undefined;
+    }
     if (isOlderGitHubObject(current, { updated_at: node.updatedAt })) {
-      readAgain =
-        current.checks === "pending" || current.mergeable === "pending";
+      if (current.checks === "pending" || current.mergeable === "pending") {
+        outcome = "again";
+      }
       return undefined;
     }
     const computing = mergeable === null && current.mergeable === "pending";
-    readAgain = computing && !last;
+    if (computing && !last) outcome = "again";
     written = true;
     return {
       ...(computing && last
@@ -147,7 +152,7 @@ async function writeHeadFacts(
       },
     };
   });
-  return { readAgain, written };
+  return { outcome, written };
 }
 
 // A patch reads the merge state that a push or a new base changes, so it
@@ -200,12 +205,13 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
 
 /**
  * Run the due patches: one query reads the merge state and checks of up
- * to 25 pull requests, and a failed query splits in halves. A patch whose
- * merge state GitHub still computes, whose read is older than its entry,
- * or whose query fails alone, waits for the next heartbeat. A patch with
- * no pull request in the answer, or out of attempts, is dropped, and its
- * entry is read again soon. A failed query is logged, not thrown, so the
- * rest of the heartbeat still runs.
+ * to 25 pull requests. A patch whose merge state GitHub still computes,
+ * whose read is older than its entry, or whose query fails, waits for the
+ * next heartbeat. A failed query does not split, so an outage costs one
+ * query per chunk. A patch with no pull request in the answer, of another
+ * head commit, or out of attempts, is dropped, and its entry is read again
+ * soon. A failed query is logged, not thrown, so the rest of the heartbeat
+ * still runs.
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;
@@ -232,53 +238,44 @@ export async function runGitHubPullRequestPatches(args: {
     if (!ref) dropped.push(key);
     return ref ? [{ due: [key, patch] satisfies Due, ref }] : [];
   });
-  // The queries of every chunk and of its halves share one limit.
-  const queries = pLimit(PATCH_QUERY_CONCURRENCY);
   await pLimit(PATCH_QUERY_CONCURRENCY).map(
     pullRequestChunks(reads),
-    async (chunk) =>
-      await loadInHalves({
-        failed: async ([read], error) => {
-          if (!read) return;
-          again.push(read.due);
-          args.log.error(
-            "GitHub pull request patch query failed",
-            {
-              number: read.ref.number,
-              repository: `${read.ref.owner}/${read.ref.name}`,
-            },
-            error,
-          );
-        },
-        items: chunk,
-        load: async (part) => {
-          // Answer `p<i>` is the pull request of `part[i]`.
-          const nodes = aliasedPullRequests(
-            await queries(() =>
-              args.loadHeadFacts(part.map((read) => read.ref)),
-            ),
-            part.length,
-            pullRequestHeadFactsNodeSchema,
-          );
-          for (const [index, { due: entry, ref }] of part.entries()) {
-            const [key, patch] = entry;
-            const node = nodes[index];
-            if (!node) {
-              dropped.push(key);
-              continue;
-            }
-            const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
-            // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-            const write = await writeHeadFacts(args.cache, key, node, last);
-            // A read that the entry rejects is stale: a newer push or webhook
-            // came after it, so its merge state must not mark or publish.
-            if (write.written) observed.push({ node, ref });
-            if (write.readAgain) {
-              again.push(entry);
-            }
-          }
-        },
-      }),
+    async (chunk) => {
+      let response: unknown;
+      try {
+        response = await args.loadHeadFacts(chunk.map((read) => read.ref));
+      } catch (error) {
+        again.push(...chunk.map((read) => read.due));
+        args.log.error(
+          "GitHub pull request patch query failed",
+          { pullRequests: chunk.length },
+          error,
+        );
+        return;
+      }
+      // Answer `p<i>` is the pull request of `chunk[i]`.
+      const nodes = aliasedPullRequests(
+        response,
+        chunk.length,
+        pullRequestHeadFactsNodeSchema,
+      );
+      for (const [index, { due: entry, ref }] of chunk.entries()) {
+        const [key, patch] = entry;
+        const node = nodes[index];
+        if (!node) {
+          dropped.push(key);
+          continue;
+        }
+        const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
+        // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
+        const write = await writeHeadFacts(args.cache, key, node, last);
+        // A read that the entry rejects is stale: a newer push or webhook
+        // came after it, so its merge state must not mark or publish.
+        if (write.written) observed.push({ node, ref });
+        if (write.outcome === "again") again.push(entry);
+        if (write.outcome === "expire") dropped.push(key);
+      }
+    },
   );
   for (const { node, ref } of observed) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order; only a mark or a fix writes.

@@ -2,7 +2,11 @@ import { Ellipsis } from "lucide-react";
 import { useCallback, useId } from "react";
 import { Link } from "react-router";
 
-import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +50,7 @@ function InFlightRow(props: {
   return (
     <ContextMenu onOpenChange={actions.onMenuOpenChange}>
       <ContextMenuTrigger
+        {...browserMenuOnLinks}
         className={cn(
           "group relative list-none [--row-actions-width:1.25rem]",
           drag?.dragging && "opacity-40",
@@ -68,6 +73,7 @@ function InFlightRow(props: {
             // A long press opens the row menu, not the iOS link callout.
             "[-webkit-touch-callout:none]",
           )}
+          data-row-menu=""
           draggable={drag ? false : undefined}
           to={conversationPath(conversation.id)}
         >

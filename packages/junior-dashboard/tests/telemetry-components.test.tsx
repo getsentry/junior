@@ -252,7 +252,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
     expect(html).toContain('href="https://docs.sentry.io"');
-    expect(html).not.toContain('target="_blank"');
+    // A link to another site opens in a new tab.
+    expect(html).toContain('target="_blank"');
     expect(html).toContain("<mark");
   });
 
