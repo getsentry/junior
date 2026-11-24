@@ -169,13 +169,14 @@ export function useResolvedObject(href: string | undefined): {
   const url = resolvableUrl(href);
   const { asked, batch, request } = useContext(MessageObjectsContext);
   const near = useContext(NearScreenContext);
-  const { data, isError } = useQuery(
-    objectLinkQuery(batch, url, asked && near),
-  );
+  const enabled = asked && near;
+  const { data, isError } = useQuery(objectLinkQuery(batch, url, enabled));
+  // Show a card only once this link asks, also when another link already
+  // read it, so a link turns into a card at the same moment either way.
   return {
-    card: data ?? undefined,
+    card: enabled ? (data ?? undefined) : undefined,
     request,
-    settled: data !== undefined || isError,
+    settled: enabled && (data !== undefined || isError),
   };
 }
 
