@@ -65,7 +65,7 @@ jobs:
           node-version: "24.22.1"
 
       - name: Prepare release
-        uses: getsentry/craft@9567926a606072678ef367b02445c4f99f374795 # 3.11.2
+        uses: getsentry/craft@229e7c8d3d42775e21015b494fa070b6f2cad7e0 # 3.14.0
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
