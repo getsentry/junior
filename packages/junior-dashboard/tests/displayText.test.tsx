@@ -635,7 +635,7 @@ describe("display text details sections", () => {
 
     expect(html).toMatch(/<details[^>]*><summary[^>]*>.*Details<\/summary>/);
     expect(html).toMatch(
-      /<details[^>]*>.*<li[^>]*>.*State:.*<\/li>.*<\/details>/,
+      /<details[^>]*>.*<li[^>]*>.*State:.*<\/li>.*<\/details>/s,
     );
     expect(html).not.toContain("&lt;details&gt;");
   });
