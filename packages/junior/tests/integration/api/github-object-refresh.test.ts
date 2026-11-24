@@ -652,15 +652,13 @@ describe("GitHub pull request cache refresh", () => {
       },
     ];
     // GitHub computes the merge state of the first push for four reads,
-    // then of the second push for two more.
+    // then of the second push for one more.
     const queries = stubGraphql({
       patches: [
         ...Array.from({ length: 4 }, () =>
           headFacts("bbb222", "UNKNOWN", "2026-01-02T03:00:10Z"),
         ),
-        ...Array.from({ length: 2 }, () =>
-          headFacts("ccc333", "UNKNOWN", "2026-01-02T03:04:30Z"),
-        ),
+        headFacts("ccc333", "UNKNOWN", "2026-01-02T03:04:30Z"),
         headFacts("ccc333", "MERGEABLE", "2026-01-02T03:04:30Z"),
       ],
     });
@@ -691,8 +689,8 @@ describe("GitHub pull request cache refresh", () => {
       await tasks.deliver();
     }
     await push("ccc333", start + 4 * 60_000 + 30_000);
-    // The first task makes its last delivery, and the new push's task its
-    // first.
+    // The first task makes its last delivery, which reads nothing because
+    // the new push's task owns the entry now. The new task makes its first.
     vi.setSystemTime(start + 5 * 60_000);
     expect(await tasks.deliver()).toBe(2);
     // The new head commit is still computing, so it is still pending.
@@ -701,11 +699,61 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 6 * 60_000);
     expect(await tasks.deliver()).toBe(1);
-    // One card read, then seven patch reads.
-    expect(queries).toHaveLength(8);
+    // One card read, then six patch reads.
+    expect(queries).toHaveLength(7);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: true,
     });
+  });
+
+  it("keeps a new push's pending fields when the old push's task fails its last delivery", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json(pullRequest(34));
+      }),
+      // Every patch query fails.
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+      ),
+    );
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    const push = async (sha: string, atMs: number) => {
+      vi.setSystemTime(atMs);
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: pullRequest(34, {
+          head: { ref: "feat/object-cache", sha },
+          mergeable: null,
+          updated_at: new Date(atMs).toISOString(),
+        }),
+      });
+    };
+    await push("bbb222", start + 10_000);
+    for (let minute = 1; minute <= 4; minute++) {
+      vi.setSystemTime(start + minute * 60_000);
+      await tasks.deliver();
+    }
+    await push("ccc333", start + 4 * 60_000 + 30_000);
+    // The old push's task makes its last delivery after the new push.
+    vi.setSystemTime(start + 5 * 60_000);
+    expect(await tasks.deliver()).toBe(2);
+
+    vi.setSystemTime(start + 5 * 60_000 + 16_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+      checks: "pending",
+    });
+    expect(reads).toEqual([]);
   });
 
   it("reads pending checks again when a webhook lands between a push and its patch", async () => {

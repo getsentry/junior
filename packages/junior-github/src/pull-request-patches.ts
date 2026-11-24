@@ -154,6 +154,10 @@ export function githubPullRequestPatchTask(
       const ref = pullRequestRefFromCacheKey(key);
       if (!ref)
         throw new Error(`GitHub patch key ${key} names no pull request`);
+      // A push since this task started has its own task, which owns the
+      // entry now.
+      const cached = await ctx.cache.get<GitHubPullRequestFields | null>(key);
+      if (cached && cached.head?.sha !== sha) return;
       let node: HeadFactsNode | undefined;
       try {
         [node] = aliasedPullRequests(
