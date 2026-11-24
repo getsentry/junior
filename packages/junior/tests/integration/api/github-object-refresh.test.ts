@@ -3,12 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb } from "@/chat/db";
 import {
+  cardNode,
+  checkRuns,
   createGitHubApp,
   GITHUB_API,
   GITHUB_REPO,
   linkGitHubMember,
+  pullRequest,
   sendGitHubWebhook,
   stubGitHubApp,
+  stubGraphql,
+  T0,
   viewerApi,
 } from "../../fixtures/github-objects";
 import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-queue";
@@ -16,131 +21,6 @@ import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
 const BOT_EMAIL = "41898282+junior-test[bot]@users.noreply.github.com";
-const T0 = "2026-01-02T03:00:00Z";
-
-function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
-  return {
-    additions: 120,
-    base: { ref: "main" },
-    body: "Cache GitHub objects.",
-    changed_files: 4,
-    closed_at: null,
-    created_at: "2026-01-01T00:00:00Z",
-    deletions: 8,
-    draft: false,
-    head: { ref: "feat/object-cache", sha: "aaa111" },
-    html_url: `${GITHUB_REPO}/pull/${number}`,
-    id: number * 1000,
-    mergeable: true,
-    merged: false,
-    merged_at: null,
-    node_id: `PR_${number}`,
-    number,
-    state: "open",
-    title: "Cache GitHub objects",
-    updated_at: T0,
-    user: { login: "byk" },
-    ...overrides,
-  };
-}
-
-/** A `commits` result with the check run counts of the head commit. */
-function checkRuns(counts: Record<string, number>) {
-  return {
-    nodes: [
-      {
-        commit: {
-          statusCheckRollup: {
-            contexts: {
-              checkRunCountsByState: Object.entries(counts).map(
-                ([state, count]) => ({ count, state }),
-              ),
-            },
-          },
-        },
-      },
-    ],
-  };
-}
-
-/** Card and patch queries name pull requests by repository and number. */
-interface GraphqlQuery {
-  numbers: number[];
-  operationName: string;
-}
-
-/**
- * Answer GraphQL queries and keep them. Each alias of a query gets the pull
- * request of its number that the answer has. A card query answers from
- * `cards`, or with the HTTP status that `cards` returns for the numbers
- * that it asks for. A patch query answers from the next list of `patches`.
- */
-function stubGraphql(answers: {
-  cards?: unknown[] | ((numbers: number[]) => unknown[] | number);
-  patches?: unknown[][];
-}): GraphqlQuery[] {
-  const queries: GraphqlQuery[] = [];
-  mswServer.use(
-    http.post("https://api.github.com/graphql", async ({ request }) => {
-      const { operationName, variables } = (await request.json()) as {
-        operationName: string;
-        variables: Record<string, unknown>;
-      };
-      const numbers = Object.entries(variables).flatMap(([name, value]) =>
-        name.startsWith("number") ? [Number(value)] : [],
-      );
-      queries.push({ numbers, operationName });
-      const cards =
-        operationName === "PullRequestHeadFacts"
-          ? (answers.patches?.shift() ?? [])
-          : typeof answers.cards === "function"
-            ? answers.cards(numbers)
-            : (answers.cards ?? []);
-      if (typeof cards === "number") {
-        return HttpResponse.json(
-          { message: "Server Error" },
-          { status: cards },
-        );
-      }
-      const byNumber = new Map(
-        cards.map((node) => [(node as { number: number }).number, node]),
-      );
-      return HttpResponse.json({
-        data: Object.fromEntries(
-          numbers.map((number, index) => [
-            `p${index}`,
-            byNumber.has(number) ? { pullRequest: byNumber.get(number) } : null,
-          ]),
-        ),
-      });
-    }),
-  );
-  return queries;
-}
-
-/** A card query result for one open pull request. */
-function cardNode(number: number) {
-  return {
-    additions: number,
-    author: { login: "junior-test[bot]" },
-    baseRefName: "main",
-    body: "Cache GitHub objects.",
-    changedFiles: 2,
-    commits: checkRuns({ SUCCESS: 2 }),
-    deletions: 1,
-    headRefName: `feat/${number}`,
-    headRefOid: "ddd444",
-    isDraft: number === 35,
-    mergeable: "MERGEABLE",
-    merged: false,
-    number,
-    reviewRequests: { nodes: [] },
-    state: "OPEN",
-    title: `Renamed ${number}`,
-    updatedAt: "2026-01-02T06:00:00Z",
-    url: `${GITHUB_REPO}/pull/${number}`,
-  };
-}
 
 describe("GitHub pull request cache refresh", () => {
   let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
@@ -920,6 +800,59 @@ describe("GitHub pull request cache refresh", () => {
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 2, pending: 0 },
       mergeable: true,
+    });
+  });
+  it("keeps known checks and patches the merge state after a base retarget", async () => {
+    stubGitHubApp();
+    const queries = stubGraphql({
+      cards: [cardNode(34)],
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 2 }),
+            headRefOid: "ddd444",
+            mergeable: "CONFLICTING",
+            number: 34,
+            updatedAt: "2026-01-02T06:00:10Z",
+          },
+        ],
+      ],
+    });
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+
+    // A new base changes the merge state of the same head, not its checks.
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "edited",
+      pull_request: pullRequest(34, {
+        base: { ref: "release" },
+        head: { ref: "feat/34", sha: "ddd444" },
+        mergeable: null,
+        updated_at: new Date(start + 10_000).toISOString(),
+      }),
+    });
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 60_000);
+    await tasks.deliver();
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: false,
     });
   });
   it("asks GitHub again soon after the last patch delivery finds the merge state still computing", async () => {
