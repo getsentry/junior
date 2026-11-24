@@ -41,4 +41,9 @@ export interface PluginCache {
     key: string,
     next: (current: T | undefined) => CacheEntry<T> | undefined,
   ): Promise<void>;
+  /**
+   * Drop the cached value of `key`, so the next read loads it, such as when
+   * a provider webhook says that the object moved.
+   */
+  delete(key: string): Promise<void>;
 }

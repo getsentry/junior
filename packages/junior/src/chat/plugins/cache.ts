@@ -12,5 +12,8 @@ export function createPluginCache(plugin: string): PluginCache {
     async update(key, next) {
       await cache().update(key, next);
     },
+    async delete(key) {
+      await cache().delete(key);
+    },
   };
 }

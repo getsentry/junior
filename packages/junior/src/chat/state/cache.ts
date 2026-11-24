@@ -147,5 +147,10 @@ export function createCache(
         }
       });
     },
+    async delete(key: string): Promise<void> {
+      await writeUnderLoadLock(state, stateKey(key), async (cacheKey) => {
+        await state.delete(cacheKey);
+      });
+    },
   };
 }

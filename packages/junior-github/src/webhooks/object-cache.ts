@@ -41,16 +41,23 @@ export async function refreshGitHubObjectCache(args: {
     "issue" in event.data
       ? (["issues", event.data.issue] as const)
       : (["pulls", event.data.pull_request] as const);
-  // A deleted or moved issue is gone from its URL, as a read would find.
-  const gone =
-    "issue" in event.data &&
-    (event.data.action === "deleted" || event.data.action === "transferred");
-  await args.cache.update<typeof payload | null>(
-    githubObjectCacheKey(collection, repository.full_name, payload.number),
-    (current) => {
-      if (gone) return { ...GITHUB_OBJECT_CACHE, value: null };
-      const value = mergeGitHubObject(current, payload);
-      return value && { ...GITHUB_OBJECT_CACHE, value };
-    },
+  const key = githubObjectCacheKey(
+    collection,
+    repository.full_name,
+    payload.number,
   );
+  const action = "issue" in event.data ? event.data.action : undefined;
+  // A moved issue redirects to its new repository. The payload is about the
+  // old one, so the next read follows the redirect again.
+  if (action === "transferred") {
+    await args.cache.delete(key);
+    return;
+  }
+  // A deleted issue is gone, as a read would find.
+  const gone = action === "deleted";
+  await args.cache.update<typeof payload | null>(key, (current) => {
+    if (gone) return { ...GITHUB_OBJECT_CACHE, value: null };
+    const value = mergeGitHubObject(current, payload);
+    return value && { ...GITHUB_OBJECT_CACHE, value };
+  });
 }

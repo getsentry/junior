@@ -11,6 +11,7 @@ function baseContext(
         return (await load()).value;
       },
       async update() {},
+      async delete() {},
     },
     db: {},
     log: {

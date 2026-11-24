@@ -1,14 +1,8 @@
-import { createHmac, generateKeyPairSync } from "node:crypto";
-import path from "node:path";
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
-import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
-import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
@@ -20,10 +14,18 @@ import {
   deleteProviderIdentityForUser,
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
+import {
+  createGitHubApp,
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  sendGitHubWebhook,
+  stubGitHubApp,
+  viewerApi,
+} from "../../fixtures/github-objects";
 import {
   conversationsInfoOk,
   conversationsMembersPage,
@@ -32,7 +34,6 @@ import {
   usersInfoOk,
 } from "../../fixtures/slack/factories/api";
 import { linkSlackUser } from "../../fixtures/slack-user";
-import { signedInViewer } from "../../fixtures/user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 
@@ -40,33 +41,6 @@ const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const CONVERSATION_URL = `${DASHBOARD}/conversations/${encodeURIComponent(CONVERSATION_ID)}`;
 const PRIVATE_SUMMARY = "The private launch waits on legal review.";
-
-async function viewerApi(email: string) {
-  const viewer = await signedInViewer(email);
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  return async (...urls: string[]) => {
-    const query = new URLSearchParams(urls.map((url) => ["url", url]));
-    const response = await app.request(`http://localhost/api/objects?${query}`);
-    expect(response.status).toBe(200);
-    // The browser may keep a card as long as the server cache does.
-    expect(response.headers.get("cache-control")).toBe("private, max-age=60");
-    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
-    const body = await response.text();
-    return {
-      body,
-      objects: new Map(
-        objectLinksReportSchema
-          .parse(JSON.parse(body))
-          .objects.map((item) => [item.url, item.object]),
-      ),
-    };
-  };
-}
 
 async function recordPrivateConversation() {
   await getConversationStore().recordActivity({
@@ -88,88 +62,6 @@ async function recordPrivateConversation() {
     conversationId: CONVERSATION_ID,
     summary: PRIVATE_SUMMARY,
   });
-}
-
-const GITHUB_REPO = "https://github.com/getsentry/junior";
-const GITHUB_API = "https://api.github.com/repos/getsentry/junior";
-
-/**
- * Configure the GitHub App. Only the GitHub account `alice_acme` can see
- * `getsentry/junior`.
- */
-function stubGitHubApp() {
-  vi.stubEnv("GITHUB_APP_ID", "123");
-  vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
-  vi.stubEnv(
-    "GITHUB_APP_PRIVATE_KEY",
-    generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ format: "pem", type: "pkcs1" })
-      .toString(),
-  );
-  vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-  mswServer.use(
-    http.get("https://api.github.com/app/installations/456", () =>
-      HttpResponse.json({
-        permissions: {
-          issues: "read",
-          metadata: "read",
-          pull_requests: "read",
-        },
-      }),
-    ),
-    http.post(
-      "https://api.github.com/app/installations/456/access_tokens",
-      () =>
-        HttpResponse.json({
-          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-          token: "app-token",
-        }),
-    ),
-    http.get(`${GITHUB_API}/collaborators/:login/permission`, ({ params }) =>
-      HttpResponse.json({
-        permission: params["login"] === "alice_acme" ? "read" : "none",
-      }),
-    ),
-  );
-}
-
-/** Link alice@example.com to the GitHub account that sees the repository. */
-async function linkGitHubMember() {
-  const alice = await linkSlackUser("alice@example.com", "UALICE");
-  await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
-    handle: "alice_acme",
-    kind: "user",
-    provider: "github",
-    providerSubjectId: "1001",
-  });
-}
-
-/** Send a signed GitHub webhook through the app route. */
-async function sendGitHubWebhook(
-  app: Awaited<ReturnType<typeof createApp>>,
-  event: string,
-  payload: Record<string, unknown>,
-) {
-  const body = JSON.stringify({
-    installation: { id: 456 },
-    repository: { full_name: "getsentry/junior", id: 2001 },
-    sender: { login: "byk" },
-    ...payload,
-  });
-  const response = await app.fetch(
-    new Request("https://example.test/api/webhooks/github", {
-      body,
-      headers: {
-        "x-github-delivery": `delivery-${event}-${Date.now()}`,
-        "x-github-event": event,
-        "x-hub-signature-256": `sha256=${createHmac("sha256", "test-secret")
-          .update(body)
-          .digest("hex")}`,
-      },
-      method: "POST",
-    }),
-  );
-  expect(response.status).toBe(202);
 }
 
 describe("object links API", () => {
@@ -560,7 +452,42 @@ describe("object links API", () => {
       id: 13_000,
       number: 13,
     };
+    const moving = {
+      ...issue,
+      html_url: `${GITHUB_REPO}/issues/14`,
+      id: 14_000,
+      number: 14,
+      title: "Move this issue",
+    };
+    let moved = false;
     mswServer.use(
+      http.get(`${GITHUB_API}/issues/14`, () => {
+        reads.push("issues/14");
+        return moved
+          ? new HttpResponse(null, {
+              headers: {
+                location: "https://api.github.com/repositories/2002/issues/9",
+              },
+              status: 301,
+            })
+          : HttpResponse.json(moving);
+      }),
+      // The moved issue, in a repository that the viewer can also see.
+      http.get("https://api.github.com/repositories/2002/issues/9", () =>
+        HttpResponse.json({
+          ...moving,
+          html_url: "https://github.com/getsentry/relay/issues/9",
+          number: 9,
+          updated_at: after,
+        }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/relay/collaborators/:login/permission",
+        ({ params }) =>
+          HttpResponse.json({
+            permission: params["login"] === "alice_acme" ? "read" : "none",
+          }),
+      ),
       http.get(`${GITHUB_API}/issues/12`, () => {
         reads.push("issues/12");
         return HttpResponse.json(issue);
@@ -581,16 +508,7 @@ describe("object links API", () => {
       }),
     );
     try {
-      const app = await createApp({
-        plugins: defineJuniorPlugins([githubPlugin()]),
-      });
-      // The webhook also records the lifecycle in the plugin's tables.
-      await migratePluginSchemas(getSqlExecutor(), [
-        {
-          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
-          pluginName: "github",
-        },
-      ]);
+      const app = await createGitHubApp();
       setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
@@ -599,6 +517,7 @@ describe("object links API", () => {
       const first = await read(
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
       );
@@ -623,6 +542,11 @@ describe("object links API", () => {
       await sendGitHubWebhook(app, "issues", {
         action: "deleted",
         issue: deleted,
+      });
+      moved = true;
+      await sendGitHubWebhook(app, "issues", {
+        action: "transferred",
+        issue: { ...moving, updated_at: after },
       });
       // A push marks the pull request ready. The payload leaves out the
       // size and the merge state.
@@ -664,16 +588,23 @@ describe("object links API", () => {
       const next = await read(
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
         `${GITHUB_REPO}/pull/78`,
       );
-      expect(reads.slice(readsBefore)).toEqual([]);
+      // Only the moved issue is read again.
+      expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });
       // The deleted issue has no card.
       expect(next.objects.has(`${GITHUB_REPO}/issues/13`)).toBe(false);
+      // The moved issue shows where GitHub redirects it.
+      expect(next.objects.get(`${GITHUB_REPO}/issues/14`)).toMatchObject({
+        title: "Move this issue",
+        url: "https://github.com/getsentry/relay/issues/9",
+      });
       const pull = next.objects.get(`${GITHUB_REPO}/pull/34`);
       expect(pull).toMatchObject({
         // A field that the payload leaves out stays as cached.
@@ -736,15 +667,7 @@ describe("object links API", () => {
       }),
     );
     try {
-      const app = await createApp({
-        plugins: defineJuniorPlugins([githubPlugin()]),
-      });
-      await migratePluginSchemas(getSqlExecutor(), [
-        {
-          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
-          pluginName: "github",
-        },
-      ]);
+      const app = await createGitHubApp();
       setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");

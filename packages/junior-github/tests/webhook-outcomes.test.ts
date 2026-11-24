@@ -91,6 +91,7 @@ const objectCache: PluginCache = {
     return (await load()).value;
   },
   async update() {},
+  async delete() {},
 };
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {

@@ -152,6 +152,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       return (await load()).value;
     },
     async update() {},
+    async delete() {},
   };
 
   async function deliver(request: Request): Promise<void> {
