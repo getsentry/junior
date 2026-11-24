@@ -96,8 +96,8 @@ async function selectChildResultCards(
   );
   for (const [index, message] of messages.entries()) {
     const terminal = terminals[index];
-    // A `reply` ends the child's Turn, but it can reach the parent before the
-    // child records that end. Then its cards are the newest ones.
+    // A child's result can reach the parent before the child records the end
+    // of its Turn. Then its cards are the newest ones.
     // oxlint-disable-next-line no-await-in-loop -- Newer child results select cards first.
     await selectTurnCards(
       message.sender.conversationId,

@@ -4,10 +4,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import {
-  getAgentReplyMessageId,
-  getTurnReplyKey,
-} from "@/chat/agent-invocations/ids";
+import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
 import type { AgentRun } from "@/chat/agent/types";
 import {
@@ -243,8 +240,8 @@ describe("conversation stop API", () => {
       actor: invocationInput.actor,
       conversationId: done.childConversationId,
       result: {
-        kind: "reply",
-        reply: { text: "Child fact: 42.", toolCallId: "call-reply" },
+        kind: "completed",
+        text: "Child fact: 42.",
       },
       turnId: "turn_done-child",
     });
@@ -252,10 +249,7 @@ describe("conversation stop API", () => {
       conversationId: created.conversationId,
       conversationStore,
       inboundMessageIds: [
-        getAgentReplyMessageId(
-          done.childConversationId,
-          getTurnReplyKey("turn_done-child", "call-reply"),
-        ),
+        getAgentReplyMessageId(done.childConversationId, "turn_done-child"),
       ],
       leaseToken,
       state,

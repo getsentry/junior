@@ -17,6 +17,8 @@ type FixedModelOutput =
   | {
       type: "text";
       text: string;
+      /** A stop before the model finished its message. */
+      stopReason?: "length" | "aborted";
       onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown> | "abort";
     }
@@ -42,7 +44,10 @@ type FixedModelOutput =
 
 function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
   if (output.type === "text") {
-    return fauxAssistantMessage(output.text);
+    return fauxAssistantMessage(
+      output.text,
+      output.stopReason ? { stopReason: output.stopReason } : undefined,
+    );
   }
   if (output.type === "toolCall") {
     return fauxAssistantMessage([fauxToolCall(output.name, output.arguments)], {
