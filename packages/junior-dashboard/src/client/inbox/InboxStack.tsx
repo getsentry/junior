@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { cn } from "../styles";
@@ -87,6 +91,7 @@ export function InboxStack(props: {
         <Link
           className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
           {...onLinkOpen(props.onOpen)}
+          data-row-menu=""
           to={props.path}
         >
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
@@ -161,6 +166,7 @@ function StackMenu(props: {
     <ContextMenu onOpenChange={actions.onMenuOpenChange}>
       <ContextMenuTrigger
         {...props.stack}
+        {...browserMenuOnLinks}
         // The cards keep their text selectable.
         className={cn(props.stack.className, "select-text")}
         render={<li />}
