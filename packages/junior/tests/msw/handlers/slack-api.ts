@@ -1,4 +1,9 @@
 import { http, HttpResponse } from "msw";
+import {
+  SLACK_MAX_MARKDOWN_CHARS,
+  SLACK_MAX_MESSAGE_BLOCKS,
+  SLACK_MAX_TEXT_OBJECT_CHARS,
+} from "@/chat/slack/limits";
 import { TEST_USER_ID } from "../../fixtures/slack/factories/ids";
 import {
   slackOk,
@@ -334,7 +339,50 @@ function getSlackConversationParam(
   return undefined;
 }
 
+const MESSAGE_BLOCK_METHODS = new Set<SlackApiMethod>([
+  "chat.postMessage",
+  "chat.postEphemeral",
+  "chat.update",
+]);
+
+type MockBlock = {
+  type?: string;
+  text?: string | { text?: string };
+  elements?: Array<{ text?: string }>;
+};
+
+/** Find the first way message blocks break a Slack limit, as Slack does. */
+function messageBlocksError(blocks: unknown): string | undefined {
+  if (!Array.isArray(blocks)) return undefined;
+  if (blocks.length > SLACK_MAX_MESSAGE_BLOCKS) {
+    return `must be less than ${SLACK_MAX_MESSAGE_BLOCKS + 1} items [json-pointer:/blocks]`;
+  }
+  let markdownChars = 0;
+  for (const [index, block] of (blocks as MockBlock[]).entries()) {
+    if (block.type === "markdown") {
+      markdownChars += typeof block.text === "string" ? block.text.length : 0;
+      continue;
+    }
+    const texts = [
+      typeof block.text === "object" ? block.text.text : undefined,
+      ...(block.type === "context"
+        ? (block.elements ?? []).map((element) => element.text)
+        : []),
+    ];
+    if (
+      texts.some((text) => (text?.length ?? 0) > SLACK_MAX_TEXT_OBJECT_CHARS)
+    ) {
+      return `must be less than ${SLACK_MAX_TEXT_OBJECT_CHARS + 1} characters [json-pointer:/blocks/${index}]`;
+    }
+  }
+  if (markdownChars > SLACK_MAX_MARKDOWN_CHARS) {
+    return `markdown blocks must be less than ${SLACK_MAX_MARKDOWN_CHARS + 1} characters [json-pointer:/blocks]`;
+  }
+  return undefined;
+}
+
 function validateSlackApiRequest(
+  method: SlackApiMethod,
   params: Record<string, unknown>,
 ): SlackMockHttpResponse | undefined {
   const conversation = getSlackConversationParam(params);
@@ -343,6 +391,18 @@ function validateSlackApiRequest(
       body: slackError({
         error: "channel_not_found",
         detail: `Invalid ${conversation.key}`,
+      }),
+    };
+  }
+
+  const blocksError = MESSAGE_BLOCK_METHODS.has(method)
+    ? messageBlocksError(params["blocks"])
+    : undefined;
+  if (blocksError) {
+    return {
+      body: slackError({
+        error: "invalid_blocks",
+        response_metadata: { messages: [`[ERROR] ${blocksError}`] },
       }),
     };
   }
@@ -451,7 +511,7 @@ export const slackApiHandlers = [
       params: requestBody,
     });
 
-    const validationResponse = validateSlackApiRequest(requestBody);
+    const validationResponse = validateSlackApiRequest(rawMethod, requestBody);
     if (validationResponse) {
       return toHttpResponse(validationResponse);
     }
