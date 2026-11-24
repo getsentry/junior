@@ -10,7 +10,11 @@
  * of the webhook request. Events for one pull request inside the wait share
  * one patch, and one query reads up to 100 patches.
  */
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import type {
+  PluginCache,
+  PluginLogger,
+  PluginState,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GITHUB_PULL_REQUEST_CACHE,
@@ -135,11 +139,13 @@ async function writeHeadFacts(
  * Run the due patches: one query reads the merge state and checks of up
  * to 100 pull requests. A patch whose merge state GitHub still computes,
  * whose read is older than its entry, or whose query fails, waits for the
- * next heartbeat.
+ * next heartbeat. A failed query is logged, not thrown, so the rest of the
+ * heartbeat still runs.
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;
   loadHeadFacts(nodeIds: string[]): Promise<unknown>;
+  log: PluginLogger;
   nowMs: number;
   state: PluginState;
 }): Promise<void> {
@@ -169,7 +175,11 @@ export async function runGitHubPullRequestPatches(args: {
     }
   } catch (error) {
     again.push(...due);
-    throw error;
+    args.log.error(
+      "GitHub pull request patches failed",
+      { count: due.length },
+      error,
+    );
   } finally {
     const retries = again.filter(
       ([, patch]) => patch.attempts + 1 < PATCH_MAX_ATTEMPTS,

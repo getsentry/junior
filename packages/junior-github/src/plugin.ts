@@ -418,6 +418,7 @@ export function githubPlugin(
           cache: ctx.cache,
           loadHeadFacts: async (nodeIds) =>
             await loadPullRequestHeadFacts(installationEnv, nodeIds),
+          log: ctx.log,
           nowMs: ctx.nowMs,
           state: ctx.state,
         });

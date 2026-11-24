@@ -431,6 +431,59 @@ describe("GitHub pull request cache refresh", () => {
     expect(cards.has(urls[1]!)).toBe(false);
   });
 
+  it("reconciles pull requests in a heartbeat whose patch query fails", async () => {
+    stubGitHubApp();
+    vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
+    // A page read finds that GitHub still computes the merge state. Every
+    // other query fails.
+    const operations: string[] = [];
+    mswServer.use(
+      http.get("https://api.github.com/repositories/2001", () =>
+        HttpResponse.json({ full_name: "getsentry/junior", id: 2001 }),
+      ),
+      http.post("https://api.github.com/graphql", async ({ request }) => {
+        const { operationName } = (await request.json()) as {
+          operationName: string;
+        };
+        operations.push(operationName);
+        return operationName === "PullRequestCards"
+          ? HttpResponse.json({
+              data: {
+                p0: { pullRequest: { ...cardNode(34), mergeable: "UNKNOWN" } },
+              },
+            })
+          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
+    );
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "opened",
+      pull_request: pullRequest(34, {
+        body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+        user: { login: "junior-test[bot]" },
+      }),
+    });
+
+    // A day later, the open pull request is due for its reconcile, and a
+    // page read adds a patch.
+    vi.setSystemTime(start + 25 * 60 * 60_000);
+    await read(`${GITHUB_REPO}/pull/34`);
+    vi.setSystemTime(Date.now() + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(operations).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+      "PullRequestLifecycles",
+    ]);
+  });
+
   it("shows an unknown merge state from a page read as pending, then a patch reads it", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
