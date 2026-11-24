@@ -115,7 +115,7 @@ struct InboxItemScreen: View {
       HStack(spacing: 8) {
         HStack(spacing: 6) {
           Dot(color: item.status == "open" ? Tokens.accent : Tokens.textMuted)
-          Text(item.status == "open" ? (item.kind == "notice" ? "Notice" : "Needs an answer") : item.status.capitalized)
+          Text(statusLabel(item))
             .type(.xs, .medium)
         }
         .foregroundStyle(item.status == "open" ? Tokens.accent : Tokens.textMuted)
@@ -149,7 +149,7 @@ struct InboxItemScreen: View {
       }
       Text(assignees(item)).type(.xs).foregroundStyle(Tokens.textMuted)
       if let url = item.url {
-        Button(item.canAct ? (item.kind == "notice" ? "Dismiss on the web" : "Answer on the web") : "Open on the web") {
+        Button(webActionLabel(item)) {
           window.openLink(url)
         }
         .buttonStyle(.dashboard(item.canAct ? .primary : .outline))
@@ -159,6 +159,20 @@ struct InboxItemScreen: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(16)
     .panelCard(radius: 10)
+  }
+
+  /// Like the dashboard's `inboxItemStatusLabel`. An action without a
+  /// question, such as a To-do or an Automation alert, has nothing to answer.
+  private func statusLabel(_ item: InboxItem) -> String {
+    guard item.status == "open" else { return item.status.capitalized }
+    if item.kind == "notice" { return "Notice" }
+    return item.question == nil ? "Waiting on you" : "Needs an answer"
+  }
+
+  private func webActionLabel(_ item: InboxItem) -> String {
+    guard item.canAct else { return "Open on the web" }
+    if item.kind == "notice" { return "Dismiss on the web" }
+    return item.question == nil ? "Open on the web" : "Answer on the web"
   }
 
   private func assignees(_ item: InboxItem) -> String {

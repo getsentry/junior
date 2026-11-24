@@ -62,7 +62,6 @@ async function conversation(conversationId, listed) {
   if (!state) return undefined;
   return {
     conversation: state.conversation,
-    brief: state.brief,
     messages: await allMessages(conversationId),
     pendingMessages: state.pendingMessages,
     authorization: state.authorization,
