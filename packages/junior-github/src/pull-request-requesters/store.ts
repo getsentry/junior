@@ -20,10 +20,13 @@ export async function recordGitHubPullRequestOpener(
     createdAt: Date;
     identityId: string;
     number: number;
+    /** GitHub's id of the pull request, when the create result has it. */
+    pullRequestId?: string | undefined;
     repositoryFullName: string;
   },
 ): Promise<void> {
   const repositoryFullName = input.repositoryFullName.toLowerCase();
+  const pullRequestId = input.pullRequestId ?? null;
   await db
     .insert(table)
     .values({
@@ -31,12 +34,17 @@ export async function recordGitHubPullRequestOpener(
       createdAt: input.createdAt,
       identityId: input.identityId,
       number: input.number,
+      pullRequestId,
       repositoryFullName,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: [table.repositoryFullName, table.number, table.identityId],
-      set: { conversationId: input.conversationId, createdAt: input.createdAt },
+      set: {
+        conversationId: input.conversationId,
+        createdAt: input.createdAt,
+        ...(pullRequestId ? { pullRequestId } : undefined),
+      },
     });
   await db
     .delete(table)
@@ -119,23 +127,25 @@ export async function listGitHubPullRequestOpeners(
 }
 
 /**
- * List the pull requests that a person asked Junior to open in one
- * Conversation, by repository.
+ * Find a pull request that a person asked Junior to open in one
+ * Conversation, by GitHub's id of the pull request.
  */
-export async function listGitHubPullRequestsOpenedIn(
+export async function findGitHubPullRequestOpenedIn(
   db: GitHubDb,
-  conversationId: string,
-): Promise<Map<string, number[]>> {
-  const rows = await db
-    .select({ number: table.number, repository: table.repositoryFullName })
+  input: { conversationId: string; pullRequestId: string },
+): Promise<{ number: number; repositoryFullName: string } | undefined> {
+  const [row] = await db
+    .select({
+      number: table.number,
+      repositoryFullName: table.repositoryFullName,
+    })
     .from(table)
-    .where(eq(table.conversationId, conversationId));
-  const byRepository = new Map<string, number[]>();
-  for (const row of rows) {
-    byRepository.set(row.repository, [
-      ...(byRepository.get(row.repository) ?? []),
-      row.number,
-    ]);
-  }
-  return byRepository;
+    .where(
+      and(
+        eq(table.conversationId, input.conversationId),
+        eq(table.pullRequestId, input.pullRequestId),
+      ),
+    )
+    .limit(1);
+  return row;
 }

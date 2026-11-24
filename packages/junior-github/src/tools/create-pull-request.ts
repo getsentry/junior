@@ -143,6 +143,8 @@ const createPullRequestStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createPullRequestInputSchema),
       number: Type.Number(),
+      /** GitHub's id of the pull request, for its opener's row. */
+      pullRequestId: Type.Optional(Type.String()),
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -293,6 +295,7 @@ async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
   request: { body: unknown; path: string },
 ): Promise<{
+  pullRequestId?: string;
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
 }> {
@@ -320,7 +323,11 @@ async function createGitHubPullRequest(
       "GitHub pull request creation returned an invalid response.",
     );
   }
-  const pullRequest = parsed as { html_url?: unknown; number?: unknown };
+  const pullRequest = parsed as {
+    html_url?: unknown;
+    id?: unknown;
+    number?: unknown;
+  };
   if (
     typeof pullRequest.number !== "number" ||
     typeof pullRequest.html_url !== "string"
@@ -336,6 +343,9 @@ async function createGitHubPullRequest(
       number: pullRequest.number,
       url: pullRequest.html_url,
     },
+    ...(typeof pullRequest.id === "number"
+      ? { pullRequestId: String(pullRequest.id) }
+      : undefined),
     ...(stackTarget.success ? { stackTarget: stackTarget.data } : undefined),
   };
 }
@@ -347,7 +357,7 @@ async function createGitHubPullRequest(
 async function recordOpener(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
-  state: { createdAtMs: number; number: number },
+  state: { createdAtMs: number; number: number; pullRequestId?: string },
   requester: { conversationId: string; identityId: string | undefined },
 ): Promise<void> {
   const { conversationId, identityId } = requester;
@@ -358,6 +368,7 @@ async function recordOpener(
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
+    pullRequestId: state.pullRequestId,
     repositoryFullName: repo.ref,
   });
 }
@@ -726,12 +737,11 @@ export function createGitHubPullRequestTool(
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
           let result: GitHubPullRequestResult;
+          let pullRequestId: string | undefined;
           let stackTarget: GitHubStackTarget | undefined;
           try {
-            ({ result, stackTarget } = await createGitHubPullRequest(
-              ctx,
-              request,
-            ));
+            ({ pullRequestId, result, stackTarget } =
+              await createGitHubPullRequest(ctx, request));
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -748,6 +758,7 @@ export function createGitHubPullRequestTool(
             ...pendingState,
             status: "completed",
             number: result.number,
+            ...(pullRequestId === undefined ? undefined : { pullRequestId }),
             url: result.url,
             facts: result.facts,
             ...(result.sourceUpdatedAt === undefined

@@ -110,6 +110,12 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     identityId: text("identity_id").notNull(),
     /** The Conversation where the person asked Junior to open the pull request. */
     conversationId: text("conversation_id"),
+    /**
+     * GitHub's id of the pull request (`databaseId`), the id of its Inbox
+     * items. Set on the opener's row, so a Resume finds its pull request
+     * without a name, also after a rename.
+     */
+    pullRequestId: text("pull_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },

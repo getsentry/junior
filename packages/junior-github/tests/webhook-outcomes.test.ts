@@ -2975,7 +2975,12 @@ describe("GitHub-owned pull request outcomes", () => {
           .select()
           .from(juniorGitHubPullRequestRequesters)
           .orderBy(juniorGitHubPullRequestRequesters.createdAt)
-      ).map((row) => [row.number, row.identityId, row.conversationId]);
+      ).map((row) => [
+        row.number,
+        row.identityId,
+        row.conversationId,
+        row.pullRequestId,
+      ]);
 
     try {
       // GitHub can deliver `opened` before the create call returns. The
@@ -2985,6 +2990,7 @@ describe("GitHub-owned pull request outcomes", () => {
         const response = Response.json(
           {
             html_url: "https://github.com/getsentry/junior/pull/946",
+            id: 9460,
             number: 946,
           },
           { status: 201 },
@@ -3011,7 +3017,7 @@ describe("GitHub-owned pull request outcomes", () => {
         toolCallId: "call-create",
       });
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001", "9460"],
       ]);
 
       // A create that GitHub rejects saves no requester.
@@ -3027,7 +3033,7 @@ describe("GitHub-owned pull request outcomes", () => {
         }),
       ).rejects.toThrow("HTTP 422");
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001", "9460"],
       ]);
 
       // An update adds a requester. The opener does not change.
@@ -3042,8 +3048,8 @@ describe("GitHub-owned pull request outcomes", () => {
       ]);
       // Only the opener names the Conversation where they asked.
       expect(await savedRequesters()).toEqual([
-        [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
-        [946, "slack-identity-octocat", null],
+        [946, "slack-identity-dcramer", "slack:C123:1712345.0001", "9460"],
+        [946, "slack-identity-octocat", null, null],
       ]);
 
       // An opener with no linked GitHub account is unknown. The bot is not

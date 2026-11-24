@@ -506,6 +506,7 @@ describe("merge conflict check on webhook events", () => {
           createdAt: new Date(pushedAt),
           identityId: "identity-jane",
           number: 946,
+          pullRequestId: "9460",
           repositoryFullName: "getsentry/junior",
           updatedAt: new Date(pushedAt),
         });
@@ -755,6 +756,19 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + day + 4 * hour, "7");
       expect(fixedShas()).toEqual(["1", "5", "6"]);
       expect(h.notices).toHaveLength(1);
+    });
+
+    it("lets the next conflict ask again when Resume finds no pull request", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      // No pull request with the item's id was opened in this Conversation,
+      // so the Resume starts no fix. Core closed the item already.
+      const published = conflicts().length;
+      await h.answer({ ...resume, conversationId: "slack:C9:9.0" });
+      expect(conflicts()).toHaveLength(published);
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(h.notices).toHaveLength(2);
     });
 
     it("adds no item for a conflict check that runs while Resume reads the pull request", async () => {

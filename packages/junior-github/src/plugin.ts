@@ -3,7 +3,6 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
-import pLimit from "p-limit";
 import { githubAccountLinks } from "./account-links.js";
 import {
   GITHUB_INBOX_SUBJECTS,
@@ -32,9 +31,12 @@ import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
 import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
-import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
+import {
+  allowGitHubConflictAsk,
+  resumeGitHubConflictFixes,
+} from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
-import { listGitHubPullRequestsOpenedIn } from "./pull-request-requesters/store.js";
+import { findGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
@@ -129,7 +131,6 @@ import {
 // hour. Older incidents rarely explain a suite that just finished.
 const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
 // A Conversation opens pull requests in few repositories.
-const RESUME_LOOKUP_CONCURRENCY = 4;
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -401,33 +402,33 @@ export function githubPlugin(
         ) {
           return;
         }
-        // The item belongs to the Conversation that opened the pull request.
-        const opened = await listGitHubPullRequestsOpenedIn(
-          gitHubDbSchema.parse(ctx.db),
-          ctx.conversationId,
-        );
-        const changes = await pLimit(RESUME_LOOKUP_CONCURRENCY).map(
-          [...opened],
-          async ([name, numbers]) =>
-            await ctx.codeChanges.list({ repository: { name, numbers } }),
-        );
-        const change = changes
-          .flat()
-          .find((candidate) => candidate.providerId === ctx.subject.id);
-        if (!change) return;
-        const ref = {
-          number: change.number,
-          repositoryFullName: change.repository.name,
-        };
+        const db = gitHubDbSchema.parse(ctx.db);
+        const pullRequestId = ctx.subject.id;
+        // The item belongs to the Conversation that opened the pull request,
+        // and the opener's row holds the pull request's id.
+        const ref = await findGitHubPullRequestOpenedIn(db, {
+          conversationId: ctx.conversationId,
+          pullRequestId,
+        });
+        if (!ref) {
+          // Core closed the item already. Let the next conflict check ask
+          // again, so the Resume is not lost.
+          ctx.log.warn("GitHub merge conflict Resume found no pull request", {
+            conversationId: ctx.conversationId,
+            pullRequestId,
+          });
+          await allowGitHubConflictAsk(db, pullRequestId);
+          return;
+        }
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
-          codeChanges: ctx.codeChanges,
-          db: gitHubDbSchema.parse(ctx.db),
+          db,
           events: ctx.events,
           itemId: ctx.itemId,
           loadPullRequest: async (pullRequest) =>
             await loadPullRequest(installationEnv, pullRequest),
           nowMs: ctx.nowMs,
+          pullRequestId,
           ref,
           subscription: gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
