@@ -13,11 +13,9 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
+import { DELIVERY_TOPIC } from "@/chat/queue/topics";
 import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
-
-/** Queue topic of delivery messages. */
-export const DELIVERY_TOPIC = "junior_delivery";
 
 // A delivery sends while it holds a transaction, and the host stops it at the
 // function's max duration. The queue sends the message again only after that.

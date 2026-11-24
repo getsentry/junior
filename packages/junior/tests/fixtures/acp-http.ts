@@ -9,12 +9,17 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationWebHarness } from "./conversation";
 import { createSlackAdapterFixture } from "./conversation-work";
+import { mockBuiltSystemPrompts } from "./built-system-prompts";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
 
-/** Supply dashboard browser authentication for ACP integration tests. */
-export function mockAcpDashboardConfig(): void {
+/**
+ * Supply dashboard browser authentication and the build-time system prompts
+ * for ACP integration tests. Both use `botName`, as a build does.
+ */
+export function mockAcpDashboardConfig(botName = "junior"): void {
   vi.doMock("#junior/config", () => ({
+    botName,
     createDashboardApp: () => ({
       fetch: () => new Response("Not Found", { status: 404 }),
     }),
@@ -24,6 +29,7 @@ export function mockAcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+  mockBuiltSystemPrompts(botName);
 }
 
 /** Read the browser verification code shown by an ACP URL elicitation. */

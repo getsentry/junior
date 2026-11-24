@@ -60,10 +60,11 @@ async function platformPromptLayout(platform: Platform): Promise<PromptLayout> {
  * history. Every Turn on a platform gets the same system prompt.
  */
 export async function buildTurnPromptLayouts(): Promise<TurnPromptLayouts> {
-  const [slack, local] = await Promise.all([
-    platformPromptLayout("slack"),
-    platformPromptLayout("local"),
-  ]);
+  // One after another: when two imports of a module that a test mocks with
+  // `vi.doMock` start at once, Vitest gives the second one the real module.
+  // Tests that act as a `juniorNitro()` build mock `#junior/system-prompts`.
+  const slack = await platformPromptLayout("slack");
+  const local = await platformPromptLayout("local");
   return { slack, local };
 }
 

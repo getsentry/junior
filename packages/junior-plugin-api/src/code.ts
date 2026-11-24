@@ -21,7 +21,6 @@ export const codeChangeInputSchema = z
       .object({
         name: z.string().min(1),
         providerId: z.string().min(1),
-        url: z.string().url().optional(),
       })
       .strict(),
     /**
@@ -32,7 +31,6 @@ export const codeChangeInputSchema = z
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
-    url: z.string().url().optional(),
   })
   .strict();
 
@@ -54,4 +52,14 @@ export interface CodeChangePublisher {
     number: number;
     repositoryProviderId: string;
   }): Promise<void>;
+}
+
+/**
+ * Build the web pages of a code plugin's repositories and code changes from
+ * the repository name and the code change number, so Junior does not store
+ * them.
+ */
+export interface PluginCodeLinks {
+  change(input: { number: number; repository: string }): string;
+  repository(name: string): string;
 }

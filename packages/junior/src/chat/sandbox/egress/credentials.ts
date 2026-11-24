@@ -2,7 +2,10 @@ import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import {
+  CredentialUnavailableError,
+  ServiceAccountUnavailableError,
+} from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
   PluginGitPush,
@@ -231,6 +234,8 @@ export async function sandboxEgressCredentialLease(
   provider: string,
   selection: SandboxEgressGrantSelection,
   context: SandboxEgressCredentialContext,
+  /** Operation that plugin host code named. Sandbox commands name none. */
+  operation?: string,
 ): Promise<SandboxEgressCredentialLease> {
   const { grant } = selection;
   const cached = await getSandboxEgressCredentialLease(
@@ -291,10 +296,19 @@ export async function sandboxEgressCredentialLease(
     try {
       lease = await issueProviderCredentialLease({
         context: context.credentials,
+        ...(operation ? { operation } : undefined),
         provider,
         reason: grant.reason ?? `sandbox-egress:${provider}:default`,
       });
     } catch (error) {
+      if (error instanceof ServiceAccountUnavailableError) {
+        throw new SandboxEgressCredentialError({
+          provider,
+          grant,
+          kind: "unavailable",
+          message: error.message,
+        });
+      }
       if (error instanceof CredentialUnavailableError) {
         throw new SandboxEgressCredentialError({
           provider,

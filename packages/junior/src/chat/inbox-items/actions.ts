@@ -1,8 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
+import { setTodoStatusByUser } from "@/chat/todos/store";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -13,6 +14,7 @@ import type { InboxItemChange } from "./messages";
 import {
   canActOnInboxItem,
   canUserReadInboxItem,
+  inboxItemTodo,
   isAutomationAlertItem,
   isOnlyAssignee,
   isPluginInboxItem,
@@ -29,8 +31,11 @@ import {
   type InboxItem,
 } from "./store";
 
-/** What a person can do with an Inbox item. */
-export type InboxItemAction = "take" | "submit" | "dismiss";
+/**
+ * What a person can do with an Inbox item. A To-do's item takes only
+ * `done` and `dismiss`, and only a To-do's item takes `done`.
+ */
+export type InboxItemAction = "take" | "submit" | "dismiss" | "done";
 
 /** An expected failure of a person action, for the API to report. */
 export class InboxItemActionError extends Error {
@@ -65,7 +70,9 @@ export function reviewItemChange(
   user: User,
 ): InboxItemChange {
   if (action === "take") return { kind: "taken", user };
-  if (action === "submit") return { kind: "submitted", user };
+  if (action === "submit" || action === "done") {
+    return { kind: "submitted", user };
+  }
   return { kind: "dismissed", user };
 }
 
@@ -75,7 +82,7 @@ export function reviewItemChange(
  */
 function isSameClose(
   item: InboxItem,
-  action: Exclude<InboxItemAction, "take">,
+  action: Exclude<InboxItemAction, "take" | "done">,
   user: User,
 ): boolean {
   return (
@@ -134,6 +141,22 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
+  const todo = inboxItemTodo(item);
+  if (todo) {
+    if (action !== "done" && action !== "dismiss") {
+      throw new InboxItemActionError(
+        "invalid",
+        "A To-do item takes only Done or Dismiss.",
+      );
+    }
+    return await closeTodoItem(item, user, nowMs, action);
+  }
+  if (action === "done") {
+    throw new InboxItemActionError(
+      "invalid",
+      "Only a To-do item can be marked done.",
+    );
+  }
 
   if (action === "take") {
     if (item.status !== "open") {
@@ -218,6 +241,46 @@ export async function actOnInboxItem(args: {
     item: closed,
     nowMs,
   });
+  return closed;
+}
+
+/**
+ * Close a To-do item for its assignee through its To-do: Done marks the
+ * To-do done, and Dismiss drops it. The To-do change closes the item as
+ * done or dismissed (`syncTodoInboxItems`), and the agent sees it in its
+ * next `<todo-delta>`, so it sends no message and starts no Turn. A retry
+ * after the item closed the same way by the same person succeeds.
+ */
+async function closeTodoItem(
+  item: InboxItem,
+  user: User,
+  nowMs: number,
+  action: "dismiss" | "done",
+): Promise<InboxItem> {
+  const todo = inboxItemTodo(item)!;
+  if (item.status === "open") {
+    if (!canActOnInboxItem(item, user.id)) {
+      throw new InboxItemActionError(
+        "forbidden",
+        "Only an assignee can act on this item.",
+      );
+    }
+    await setTodoStatusByUser(getSqlExecutor(), {
+      assignedOnly: true,
+      conversationId: todo.conversationId,
+      id: todo.id,
+      nowMs,
+      status: action === "done" ? "done" : "dropped",
+      userId: user.id,
+    });
+  }
+  const closed = await readInboxItemForUser(user, item.id);
+  if (
+    closed.status !== closedStatus(action) ||
+    closed.closedBy?.userId !== user.id
+  ) {
+    throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
   return closed;
 }
 

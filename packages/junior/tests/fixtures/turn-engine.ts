@@ -23,7 +23,7 @@ import {
 import type { ToolDefinition } from "@/core/tool";
 import { advanceTurn } from "@/core/turn/advance";
 import type { UnreadInput } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/core/turn/queue";
+import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
 import {
   juniorConversations,
   juniorIdentities,

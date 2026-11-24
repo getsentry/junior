@@ -4,6 +4,7 @@ import { expect, test } from "./test";
 import { waitForReadPosition } from "./harness";
 import { pasteText } from "./paste-text";
 import { pickOption } from "./pick-option";
+import { mockSearchRows } from "./search-fixture";
 
 // A Thread the viewer takes part in. It has a nested Thread and two files.
 const THREAD_ID = "junior:internal:dashboard-qa:thread";
@@ -127,6 +128,59 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   await expect.poll(() => sent).toHaveLength(2);
   expect(linked).toHaveLength(2);
   await cardRead;
+});
+
+test("@ finds memories and sends each as a labeled link to its page", async ({
+  page,
+  dashboard,
+}) => {
+  await mockSearchRows(page, {
+    memories: () => [
+      {
+        id: "memory-deploy-runbook",
+        title:
+          "Deploy runbooks live in Notion under Engineering, then Releases.\nStart with the rollback checklist.",
+      },
+      { id: "memory-pnpm", title: "Use pnpm, not npm." },
+    ],
+  });
+  const searches: URLSearchParams[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/search") searches.push(url.searchParams);
+  });
+  const { linked, sent } = recordWrites(page);
+  const composer = await openThread(page, dashboard.baseURL);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+
+  await composer.pressSequentially("Follow @runb");
+  const memories = mentions.getByRole("group", { name: "Memories" });
+  await expect(memories.getByRole("option")).toHaveText([
+    /^Deploy runbooks live in Notion/,
+  ]);
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  // Typing waits for a pause, so the menu reads each typed word at most
+  // once and never reads with no text.
+  expect(searches.map((params) => params.get("sources"))).toEqual(
+    searches.map(() => "memories"),
+  );
+  const typed = searches.map((params) => params.get("q"));
+  expect(typed.at(-1)).toBe("runb");
+  expect(new Set(typed).size).toBe(typed.length);
+  expect(typed.length).toBeLessThanOrEqual("runb".length);
+  await composer.press("Enter");
+  await expect(mentions).toBeHidden();
+  // The label is the memory text on one line.
+  const label =
+    "Deploy runbooks live in Notion under Engineering, then Releases. Start with the rollback checklist.";
+  await expect(composer).toHaveText(`Follow ${label}`);
+  await composer.press("Enter");
+
+  const memory = `${new URL(dashboard.baseURL).origin}/memories/memory-deploy-runbook`;
+  await expect.poll(() => sent).toEqual([`Follow <${memory}|${label}>`]);
+  await expect(composer).toHaveText("");
+  // A memory is not work, so the Conversation links nothing.
+  expect(linked).toEqual([]);
 });
 
 test("the active row stays put when a source above it loads", async ({

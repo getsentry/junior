@@ -14,11 +14,8 @@ import {
   pageCount,
   pageItems,
 } from "../../../components/Pagination";
-import {
-  timeRangeBucketUnit,
-  type TimeRangeDays,
-} from "../../../components/controls/TimeRangeSelector";
 import { Card } from "../../../components/layout/Card";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { newestFirst } from "../../../conversations/conversationSections";
 import { buildConversations } from "../../../format";
@@ -29,12 +26,28 @@ import {
   pinnedOnlyOf,
 } from "../../../inbox/inboxFilters";
 import { useWaitingConversations } from "../../../inbox/queries";
-import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
 import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
-import { repositoryActivity } from "../../../pages/code/RepositorySections";
 import { getDashboardTimeZone } from "../../../time";
 
 const PAGE_SIZE = 25;
+
+/** Placeholder rows while a list of the repository loads. */
+export function RepositoryRowsLoading(props: { label: string }) {
+  return (
+    <div aria-busy="true" className="grid" role="status">
+      <span className="sr-only">{props.label}</span>
+      {[0, 1, 2].map((row) => (
+        <div
+          className="grid gap-1.5 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0"
+          key={row}
+        >
+          <Skeleton className={row % 2 ? "h-4 w-2/5" : "h-4 w-3/5"} />
+          <Skeleton className="h-3 w-4/5 opacity-70" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Conversations linked to the repository, in the home list layout. A pin
@@ -106,10 +119,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
  * Recent code changes in the repository, filtered by state. The command
  * palette finds a change.
  */
-export function RepositoryChangesTab(props: {
-  data: CodeRepositoryReport;
-  range: TimeRangeDays;
-}) {
+export function RepositoryChangesTab(props: { data: CodeRepositoryReport }) {
   const [state, setState] = useState("");
   const [page, setPage] = useState(1);
   // The report lists open changes first, up to its limit, so each state tab
@@ -127,55 +137,48 @@ export function RepositoryChangesTab(props: {
     setPage(1);
   }, [state]);
   return (
-    <>
-      <CodeActivityChart
-        bucketUnit={timeRangeBucketUnit(props.range)}
-        days={repositoryActivity(props.data, props.range)}
-        range={props.range}
-      />
-      <section aria-label="Changes" className="grid gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <FilterTabList
-            ariaLabel="Change state"
-            items={[
-              {
-                count: counts.open + counts.merged + counts.closed,
-                label: "All",
-                value: "",
-              },
-              { count: counts.open, label: "Open", value: "open" },
-              { count: counts.merged, label: "Merged", value: "merged" },
-              { count: counts.closed, label: "Closed", value: "closed" },
-            ]}
-            onChange={setState}
-            value={state}
-          />
-        </div>
-        <Card>
-          {changes.length === 0 ? (
-            <div className="p-4">
-              <EmptyTelemetry>
-                {selectedState && stateQuery.error
-                  ? "Changes are unavailable. Try refreshing the dashboard."
-                  : selectedState && !stateQuery.data
-                    ? "Loading changes…"
-                    : "No changes match this state."}
-              </EmptyTelemetry>
-            </div>
-          ) : (
-            pageItems(changes, page, PAGE_SIZE).map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))
-          )}
-        </Card>
-        <PagePagination
-          onPageChange={setPage}
-          page={page}
-          pageCount={pageCount(changes.length, PAGE_SIZE)}
-          pageSize={PAGE_SIZE}
-          total={changes.length}
+    <section aria-label="Changes" className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <FilterTabList
+          ariaLabel="Change state"
+          items={[
+            {
+              count: counts.open + counts.merged + counts.closed,
+              label: "All",
+              value: "",
+            },
+            { count: counts.open, label: "Open", value: "open" },
+            { count: counts.merged, label: "Merged", value: "merged" },
+            { count: counts.closed, label: "Closed", value: "closed" },
+          ]}
+          onChange={setState}
+          value={state}
         />
-      </section>
-    </>
+      </div>
+      <Card>
+        {selectedState && !stateQuery.data && !stateQuery.error ? (
+          <RepositoryRowsLoading label="Loading changes" />
+        ) : changes.length === 0 ? (
+          <div className="p-4">
+            <EmptyTelemetry>
+              {selectedState && stateQuery.error
+                ? "Changes are unavailable. Try refreshing the dashboard."
+                : "No changes match this state."}
+            </EmptyTelemetry>
+          </div>
+        ) : (
+          pageItems(changes, page, PAGE_SIZE).map((change) => (
+            <CodeChangeRow change={change} key={change.id} />
+          ))
+        )}
+      </Card>
+      <PagePagination
+        onPageChange={setPage}
+        page={page}
+        pageCount={pageCount(changes.length, PAGE_SIZE)}
+        pageSize={PAGE_SIZE}
+        total={changes.length}
+      />
+    </section>
   );
 }

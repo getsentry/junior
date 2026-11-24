@@ -63,7 +63,7 @@ data, does not run.
 - An Automation run cannot ask, because no person is there to answer. Each
   ask becomes a deny.
 - When Guardian asks, the agent asks the person about that exact action, the
-  way it asks any question. A child agent reports blocked to its parent. The
+  way it asks any question: with an Inbox item, also in a child agent. The
   agent never names Guardian or the review.
 - After three rejected attempts in a row, the agent stops that write for
   the Turn and explains the risk.

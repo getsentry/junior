@@ -12,7 +12,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/core/turn/queue";
+import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
   modelCalls,

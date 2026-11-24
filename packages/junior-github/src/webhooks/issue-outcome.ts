@@ -1,206 +1,67 @@
 import * as z from "zod";
-import { githubIssueStateReasonSchema } from "../db/schema.js";
-import type {
-  GitHubIssueConversationsInput,
-  GitHubIssueOutcomeInput,
-} from "../issue-outcomes/store.js";
-import {
-  GITHUB_SESSION_FOOTER_START,
-  githubConversationIds,
-} from "../conversation-footer.js";
-import { botLoginFromEmail, isBotLogin } from "./ownership.js";
+import { githubConversationIds } from "../conversation-footer.js";
+import { isBotLogin } from "./ownership.js";
 
-const canonicalIssueOutcomeSchema = z
+const canonicalClosedIssueSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: z.string(),
     issue: z
       .object({
         body: z.string().nullable().optional(),
-        closed_at: z.string().nullable().optional(),
-        created_at: z.string(),
-        id: z.number().int().positive(),
         number: z.number().int().positive(),
-        state_reason: githubIssueStateReasonSchema.nullable().optional(),
-        updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).strict(),
       })
       .strict(),
-    repository: z
-      .object({
-        full_name: z.string().min(1),
-        id: z.number().int().positive(),
-      })
-      .strict(),
+    repository: z.object({ full_name: z.string().min(1) }).strict(),
   })
   .strict();
 
-const issueOutcomeSchema = z
+const closedIssueSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: z.string(),
     issue: z
       .object({
         body: z.string().nullable().optional(),
-        closed_at: z.string().nullable().optional(),
-        created_at: z.string(),
-        id: z.number().int().positive(),
         number: z.number().int().positive(),
-        state_reason: githubIssueStateReasonSchema.nullable().optional(),
-        updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    repository: z
-      .object({
-        full_name: z.string().min(1),
-        id: z.number().int().positive(),
-      })
-      .passthrough(),
+    repository: z.object({ full_name: z.string().min(1) }).passthrough(),
   })
   .passthrough()
   .transform((provider) =>
-    canonicalIssueOutcomeSchema.parse({
+    canonicalClosedIssueSchema.parse({
       action: provider.action,
       issue: {
         body: provider.issue.body,
-        closed_at: provider.issue.closed_at,
-        created_at: provider.issue.created_at,
-        id: provider.issue.id,
         number: provider.issue.number,
-        state_reason: provider.issue.state_reason,
-        updated_at: provider.issue.updated_at,
         user: { login: provider.issue.user.login },
       },
-      repository: {
-        full_name: provider.repository.full_name,
-        id: provider.repository.id,
-      },
+      repository: { full_name: provider.repository.full_name },
     }),
   );
 
-const issueLifecycleActionSchema = z
-  .object({ action: z.string() })
-  .passthrough();
-
-/** Parse a provider timestamp, rejecting missing or invalid lifecycle values. */
-function timestamp(value: string | null | undefined): Date | undefined {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed : undefined;
-}
-
-/** Normalize only the fields required for the Junior-owned issue projection. */
-export function normalizeGitHubIssueOutcome(args: {
+/**
+ * Read a closed Junior issue from an `issues` webhook: the issue, and the
+ * Conversations that its bot-written footer names. Undefined for any other
+ * action or issue.
+ */
+export function normalizeGitHubClosedIssue(args: {
   body: unknown;
   botEmail?: string | undefined;
-}): GitHubIssueOutcomeInput | undefined {
-  const lifecycle = issueLifecycleActionSchema.safeParse(args.body);
-  if (
-    !lifecycle.success ||
-    !["opened", "closed", "reopened"].includes(lifecycle.data.action)
-  ) {
-    return undefined;
-  }
-  const parsed = issueOutcomeSchema.parse(args.body);
-  const issue = parsed.issue;
-  const openedAt = timestamp(issue.created_at);
-  const updatedAt = timestamp(issue.updated_at);
-  if (!openedAt || !updatedAt) {
-    throw new Error("GitHub issue lifecycle timestamps are invalid");
-  }
-  if (parsed.action === "opened" && !botLoginFromEmail(args.botEmail)) {
-    throw new Error(
-      "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify issue ownership",
-    );
-  }
-  const hasOwnershipMarker = Boolean(
-    isBotLogin(issue.user.login, args.botEmail) &&
-    issue.body?.includes(GITHUB_SESSION_FOOTER_START),
-  );
-  const candidateOwned =
-    hasOwnershipMarker &&
-    (parsed.action === "opened" || parsed.action === "closed");
-  const closedAt = timestamp(issue.closed_at);
-  if (parsed.action === "closed" && !closedAt) {
-    throw new Error("GitHub issue terminal timestamp is invalid");
-  }
-  return {
-    candidateOwned,
-    closedAt,
-    issueId: String(issue.id),
-    number: issue.number,
-    openedAt,
-    repositoryFullName: parsed.repository.full_name,
-    repositoryId: String(parsed.repository.id),
-    state: parsed.action === "closed" ? "closed" : "open",
-    stateReason:
-      parsed.action === "closed"
-        ? (issue.state_reason ?? undefined)
-        : undefined,
-    updatedAt,
-  };
-}
-
-const canonicalIssueConversationSchema = z
-  .object({
-    issue: z
-      .object({
-        body: z.string().nullable().optional(),
-        id: z.number().int().positive(),
-        user: z.object({ login: z.string().min(1) }).strict(),
-      })
-      .strict(),
-    sender: z
-      .object({ login: z.string().min(1) })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
-const issueConversationSchema = z
-  .object({
-    issue: z
-      .object({
-        body: z.string().nullable().optional(),
-        id: z.number().int().positive(),
-        user: z.object({ login: z.string().min(1) }).passthrough(),
-      })
-      .passthrough(),
-    sender: z
-      .object({ login: z.string().min(1) })
-      .passthrough()
-      .optional(),
-  })
-  .passthrough()
-  .transform((provider) =>
-    canonicalIssueConversationSchema.parse({
-      issue: {
-        body: provider.issue.body,
-        id: provider.issue.id,
-        user: { login: provider.issue.user.login },
-      },
-      ...(provider.sender
-        ? { sender: { login: provider.sender.login } }
-        : undefined),
-    }),
-  );
-
-/** Normalize native conversation ids written to a Junior-owned issue by its bot. */
-export function normalizeGitHubIssueConversations(args: {
-  body: unknown;
-  botEmail?: string | undefined;
-}): GitHubIssueConversationsInput | undefined {
-  const parsed = issueConversationSchema.safeParse(args.body);
-  if (!parsed.success) return undefined;
-  if (!isBotLogin(parsed.data.issue.user.login, args.botEmail)) {
-    return undefined;
-  }
-  const sender = parsed.data.sender;
-  if (sender && !isBotLogin(sender.login, args.botEmail)) return undefined;
-  const conversationIds = githubConversationIds(parsed.data.issue.body);
+}):
+  | { conversationIds: string[]; number: number; repositoryFullName: string }
+  | undefined {
+  const parsed = closedIssueSchema.safeParse(args.body);
+  if (!parsed.success || parsed.data.action !== "closed") return undefined;
+  const { issue, repository } = parsed.data;
+  if (!isBotLogin(issue.user.login, args.botEmail)) return undefined;
+  const conversationIds = githubConversationIds(issue.body);
   return conversationIds.length > 0
     ? {
         conversationIds,
-        issueId: String(parsed.data.issue.id),
+        number: issue.number,
+        repositoryFullName: repository.full_name,
       }
     : undefined;
 }

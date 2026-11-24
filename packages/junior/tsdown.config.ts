@@ -31,6 +31,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "#junior/config",
+      "#junior/system-prompts",
       "hono",
       "@sentry/node",
       "@sentry/server-utils",

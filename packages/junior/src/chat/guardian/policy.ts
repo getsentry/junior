@@ -203,7 +203,7 @@ export function guardianPluginFacts(
       facts.push({ plugin: manifest.name, text: manifest.reviewContext });
     }
     const credentials = manifest.credentials;
-    if (credentials) {
+    if (credentials?.authTokenEnv) {
       const domains = credentials.domains
         .map((domain) => `\`${domain}\``)
         .join(", ");

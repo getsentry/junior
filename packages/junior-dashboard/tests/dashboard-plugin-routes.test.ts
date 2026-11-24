@@ -4,6 +4,7 @@ import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import { mockBuiltSystemPrompts } from "../../junior/tests/fixtures/built-system-prompts";
 
 const { authenticatePersonalToken, resolveViewerUser } = vi.hoisted(() => ({
   authenticatePersonalToken: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function mockDashboardVirtualConfig() {
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp,
     functionMaxDurationSeconds: undefined,
     dashboard: undefined,
@@ -28,6 +30,7 @@ function mockDashboardVirtualConfig() {
     pluginSet: undefined,
     plugins: undefined,
   }));
+  mockBuiltSystemPrompts();
 }
 
 function notesRoutes() {
@@ -45,6 +48,7 @@ describe("dashboard plugin routes", () => {
 
   afterEach(() => {
     vi.doUnmock("#junior/config");
+    vi.doUnmock("#junior/system-prompts");
     resetDashboardEnv();
   });
 

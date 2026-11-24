@@ -6,6 +6,7 @@ import SwiftUI
 /// items; answering one happens on the web.
 struct InboxItemScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(InboxModel.self) private var inbox
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
@@ -28,8 +29,8 @@ struct InboxItemScreen: View {
             if !item.conversationIds.isEmpty { conversations(item) }
             if let next = inbox.next(after: item.id) {
               Button {
-                app.path.removeLast()
-                app.path.append(.inboxItem(next.id))
+                window.path.removeLast()
+                window.path.append(.inboxItem(next.id))
               } label: {
                 HStack(spacing: 6) {
                   Text("Next: \(next.title)").lineLimit(1)
@@ -114,7 +115,7 @@ struct InboxItemScreen: View {
       HStack(spacing: 8) {
         HStack(spacing: 6) {
           Dot(color: item.status == "open" ? Tokens.accent : Tokens.textMuted)
-          Text(item.status == "open" ? (item.kind == "notice" ? "Notice" : "Needs an answer") : item.status.capitalized)
+          Text(statusLabel(item))
             .type(.xs, .medium)
         }
         .foregroundStyle(item.status == "open" ? Tokens.accent : Tokens.textMuted)
@@ -135,7 +136,7 @@ struct InboxItemScreen: View {
         let label = subject.title ?? subject.id
         if let url = subject.url {
           Button {
-            app.openLink(url)
+            window.openLink(url)
           } label: {
             TagChip(label: label, maxWidth: 300, outbound: true) {
               Icon("link", size: 12).foregroundStyle(Tokens.textMuted)
@@ -148,8 +149,8 @@ struct InboxItemScreen: View {
       }
       Text(assignees(item)).type(.xs).foregroundStyle(Tokens.textMuted)
       if let url = item.url {
-        Button(item.canAct ? (item.kind == "notice" ? "Dismiss on the web" : "Answer on the web") : "Open on the web") {
-          app.openLink(url)
+        Button(webActionLabel(item)) {
+          window.openLink(url)
         }
         .buttonStyle(.dashboard(item.canAct ? .primary : .outline))
         .accessibilityIdentifier("answer-on-web")
@@ -158,6 +159,20 @@ struct InboxItemScreen: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(16)
     .panelCard(radius: 10)
+  }
+
+  /// Like the dashboard's `inboxItemStatusLabel`. An action without a
+  /// question, such as a To-do or an Automation alert, has nothing to answer.
+  private func statusLabel(_ item: InboxItem) -> String {
+    guard item.status == "open" else { return item.status.capitalized }
+    if item.kind == "notice" { return "Notice" }
+    return item.question == nil ? "Waiting on you" : "Needs an answer"
+  }
+
+  private func webActionLabel(_ item: InboxItem) -> String {
+    guard item.canAct else { return "Open on the web" }
+    if item.kind == "notice" { return "Dismiss on the web" }
+    return item.question == nil ? "Open on the web" : "Answer on the web"
   }
 
   private func assignees(_ item: InboxItem) -> String {
@@ -170,7 +185,7 @@ struct InboxItemScreen: View {
       Text("From").type(.xs, .semibold).foregroundStyle(Tokens.text).accessibilityAddTraits(.isHeader)
       ForEach(item.conversationIds, id: \.self) { id in
         Button {
-          app.path.append(.conversation(id))
+          window.path.append(.conversation(id))
         } label: {
           HStack(spacing: 8) {
             Icon("message-square", size: 14).foregroundStyle(Tokens.textMuted)

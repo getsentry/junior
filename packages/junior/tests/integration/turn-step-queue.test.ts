@@ -22,11 +22,8 @@ import {
 import { QUEUE_SIGNATURE_MAX_AGE_MS } from "@/chat/queue/sign";
 import * as Sentry from "@/chat/sentry";
 import { setActiveSpanAttributes } from "@/core/telemetry";
-import {
-  publishTurnStep,
-  TURN_STEP_TOPIC,
-  createTurnStepConsumer,
-} from "@/core/turn/queue";
+import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { publishTurnStep, createTurnStepConsumer } from "@/core/turn/queue";
 
 // Chat config reads the queue API URL when it loads, so pick the port first.
 // Each test starts its own local Vercel Queues server on this port.

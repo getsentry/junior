@@ -1,4 +1,4 @@
-import { Clock3 } from "lucide-react";
+import { Check, Clock3 } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -207,5 +207,23 @@ export function RowSnoozeButton(props: {
         </Suspense>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Mark a To-do for the viewer done. It takes the place of Dismiss, so the
+ * person closes their own work, not hides it.
+ */
+export function RowDoneButton(props: { look: ButtonLook; onClick(): void }) {
+  return (
+    <Button
+      className={LOOK_CLASSES[props.look]}
+      onClick={props.onClick}
+      title={props.look === "icon" ? "Done" : undefined}
+      variant="ghost"
+    >
+      <Check aria-hidden="true" size={15} />
+      <ButtonLabel look={props.look}>Done</ButtonLabel>
+    </Button>
   );
 }

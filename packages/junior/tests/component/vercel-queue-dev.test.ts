@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageMetadata, QueueClient } from "@vercel/queue";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 import {
   getChatConfig,
   resetRuntimeConfig,
@@ -7,7 +8,6 @@ import {
   snapshotRuntimeConfig,
 } from "@/chat/config";
 import {
-  PLUGIN_TASK_QUEUE_TOPIC,
   createVercelPluginTaskCallback,
   pluginTaskId,
   sendVercelPluginTask,

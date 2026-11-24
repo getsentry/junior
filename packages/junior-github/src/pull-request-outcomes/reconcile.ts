@@ -300,10 +300,14 @@ export async function reconcileGitHubPullRequests(
           repositoryId,
         });
       } else {
-        args.log.error("GitHub pull request reconcile failed", {
-          errorType: error instanceof Error ? error.name : "UnknownError",
-          repository: repositoryFullName,
-        });
+        args.log.error(
+          "GitHub pull request reconcile failed",
+          {
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            repository: repositoryFullName,
+          },
+          error,
+        );
       }
     }
   }

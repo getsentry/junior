@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DELIVERY_TOPIC } from "@/core/delivery/queue";
+import { DELIVERY_TOPIC } from "@/chat/queue/topics";
 import type { EngineContext } from "@/core/engine-context";
-import { TURN_STEP_TOPIC } from "@/core/turn/queue";
+import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
 import {
   juniorConversations,
   juniorTurnInbox,

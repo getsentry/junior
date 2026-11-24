@@ -9,10 +9,10 @@ files:
   - packages/**/*.spec.tsx
 rule:
   any:
-    - pattern: import { $$$BEFORE, buildSystemPrompt, $$$AFTER } from "@/chat/prompt"
-    - pattern: import { buildSystemPrompt, $$$AFTER } from "@/chat/prompt"
-    - pattern: import { $$$BEFORE, buildSystemPrompt } from "@/chat/prompt"
-    - pattern: import { buildSystemPrompt } from "@/chat/prompt"
+    - pattern: import { $$$BEFORE, buildCoreSystemPromptSections, $$$AFTER } from "@/chat/prompt"
+    - pattern: import { buildCoreSystemPromptSections, $$$AFTER } from "@/chat/prompt"
+    - pattern: import { $$$BEFORE, buildCoreSystemPromptSections } from "@/chat/prompt"
+    - pattern: import { buildCoreSystemPromptSections } from "@/chat/prompt"
     - pattern: expect($OBJECT.systemPrompt).toContain($TEXT)
     - pattern: expect($OBJECT.systemPrompt).not.toContain($TEXT)
     - pattern: expect($OBJECT.systemPrompt).toMatch($TEXT)

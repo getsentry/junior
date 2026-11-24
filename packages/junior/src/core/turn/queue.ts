@@ -14,11 +14,9 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
+import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
 import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
-
-/** Queue topic of Turn step messages. */
-export const TURN_STEP_TOPIC = "junior_turn_step";
 
 // The queue sends a message again only after the host stops a step that runs
 // too long, so a live step is not delivered twice.

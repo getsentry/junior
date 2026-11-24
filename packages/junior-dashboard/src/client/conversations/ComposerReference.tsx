@@ -1,4 +1,4 @@
-import { Bot, FileText, MessageSquare } from "lucide-react";
+import { Bot, Brain, FileText, MessageSquare } from "lucide-react";
 
 import { cn } from "../styles";
 import { codeChangeTone } from "./ConversationMeta";
@@ -8,8 +8,8 @@ import { codeChangeLabel, type ComposerReference } from "./composerReferences";
 
 /**
  * The icon of a reference: the state of a Conversation, a bot for a Task or
- * Thread, a file, or the GitHub mark in the color of the pull request
- * state. A channel has none: its `#` says what it is.
+ * Thread, a brain for a memory, a file, or the GitHub mark in the color of
+ * the pull request state. A channel has none: its `#` says what it is.
  */
 export function ReferenceIcon(props: {
   className?: string;
@@ -30,6 +30,8 @@ export function ReferenceIcon(props: {
       );
     case "task":
       return <Bot aria-hidden="true" className={className} />;
+    case "memory":
+      return <Brain aria-hidden="true" className={className} />;
     case "file":
       return <FileText aria-hidden="true" className={className} />;
     case "code_change":
@@ -53,6 +55,7 @@ export function referenceName(reference: ComposerReference): string {
   switch (reference.kind) {
     case "conversation":
     case "task":
+    case "memory":
       return reference.title;
     case "code_change":
       return codeChangeLabel(reference);
@@ -64,9 +67,9 @@ export function referenceName(reference: ComposerReference): string {
 }
 
 /**
- * A Conversation, Task, file, pull request, or channel in the composer: its
- * icon and name, cut off with an ellipsis at about 14rem. A pull request
- * shows `repo#123`. The full name is its tooltip.
+ * A Conversation, Task, memory, file, pull request, or channel in the
+ * composer: its icon and name, cut off with an ellipsis at about 14rem. A
+ * pull request shows `repo#123`. The full name is its tooltip.
  */
 export function ComposerReferenceChip(props: { reference: ComposerReference }) {
   const { reference } = props;
