@@ -33,6 +33,7 @@ final class ManualClock: @unchecked Sendable {
     // The mock data's times move to the demo's start.
     let lastSeen = try #require(active.conversations.first?.lastSeenAt.date)
     #expect(abs(lastSeen.timeIntervalSince(clock.now)) < 3600)
+    #expect(active.conversations.contains { $0.treeState == .needsYou })
     for row in active.conversations + archived.conversations {
       let state = try await client.call("getConversation", id(row.conversationId), as: ConversationState.self)
       #expect(state.conversation.conversationId == row.conversationId)
@@ -68,7 +69,7 @@ final class ManualClock: @unchecked Sendable {
     let working = try await client.call(
       "getConversation", id(row.conversationId).merging(["after": .string(sent.cursor)]) { a, _ in a },
       as: ConversationState.self)
-    #expect(working.conversation.turnActive)
+    #expect(working.conversation.turnActive && working.conversation.treeState == .working)
     #expect(working.messages?.map(\.text) == ["Hello"])
 
     let retry = try await client.call(
@@ -80,7 +81,7 @@ final class ManualClock: @unchecked Sendable {
     let done = try await client.call(
       "getConversation", id(row.conversationId).merging(["after": .string(working.cursor)]) { a, _ in a },
       as: ConversationState.self)
-    #expect(!done.conversation.turnActive)
+    #expect(!done.conversation.turnActive && done.conversation.treeState == .done)
     #expect(done.messages?.map(\.isAssistant) == [true])
   }
 

@@ -172,7 +172,8 @@ public actor DemoServer {
     var conversation = DemoConversation(
       summary: [
         "conversationId": .string(id), "title": .string(arguments.text("title") ?? title(for: message)),
-        "status": "working", "turnActive": true, "surface": "api", "startedAt": stamp, "lastSeenAt": stamp,
+        "status": "working", "turnActive": true, "treeState": "working", "surface": "api",
+        "startedAt": stamp, "lastSeenAt": stamp,
         "url": .string(JuniorServer.demo.page("/conversations/\(id)")!.absoluteString),
       ], brief: nil, messages: [], pending: [], authorization: nil, listed: true)
     let messageId = append(message, to: &conversation)
@@ -202,6 +203,7 @@ public actor DemoServer {
     ])
     conversation.summary["status"] = "working"
     conversation.summary["turnActive"] = true
+    conversation.summary["treeState"] = "working"
     conversation.summary["lastSeenAt"] = stamp
     conversation.summary["archivedAt"] = nil
     conversation.replyAt = now().addingTimeInterval(Self.replyDelay)
@@ -220,6 +222,7 @@ public actor DemoServer {
       ])
       conversations[index].summary["status"] = "done"
       conversations[index].summary["turnActive"] = false
+      conversations[index].summary["treeState"] = "done"
       conversations[index].summary["lastSeenAt"] = stamp
       conversations[index].replyAt = nil
     }

@@ -162,14 +162,27 @@ export function createMockMcpTools({ app, origin }) {
     }
   }
 
-  function mcpConversation(summary) {
+  // The Conversations that wait on the viewer. The dashboard mock has no
+  // viewer state, so this stands in for the server's `needs_you`. It checks
+  // only each Conversation, not its child agents.
+  async function readWaitingIds() {
+    const waiting = await apiJson("GET", "/inbox-items/waiting-conversations");
+    return new Set(waiting.conversations.map((row) => row.conversationId));
+  }
+
+  function mcpConversation(summary, waitingIds) {
     const id = summary.conversationId;
+    const running = summary.turnActive && !stopped.has(id);
     return {
       conversationId: id,
       title: summary.displayTitle,
       status: stopped.has(id) ? "done" : summary.status,
-      turnActive: summary.turnActive && !stopped.has(id),
-      treeState: summary.treeState,
+      turnActive: running,
+      treeState: waitingIds.has(id)
+        ? "needs_you"
+        : running
+          ? "working"
+          : "done",
       watching: summary.watching,
       surface: summary.surface,
       channelName: summary.channelNameRedacted
@@ -353,8 +366,15 @@ export function createMockMcpTools({ app, origin }) {
       async run({ q, status }) {
         const query = new URLSearchParams({ status });
         if (q) query.set("q", q);
-        const feed = await apiJson("GET", `/conversations?${query}`);
-        return { conversations: feed.conversations.map(mcpConversation) };
+        const [feed, waitingIds] = await Promise.all([
+          apiJson("GET", `/conversations?${query}`),
+          readWaitingIds(),
+        ]);
+        return {
+          conversations: feed.conversations.map((row) =>
+            mcpConversation(row, waitingIds),
+          ),
+        };
       },
     },
     {
@@ -391,7 +411,7 @@ export function createMockMcpTools({ app, origin }) {
               .at(-1);
         const brief = detail.brief?.content;
         return {
-          conversation: mcpConversation(detail),
+          conversation: mcpConversation(detail, await readWaitingIds()),
           brief: brief
             ? {
                 summary: brief.summary,

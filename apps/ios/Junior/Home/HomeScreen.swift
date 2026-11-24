@@ -229,7 +229,7 @@ struct ConversationCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
             trailing
           }
-          if row.turnActive {
+          if working {
             Text("Working…").type(.sm).foregroundStyle(Tokens.textMuted).frame(minHeight: 20)
           }
           tags
@@ -261,9 +261,8 @@ struct ConversationCard: View {
   private var accessibilityText: String {
     var parts = [row.title]
     if row.pinnedAt != nil { parts.append("Pinned") }
-    // A running Turn can also need input, so say both.
-    if row.status == .needsInput { parts.append("Needs input") }
-    if row.turnActive {
+    if row.treeState == .needsYou { parts.append("Waiting on you") }
+    if working {
       parts.append("Working")
     } else if let date = row.lastSeenAt.date {
       parts.append(app.clock.activityDay(date))
@@ -272,7 +271,11 @@ struct ConversationCard: View {
     return parts.joined(separator: ", ")
   }
 
-  private var hasBody: Bool { row.turnActive || row.locationLabel != nil }
+  // Like the web's Conversation rows, a row shows the viewer state over its
+  // tree, so a working child agent also counts.
+  private var working: Bool { row.treeState == .working }
+
+  private var hasBody: Bool { working || row.locationLabel != nil }
 
   private var route: Route { .conversation(row.conversationId) }
 
@@ -286,13 +289,11 @@ struct ConversationCard: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    // A running Turn can also need input, so the spinner takes only the
-    // date's place.
     HStack(spacing: 12) {
-      if row.status == .needsInput {
-        Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
+      if row.treeState == .needsYou {
+        Text("Waiting on you").type(.xs).foregroundStyle(Tokens.accent)
       }
-      if row.turnActive {
+      if working {
         Spinner()
           .foregroundStyle(Tokens.textMuted)
           .frame(minWidth: 56, alignment: .trailing)
