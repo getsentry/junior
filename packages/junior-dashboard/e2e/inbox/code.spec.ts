@@ -675,7 +675,6 @@ test.describe("new UI", () => {
      * moves the token that the versions poll reads.
      */
     async function mockMovingConversations(page: Page) {
-      const now = Date.now();
       let moved = false;
       const versions = {
         conversationDetails: {},
@@ -696,7 +695,7 @@ test.describe("new UI", () => {
             ...first,
             conversationId: `${first.conversationId}-${name}`,
             displayTitle: `${name} conversation`,
-            lastSeenAt: new Date(now - ageMs).toISOString(),
+            lastSeenAt: new Date(NOW_MS - ageMs).toISOString(),
             pinnedAt: null,
           });
           return route.fulfill({
@@ -723,7 +722,8 @@ test.describe("new UI", () => {
       page,
       dashboard,
     }) => {
-      await page.clock.install();
+      // A fixed time keeps the row times in the screenshot the same.
+      await page.clock.install({ time: NOW_MS });
       await page.setViewportSize(desktop);
       const setMoved = await mockMovingConversations(page);
       const list = await openRepositoryConversations(page, dashboard.baseURL);
