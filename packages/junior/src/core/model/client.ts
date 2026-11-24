@@ -53,8 +53,8 @@ export type ModelRequest = {
 };
 
 /**
- * The reply to one model request. `failure` is set when the reply's stop
- * reason is `error` or `aborted`.
+ * The reply to one model request. `failure` is set when the request failed.
+ * A request that the caller's signal aborts has no failure.
  */
 export type ModelReply = {
   message: AssistantMessage;
@@ -64,8 +64,9 @@ export type ModelReply = {
 /** The model calls that core makes. */
 export type ModelClient = {
   /**
-   * Makes one model request in a `gen_ai.chat` span. A failed or aborted
-   * request returns its reply with its failure. It does not retry.
+   * Makes one model request in a `gen_ai.chat` span. A failed request returns
+   * its reply with its failure, and an aborted one returns its reply. It does
+   * not retry.
    */
   complete: (request: ModelRequest, signal: AbortSignal) => Promise<ModelReply>;
 };
@@ -221,8 +222,11 @@ export function modelClient(dependencies: {
             timing.observe(event);
           }
           const message = await stream.result();
+          // The caller's abort also errors the connection, so it is not a
+          // failure of the model request.
           const failure =
-            message.stopReason === "error" || message.stopReason === "aborted"
+            !signal.aborted &&
+            (message.stopReason === "error" || message.stopReason === "aborted")
               ? classifyFailure(observed, message)
               : undefined;
           span.setAttributes({
