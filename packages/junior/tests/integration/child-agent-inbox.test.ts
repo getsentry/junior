@@ -334,6 +334,13 @@ describe("a child agent asks a person", () => {
       expect(
         texts.filter((text) => text.includes('status="completed"')),
       ).toHaveLength(1);
+      // The parent hears of the dismiss, so the Turn's end is not a bare
+      // completion.
+      expect(texts).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/dismissed inbox item "Delete preview-42"/),
+        ]),
+      );
     } finally {
       await harness.close();
     }

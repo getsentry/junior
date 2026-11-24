@@ -354,16 +354,28 @@ export async function enqueueChildWaitingToParent(args: {
 export async function enqueueChildDismissToParent(args: {
   conversationId: string;
   addedByTurnId: string | undefined;
+  inboxItemId: string;
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  // A Turn that still runs, such as the one that asked, reports when it
-  // ends. It then sees the item closed.
+  const closed = `${args.text}\nIt closed with no answer`;
+  // A Turn that still runs, such as the one that asked, reports its own end,
+  // and it then sees the item closed. The parent gets the dismiss now as a
+  // message, so that end is not a bare completion.
   const [work, turns] = await Promise.all([
     getConversationWorkState({ conversationId: args.conversationId }),
     listActiveMailboxTurns(args.conversationId),
   ]);
   if ((work?.runningInboundMessageIds.length ?? 0) > 0 || turns.length > 0) {
+    const sender = await readChildConversationSender(args.conversationId);
+    if (!sender) return;
+    await enqueueAgentMessageToParent({
+      actor: EVENT_SYSTEM_ACTOR,
+      messageKey: `dismissed:${args.inboxItemId}`,
+      queue: args.queue,
+      sender,
+      text: `${closed}.`,
+    });
     return;
   }
   // The child's last Turn ended quietly only while it waited. A Turn that
@@ -380,7 +392,7 @@ export async function enqueueChildDismissToParent(args: {
     conversationId: args.conversationId,
     result: {
       kind: "completed",
-      text: `${args.text}\nIt closed with no answer, so this child agent did not continue.`,
+      text: `${closed}, so this child agent did not continue.`,
     },
     turnId,
   });
