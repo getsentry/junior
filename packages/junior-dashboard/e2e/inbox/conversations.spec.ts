@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { readClipboard } from "../clipboard";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
@@ -654,7 +655,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(copy).toBeEnabled();
     await copy.click();
     await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
-    const markdown = await page.evaluate(() => navigator.clipboard.readText());
+    const markdown = await readClipboard(page);
     expect(markdown).toContain("# Advisor review");
     expect(markdown).toContain("Review the dashboard plan before editing.");
     expect(markdown).toContain("Review complete; no blocking issues found.");
@@ -671,7 +672,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await reply.hover();
     await reply.getByRole("button", { name: "Copy message" }).click();
     await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       "Review complete; no blocking issues found.",
     );
 
@@ -684,11 +685,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       0,
     );
     await input.getByRole("button", { name: "Copy message" }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       "Review the dashboard plan before editing.",
     );
     await input.getByRole("button", { name: "Copy link to message" }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
     );
 
