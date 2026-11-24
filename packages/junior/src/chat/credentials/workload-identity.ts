@@ -63,9 +63,9 @@ const entraResponseSchema = z.object({
 });
 const jwtExpirySchema = z.object({ exp: z.number().int().positive() });
 
-async function vercelOidcToken(audience: string): Promise<string> {
+async function vercelOidcToken(audience?: string): Promise<string> {
   try {
-    return await getVercelOidcToken({ audience });
+    return await getVercelOidcToken(audience ? { audience } : undefined);
   } catch (error) {
     throw new MintStepError("Vercel OIDC", "Vercel OIDC token is unavailable", {
       cause: error,
@@ -137,11 +137,10 @@ function jwtExpiresAtMs(step: MintStep, token: string): number {
 async function mintGcp(
   gcp: NonNullable<WorkloadIdentityCredentials["gcp"]>,
 ): Promise<WorkloadIdentityToken> {
-  // Vercel's GCP guide uses the provider's default audience for the subject
-  // token, and the `//` resource name as the STS audience.
-  const subjectToken = await vercelOidcToken(
-    `https://iam.googleapis.com/${gcp.workloadIdentityProvider}`,
-  );
+  // The subject token is the deployment's own OIDC token, with its default
+  // audience. The provider must allow that audience, so plugin manifests need
+  // no setting for the host that Junior runs on.
+  const subjectToken = await vercelOidcToken();
   const sts = await postForJson(
     "Google STS",
     GCP_STS_URL,

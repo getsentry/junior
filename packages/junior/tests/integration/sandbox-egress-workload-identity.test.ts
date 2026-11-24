@@ -203,9 +203,9 @@ describe("sandbox egress workload identity credentials", () => {
       scope: "https://www.googleapis.com/auth/cloud-platform",
       subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
     });
-    expect(jwtClaims(String(sts?.body["subject_token"]))["aud"]).toBe(
-      `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
-    );
+    // Google gets the deployment's own OIDC token, not one exchanged for a
+    // custom audience.
+    expect(sts?.body["subject_token"]).toBe(VERCEL_DEPLOYMENT_OIDC_TOKEN);
     expect(signJwt?.url).toBe(
       "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/iap-app%40example-project.iam.gserviceaccount.com:signJwt",
     );

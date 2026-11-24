@@ -101,6 +101,21 @@ describe("workload identity manifest", () => {
         "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
     },
     {
+      name: "an access token with a scope that can write",
+      lines: [
+        "credentials:",
+        "  type: workload-identity",
+        "  domains:",
+        "    - bigquery.googleapis.com",
+        ...GCP.slice(0, -2),
+        "    token: access-token",
+        "    scopes:",
+        "      - https://www.googleapis.com/auth/bigquery",
+      ],
+      error:
+        "Plugin example credentials.gcp.scopes.0 must be read-only scopes, such as https://www.googleapis.com/auth/bigquery.readonly",
+    },
+    {
       name: "an access token for a host that is not a Google API",
       lines: credentials([
         ...GCP.slice(0, -2),

@@ -68,9 +68,9 @@ Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to decl
 | `service-account`            | Email of the service account that Junior impersonates.                                                         |
 | `token`                      | `service-account-jwt`, `id-token`, or `access-token`.                                                          |
 | `audience`                   | For `service-account-jwt` and `id-token`. An `https` URL on the one host in `domains`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
-| `scopes`                     | For `access-token`. A list of Google API scopes.                                                               |
+| `scopes`                     | For `access-token`. A list of read-only Google API scopes, such as `https://www.googleapis.com/auth/bigquery.readonly`. |
 
-Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
+Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs such as BigQuery. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
 
 ## Token targets
 
@@ -79,6 +79,7 @@ All plugins federate as the same Vercel deployment. So a manifest can name any s
 - Junior sends a token only to the plugin's own `domains`, and two plugins cannot list the same domain.
 - A `service-account-jwt` or `id-token` goes only to the host of its `audience`, so `domains` must list only that host. Another plugin cannot get a token for your service.
 - An `access-token` works on every Google API that the service account can use. So all `domains` must be Google API hosts (`*.googleapis.com`).
+- An `access-token` can only have read-only scopes, which end in `.readonly`, `.read-only`, or `.read_only`. Everyone who uses Junior shares the token, so Junior rejects a scope that can write. Also give the service account only read roles, such as `roles/bigquery.dataViewer`.
 - Two plugins cannot use the same service account, or the same Azure tenant and client ID.
 
 Junior cannot bind an `access-token` or an Azure `scope` to one service. For these, IAM is the limit: give the service account or app access to the one upstream that the plugin needs, and no more.
@@ -100,7 +101,7 @@ credentials:
 
 ## Set up Google Cloud
 
-1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. A token with a custom audience always comes from the team issuer. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp). Select **Default audience**. Junior asks Vercel for a token with that audience.
+1. Create a workload identity pool and an OIDC provider. Set the issuer to match your Vercel issuer mode: `https://oidc.vercel.com/<team-slug>` for Team, or `https://oidc.vercel.com` for Global. Select **Allowed audiences** and enter `https://vercel.com/<team-slug>`. Junior sends the deployment's own OIDC token, and that is its audience. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp).
 2. Map `google.subject` to `assertion.sub`.
 3. Add an attribute condition that trusts only production:
 
