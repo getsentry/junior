@@ -19,15 +19,13 @@ final class WindowModel {
   var openDetails = false
   /// Open the rename prompt on arrival (`?rename=1`).
   var openRename = false
-  /// What's New after an update, or the full changelog from Settings.
+  /// The changelog sheet that Settings opens: What's New or the full one.
   var changelog: ChangelogPage?
 
   private let app: AppModel
 
   init(app: AppModel, open: String? = LaunchOptions.current.open) {
     self.app = app
-    changelog = app.whatsNew
-    app.whatsNew = nil
     if let open { self.open(dashboardPath: open) }
   }
 

@@ -52,8 +52,8 @@ final class AppModel {
 
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
-  /// What's New after an update, until the first window shows it.
-  @ObservationIgnored var whatsNew: ChangelogPage?
+  /// What's New after an update, until the person opens it from Settings.
+  var whatsNew: ChangelogPage?
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0

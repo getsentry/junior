@@ -92,14 +92,7 @@ private struct NavRow: View {
         if let icon { Icon(icon, size: 16) }
         Text(label)
         if count > 0 {
-          Text(count.formatted())
-            .type(.xs)
-            .monospacedDigit()
-            .foregroundStyle(Color.palette(.violet, 200))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.palette(.violet, 300).opacity(0.2), in: Capsule())
-            .padding(.leading, -2)
+          CountBadge(text: count.formatted()).padding(.leading, -2)
         }
         Spacer(minLength: 0)
       }
