@@ -70,7 +70,7 @@ const relatedConversationSchema = z.object({
       "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
     ),
   title: z.string().optional(),
-  summary: z.string().optional().describe("Summary from the latest Brief."),
+  summary: z.string().optional().describe("Conversation summary."),
   updated_at: z.string().describe("Time of the latest activity."),
 });
 type RelatedConversation = z.output<typeof relatedConversationSchema>;

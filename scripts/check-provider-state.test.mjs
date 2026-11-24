@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkSnapshot, joinTables } from "./check-provider-state.mjs";
+import { checkSnapshot } from "./check-provider-state.mjs";
 
 function snapshot(table, columns) {
   return {
@@ -72,27 +72,5 @@ test("accepts provider state names on tables without provider ids", () => {
       {},
     ),
     [],
-  );
-});
-
-test("joins the exceptions and the baseline", () => {
-  assert.deepEqual(
-    joinTables(
-      {
-        junior_github_reviews: { review_id: "Junior-owned: the key." },
-        junior_github_requesters: "Junior-owned: the requesters.",
-      },
-      {
-        junior_github_reviews: { state: "Mirror awaiting cleanup: cards." },
-        junior_github_requesters: { login: "Mirror awaiting cleanup: cards." },
-      },
-    ),
-    {
-      junior_github_reviews: {
-        review_id: "Junior-owned: the key.",
-        state: "Mirror awaiting cleanup: cards.",
-      },
-      junior_github_requesters: "Junior-owned: the requesters.",
-    },
   );
 });

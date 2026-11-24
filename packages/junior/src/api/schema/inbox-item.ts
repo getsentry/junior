@@ -36,6 +36,7 @@ export const inboxItemSchema = z
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
+    /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
@@ -90,6 +91,11 @@ export const inboxItemSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Set on the reply notice of a Conversation's starter. Its body is a
+     * short preview of the reply, which its Turn's message holds in full.
+     */
+    replyNotice: z.literal(true).optional(),
     request: inboxItemRequestSchema.optional(),
     /**
      * The top of the owner Conversation's tree that the viewer can see, at

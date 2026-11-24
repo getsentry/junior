@@ -31,7 +31,8 @@ can act on it.
 - The stack title, which opens the root Conversation. A click on empty
   space in the stack's header does the same.
 - A right-click anywhere on a stack, which opens the root Conversation's
-  menu, as on its Conversation row.
+  menu, as on its Conversation row. On a link or an image in a card, but
+  not on the stack or card title, the browser's own menu opens.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Dismiss, Snooze, and the row's main step, as
   icons with their names as tooltips. The main step comes last. On a code

@@ -10,7 +10,6 @@
     "junior_github_pull_requests": {
       "pull_request_id": "Junior-owned: the key of the facts that Junior records for its pull request.",
       "commit_composition": "Too expensive to derive: it needs every commit of the pull request.",
-      "conversation_ids": "Junior-owned: the Conversations that worked on the pull request.",
       "updated_at": "Junior-owned: when Junior last wrote the row.",
       "next_action": "Junior-owned: the requester action that Junior shows in the Inbox.",
       "ready_sync_requests": "Junior-owned: the next action check that Junior runs.",

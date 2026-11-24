@@ -570,8 +570,9 @@ export async function mockInboxItems(
 
 /**
  * Serve the viewer's code changes from their person Code overview, for
- * Code · Mine. Each change is in getsentry/payments and opened 30
- * days before the report.
+ * Code · Mine, and their live cards, with the draft state and the size.
+ * Each change is in getsentry/payments and opened 30 days before the
+ * report.
  */
 export async function mockViewerCodeChanges(
   page: Page,
@@ -580,6 +581,11 @@ export async function mockViewerCodeChanges(
     idleDays: number;
     number: number;
     size?: { additions?: number; changedFiles?: number; deletions?: number };
+    stack?: {
+      id: string;
+      kind: "automation" | "conversation";
+      title?: string;
+    };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -602,18 +608,56 @@ export async function mockViewerCodeChanges(
         nextCursor:
           offset + 100 < changes.length ? String(offset + 100) : undefined,
         changes: changes.slice(offset, offset + 100).map((change) => ({
-          draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
-          ...(change.size ? { size: change.size } : undefined),
+          ...(change.stack ? { stack: change.stack } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
         })),
+      },
+    });
+  });
+  const cards = new Map(
+    changes.map((change) => {
+      const label = `getsentry/payments#${change.number}`;
+      const status = change.draft ? "draft" : (change.state ?? "open");
+      return [
+        `https://github.com/getsentry/payments/pull/${change.number}`,
+        {
+          displayType: "Pull request",
+          facts: { type: "code_change", ...change.size },
+          key: label,
+          kind: "object",
+          label,
+          objectType: "code_change",
+          plugin: "github",
+          status,
+          title: change.title,
+        },
+      ];
+    }),
+  );
+  await page.route(/\/api\/objects\?/, async (route) => {
+    const urls = new URL(route.request().url()).searchParams.getAll("url");
+    if (!urls.some((url) => cards.has(url))) return route.fallback();
+    const response = await route.fetch();
+    const report: { objects: { object?: unknown; url: string }[] } =
+      await response.json();
+    // The API leaves out a link it has no card for.
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        objects: urls.flatMap((url) => {
+          const card = cards.get(url);
+          if (card) return [{ object: { ...card, url }, url }];
+          return report.objects.filter((entry) => entry.url === url);
+        }),
       },
     });
   });
@@ -634,13 +678,18 @@ export function rowHead(scope: Page | Locator, title: string) {
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
  * row's Open action: on hover on a Conversation row, or on the open card
- * of an item row.
+ * of an item row. A phone hides a closed row's actions, so there a row
+ * with nothing to expand opens from its head.
  */
 export async function openRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
   const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  if (!(await open.isVisible())) await expandRow(head);
+  if (!(await open.isVisible())) {
+    const expand = row.locator('[aria-controls^="inbox-row-"]').first();
+    if ((await expand.count()) === 0) return head.click();
+    await expand.click();
+  }
   await open.click();
 }
 

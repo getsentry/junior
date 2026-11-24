@@ -25,26 +25,13 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createWatch } from "@/chat/events/store";
 import { insertInboxItem } from "@/chat/inbox-items/store";
-import {
-  juniorConversationBriefs,
-  juniorConversationEvents,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { neverRunAgentRunner } from "./agent-runner";
 import { webTestActor } from "./conversation";
 import {
   createConversationWorkHarness,
   createConversationWorkQueueTestAdapter,
 } from "./conversation-work";
-
-/** The outcome status that a legacy Brief stores. */
-type BriefOutcomeStatus =
-  | "abandoned"
-  | "answered"
-  | "blocked"
-  | "done"
-  | "in_progress"
-  | "partial";
 
 export const SLACK_VIEWER = {
   email: webTestActor.email,
@@ -93,25 +80,6 @@ export async function lastSeq(conversationId: string): Promise<number> {
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
   return row?.seq ?? -1;
-}
-
-/** Store a legacy Brief that covers every Event so far. */
-export async function recordBrief(
-  conversationId: string,
-  version: number,
-  status: BriefOutcomeStatus,
-): Promise<void> {
-  await getDb()
-    .insert(juniorConversationBriefs)
-    .values({
-      conversationId,
-      version,
-      turnId: `brief-turn-${version}`,
-      throughSeq: await lastSeq(conversationId),
-      content: { outcome: { status } },
-      searchText: "stored brief",
-      modelId: "test-model",
-    });
 }
 
 /** Store a Message by the root's actor that starts no Turn. */

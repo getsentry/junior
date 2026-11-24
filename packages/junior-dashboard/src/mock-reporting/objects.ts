@@ -11,12 +11,14 @@ import {
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
+  mockCodeChangeLiveCard,
   readMockConversationDetail,
   readMockPeopleCode,
   readMockPeopleDirectory,
   readMockPeopleProfile,
 } from "./fixtures";
 import { mockCodeChangeCard } from "./code-change-search";
+import { PIN_PULL_REQUEST_DESCRIPTION } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
 // configured dashboard origin.
@@ -62,6 +64,26 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     },
     plugin: "github",
   },
+  "https://github.com/getsentry/payments/pull/42": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#42",
+    label: "getsentry/payments#42",
+    title: "Retry checkout writes after lock timeouts",
+    displayType: "Pull request",
+    status: "draft",
+    facts: {
+      type: "code_change",
+      additions: 86,
+      author: "junior",
+      changedFiles: 4,
+      deletions: 12,
+      sourceBranch: "fix/checkout-lock-retry",
+      targetBranch: "main",
+      mergeable: true,
+    },
+    plugin: "github",
+  },
   "https://github.com/getsentry/payments/pull/91": {
     kind: "object",
     objectType: "code_change",
@@ -70,9 +92,13 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     title: "Pin the release train to payments 4.2",
     displayType: "Pull request",
     status: "open",
+    description: PIN_PULL_REQUEST_DESCRIPTION,
     facts: {
       type: "code_change",
+      additions: 48,
       author: "junior",
+      changedFiles: 3,
+      deletions: 9,
       sourceBranch: "release/pin-payments-4.2",
       targetBranch: "main",
       mergeable: false,
@@ -533,6 +559,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   const pull = GITHUB_PULLS[url.href];
   if (pull) return [{ object: { ...pull, url: href }, url: href }];
+  const listed = mockCodeChangeLiveCard(url.href);
+  if (listed) return [{ object: listed, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;

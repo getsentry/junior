@@ -107,6 +107,20 @@ export function resolvableUrl(href: string | undefined): string | undefined {
 }
 
 /**
+ * Return the live card of a link when it is the same type of object as the
+ * saved one. A viewer who cannot see the object gets a generic page card,
+ * which must not replace the saved card.
+ */
+export function sameTypeCard(
+  live: OwnedObjectAnnotation | undefined,
+  objectType: string | undefined,
+): OwnedObjectAnnotation | undefined {
+  return live && (!objectType || live.objectType === objectType)
+    ? live
+    : undefined;
+}
+
+/**
  * Return the object card that the API resolves for a link, for this viewer.
  * The request starts only after `request()`, such as when the link scrolls
  * into view or the reader hovers it. Until then, and on failure, there is
@@ -124,17 +138,7 @@ export function useResolvedObject(href: string | undefined): {
   useEffect(() => {
     if (url) register(url);
   }, [register, url]);
-  // Every link of the message reads the same query, so they share one
-  // request.
-  const { data, isError } = useQuery({
-    queryKey: ["object-links", requested],
-    queryFn: () => fetchObjects(requested!),
-    enabled: requested !== undefined,
-    placeholderData: keepPreviousData,
-    // A card is a short-lived read; the API caches it for a minute too.
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data, isError } = useObjectLinksQuery(requested);
   // A new query key starts without an error or data, so keep the first
   // answer for this link.
   const [settled, setSettled] = useState(false);
@@ -142,6 +146,62 @@ export function useResolvedObject(href: string | undefined): {
     setSettled(true);
   }
   return { card: url ? data?.get(url) : undefined, request, settled };
+}
+
+// Every link of the provider reads the same query, so they share one
+// request.
+function useObjectLinksQuery(requested: readonly string[] | undefined) {
+  return useQuery({
+    queryKey: ["object-links", requested],
+    queryFn: () => fetchObjects(requested!),
+    enabled: requested !== undefined,
+    placeholderData: keepPreviousData,
+    // A card is a short-lived read; the API caches it too.
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** The live card of one link of a list, once its answer came. */
+export type ListedObject = {
+  card: OwnedObjectAnnotation | undefined;
+  /** An answer covers the link, or the request failed. */
+  settled: boolean;
+};
+
+/**
+ * Resolve the links of a list now, such as the rows of one page, in the
+ * nearest provider's one request. Return the card of each link; a link of
+ * a later page waits for its own answer.
+ */
+export function useListedObjects(
+  hrefs: readonly (string | undefined)[],
+): (href: string | undefined) => ListedObject {
+  const objects = useContext(MessageObjectsContext);
+  const { register, request, requested } = objects;
+  const key = hrefs.flatMap((href) => resolvableUrl(href) ?? []).join("\n");
+  useEffect(() => {
+    if (!key) return;
+    for (const url of key.split("\n")) register(url);
+    request();
+  }, [key, register, request]);
+  const { data, isError } = useObjectLinksQuery(requested);
+  return useCallback(
+    (href: string | undefined) => {
+      const url = resolvableUrl(href);
+      return {
+        card: url ? data?.get(url) : undefined,
+        // Outside a provider, or without a link, nothing resolves, so
+        // nothing waits.
+        settled:
+          objects === NO_OBJECTS ||
+          url === undefined ||
+          isError ||
+          Boolean(data?.has(url)),
+      };
+    },
+    [data, isError, objects],
+  );
 }
 
 /**

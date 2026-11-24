@@ -28,7 +28,13 @@ function ScrollArea({
           viewportClassName,
         )}
       >
-        {children}
+        {/* The viewport sees only its own size changes. Content also sees
+            rows that load later, so the scrollbar shows when they overflow.
+            This area scrolls only down, so remove the fit-content minimum
+            width of Content. Then long rows truncate. */}
+        <ScrollAreaPrimitive.Content style={{ minWidth: 0 }}>
+          {children}
+        </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollAreaPrimitive.Scrollbar
         data-slot="scroll-area-scrollbar"
