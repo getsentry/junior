@@ -1,4 +1,4 @@
-import type { Source } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -31,7 +31,10 @@ export const juniorTurnInbox = pgTable(
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
-    source: text("source").$type<Source["kind"]>().notNull(),
+    source: jsonb("source").$type<Source>().notNull(),
+    // Where the answer to the input goes, set by the code that sent it. Null
+    // when the Conversation history is the only answer, as for the dashboard.
+    destination: jsonb("destination").$type<Destination>(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     // The same key on every delivery of the input. The Source gives it, for
     // example the Slack message id or the `idempotencyKey` a web client sends.

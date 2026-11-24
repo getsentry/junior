@@ -3,6 +3,7 @@
 // the AI emulator for the model requests. Each test gets its own queue, so
 // tests read its messages instead of a worker's.
 import { randomUUID } from "node:crypto";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
@@ -78,7 +79,11 @@ export type TurnEngine = {
   /** The Conversation history as the model reads it. */
   loadHistory: () => ReturnType<typeof loadMessages>;
   /** Adds an inbox row for the test's Turn, and returns its id. */
-  addTestInput: (text: string) => Promise<string>;
+  /** Adds an input to the test's Turn. Its answer goes to `destination`. */
+  addTestInput: (
+    text: string,
+    destination?: Destination | null,
+  ) => Promise<string>;
   /** Counts the step messages sent for a Turn, by default the test's Turn. */
   sentStepMessages: (forTurnId?: string) => number;
   close: () => Promise<void>;
@@ -133,7 +138,10 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     return turn!;
   }
 
-  async function addTestInput(text: string) {
+  async function addTestInput(
+    text: string,
+    destination: Destination | null = null,
+  ) {
     const inputId = randomUUID();
     await fixture.sql
       .db()
@@ -143,7 +151,13 @@ export async function startTurnEngine(): Promise<TurnEngine> {
         conversationId: CONVERSATION_ID,
         turnId,
         actorIdentityId: "identity:actor",
-        source: "slack",
+        source: {
+          kind: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          visibility: "public",
+        },
+        destination,
         payload: { text },
         idempotencyKey: `slack-event:${inputId}`,
         sentAt: new Date(),

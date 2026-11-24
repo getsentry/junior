@@ -28,6 +28,16 @@ import {
 } from "../../../fixtures/sql";
 
 const CONVERSATION_ID = "local:conversation-1";
+const LOCAL_SOURCE = {
+  kind: "local",
+  visibility: "private",
+  conversationId: CONVERSATION_ID,
+} as const;
+const WEB_SOURCE = {
+  kind: "web",
+  visibility: "private",
+  conversationId: CONVERSATION_ID,
+} as const;
 const CONTINUE = { outcome: "continue" as const, messages: [] };
 const LEASE_MS = 60_000;
 
@@ -114,7 +124,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       payload: { text: `Message ${idempotencyKey}` },
       idempotencyKey,
       sentAt: new Date("2026-11-21T08:00:00.000Z"),
-      source: "local",
+      source: LOCAL_SOURCE,
+      destination: null,
       delivery: "interrupt",
     };
   }
@@ -190,7 +201,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         .db()
         .select({ source: juniorTurnInbox.source })
         .from(juniorTurnInbox),
-    ).resolves.toEqual([{ source: "local" }]);
+    ).resolves.toEqual([{ source: LOCAL_SOURCE }]);
     expect(publishes).toEqual([{ turnId: scheduled.turnId, committed: true }]);
   });
 
@@ -247,7 +258,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const a2 = await schedule("event-3");
     const web = await scheduleInput(engineCtx, {
       ...input("event-4"),
-      source: "web",
+      source: WEB_SOURCE,
     });
 
     expect(new Set([a1, b1, a2, web].map((turn) => turn.turnId)).size).toBe(4);
@@ -390,7 +401,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("refuses an input row whose Source differs from its Turn's other inputs", async () => {
     const local = await schedule("event-1");
-    await scheduleInput(engineCtx, { ...input("event-2"), source: "web" });
+    await scheduleInput(engineCtx, { ...input("event-2"), source: WEB_SOURCE });
 
     await expect(
       fixture.sql

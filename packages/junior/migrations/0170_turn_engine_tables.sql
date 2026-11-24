@@ -2,7 +2,8 @@ CREATE TABLE "junior_turn_inbox" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"conversation_id" text NOT NULL,
 	"actor_identity_id" text NOT NULL,
-	"source" text NOT NULL,
+	"source" jsonb NOT NULL,
+	"destination" jsonb,
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
 	"trace_context" jsonb,
@@ -18,7 +19,7 @@ CREATE TABLE "junior_turn_outbox" (
 	"conversation_id" text NOT NULL,
 	"turn_id" uuid NOT NULL,
 	"event_seq" integer NOT NULL,
-	"location" jsonb NOT NULL,
+	"destination" jsonb NOT NULL,
 	"state" text NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"provider_message_id" text,
@@ -29,7 +30,7 @@ CREATE TABLE "junior_turn_outbox" (
 	CONSTRAINT "junior_turn_outbox_state_check" CHECK ("junior_turn_outbox"."state" in ('pending', 'sent', 'failed')),
 	CONSTRAINT "junior_turn_outbox_sent_check" CHECK (("junior_turn_outbox"."state" = 'sent') = ("junior_turn_outbox"."sent_at" is not null)),
 	CONSTRAINT "junior_turn_outbox_attempts_check" CHECK ("junior_turn_outbox"."attempts" >= 0),
-	CONSTRAINT "junior_turn_outbox_location_check" CHECK (jsonb_typeof("junior_turn_outbox"."location") = 'object')
+	CONSTRAINT "junior_turn_outbox_destination_check" CHECK (jsonb_typeof("junior_turn_outbox"."destination") = 'object')
 );
 --> statement-breakpoint
 CREATE TABLE "junior_turns" (

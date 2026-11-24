@@ -1,7 +1,11 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
-import type { Source } from "@sentry/junior-plugin-api";
+import {
+  destinationSchema,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { EngineContext } from "@/core/engine-context";
 import type { Turn } from "@/core/turn/state";
@@ -20,7 +24,13 @@ import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
 export type TurnInput = {
   conversationId: string;
   actorIdentityId: string;
-  source: Source["kind"];
+  /** Where the input came from. Core compares only its `kind`. */
+  source: Source;
+  /**
+   * Where the answer to the input goes, or null when the Conversation history
+   * is the only answer. The code that sends the input decides it.
+   */
+  destination: Destination | null;
   payload: Record<string, unknown>;
   /**
    * The same key on every delivery of this input, so a redelivery writes
@@ -54,14 +64,36 @@ export async function findInputTurn(
   return turn;
 }
 
+/**
+ * Finds where a Turn's answer goes: the Destination of its first input. Null
+ * when the Turn answers only in the Conversation history.
+ */
+export async function findTurnDestination(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<Destination | null> {
+  const [input] = await executor
+    .db()
+    .select({ destination: juniorTurnInbox.destination })
+    .from(juniorTurnInbox)
+    .where(eq(juniorTurnInbox.turnId, turnId))
+    .orderBy(asc(juniorTurnInbox.createdAt), asc(juniorTurnInbox.id))
+    .limit(1);
+  return input?.destination ? destinationSchema.parse(input.destination) : null;
+}
+
 const INPUT_EVENT_KEY_PREFIX = "inbox:";
+
+/** The `kind` of an input's Source, read in SQL. */
+export const inputSourceKind = sql<string>`${juniorTurnInbox.source}->>'kind'`;
 
 /** An input of a Turn that no history event has read yet. */
 export type UnreadInput = Pick<
   TurnInput,
-  "actorIdentityId" | "source" | "payload" | "sentAt"
+  "actorIdentityId" | "payload" | "sentAt"
 > & {
   inputId: string;
+  sourceKind: string;
   traceContext: TurnInputTraceContext | null;
   /** When an attempt of the Turn first claimed it with the input unread. */
   attemptedAt: Date | null;
@@ -97,7 +129,7 @@ export async function findUnreadInputs(
     .select({
       inputId: juniorTurnInbox.id,
       actorIdentityId: juniorTurnInbox.actorIdentityId,
-      source: juniorTurnInbox.source,
+      sourceKind: inputSourceKind,
       payload: juniorTurnInbox.payload,
       sentAt: juniorTurnInbox.sentAt,
       traceContext: juniorTurnInbox.traceContext,
