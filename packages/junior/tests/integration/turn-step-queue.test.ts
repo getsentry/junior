@@ -22,7 +22,7 @@ import {
 import { QUEUE_SIGNATURE_MAX_AGE_MS } from "@/chat/queue/sign";
 import * as Sentry from "@/chat/sentry";
 import { setActiveSpanAttributes } from "@/core/telemetry";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { publishTurnStep, createTurnStepConsumer } from "@/core/turn/queue";
 
 // Chat config reads the queue API URL when it loads, so pick the port first.

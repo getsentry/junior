@@ -14,7 +14,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
 

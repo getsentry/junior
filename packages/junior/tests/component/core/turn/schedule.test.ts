@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { reconcileTurn, scheduleInput } from "@/core/turn/schedule";
 import { cancelTurn, claimTurn, failTurn } from "@/core/turn/state";
 import {

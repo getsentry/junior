@@ -1,12 +1,12 @@
 import {
   BACKGROUND_COMPACTION_QUEUE_TOPIC,
   CACHE_WARMUP_QUEUE_TOPIC,
-  DELIVERY_TOPIC,
   PLUGIN_TASK_QUEUE_TOPIC,
   resolveConversationWorkQueueTopic,
-  TURN_STEP_TOPIC,
   WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
 } from "@/chat/queue/topics";
+import { DELIVERY_TOPIC } from "@/core/delivery/topic";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,

@@ -13,7 +13,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-import { DELIVERY_TOPIC } from "@/chat/queue/topics";
+import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
 

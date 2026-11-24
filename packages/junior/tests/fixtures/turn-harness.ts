@@ -12,9 +12,9 @@ import { getChatConfig } from "@/chat/config";
 import type { Location } from "@/chat/conversations/location";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { DELIVERY_TOPIC } from "@/chat/queue/topics";
+import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { scheduleInput } from "@/core/turn/schedule";
 import type { ToolDefinition } from "@/core/tool";
 import {

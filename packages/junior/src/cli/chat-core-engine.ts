@@ -18,7 +18,7 @@ import { startLocalVercelQueueServer } from "@/chat/queue/local-server";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { scheduleInput } from "@/core/turn/schedule";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";

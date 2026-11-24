@@ -18,7 +18,7 @@ import {
   type PromptLayout,
 } from "@/core/prompt/layout";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/chat/queue/topics";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
 import { juniorConversations, juniorTurns } from "@/db/schema";
 import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
