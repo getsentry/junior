@@ -370,4 +370,70 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
+
+  it("gives a push during merge state retries a full set of attempts", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () =>
+        HttpResponse.json(pullRequest(34)),
+      ),
+    );
+    const headFacts = (sha: string, mergeable: string, updatedAt: string) => [
+      {
+        commits: checkRuns({ SUCCESS: 1 }),
+        headRefOid: sha,
+        id: "PR_34",
+        mergeable,
+        updatedAt,
+      },
+    ];
+    // GitHub computes the merge state of the first push for four reads,
+    // then of the second push for one more.
+    const queries = stubGraphql([
+      ...Array.from({ length: 4 }, () =>
+        headFacts("bbb222", "UNKNOWN", "2026-01-02T03:00:10Z"),
+      ),
+      headFacts("ccc333", "UNKNOWN", "2026-01-02T03:04:30Z"),
+      headFacts("ccc333", "MERGEABLE", "2026-01-02T03:04:30Z"),
+    ]);
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    await read(url);
+    const push = async (sha: string, atMs: number) => {
+      vi.setSystemTime(atMs);
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: pullRequest(34, {
+          head: { ref: "feat/object-cache", sha },
+          mergeable: null,
+          updated_at: new Date(atMs).toISOString(),
+        }),
+      });
+    };
+    await push("bbb222", start + 10_000);
+    for (let minute = 1; minute <= 4; minute++) {
+      vi.setSystemTime(start + minute * 60_000);
+      await runTestHeartbeat(queue, Date.now());
+    }
+    await push("ccc333", start + 4 * 60_000 + 30_000);
+    vi.setSystemTime(start + 5 * 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    // The new head commit is still computing, so it is still pending.
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 6 * 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries).toHaveLength(6);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+  });
 });

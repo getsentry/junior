@@ -67,7 +67,8 @@ async function changePatches<T>(
 
 /**
  * Add a patch for the pull request in cache entry `key`. A patch that
- * already waits keeps its time, so a burst of pushes makes one query.
+ * already waits keeps its time, so a burst of pushes makes one query. Its
+ * attempts start again, because each event can start a new computation.
  * The heartbeat runs due patches. Once plugin tasks run on Queues
  * (getsentry/junior#4109), this becomes one delayed plugin task per pull
  * request and head commit.
@@ -80,7 +81,7 @@ export async function scheduleGitHubPullRequestPatch(args: {
 }): Promise<void> {
   await changePatches(args.state, (patches) => {
     patches[args.key] = {
-      attempts: patches[args.key]?.attempts ?? 0,
+      attempts: 0,
       dueAtMs:
         patches[args.key]?.dueAtMs ?? args.nowMs + PULL_REQUEST_PATCH_DELAY_MS,
       nodeId: args.nodeId,
