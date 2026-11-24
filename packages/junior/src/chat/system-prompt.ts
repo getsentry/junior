@@ -6,6 +6,8 @@ import {
 import {
   buildCoreSystemPromptSections,
   buildPluginSystemPromptContributions,
+  readSystemPromptFilesForBuild,
+  type SystemPromptFiles,
   type SystemPromptSection,
 } from "@/chat/prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
@@ -34,17 +36,22 @@ function buildModeSections(
   platform: Platform,
   mode: PromptMode,
   pluginSections: SystemPromptSection[],
+  files?: SystemPromptFiles,
 ): SystemPromptSection[] {
-  return [...buildCoreSystemPromptSections(platform, mode), ...pluginSections];
+  return [
+    ...buildCoreSystemPromptSections(platform, mode, files),
+    ...pluginSections,
+  ];
 }
 
 async function buildPlatformSections(
   plugins: readonly PluginRegistration[],
   platform: Platform,
+  files: SystemPromptFiles,
 ): Promise<Record<PromptMode, SystemPromptSection[]>> {
   const pluginSections = await buildPluginSections(plugins, platform);
   const sections = (mode: PromptMode) =>
-    buildModeSections(platform, mode, pluginSections);
+    buildModeSections(platform, mode, pluginSections, files);
   return {
     automation: sections("automation"),
     child_agent: sections("child_agent"),
@@ -57,14 +64,16 @@ async function buildPlatformSections(
 /**
  * Build the system prompt sections of every platform and Prompt mode: the
  * core blocks, then the guidance of `plugins`. `juniorNitro` runs it once at
- * build. A plugin hook that fails throws an error that names the plugin.
+ * build. A plugin hook that fails, or a `SOUL.md` or `WORLD.md` that exists
+ * but can't be read, throws an error that names it.
  */
 export async function buildSystemPromptTable(
   plugins: readonly PluginRegistration[],
 ): Promise<SystemPromptTable> {
+  const files = readSystemPromptFilesForBuild();
   const [slack, local] = await Promise.all([
-    buildPlatformSections(plugins, "slack"),
-    buildPlatformSections(plugins, "local"),
+    buildPlatformSections(plugins, "slack", files),
+    buildPlatformSections(plugins, "local", files),
   ]);
   return { slack, local };
 }

@@ -77,10 +77,21 @@ function getLoggedMarkdownFiles(): Set<string> {
   return globalState.__juniorLoggedMarkdownFiles;
 }
 
+function isMissingFile(error: unknown): boolean {
+  const code =
+    error instanceof Error && "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Read the first candidate that has text. A `strict` read throws when a file
+ * exists but can't be read. Otherwise it tries the next candidate.
+ */
 function loadOptionalMarkdownFile(
   candidates: string[],
   fileName: string,
   loadedEventName: "soul.loaded" | "world.loaded",
+  strict: boolean,
 ): string | null {
   for (const resolved of candidates) {
     try {
@@ -96,7 +107,12 @@ function loadOptionalMarkdownFile(
         }
         return raw;
       }
-    } catch {
+    } catch (error) {
+      if (strict && !isMissingFile(error)) {
+        throw new Error(`${fileName} at ${resolved} can't be read`, {
+          cause: error,
+        });
+      }
       continue;
     }
   }
@@ -104,11 +120,12 @@ function loadOptionalMarkdownFile(
   return null;
 }
 
-function loadSoul(): string {
+function loadSoul(strict: boolean): string {
   const soul = loadOptionalMarkdownFile(
     soulPathCandidates(),
     "SOUL.md",
     "soul.loaded",
+    strict,
   );
   if (soul) {
     return soul;
@@ -120,17 +137,18 @@ function loadSoul(): string {
   return DEFAULT_SOUL;
 }
 
-function loadWorld(): string | null {
+function loadWorld(strict: boolean): string | null {
   return loadOptionalMarkdownFile(
     worldPathCandidates(),
     "WORLD.md",
     "world.loaded",
+    strict,
   );
 }
 
 function readPersonality(): string {
   try {
-    return loadSoul();
+    return loadSoul(false);
   } catch (error) {
     logWarn("soul.load.failed", {
       "exception.message":
@@ -142,7 +160,7 @@ function readPersonality(): string {
 
 function readWorld(): string | null {
   try {
-    return loadWorld();
+    return loadWorld(false);
   } catch (error) {
     logWarn("world.load.failed", {
       "exception.message":
@@ -153,6 +171,18 @@ function readWorld(): string | null {
 }
 
 export const JUNIOR_PERSONALITY = readPersonality();
+
+/** The text of the consumer's `SOUL.md` and `WORLD.md`. */
+export type SystemPromptFiles = { soul: string; world: string | null };
+
+/**
+ * Read `SOUL.md` and `WORLD.md` for a build. A file that exists but can't be
+ * read throws an error that names it, so the build fails. A missing `SOUL.md`
+ * gives the default personality, and a missing `WORLD.md` gives no world.
+ */
+export function readSystemPromptFilesForBuild(): SystemPromptFiles {
+  return { soul: loadSoul(true), world: loadWorld(true) };
+}
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
@@ -387,16 +417,15 @@ function buildIdentitySection(platform: PromptPlatform): string {
  * Block 7, `# Personality`: the consumer's `SOUL.md`. It sets voice and tone
  * only. Core behavior must not depend on it.
  */
-function buildPersonalitySection(): string {
-  return ["# Personality", readPersonality().trim()].join("\n");
+function buildPersonalitySection(soul: string): string {
+  return ["# Personality", soul.trim()].join("\n");
 }
 
 /**
  * Block 8, `# World`: the consumer's `WORLD.md`. It holds facts about the
  * operator, such as the company, repos, and resources.
  */
-function buildWorldSection(): string | null {
-  const world = readWorld();
+function buildWorldSection(world: string | null): string | null {
   if (!world) {
     return null;
   }
@@ -840,14 +869,15 @@ export type SystemPromptSection = { name: string; text: string };
 
 /**
  * Build the core blocks of the system prompt for one platform and Prompt
- * mode, in order. It reads `SOUL.md` and `WORLD.md` on each call, so a build
- * sees the current files.
+ * mode, in order, from `files`. With no `files`, it reads `SOUL.md` and
+ * `WORLD.md` on each call and uses the defaults when a read fails.
  */
 export function buildCoreSystemPromptSections(
   platform: PromptPlatform,
   mode: PromptMode,
+  files: SystemPromptFiles = { soul: readPersonality(), world: readWorld() },
 ): SystemPromptSection[] {
-  const world = buildWorldSection();
+  const world = buildWorldSection(files.world);
   return [
     {
       name: "header",
@@ -855,7 +885,7 @@ export function buildCoreSystemPromptSections(
     },
     { name: "identity", text: buildIdentitySection(platform) },
     { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },
-    { name: "personality", text: buildPersonalitySection() },
+    { name: "personality", text: buildPersonalitySection(files.soul) },
     ...(world ? [{ name: "world", text: world }] : []),
   ];
 }
