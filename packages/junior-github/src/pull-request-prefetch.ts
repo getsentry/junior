@@ -2,7 +2,8 @@
  * Load the cards of a page of pull request links by repository and number,
  * at most 25 pull requests per GraphQL query, before each card reads its
  * cache entry. Only pull requests with no fresh entry are read. A link that
- * this skips reads its entry as usual, unless the page's time ran out.
+ * this skips reads its entry as usual, unless the page's time ran out for
+ * it.
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import pLimit, { type LimitFunction } from "p-limit";
@@ -38,19 +39,8 @@ const QUERY_TIMEOUT_MS = 10_000;
 // splits, and each card that is left shows its stale entry, or no card yet.
 const PAGE_BUDGET_MS = 20_000;
 
-// Long enough for the card reads of the page that ran out of time.
-const OUT_OF_TIME_TTL_MS = 30_000;
-
 function cacheKey(ref: PullRequestRef): string {
   return githubObjectCacheKey("pulls", `${ref.owner}/${ref.name}`, ref.number);
-}
-
-/**
- * The cache key that marks a pull request card that a page read ran out of
- * time for, so that card does not read GitHub again.
- */
-export function outOfTimeCacheKey(key: string): string {
-  return `${key}:out-of-time`;
 }
 
 // The cache entries that are not fresh, of repositories the viewer sees.
@@ -114,23 +104,19 @@ async function loadChunk(
 // A chunk that fails splits in halves, and the halves are its retry. A pull
 // request that fails alone is skipped: its card reads on its own, and keeps
 // its stale entry when that read fails too. A chunk that fails after the
-// page's time is marked, so its cards do not read GitHub again.
+// page's time goes to `outOfTime`, so its cards do not read GitHub again.
 async function loadRefs(
   ctx: ObjectLinkContext,
   limit: LimitFunction,
   refs: PullRequestRef[],
   deadlineMs: number,
+  outOfTime: PullRequestRef[],
 ): Promise<void> {
   await loadInHalves({
     canSplit: () => Date.now() < deadlineMs,
     failed: async (failed, error) => {
       if (Date.now() >= deadlineMs) {
-        await pLimit(PREFETCH_CONCURRENCY).map(failed, (ref) =>
-          ctx.cache.update(outOfTimeCacheKey(cacheKey(ref)), () => ({
-            ttlMs: OUT_OF_TIME_TTL_MS,
-            value: true,
-          })),
-        );
+        outOfTime.push(...failed);
         return;
       }
       const [only] = failed;
@@ -147,16 +133,21 @@ async function loadRefs(
   });
 }
 
-/** Load the missing cards of the pull requests that `refs` name. */
+/**
+ * Load the missing cards of the pull requests that `refs` name. Returns
+ * the ones that the page's time ran out for.
+ */
 export async function prefetchGitHubPullRequests(
   ctx: ObjectLinkContext,
   refs: PullRequestRef[],
-): Promise<void> {
+): Promise<PullRequestRef[]> {
   const deadlineMs = Date.now() + PAGE_BUDGET_MS;
   const chunks = pullRequestChunks(await missingRefs(ctx, refs));
   // The queries of every chunk and of its halves share one limit.
   const queries = pLimit(PREFETCH_CONCURRENCY);
+  const outOfTime: PullRequestRef[] = [];
   await pLimit(PREFETCH_CONCURRENCY).map(chunks, (chunk) =>
-    loadRefs(ctx, queries, chunk, deadlineMs),
+    loadRefs(ctx, queries, chunk, deadlineMs, outOfTime),
   );
+  return outOfTime;
 }

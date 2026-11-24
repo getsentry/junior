@@ -718,6 +718,16 @@ defineJuniorPlugin({
   and does not save it on a Conversation. When your webhooks keep the object
   entry current, set `cacheCards: false`. Junior then reads your entry on
   each card read, after `canView`, so a change shows at once.
+- **Prefetch.** To load a page of links in one provider call, add
+  `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
+  that the link type claims, before `canView` and `resolve` run for each
+  URL. Write the objects to `ctx.cache`, and never return object data. To
+  tell one URL's card read what happened, return a `Map` from `url.href` to
+  an outcome. `out_of_time` means the page's time ran out before the object
+  loaded. That URL's `canView` and `resolve` on the same page get it as
+  `ctx.prefetchOutcome`, so they can show only what the cache holds. Other
+  reads, such as an Attach, get no outcome, so they ask the provider as
+  usual.
 - **People.** For a profile link of a provider account, return
   `await ctx.findPerson({ provider, handle })` when it finds a card. That is
   the Junior person card of the one known person who linked that account.
