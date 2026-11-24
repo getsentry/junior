@@ -788,6 +788,63 @@ describe("paused turn Slack integration", () => {
     });
   });
 
+  it("keeps an app's resumed Turn without a person", async () => {
+    const conversationId = "slack:C123:1712345.0013";
+    const sessionId = "turn_msg_13";
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      conversationId,
+      turnId: sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0013"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "look up the budget" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        messages: [
+          {
+            id: "msg.13",
+            role: "user",
+            text: "look up the budget",
+            createdAtMs: 1,
+            author: { userId: "U0ALERTS", isBot: true },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(true);
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toMatchObject({
+      actor: { platform: "slack", userId: "U0ALERTS" },
+      actorIsApp: true,
+    });
+  });
+
   it("recovers the resume actor from the durable conversation record", async () => {
     // Issue #727 recovery path: older session records were persisted without
     // a actor; the durable conversation work record still carries the
