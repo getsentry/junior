@@ -201,12 +201,6 @@ function pluginToolNamespace(pluginName: string): string {
     .join("")}`;
 }
 
-function systemPromptPluginContext(plugin: PluginRegistration) {
-  return {
-    ...basePluginContext(plugin),
-  };
-}
-
 /** Bind Source, Destination, and Actor for one plugin invocation. */
 function pluginInvocationContext(
   context: Pick<
@@ -632,7 +626,11 @@ async function runPluginHooksAtOnce<T>(
   );
 }
 
-/** Collect stable plugin prompt contributions for the static system prompt. */
+/**
+ * Collect stable plugin prompt contributions for the static system prompt of
+ * one platform. Every Prompt mode reuses them. A hook gets no database or
+ * cache.
+ */
 export async function getPluginSystemPromptContributions(
   platform: Platform,
 ): Promise<PluginPromptContributionContext[]> {
@@ -640,8 +638,15 @@ export async function getPluginSystemPromptContributions(
   let totalChars = 0;
   const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
+    const name = plugin.manifest.name;
     return (
-      hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
+      hook &&
+      (() =>
+        hook({
+          plugin: { name },
+          log: createPluginLogger(name),
+          platform,
+        }))
     );
   });
   for (const outcome of outcomes) {

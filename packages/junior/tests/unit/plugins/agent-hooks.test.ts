@@ -288,8 +288,15 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt(ctx) {
-            expect(ctx.platform).toBe("local");
-            expect(ctx.db).toEqual(expect.any(Object));
+            expect(Object.keys(ctx).sort()).toEqual([
+              "log",
+              "platform",
+              "plugin",
+            ]);
+            expect(ctx).toMatchObject({
+              plugin: { name: "z-demo" },
+              platform: "local",
+            });
             return [{ text: "Z contribution" }];
           },
         },
