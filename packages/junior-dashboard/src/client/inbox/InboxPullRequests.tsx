@@ -1,18 +1,24 @@
-import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
+import type {
+  CodeChangeStack,
+  CodeChangeSummaryReport,
+} from "@sentry/junior/api/schema";
 import { ArrowUpRight } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { Link } from "react-router";
 
 import { useActorOpenCodeChanges, useDashboardCoreData } from "../api";
 import { ListedChangeSize } from "../components/ChangeSize";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
+import { conversationPath } from "../conversations/conversationRoutes";
 import {
   type ListedObject,
   useListedObjects,
 } from "../display-text/DisplayText";
+import { automationPath } from "../format";
 import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
-import { inboxCardClass } from "./inboxRowStyles";
+import { INBOX_STACK_CLASS, inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
 import type { InboxBundle } from "./inboxItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -109,6 +115,49 @@ export function pullRequestSections(
       label: "Drafts",
     },
   ].filter((section) => section.changes.length + section.items.length > 0);
+}
+
+/** One entry of a Mine group: a change, or the changes of one source. */
+type PullRequestEntry =
+  | { kind: "change"; row: PullRequestChangeRow }
+  | {
+      kind: "stack";
+      key: string;
+      rows: PullRequestChangeRow[];
+      stack: CodeChangeStack;
+    };
+
+const stackKey = (stack: CodeChangeStack) => `${stack.kind}:${stack.id}`;
+
+/**
+ * Fold the changes of one Conversation or Automation into one stack, at the
+ * place of its first change, so the group keeps its order. A source with one
+ * change stays a plain row.
+ */
+export function stackedChanges(
+  rows: readonly PullRequestChangeRow[],
+): PullRequestEntry[] {
+  const bySource = new Map<string, PullRequestChangeRow[]>();
+  for (const row of rows) {
+    const { stack } = row.change;
+    if (!stack) continue;
+    bySource.set(stackKey(stack), [
+      ...(bySource.get(stackKey(stack)) ?? []),
+      row,
+    ]);
+  }
+  const placed = new Set<string>();
+  return rows.flatMap((row): PullRequestEntry[] => {
+    const { stack } = row.change;
+    const siblings = stack ? bySource.get(stackKey(stack)) : undefined;
+    if (!stack || !siblings || siblings.length < 2) {
+      return [{ kind: "change", row }];
+    }
+    const key = stackKey(stack);
+    if (placed.has(key)) return [];
+    placed.add(key);
+    return [{ key, kind: "stack", rows: siblings, stack }];
+  });
 }
 
 /**
@@ -235,6 +284,48 @@ export function PullRequestChange(props: {
           {props.children}
         </ul>
       ) : null}
+    </li>
+  );
+}
+
+/**
+ * The changes of one Conversation or Automation in a Mine group, under a
+ * head row that opens their source, as an Inbox stack does.
+ */
+export function PullRequestStack(props: {
+  children: ReactNode;
+  count: number;
+  stack: CodeChangeStack;
+}) {
+  const { stack } = props;
+  const title = stack.title ?? "Untitled";
+  return (
+    <li
+      aria-label={title}
+      className={INBOX_STACK_CLASS}
+      data-dock-key={`stack:${stackKey(stack)}`}
+    >
+      <div className="flex min-h-7 min-w-0 items-center gap-2 pr-1 pl-2.5">
+        <Link
+          className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          to={
+            stack.kind === "automation"
+              ? automationPath(stack.id)
+              : conversationPath(stack.id)
+          }
+        >
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+            {title}
+          </span>
+        </Link>
+        <span className="px-1 text-xs text-dashboard-text-muted tabular-nums">
+          {props.count}
+          <span className="sr-only"> pull requests</span>
+        </span>
+      </div>
+      <ul className="m-0 grid gap-1.5 p-0" data-dock-list="">
+        {props.children}
+      </ul>
     </li>
   );
 }

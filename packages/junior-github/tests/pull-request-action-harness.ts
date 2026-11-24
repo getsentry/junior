@@ -692,6 +692,7 @@ export function route(
     },
     inboxItems,
     state,
+    tasks: { start: unused },
     // The requester linked the GitHub account `Requester`.
     users: {
       readIdentity: async (identityId: string) =>

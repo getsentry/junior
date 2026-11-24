@@ -17,6 +17,9 @@ import { useInboxData } from "../../../inbox/inboxData";
 import { inboxViewPath, viewRows } from "../../../inbox/inboxModel";
 import {
   PullRequestChange,
+  type PullRequestChangeRow,
+  PullRequestStack,
+  stackedChanges,
   usePullRequestSections,
 } from "../../../inbox/InboxPullRequests";
 import { InboxEmptyState, InboxSection } from "../../../inbox/InboxSection";
@@ -100,6 +103,18 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
       <PageContentSkeleton label="Loading your pull requests" variant="list" />
     );
   const report = pullRequests.report;
+  const changeRow = (row: PullRequestChangeRow) => (
+    <PullRequestChange
+      expanded={false}
+      key={row.change.id}
+      nowMs={pullRequests.nowMs}
+      row={row}
+    >
+      {row.items.length > 0
+        ? row.items.map((item) => <AskRow item={item} key={item.key} nested />)
+        : null}
+    </PullRequestChange>
+  );
   return (
     <>
       <div>
@@ -116,20 +131,19 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
               label={section.label}
               onToggle={() => toggle(section.key)}
             >
-              {section.changes.map((row) => (
-                <PullRequestChange
-                  expanded={false}
-                  key={row.change.id}
-                  nowMs={pullRequests.nowMs}
-                  row={row}
-                >
-                  {row.items.length > 0
-                    ? row.items.map((item) => (
-                        <AskRow item={item} key={item.key} nested />
-                      ))
-                    : null}
-                </PullRequestChange>
-              ))}
+              {stackedChanges(section.changes).map((entry) =>
+                entry.kind === "stack" ? (
+                  <PullRequestStack
+                    count={entry.rows.length}
+                    key={entry.key}
+                    stack={entry.stack}
+                  >
+                    {entry.rows.map(changeRow)}
+                  </PullRequestStack>
+                ) : (
+                  changeRow(entry.row)
+                ),
+              )}
               {section.items.map((item) => (
                 <AskRow item={item} key={item.key} />
               ))}

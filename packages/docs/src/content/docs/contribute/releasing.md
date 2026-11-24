@@ -31,6 +31,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-vimeo`
 - `@sentry/junior-xdotcom`
 
 ## Package release

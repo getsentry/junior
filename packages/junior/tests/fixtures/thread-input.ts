@@ -8,6 +8,7 @@ import {
   type AgentRunOutcome,
 } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnAnswer } from "@/chat/turn-answer";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { openConversationProjection } from "@/chat/conversations/projection";
@@ -171,11 +172,13 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
 /**
  * End a run's Turn with `answer`, as the agent does when it calls `reply` or
  * `noReply`, and save the Turn's completed record. A `finalText` answer ends
- * a Turn that is not gated with that final response.
+ * a Turn that is not gated with that final response. With `assistantText`,
+ * the Turn ends on that model message after its input, as a model Turn does.
  */
 export async function finishRun(
   run: AgentRun,
   answer: TurnAnswer | { finalText: string } = { noReply: {} },
+  assistantText?: string,
 ): Promise<AgentRunOutcome> {
   const input = runInputCheckpoint(run);
   await saveTurnCheckpoint({ ...input, mode: "running" });
@@ -194,11 +197,24 @@ export async function finishRun(
           ],
         }
       : { answer, newMessages: [] };
+  const piMessages =
+    assistantText === undefined
+      ? undefined
+      : [
+          ...input.messages,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: assistantText }],
+            stopReason: "stop",
+            timestamp: Date.now(),
+          } as PiMessage,
+        ];
   return completedAgentRun(
     buildTurnResult({
       ...ending,
       generatedFileCount: 0,
       modelId: "test-model",
+      piMessages,
       reasoningLevel: "medium",
       shouldTrace: false,
       toolCalls: [],

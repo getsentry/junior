@@ -115,7 +115,9 @@ export function InboxRowCard(props: {
           Conversation, so each ask keeps them. */}
       {props.headTitled ? null : (
         <>
-          <div className="flex min-w-0 items-baseline gap-2">
+          {/* Centered: the pill leads with its icon, so it has no text
+              baseline to share with the title. */}
+          <div className="flex min-w-0 items-center gap-2">
             <Pill
               pill={{
                 count: 1,

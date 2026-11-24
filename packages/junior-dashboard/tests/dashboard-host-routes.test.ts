@@ -33,6 +33,7 @@ it("forwards every dashboard route through the Junior app", async () => {
     },
   }));
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp: createForwardingDashboard,
     functionMaxDurationSeconds: undefined,
     dashboard: {

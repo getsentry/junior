@@ -14,7 +14,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import * as z from "zod";
-import type { CodeChangeState } from "@sentry/junior-plugin-api";
+import type { CodeChangeState, User } from "@sentry/junior-plugin-api";
 import { codeChangeUrl, codeRepositoryUrl } from "@/chat/code/links";
 import { getDb } from "@/chat/db";
 import {
@@ -31,6 +31,7 @@ import {
   type CodePersonReport,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
+import { readCodeChangeStacks } from "./stacks";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
@@ -469,6 +470,8 @@ export async function readPersonCodeOverview(args: {
   cursor?: string | undefined;
   nowMs?: number;
   userId: string;
+  /** The reader. A change's stack shows only when they may read its source. */
+  viewer?: User | undefined;
 }): Promise<CodePersonReport> {
   const nowMs = args.nowMs ?? Date.now();
   const after = args.cursor
@@ -484,6 +487,7 @@ export async function readPersonCodeOverview(args: {
     db
       .select({
         change: codeChangeReportColumns,
+        conversationIds: juniorCodeChanges.conversationIds,
         updatedAt: juniorCodeChanges.updatedAt,
       })
       .from(juniorCodeChanges)
@@ -509,12 +513,26 @@ export async function readPersonCodeOverview(args: {
       )
       .limit(PERSON_CHANGE_LIMIT),
   ]);
+  const stacks = await readCodeChangeStacks(
+    db,
+    changes.map((row) => ({
+      conversationIds: row.conversationIds,
+      id: row.change.id,
+    })),
+    args.viewer,
+  );
   const last = changes.at(-1);
   return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
-    changes: changes.map((row) => codeChangeReport(row.change)),
+    changes: changes.map((row) => {
+      const stack = stacks.get(row.change.id);
+      return {
+        ...codeChangeReport(row.change),
+        ...(stack ? { stack } : undefined),
+      };
+    }),
     generatedAt: windows.windowEnd.toISOString(),
     nextCursor:
       last && changes.length === PERSON_CHANGE_LIMIT

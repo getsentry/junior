@@ -169,14 +169,10 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+import { isMissingVirtualModule } from "./virtual-module";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
-  /**
-   * Name Junior uses for itself, such as its Slack bot username. Defaults to
-   * `JUNIOR_BOT_NAME`, then `junior`.
-   */
-  botName?: string;
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
@@ -288,6 +284,7 @@ function resolvePublicBaseURL(
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
+  botName?: string | undefined;
   functionMaxDurationSeconds?: number | undefined;
   createDashboardApp?: CreateDashboardApp | undefined;
   dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -319,6 +316,7 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
+      botName?: string;
       createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -327,6 +325,7 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
     return {
+      botName: mod.botName,
       createDashboardApp: mod.createDashboardApp,
       functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
@@ -335,24 +334,11 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
     };
   } catch (error) {
-    if (!isMissingVirtualConfig(error)) {
+    if (!isMissingVirtualModule(error, "#junior/config")) {
       throw error;
     }
     return undefined;
   }
-}
-
-function isMissingVirtualConfig(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
-      code === "ERR_MODULE_NOT_FOUND" ||
-      code === "MODULE_NOT_FOUND") &&
-    error.message.includes("#junior/config")
-  );
 }
 
 function hasConfiguredPluginCatalog(
@@ -449,6 +435,12 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+  // The build puts the bot name in the system prompt, so only the build sets it.
+  if (options && "botName" in options) {
+    throw new Error(
+      "createApp({ botName }) was removed; set botName in juniorNitro() instead",
+    );
+  }
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -517,7 +509,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
-    setBotName(options?.botName);
+    setBotName(virtualConfig?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.
@@ -555,6 +547,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
+      // The queue is chosen below, before any route runs.
+      sendPluginTask: (message, options) => sendPluginTask(message, options),
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
@@ -578,7 +572,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     ) ??
     getVercelConversationWorkQueue();
-  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const pluginTaskQueue = options?.pluginTaskQueue?.((message) =>
+    processPluginTask(message, {
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    }),
+  );
   const sendPluginTask: SendPluginTask = pluginTaskQueue
     ? (message) => pluginTaskQueue.send(message)
     : sendVercelPluginTask;
@@ -803,7 +801,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return agentContinuePOST(c.req.raw);
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
-    pluginTaskPOST ??= createVercelPluginTaskCallback();
+    pluginTaskPOST ??= createVercelPluginTaskCallback({
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    });
     return pluginTaskPOST(c.req.raw);
   });
   let workspaceSnapshotJobPOST:
@@ -833,6 +833,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       conversationWorkQueue,
       dispatchForIdentity,
       events,
+      sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
   });
