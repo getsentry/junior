@@ -64,6 +64,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "junior/no-value-switch": "error",
     "preserve-caught-error": "error",
     "unicorn/no-array-for-each": "error",
     "junior/no-record-type-guard": "error",
@@ -148,9 +149,9 @@
     {
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
+        "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
-        "junior/no-split-url-query": "error",
-        "junior/no-value-switch": "error"
+        "junior/no-split-url-query": "error"
       }
     },
     {
