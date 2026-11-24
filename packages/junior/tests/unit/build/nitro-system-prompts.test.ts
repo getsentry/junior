@@ -142,6 +142,23 @@ describe("juniorNitro system prompts", () => {
     }
   });
 
+  it("fails the build when SOUL.md is empty", async () => {
+    const tempRoot = await fs.realpath(await makeTempDir());
+    await writeSystemPromptPlugin(tempRoot, "return [];");
+    await fs.mkdir(path.join(tempRoot, "app"));
+    const soulPath = path.join(tempRoot, "app", "SOUL.md");
+    await fs.writeFile(soulPath, " \n\t\n");
+    const originalCwd = process.cwd();
+    process.chdir(tempRoot);
+    try {
+      await expect(renderSystemPrompts(tempRoot)).rejects.toThrow(
+        `SOUL.md at ${soulPath} is empty`,
+      );
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
   it("builds the default personality when SOUL.md is missing", async () => {
     const tempRoot = await fs.realpath(await makeTempDir());
     await writeSystemPromptPlugin(tempRoot, "return [];");

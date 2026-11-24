@@ -83,37 +83,45 @@ function isMissingFile(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
+/** Which files that exist but give no text make a read throw. */
+type MarkdownReadChecks = { throwIfUnreadable: boolean; throwIfEmpty: boolean };
+
 /**
- * Read the first candidate that has text. A `strict` read throws when a file
- * exists but can't be read. Otherwise it tries the next candidate.
+ * Read the first candidate that has text. A file that exists but can't be
+ * read, or is empty, throws when `checks` says so. Otherwise the read tries
+ * the next candidate.
  */
 function loadOptionalMarkdownFile(
   candidates: string[],
   fileName: string,
   loadedEventName: "soul.loaded" | "world.loaded",
-  strict: boolean,
+  checks: MarkdownReadChecks,
 ): string | null {
   for (const resolved of candidates) {
+    let raw: string;
     try {
-      const raw = fs.readFileSync(resolved, "utf8").trim();
-      if (raw.length > 0) {
-        const loggedMarkdownFiles = getLoggedMarkdownFiles();
-        const logKey = `${fileName}:${resolved}`;
-        if (!loggedMarkdownFiles.has(logKey)) {
-          loggedMarkdownFiles.add(logKey);
-          logInfo(loadedEventName, {
-            "file.path": resolved,
-          });
-        }
-        return raw;
-      }
+      raw = fs.readFileSync(resolved, "utf8").trim();
     } catch (error) {
-      if (strict && !isMissingFile(error)) {
+      if (checks.throwIfUnreadable && !isMissingFile(error)) {
         throw new Error(`${fileName} at ${resolved} can't be read`, {
           cause: error,
         });
       }
       continue;
+    }
+    if (raw.length > 0) {
+      const loggedMarkdownFiles = getLoggedMarkdownFiles();
+      const logKey = `${fileName}:${resolved}`;
+      if (!loggedMarkdownFiles.has(logKey)) {
+        loggedMarkdownFiles.add(logKey);
+        logInfo(loadedEventName, {
+          "file.path": resolved,
+        });
+      }
+      return raw;
+    }
+    if (checks.throwIfEmpty) {
+      throw new Error(`${fileName} at ${resolved} is empty`);
     }
   }
 
@@ -125,7 +133,7 @@ function loadSoul(strict: boolean): string {
     soulPathCandidates(),
     "SOUL.md",
     "soul.loaded",
-    strict,
+    { throwIfUnreadable: strict, throwIfEmpty: strict },
   );
   if (soul) {
     return soul;
@@ -142,7 +150,7 @@ function loadWorld(strict: boolean): string | null {
     worldPathCandidates(),
     "WORLD.md",
     "world.loaded",
-    strict,
+    { throwIfUnreadable: strict, throwIfEmpty: false },
   );
 }
 
@@ -177,8 +185,9 @@ export type SystemPromptFiles = { soul: string; world: string | null };
 
 /**
  * Read `SOUL.md` and `WORLD.md` for a build. A file that exists but can't be
- * read throws an error that names it, so the build fails. A missing `SOUL.md`
- * gives the default personality, and a missing `WORLD.md` gives no world.
+ * read, or a `SOUL.md` that is empty, throws an error that names it, so the
+ * build fails. A missing `SOUL.md` gives the default personality, and a
+ * missing or empty `WORLD.md` gives no world.
  */
 export function readSystemPromptFilesForBuild(): SystemPromptFiles {
   return { soul: loadSoul(true), world: loadWorld(true) };

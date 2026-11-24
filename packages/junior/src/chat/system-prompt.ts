@@ -64,8 +64,8 @@ async function buildPlatformSections(
 /**
  * Build the system prompt sections of every platform and Prompt mode: the
  * core blocks, then the guidance of `plugins`. `juniorNitro` runs it once at
- * build. A plugin hook that fails, or a `SOUL.md` or `WORLD.md` that exists
- * but can't be read, throws an error that names it.
+ * build. A plugin hook that fails, a `SOUL.md` or `WORLD.md` that exists but
+ * can't be read, or an empty `SOUL.md` throws an error that names it.
  */
 export async function buildSystemPromptTable(
   plugins: readonly PluginRegistration[],
