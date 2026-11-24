@@ -107,13 +107,20 @@ function listenStream(request: Request): Response {
       };
       const close = async (reason: string) => {
         if (closed) return;
-        send("end", {
-          reason,
-          heldMs: Date.now() - openedAt,
-          notifications,
-          keepalives,
-        });
+        // Set before the last event, so a failed enqueue cannot re-enter.
         closed = true;
+        try {
+          controller.enqueue(
+            sseEvent("end", {
+              reason,
+              heldMs: Date.now() - openedAt,
+              notifications,
+              keepalives,
+            }),
+          );
+        } catch {
+          // The client already cancelled the stream.
+        }
         for (const timer of timers) clearInterval(timer);
         timers = [];
         openListeners--;
