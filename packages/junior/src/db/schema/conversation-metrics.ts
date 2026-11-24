@@ -62,7 +62,9 @@ export const juniorConversationMetrics = pgTable(
       table.metric,
     ),
     // Covers time-bounded reads of Turn duration, tokens, and cost, such as
-    // the People list, so they scan only the index.
+    // the People list, so they scan only the index. Drizzle cannot declare
+    // statistics, so `junior_conversation_metrics_utc_day_actor` lives only
+    // in its migration.
     index("junior_conversation_metrics_turn_metric_occurred_at_idx")
       .on(
         table.metric,

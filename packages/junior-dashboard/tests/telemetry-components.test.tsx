@@ -171,6 +171,15 @@ function systemData(): SystemFixture {
           tokens: 12_345,
         },
       ],
+      personSpendDays: [
+        {
+          date: "2026-01-01",
+          medianPersonCostUsd: 1.5,
+          people: 2,
+          personCostUsd: 4,
+          unattributedCostUsd: 0.56,
+        },
+      ],
       source: "conversation_index",
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-10-03T00:00:00.000Z",
