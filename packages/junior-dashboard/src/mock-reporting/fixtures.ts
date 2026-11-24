@@ -4085,9 +4085,28 @@ export function readMockPeopleCode(
       ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
+  // Two changes from one Conversation and two from one Automation, so
+  // Code · Mine shows a stack of each.
+  const checkout = {
+    stack: {
+      id: ACTIVE_CONVERSATION_ID,
+      kind: "conversation" as const,
+      title: "Investigate checkout latency",
+    },
+  };
+  const releaseTrain = {
+    stack: {
+      id: "scheduled-3",
+      kind: "automation" as const,
+      title: "Release train",
+    },
+  };
   const openChanges = [
     openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
-    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+    {
+      ...openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+      ...checkout,
+    },
     openChange(
       2391,
       "getsentry/junior",
@@ -4095,13 +4114,22 @@ export function readMockPeopleCode(
       6,
       120,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+    {
+      ...openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+      ...releaseTrain,
+    },
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
     openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
-    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    {
+      ...openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+      ...releaseTrain,
+    },
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
-    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    {
+      ...openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+      ...checkout,
+    },
     // Recorded before code changes stored titles.
     {
       ...openChange(

@@ -21,7 +21,7 @@ export {
   type PromptHistory,
   type PromptHistoryContext,
   type PromptMessage,
-  type SystemPromptContext,
+  type SystemPromptBuildContext,
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";

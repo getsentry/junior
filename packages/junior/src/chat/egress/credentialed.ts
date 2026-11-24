@@ -673,6 +673,7 @@ export async function executeCredentialedEgressRequest(input: {
         provider,
         grantSelection,
         credentialContext,
+        operation,
       );
     } catch (error) {
       if (!(error instanceof SandboxEgressCredentialError)) {

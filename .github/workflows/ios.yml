@@ -50,6 +50,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      - name: Test the beta status script
+        run: node --test apps/ios/scripts/ios-beta.test.mjs
       - name: Install the CI tools
         run: brew bundle --file=apps/ios/Brewfile.ci
       - name: Start the mock MCP server
