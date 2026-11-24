@@ -24,15 +24,17 @@ export interface PersonSpendDayRow {
  * Identities count once. Every Run writes a `duration_ms` row, so a person
  * with a Turn but no cost row counts with zero spend.
  *
- * Metric rows are grouped by day and Identity before any join. The covering
- * Turn metric index holds every column that the grouping reads, and the joins
+ * Metric rows are grouped by day and Identity before any join, so the joins
  * read one row per Identity and day.
  */
 export async function readPersonSpendDays(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ): Promise<PersonSpendDayRow[]> {
-  const day = sql<string>`to_char(${metrics.occurredAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+  // Matches the `junior_conversation_metrics_utc_day_actor` statistics, so
+  // the planner knows how few day and Identity groups there are and hashes
+  // them instead of sorting every row. Format the day only after grouping.
+  const day = sql<Date>`date_trunc('day', ${metrics.occurredAt} at time zone 'UTC')`;
   const identityDays = db
     .select({
       date: day.as("identity_day_date"),
@@ -57,7 +59,7 @@ export async function readPersonSpendDays(
   // person, so those Turns group into one unattributed row per day.
   const identityPeople = db
     .select({
-      date: sql<string>`${identityDays.date}`.as("identity_person_date"),
+      date: sql<Date>`${identityDays.date}`.as("identity_person_date"),
       userId: sql<
         string | null
       >`CASE WHEN ${verifiedActorWhere()} THEN ${juniorUsers.id} END`.as(
@@ -76,7 +78,7 @@ export async function readPersonSpendDays(
     .as("person_identity_people");
   const personDays = db
     .select({
-      date: sql<string>`${identityPeople.date}`.as("person_day_date"),
+      date: sql<Date>`${identityPeople.date}`.as("person_day_date"),
       userId: sql<string | null>`${identityPeople.userId}`.as(
         "person_day_user_id",
       ),
@@ -90,7 +92,7 @@ export async function readPersonSpendDays(
   const person = sql`${personDays.userId} IS NOT NULL`;
   return await db
     .select({
-      date: personDays.date,
+      date: sql<string>`to_char(${personDays.date}, 'YYYY-MM-DD')`,
       medianPersonCostMicroUsd: sql<
         number | null
       >`(percentile_cont(0.5) WITHIN GROUP (ORDER BY ${personDays.costMicroUsd}) FILTER (WHERE ${person}))::double precision`,

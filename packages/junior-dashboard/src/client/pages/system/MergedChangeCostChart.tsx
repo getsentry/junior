@@ -67,6 +67,11 @@ function sumCosts(buckets: readonly ConversationMetricDay[]): CostTotals {
   );
 }
 
+// The two lines count spend at different times. A merged change carries its
+// root's tree cost over all time, on its merge date. All spend counts each
+// cost on the day it was spent. So a short window with few merges can show
+// All spend below Per merged change. This is accepted: over a 7-day rolling
+// window the two mostly even out.
 function unitCosts(totals: CostTotals): Pick<Point, "allSpend" | "merged"> {
   if (!totals.mergedCodeChanges) return { allSpend: null, merged: null };
   return {
