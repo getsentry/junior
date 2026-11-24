@@ -215,6 +215,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: { start: unused },
       users,
     });
     if (!route) throw new Error("The GitHub plugin has no webhook route");
@@ -267,6 +268,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: { start: unused },
       users,
     });
   }

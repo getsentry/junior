@@ -18,6 +18,7 @@ import type {
 import type { CodeChangePublisher } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
 import type { PluginConversationInboxItems } from "./inbox-items";
+import type { PluginTaskStarter } from "./tasks";
 
 /** People that a plugin reads outside a Turn. */
 export interface PluginUsers {
@@ -68,6 +69,8 @@ export interface HeartbeatHookContext extends PluginContext {
   state: PluginState;
   /** People, as from a plugin route. */
   users: PluginUsers;
+  /** Start this plugin's tasks, as from a plugin route. */
+  tasks: PluginTaskStarter;
 }
 
 export interface HeartbeatResult {
@@ -235,6 +238,11 @@ export interface RouteRegistrationHookContext extends PluginContext {
   inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
+  /**
+   * Start a task with a `payload` schema from this plugin's `tasks`. Use it
+   * when a write fails and must run again after the route returns.
+   */
+  tasks: PluginTaskStarter;
   users: PluginUsers;
 }
 

@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
@@ -48,6 +49,7 @@ function testHeartbeat(
   const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
     conversationWorkQueue: queue,
+    sendPluginTask: options.sendPluginTask ?? sendVercelPluginTask,
     dispatchForIdentity:
       options.dispatchForIdentity ??
       createIdentityDispatcher({

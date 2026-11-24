@@ -1,8 +1,8 @@
 /**
- * Heartbeat backfill of the event search index. The event search task
- * indexes a bounded slice of events after each completed Turn, newest
- * first. History from before the index, the events of a running Turn, and
- * the rest of a long Conversation wait for later Turns. This run stores
+ * Heartbeat backfill of the event search index. Each Turn that ends
+ * indexes a bounded slice of its Conversation's events, newest first.
+ * History from before the index, the events of a running Turn, and the rest
+ * of a long Conversation wait for later Turns. This run stores
  * their lexemes, and their vectors when event embeddings are on, in the
  * Conversations with activity in the last week.
  *

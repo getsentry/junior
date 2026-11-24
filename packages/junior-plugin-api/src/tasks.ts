@@ -5,12 +5,20 @@
  * retries, and the bounded run projection.
  */
 import * as z from "zod";
+import type { PluginConversationAnnotations } from "./annotations";
+import type { CodeChangePublisher } from "./code";
+import type { PluginConversationChanges } from "./conversation-changes";
 import type {
   PluginConversationEvents,
   PluginTurnEventReader,
 } from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
-import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
+import {
+  destinationSchema,
+  actorSchema,
+  nonBlankStringSchema,
+  sourceSchema,
+} from "./schemas";
 import type { PluginState } from "./state";
 
 /**
@@ -101,10 +109,64 @@ export interface PluginTaskContext extends PluginContext {
   turnEvents: PluginTurnEventReader;
 }
 
-/** Plugin task handler registered by name in a plugin manifest module. */
-export interface PluginTaskDefinition {
+/** Task that Junior runs after each completed session. */
+export interface PluginSessionTaskDefinition {
+  payload?: undefined;
   run(ctx: PluginTaskContext): Promise<void> | void;
 }
 
+/** Runtime context passed to one attempt of a task that `tasks.start` started. */
+export interface PluginStartedTaskContext<
+  Payload = unknown,
+> extends PluginContext {
+  annotations: PluginConversationAnnotations;
+  codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
+  name: string;
+  /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
+  payload: Payload;
+  state: PluginState;
+}
+
+/**
+ * Task that runs only when the plugin starts it with `tasks.start`. Junior
+ * sends the payload as JSON in the queue message and parses it with
+ * `payload` before each attempt. A failed attempt runs again later, a
+ * bounded number of times.
+ */
+export interface PluginStartedTaskDefinition<
+  Schema extends z.ZodType = z.ZodType,
+> {
+  payload: Schema;
+  run(ctx: PluginStartedTaskContext<z.output<Schema>>): Promise<void> | void;
+}
+
+/** Plugin task handler registered by name in a plugin manifest module. */
+export type PluginTaskDefinition =
+  | PluginSessionTaskDefinition
+  | PluginStartedTaskDefinition;
+
 /** Task handlers keyed by the plugin-owned task name. */
 export type PluginTasks = Record<string, PluginTaskDefinition>;
+
+/** Input of `tasks.start`. */
+export const pluginTaskStartInputSchema = z
+  .object({
+    /**
+     * One task per plugin and key while the queue keeps the message. A
+     * second start with the key in that time does nothing.
+     */
+    key: nonBlankStringSchema.max(500),
+    /** Name of a task with a `payload` schema in this plugin's `tasks`. */
+    name: nonBlankStringSchema,
+    /** JSON value that the task's `payload` schema accepts. */
+    payload: z.unknown(),
+  })
+  .strict();
+
+export type PluginTaskStartInput = z.output<typeof pluginTaskStartInputSchema>;
+
+/** Starts this plugin's tasks on the plugin task queue. */
+export interface PluginTaskStarter {
+  start(input: PluginTaskStartInput): Promise<void>;
+}

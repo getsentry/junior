@@ -719,6 +719,7 @@ export function route(
     cache: { getOrLoad: unused },
     inboxItems,
     state,
+    tasks: { start: unused },
     // The requester linked the GitHub account `Requester`, and each
     // reviewer in `linkedReviewers` linked theirs.
     users: {
