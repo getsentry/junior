@@ -28,6 +28,7 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
+import { ConversationTodos } from "../../conversations/ConversationTodos";
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
@@ -45,7 +46,10 @@ export function ConversationDetails(props: {
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
-  /** True when the viewer is a Participant, who can cancel Watches. */
+  /**
+   * True when the viewer is a Participant, who can change To-dos and cancel
+   * Watches.
+   */
   isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
@@ -154,6 +158,10 @@ export function ConversationDetails(props: {
         <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
+        />
+        <ConversationTodos
+          canEdit={props.isParticipant}
+          conversationId={props.conversationId}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         <ConversationLinkedWorkCard
