@@ -363,12 +363,11 @@ function BackToList() {
     <Link
       aria-keyshortcuts="Escape"
       aria-label={`Back to ${label}`}
-      className="-ml-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-2 font-sans text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      title="Back (Esc)"
+      className="-ml-2 inline-flex size-8 items-center justify-center rounded-lg text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      title={`Back to ${label} (Esc)`}
       to={to}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
-      {label}
     </Link>
   );
 }

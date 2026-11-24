@@ -110,7 +110,9 @@ export function useConversationMenuItems(
   const participant = isConversationParticipant(menu);
   const live = conversationTurnIsActive(detail, conversation);
 
-  const conversationItems: ConversationMenuItem[] = [
+  // Most used first: act on the conversation, then its notifications and
+  // Slack delivery, then other views of it, then Archive on its own.
+  const actItems: ConversationMenuItem[] = [
     {
       disabled: share.disabled,
       feedback: share.feedback,
@@ -120,56 +122,11 @@ export function useConversationMenuItems(
       onClick: () => void share.share(),
       stayOpen: true,
     },
-    {
-      disabled: copy.disabled,
-      icon: copy.icon,
-      key: "copy-markdown",
-      label: copy.label,
-      onClick: () => void copy.copy(),
-      stayOpen: true,
-    },
   ];
-  if (detail?.canContinueInSlack) {
-    conversationItems.push({
-      // The API refuses while a Turn runs.
-      disabled: Boolean(live),
-      icon: SlackIcon,
-      key: "continue-in-slack",
-      label: "Continue in Slack",
-      onClick: actions.continueInSlack,
-    });
-  }
-  // Only a viewer who can detach the conversation gets `deliveryPaused`.
-  if (detail?.deliveryPaused !== undefined) {
-    conversationItems.push({
-      disabled: pending.delivery,
-      icon: detail.deliveryPaused ? MessageSquareShare : Unlink,
-      key: "delivery",
-      label: detail.deliveryPaused ? "Reattach to Slack" : "Detach from Slack",
-      onClick: () => actions.delivery(!detail.deliveryPaused),
-      toggle: true,
-    });
-  }
-  conversationItems.push({
-    icon: menu.eventLogOpen ? MessagesSquare : ScrollText,
-    key: "event-log",
-    label: menu.eventLogOpen ? "Back to conversation" : "Open event log",
-    onClick: actions.eventLog,
-  });
-  if (detail?.sentryConversationUrl) {
-    conversationItems.push({
-      href: detail.sentryConversationUrl,
-      icon: SentryGlyph,
-      key: "sentry",
-      label: "Open in Sentry",
-    });
-  }
-
-  const viewerItems: ConversationMenuItem[] = [];
   // A pin restores an archived conversation for everyone, so archived
   // conversations restore first.
   if (!archived) {
-    viewerItems.push({
+    actItems.push({
       // Threads and Tasks use their root's pin.
       disabled:
         !participant ||
@@ -184,7 +141,7 @@ export function useConversationMenuItems(
   }
   // A touch has no drag, so the menu reorders pins too.
   if (menu.move) {
-    viewerItems.push(
+    actItems.push(
       {
         disabled: !menu.move.up,
         icon: ArrowUp,
@@ -201,7 +158,7 @@ export function useConversationMenuItems(
       },
     );
   }
-  viewerItems.push(
+  actItems.push(
     {
       disabled: !participant,
       icon: Pencil,
@@ -209,6 +166,17 @@ export function useConversationMenuItems(
       label: "Rename",
       onClick: actions.rename,
     },
+    {
+      disabled: copy.disabled,
+      icon: copy.icon,
+      key: "copy-markdown",
+      label: copy.label,
+      onClick: () => void copy.copy(),
+      stayOpen: true,
+    },
+  );
+
+  const notifyItems: ConversationMenuItem[] = [
     {
       // Only participants have a subscription. A child uses its root's.
       disabled: detail?.subscribed === undefined || pending.subscription,
@@ -218,19 +186,58 @@ export function useConversationMenuItems(
       onClick: () => actions.subscription(!detail?.subscribed),
       toggle: true,
     },
+  ];
+  if (detail?.canContinueInSlack) {
+    notifyItems.push({
+      // The API refuses while a Turn runs.
+      disabled: Boolean(live),
+      icon: SlackIcon,
+      key: "continue-in-slack",
+      label: "Continue in Slack",
+      onClick: actions.continueInSlack,
+    });
+  }
+  // Only a viewer who can detach the conversation gets `deliveryPaused`.
+  if (detail?.deliveryPaused !== undefined) {
+    notifyItems.push({
+      disabled: pending.delivery,
+      icon: detail.deliveryPaused ? MessageSquareShare : Unlink,
+      key: "delivery",
+      label: detail.deliveryPaused ? "Reattach to Slack" : "Detach from Slack",
+      onClick: () => actions.delivery(!detail.deliveryPaused),
+      toggle: true,
+    });
+  }
+
+  const viewItems: ConversationMenuItem[] = [
     {
-      disabled: !participant || pending.archive,
-      icon: archived ? ArchiveRestore : Archive,
-      key: "archive",
-      label: pending.archive
-        ? "Saving archive state"
-        : archived
-          ? "Restore"
-          : "Archive",
-      onClick: actions.archive,
+      icon: menu.eventLogOpen ? MessagesSquare : ScrollText,
+      key: "event-log",
+      label: menu.eventLogOpen ? "Back to conversation" : "Open event log",
+      onClick: actions.eventLog,
     },
-  );
-  return [conversationItems, viewerItems];
+  ];
+  if (detail?.sentryConversationUrl) {
+    viewItems.push({
+      href: detail.sentryConversationUrl,
+      icon: SentryGlyph,
+      key: "sentry",
+      label: "Open in Sentry",
+    });
+  }
+
+  const archiveItem: ConversationMenuItem = {
+    disabled: !participant || pending.archive,
+    icon: archived ? ArchiveRestore : Archive,
+    key: "archive",
+    label: pending.archive
+      ? "Saving archive state"
+      : archived
+        ? "Restore"
+        : "Archive",
+    onClick: actions.archive,
+  };
+  return [actItems, notifyItems, viewItems, [archiveItem]];
 }
 
 function SlackIcon(props: { className?: string }) {

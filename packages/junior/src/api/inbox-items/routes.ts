@@ -21,6 +21,7 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   inboxItemTodo,
   isInboxItemForEveryone,
   isOnlyAssignee,
@@ -220,6 +221,7 @@ function inboxItemPayload(
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnInboxItem(item, viewer.id),
+    canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
       canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
     conversationIds: item.conversationIds,

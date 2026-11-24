@@ -6,14 +6,7 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import {
-  Info,
-  Maximize2,
-  MessagesSquare,
-  ScrollText,
-  Search,
-  X,
-} from "lucide-react";
+import { Info, MessagesSquare, ScrollText, Search, X } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -52,19 +45,14 @@ export function ConversationHeaderActions(props: {
   onSearchClick(): void;
   placement: "desktop" | "mobile";
   searchOpen: boolean;
-  /** Present on desktop, where Zen mode exists. */
-  zen?: { active: boolean; onToggle(): void; shortcut: string };
 }) {
   const groups = useConversationMenuItems(props.menu);
-  const { zen } = props;
   const mobile = props.placement === "mobile";
-  // The desktop header has no search button, so the menu holds search on
-  // every screen.
   // Search, details, and the app menu need the page, so the sidebar row menu
   // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
     <>
-      {!props.menu.eventLogOpen ? (
+      {mobile && !props.menu.eventLogOpen ? (
         <DropdownMenuItem
           disabled={props.disabled}
           onClick={props.onSearchClick}
@@ -75,19 +63,6 @@ export function ConversationHeaderActions(props: {
             <Search aria-hidden="true" />
           )}
           {props.searchOpen ? "Hide search" : "Search transcript"}
-        </DropdownMenuItem>
-      ) : null}
-      {zen ? (
-        <DropdownMenuItem
-          aria-label="Zen mode"
-          disabled={props.disabled}
-          onClick={zen.onToggle}
-        >
-          <Maximize2 aria-hidden="true" />
-          Zen mode
-          <kbd className="ml-auto rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
-            {zen.shortcut}
-          </kbd>
         </DropdownMenuItem>
       ) : null}
       {mobile ? (

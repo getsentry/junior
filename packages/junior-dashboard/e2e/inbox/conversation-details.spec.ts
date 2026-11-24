@@ -1,3 +1,4 @@
+import { conversationMenuRow } from "./conversationMenu";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
@@ -72,9 +73,10 @@ test.describe("new UI", () => {
     // Wide viewports open details beside the chat by default.
     await expect(details).toBeVisible();
     await expect(detailsButton).toBeHidden();
-    const costMetric = page
-      .locator('header span[tabindex="0"]')
-      .filter({ hasText: /^\$0\.03$/, visible: true });
+    // Live cost leads the details, not the header.
+    const costMetric = details
+      .locator('span[tabindex="0"]')
+      .filter({ hasText: /^\$0\.03$/ });
     await expect(costMetric).toBeVisible();
     // Tooltips open on keyboard focus, not on focus after a mouse click. A key
     // press first makes this a keyboard focus.
@@ -94,7 +96,6 @@ test.describe("new UI", () => {
     ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
     await closeDetails.click();
     await expect(details).toBeHidden();
-    await expect(costMetric).toBeVisible();
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
       origin: dashboard.baseURL,
     });
@@ -104,8 +105,9 @@ test.describe("new UI", () => {
     await expect(details).toBeVisible();
     await expect(detailsButton).toBeHidden();
     await expect(closeDetails).toBeFocused();
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
     await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
     await page.getByRole("button", { name: "Close search" }).click();
     await screenshot(page, "conversation-share-details");
@@ -183,17 +185,22 @@ test.describe("new UI", () => {
     await closeDetails.click();
     await expect(details).toBeHidden();
 
+    // A phone shows the menu as a bottom sheet.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "Conversation menu" }).click();
+    const menuSheet = page.getByRole("dialog", {
+      name: "Checkout latency triage",
+    });
     await screenshot(page, "conversation-share-menu", { view: "mobile" });
-    await page.getByRole("menuitem", { name: "Share", exact: true }).click();
+    await menuSheet.getByRole("button", { name: "Share", exact: true }).click();
     await expect(
-      page.getByRole("menuitem", { name: "Link copied" }),
+      menuSheet.getByRole("button", { name: "Link copied" }),
     ).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       conversationUrl,
     );
-    await page.getByRole("button", { name: "Close conversation menu" }).click();
+    await menuSheet.getByRole("button", { name: "Cancel" }).click();
+    await expect(menuSheet).toBeHidden();
     await page.setViewportSize({ width: 1600, height: 900 });
 
     // The summary stays available after the transcript expires.
@@ -217,52 +224,6 @@ test.describe("new UI", () => {
     // Each conversation opens with details beside the chat.
     await expect(details).toBeVisible();
     await expect(page.getByRole("note")).toContainText("Private conversation");
-  });
-
-  test("the header toggles auto archive, and details no longer show it", async ({
-    dashboard,
-    page,
-  }) => {
-    const conversationId = "slack:CQA123:1770003600.000200";
-    await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
-    );
-    const details = page.getByRole("complementary", {
-      exact: true,
-      name: "Conversation details",
-    });
-    await expect(details).toBeVisible();
-    await expect(details.getByText("Auto archive")).toHaveCount(0);
-
-    const toggle = page.getByRole("button", { name: "Auto archive" });
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
-    // Tooltips open on keyboard focus, not on focus after a mouse click.
-    await page.keyboard.press("Shift");
-    await toggle.focus();
-    await expect(page.getByRole("tooltip")).toContainText(
-      "Auto archive is off",
-    );
-
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PATCH" && request.url().endsWith("/auto-archive"),
-    );
-    await toggle.press("Enter");
-    expect((await save).postDataJSON()).toEqual({ autoArchive: true });
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("tooltip")).toContainText("Auto archive is on");
-    await screenshot(page, "conversation-header-auto-archive", {
-      lightTheme: true,
-    });
-
-    // A phone shows the toggle in the app header, beside the menu.
-    await page.setViewportSize({ height: 844, width: 390 });
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    // Touch opens no tooltip, so the help is the accessible description.
-    await expect(toggle).toHaveAccessibleDescription(/linked work is merged/);
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
   });
 
   test("shows a Watch on linked work in its linked work row", async ({
@@ -348,9 +309,7 @@ test.describe("new UI", () => {
     // A phone shows the same card in the details sheet.
     await page.setViewportSize({ height: 844, width: 390 });
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page
-      .getByRole("menuitem", { exact: true, name: "Conversation details" })
-      .click();
+    await conversationMenuRow(page, "Conversation details").click();
     const sheetHeading = page
       .getByRole("dialog", { name: "Conversation details" })
       .getByRole("heading", { name: /^To-dos/ });
@@ -409,8 +368,9 @@ test.describe("new UI", () => {
     );
 
     // A memory jump shows its Turn, even when a search hides that row.
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
     await page.getByPlaceholder("Search transcript…").fill("no such text");
     await details
       .getByRole("listitem")

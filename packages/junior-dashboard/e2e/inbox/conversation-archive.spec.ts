@@ -1,4 +1,4 @@
-import { viewAsParticipant } from "./conversationMenu";
+import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
 import type { Locator } from "@playwright/test";
 import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
@@ -245,7 +245,7 @@ test.describe("new UI", () => {
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
+    await conversationMenuRow(page, "Archive").click();
 
     const undoNotice = page
       .getByRole("region", { name: "Notifications" })

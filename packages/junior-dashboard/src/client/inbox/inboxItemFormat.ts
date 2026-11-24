@@ -115,7 +115,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
     item.status === "open" &&
     item.kind === "action" &&
     Boolean(item.request) &&
-    item.canAct &&
+    item.canAnswer &&
     !item.snoozedByViewer
   );
 }

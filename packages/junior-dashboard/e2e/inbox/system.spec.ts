@@ -526,6 +526,13 @@ test.describe("new UI", () => {
           directoryReads += 1;
         }
       });
+      // Answer the Conversation feed last, as a slow feed does. The Inbox
+      // must not read the title of each Conversation that it lacks yet.
+      await page.route("**/api/conversations?include=*", async (route) => {
+        const response = await route.fetch();
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        await route.fulfill({ response });
+      });
 
       await expectRequestBudget(
         page,

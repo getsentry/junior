@@ -21,6 +21,7 @@ const replyNotice = {
   assignees: [viewer],
   body: "The deploy finished. Checkout p95 is back to 210 ms, and the…",
   canAct: true,
+  canAnswer: true,
   canTake: false,
   conversationIds: [replyConversationId],
   createdAt: "2026-08-07T09:40:00.000Z",

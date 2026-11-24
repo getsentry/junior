@@ -44,7 +44,7 @@ test("home shows the Lead and the Conversations it started", async ({
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();
 
-  // Each started Conversation is a card with its state, Brief, and Watch.
+  // Each started Conversation is a card with its state, summary, and Watch.
   const needsYou = transcript.getByRole("article", {
     name: "Triage Sentaur GoCD deployment failures",
   });
