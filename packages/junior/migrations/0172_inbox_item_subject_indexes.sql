@@ -1,2 +1,1 @@
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_inbox_items_subject_kind_idx" ON "junior_inbox_items" USING btree ("subject_kind","status");--> statement-breakpoint
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_inbox_items_open_subject_uidx" ON "junior_inbox_items" USING btree (coalesce("provider", ''),coalesce("provider_tenant_id", ''),"subject_kind","subject_id") WHERE "junior_inbox_items"."status" = 'open';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_inbox_items_subject_kind_idx" ON "junior_inbox_items" USING btree ("subject_kind","status");

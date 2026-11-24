@@ -216,12 +216,14 @@ export async function actOnInboxItem(args: {
       nowMs,
     });
     const answered = (await getInboxItem(db, item.id)) ?? item;
-    // The linked Conversations record the answer, as for a closed item.
+    // The linked Conversations record the answer, as for a closed item. The
+    // plugin can drop the question as it changes the item, so the answer
+    // goes with the question it answers.
     await deliverInboxItemChange({
       change: reviewItemChange(action, user),
       delivery: args.delivery,
       exceptConversationId: args.exceptConversationId,
-      item: { ...answered, answer },
+      item: { ...answered, answer, request: item.request },
       nowMs,
     });
     return answered;

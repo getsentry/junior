@@ -244,12 +244,11 @@ export function createPluginInboxItems(args: {
             nowMs: Date.now(),
             userIds: [...current].filter((userId) => !kept.has(userId)),
           });
-          // A new ask on the same item pushes it to that person again.
+          // A new ask on the same item pushes it to that person again, also
+          // to a person who left it and now joins again.
           await resetInboxItemPushes(db, {
             itemId,
-            userIds: userIds.filter(
-              (userId) => askedNow.has(userId) && current.has(userId),
-            ),
+            userIds: userIds.filter((userId) => askedNow.has(userId)),
           });
         }
       } else {

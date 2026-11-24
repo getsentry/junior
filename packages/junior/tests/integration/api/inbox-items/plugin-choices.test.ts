@@ -123,6 +123,14 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
               },
             });
             watching.push(await ctx.watches.watching(watch));
+            // The plugin drops the ask that the choice answered.
+            await ctx.inboxItems.forConversation(conversationId).upsert({
+              askedIdentityIds: [],
+              assigneeIdentityIds: [],
+              body: "Deploys of `api` resume.",
+              subject,
+              title: "Deploys stopped · api",
+            });
           },
         },
       }),
@@ -203,11 +211,16 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   const messages = projectConversationMessages(
     await getConversationEventStore().loadMessageHistory(CONVERSATION_ID),
   );
-  expect(
-    messages.filter((message) =>
-      message.meta?.reviewItemChanges?.some(
-        (change) => change.kind === "submitted",
-      ),
+  const submitted = messages.filter((message) =>
+    message.meta?.reviewItemChanges?.some(
+      (change) => change.kind === "submitted",
     ),
-  ).toHaveLength(1);
+  );
+  // The plugin dropped the question, and the message still says which
+  // choice answered it.
+  expect(submitted).toEqual([
+    expect.objectContaining({
+      text: expect.stringContaining("Deploys stopped · api (choice): Resume"),
+    }),
+  ]);
 });

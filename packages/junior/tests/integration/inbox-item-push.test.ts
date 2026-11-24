@@ -409,6 +409,31 @@ describe("inbox item push", () => {
     expect(
       await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
     ).toEqual([item]);
+
+    // Ana leaves while Ben's ask keeps the item open. A new ask brings her
+    // back, and it pushes to her again.
+    await person("ben@example.com");
+    const benIdentityId = await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor("T123", "U0BEN", { email: "ben@example.com" }),
+    );
+    await items.upsert({
+      ...review,
+      askedIdentityIds: [benIdentityId!],
+      assigneeIdentityIds: [benIdentityId!],
+    });
+    expect(pushes).toHaveLength(2);
+    await items.upsert({
+      ...review,
+      assigneeIdentityIds: [identityId!, benIdentityId!],
+      title: "Review requested again · #946",
+    });
+    expect(pushes.at(-1)).toEqual(
+      expect.objectContaining({
+        tag: item!.id,
+        title: "Review requested again · #946",
+      }),
+    );
   });
 
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {
