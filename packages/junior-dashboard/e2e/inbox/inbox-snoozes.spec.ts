@@ -500,7 +500,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("option")).toHaveCount(0);
     await search.fill("composer");
     const found = page.getByRole("option", { name: /getsentry\/junior#3842/ });
-    await expect(found).toBeVisible();
+    // Shoot once the open rows have their cards, not while they wait.
+    await expect(found).not.toHaveAttribute("aria-disabled", "true");
     await screenshot(page, "inbox-snooze-event-search", {
       lightTheme: true,
       view: "desktop",
