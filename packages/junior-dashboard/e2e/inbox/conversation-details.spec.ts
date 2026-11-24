@@ -218,6 +218,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Each conversation opens with details beside the chat.
     await expect(details).toBeVisible();
     await expect(page.getByRole("note")).toContainText("Private conversation");
+    // The viewer is not a participant, so the dock says why there is no
+    // reply box.
+    await expect(
+      page.getByText("Only participants can reply to a private conversation."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Continue this conversation" }),
+    ).toHaveCount(0);
   });
 
   test("the header toggles auto archive, and details no longer show it", async ({

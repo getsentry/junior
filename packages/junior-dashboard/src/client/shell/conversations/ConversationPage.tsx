@@ -60,8 +60,8 @@ import {
 } from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
-import { ConversationPageDock } from "../../conversations/ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { ConversationDock } from "./ConversationDock";
 import {
   saveDetailsOpen,
   useDetailsStartOpen,
@@ -930,25 +930,20 @@ export function ConversationPage(props: {
             </TranscriptColumn>
           }
           dock={
-            canReply ? (
-              <div
-                className="contents"
-                onFocusCapture={engageComposer}
-                onPointerDownCapture={engageComposer}
-              >
-                <ConversationPageDock
-                  conversationId={conversationId}
-                  detail={detail}
-                  focusRequest={replyFocusRequest}
-                  hasNewerPage={Boolean(history.newer)}
-                  live={live}
-                  onFocusRequestDone={setReplyFocusDoneKey}
-                  onPinRequest={requestPin}
-                  placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
-                  ref={replyRef}
-                />
-              </div>
-            ) : undefined
+            <ConversationDock
+              canReply={canReply}
+              conversationId={conversationId}
+              detail={detail}
+              focusRequest={replyFocusRequest}
+              hasNewerPage={Boolean(history.newer)}
+              live={live}
+              onEngage={engageComposer}
+              onFocusRequestDone={setReplyFocusDoneKey}
+              onPinRequest={requestPin}
+              placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
+              ref={replyRef}
+              view={view}
+            />
           }
         />
       </ConversationSidePanelLayout>
