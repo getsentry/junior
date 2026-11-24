@@ -76,8 +76,8 @@ how the dashboard groups and acts on its rows.
   dismiss it, or wake it.
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
-- Every item has at least one assignee: a User, or Everyone. When no
-  assignee is left, the item dismisses itself.
+- An item with no assignee is up for grabs. Anyone who can see it can take
+  it or answer it.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's active Participants.
 - An item from a private Conversation stays private. Everyone means the
@@ -137,10 +137,6 @@ how the dashboard groups and acts on its rows.
 
 ## Gaps
 
-- An item can have no assignees. Junior then handles it as an item for
-  Everyone, and its Slack card says "For Everyone". Anyone who can see it
-  can answer it, and it does not dismiss itself. This breaks "every item
-  has at least one assignee" and "only an assignee answers".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
