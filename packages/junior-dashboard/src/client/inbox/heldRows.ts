@@ -15,11 +15,11 @@ export function rowPlaces(rows: readonly ConversationRow[]): RowPlaces {
 
 /**
  * Keep rows where the reader saw them while the pointer is on the list, as
- * `useHeldListOrder` does for the current UI's sidebar, so
- * a feed refresh that re-sorts them moves no row under the pointer. A held
- * row keeps its place and its time, so it stays in its section, with fresh
- * content. A row that the refresh adds takes its own place among them, and
- * a row that it removes goes.
+ * `useHeldListOrder` does for `ConversationSectionList`, so a feed refresh
+ * that re-sorts them moves no row under the pointer. A held row keeps its
+ * place and its time, so it stays in its section, with fresh content. A row
+ * that the refresh adds takes its own place among them, and a row that it
+ * removes goes.
  */
 export function heldRows(
   rows: readonly ConversationRow[],

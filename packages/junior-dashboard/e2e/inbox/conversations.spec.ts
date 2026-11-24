@@ -1,11 +1,12 @@
 import type { Page } from "@playwright/test";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
+import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+  const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 
   async function openActiveConversation(page: Page, baseURL: string) {
     await page.goto(
@@ -230,13 +231,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    await expect(
-      page
-        .getByRole("region", { exact: true, name: "Conversations" })
-        .getByRole("link", { name: /Checkout latency triage/ })
-        .first(),
-    ).toBeVisible();
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+        await expect(
+          page
+            .getByRole("region", { exact: true, name: "Conversations" })
+            .getByRole("link", { name: /Checkout latency triage/ })
+            .first(),
+        ).toBeVisible();
+      },
+      { requests: 8, serialRounds: 1 },
+    );
     expect(requests).toBe(1);
 
     // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
@@ -257,6 +264,30 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     expect(await extraFeedFetch).toBe(false);
     expect(requests).toBe(1);
+  });
+
+  test("loads a finished conversation within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    // A running Conversation polls every 2 seconds, so a slow load would
+    // count a poll. Measure a finished one, which does not poll its detail.
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(
+          `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+          { waitUntil: "networkidle" },
+        );
+        await expect(
+          page.getByRole("heading", {
+            name: "Deployment investigation failed",
+            exact: true,
+          }),
+        ).toBeVisible();
+      },
+      { requests: 11, serialRounds: 2 },
+    );
   });
 
   test("keeps cached conversation and draft available through reconnect", async ({

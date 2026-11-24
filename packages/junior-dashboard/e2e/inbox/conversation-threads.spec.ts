@@ -4,8 +4,7 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { waitForOutlineRead } from "../harness";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ROOT_ID = "internal:dashboard-qa";
   const THREAD_ID = "junior:internal:dashboard-qa:thread";
   const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
@@ -464,5 +463,41 @@ test.describe("new UI", { tag: "@new" }, () => {
       header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
+  });
+
+  test("a running row that needs input shows both", async ({
+    page,
+    dashboard,
+  }) => {
+    // An open action item reads `needs_input` while a Turn runs.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: feed.conversations.map(
+              (row: { conversationId: string }) =>
+                row.conversationId === ROOT_ID
+                  ? { ...row, status: "needs_input", turnActive: true }
+                  : row,
+            ),
+          },
+        });
+      },
+    );
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+
+    const row = page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /Dashboard QA edge cases/ }),
+      });
+    await expect(row.getByText("Needs input")).toBeVisible();
+    await expect(row.getByRole("status", { name: "Working" })).toBeVisible();
   });
 });

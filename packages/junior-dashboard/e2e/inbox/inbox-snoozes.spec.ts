@@ -53,8 +53,7 @@ const snoozePost = (page: Page) =>
       new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
   );
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {

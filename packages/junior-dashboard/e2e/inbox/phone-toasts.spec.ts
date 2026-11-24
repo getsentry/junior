@@ -2,8 +2,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { digest, license, mockInboxItems, prReady } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("phone toasts", { tag: "@new" }, () => {
+test.describe("phone toasts", () => {
   const checkout = "Investigate checkout latency";
 
   test("on a phone, a sweep's Undo works over a Conversation's composer", async ({

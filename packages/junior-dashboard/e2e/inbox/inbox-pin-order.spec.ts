@@ -3,8 +3,7 @@ import { expect, test } from "../test";
 
 // Pins in In flight keep the viewer's order: only pins drag, and a drag
 // saves that order.
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a drag in In flight moves only that pin in the stored order", async ({
     dashboard,
     page,

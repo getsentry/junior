@@ -11,8 +11,7 @@ import {
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   // One ask, so its row's Done takes the count to zero.

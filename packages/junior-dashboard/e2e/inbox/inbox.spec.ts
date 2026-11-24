@@ -16,11 +16,11 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("lists To do first, and the tab badge counts it", async ({
@@ -737,5 +737,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await expect(message).toContainText("The canary error rate is flat");
     expect(reads).toBe(1);
+  });
+
+  test("loads the Inbox within its request budget", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page);
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox`);
+        await expect(
+          page
+            .getByRole("region", { name: "To do" })
+            .getByRole("link", { name: new RegExp(checkout) }),
+        ).toBeVisible();
+      },
+      { requests: 9, serialRounds: 2 },
+    );
   });
 });

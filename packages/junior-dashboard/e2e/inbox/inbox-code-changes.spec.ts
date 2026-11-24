@@ -50,8 +50,7 @@ const conflict = {
   title: "Merge conflict · #57",
 };
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const row = (page: Page, text: string) =>
     page.locator("li[data-inbox-row]").filter({ hasText: text });
 

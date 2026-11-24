@@ -46,7 +46,6 @@
     "e2e/composer-skill-menu.spec.ts",
     "e2e/conversation-rename.spec.ts",
     "e2e/conversation-watches.spec.ts",
-    "e2e/dashboard-switch.spec.ts",
     "e2e/inbox/**/*.ts",
     "e2e/paste-text.ts",
     "e2e/person-cards.spec.ts",
@@ -61,6 +60,7 @@
     "e2e/skill-references.ts",
     "e2e/inbox-item-evidence.spec.ts",
     "e2e/conversations-outline.spec.ts",
+    "e2e/long-press.ts",
     "e2e/long-transcript-fixture.ts",
     "playwright.config.ts",
     "tsdown.client.config.ts"

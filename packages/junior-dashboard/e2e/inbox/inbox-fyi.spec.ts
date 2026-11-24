@@ -83,8 +83,7 @@ async function mockReplyTurn(page: Page, options: { fail?: boolean } = {}) {
   );
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // A pull request card, and the notices that are FYI.
 
   const card = "Pull request: Pin the release train to payments 4.2";

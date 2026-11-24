@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -24,13 +24,6 @@ async function expectEvidence(question: Locator) {
   return related;
 }
 
-async function openRelatedItem(page: Page, related: Locator) {
-  await related
-    .getByRole("link", { name: "Checkout p95 rose after payments-v42" })
-    .click();
-  await expect(page).toHaveURL(/item=qa-p95-rose/);
-}
-
 for (const view of [desktop, mobile]) {
   test(`shows a question's evidence and related items above its choices (${view.name})`, async ({
     dashboard,
@@ -51,19 +44,7 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("the Inbox question links its evidence and related items @classic", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}/review?item=qa-rollout`);
-  const related = await expectEvidence(
-    page.getByRole("region", { name: "Answer" }),
-  );
-  await openRelatedItem(page, related);
-});
-
-test("an Inbox question row links its evidence and related items @new", async ({
+test("an Inbox question row links its evidence and related items", async ({
   dashboard,
   page,
 }) => {

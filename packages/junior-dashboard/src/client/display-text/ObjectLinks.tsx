@@ -19,7 +19,6 @@ import {
 import {
   knownObjectsFromAnnotations,
   objectUrlKey,
-  textHasStandaloneUrl,
   type KnownObjects,
 } from "./knownObjects";
 import { useAnchorClass } from "./links";
@@ -103,20 +102,6 @@ export function useKnownObject(href: string | undefined): {
     card: key ? objects.get(key) : undefined,
     linkOnly: key ? links.has(key) : false,
   };
-}
-
-/**
- * Return whether display text shows the full card of the object at `url`, so
- * a surface can hide its own card for that object.
- */
-export function useTextShowsObjectCard(
-  text: string,
-  url: string | undefined,
-): boolean {
-  const { card } = useKnownObject(url);
-  return Boolean(
-    card && url && !mediaThumbnail(card) && textHasStandaloneUrl(text, url),
-  );
 }
 
 // A long title would fill a sentence. The card shows all of it.

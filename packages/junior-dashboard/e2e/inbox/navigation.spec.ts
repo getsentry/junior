@@ -10,8 +10,7 @@ import {
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const SPEND_LABEL = "Personal model spend: 7 days $0.46, 30 days $0.46";
 
   test("shows the primary destinations at the top of every desktop pane", async ({

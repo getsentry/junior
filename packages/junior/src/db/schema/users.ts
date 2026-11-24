@@ -36,14 +36,6 @@ export const juniorUsers = pgTable(
     autoArchiveGraceHours: integer("auto_archive_grace_hours")
       .notNull()
       .default(AUTO_ARCHIVE_DEFAULT_GRACE_HOURS),
-    /**
-     * Small per-user choices, such as an experiment opt-in, that can come
-     * and go without a migration. `api/user-settings.ts` owns the keys.
-     */
-    preferences: jsonb("preferences")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

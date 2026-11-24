@@ -24,7 +24,7 @@ import {
   type ConversationDrawerTarget,
 } from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
-import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
+import { ConversationHeader } from "../src/client/shell/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
   ConversationStats,
@@ -34,9 +34,9 @@ import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
-import { ConversationPage } from "../src/client/conversations/ConversationPage";
+import { ConversationPage } from "../src/client/shell/conversations/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
-import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { LocationsPageContent } from "../src/client/shell/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
 import {
@@ -424,47 +424,50 @@ describe("dashboard canonical-event components", () => {
 
   it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <ConversationHeader
-          detailsOpen={false}
-          errors={[]}
-          menu={{
-            actions: {
-              archive: () => {},
-              continueInSlack: () => {},
-              delivery: () => {},
-              eventLog: () => {},
-              pin: () => {},
-              rename: () => {},
-              subscription: () => {},
-            },
-            conversation: undefined,
-            conversationId: "conversation-1",
-            detail: undefined,
-            eventLogOpen: true,
-            pending: {
-              archive: false,
-              delivery: false,
-              pin: false,
-              subscription: false,
-            },
-          }}
-          onDetailsClick={() => {}}
-          onSearchChange={() => {}}
-          onViewChange={() => {}}
-          privacy={null}
-          search=""
-          searchMatch={{
-            count: 0,
-            index: 0,
-            reset: () => {},
-            setMatches: () => {},
-            step: () => {},
-          }}
-          title="Header QA"
-          view="raw"
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ConversationHeader
+            detailsOpen={false}
+            errors={[]}
+            lead={false}
+            menu={{
+              actions: {
+                archive: () => {},
+                continueInSlack: () => {},
+                delivery: () => {},
+                eventLog: () => {},
+                pin: () => {},
+                rename: () => {},
+                subscription: () => {},
+              },
+              conversation: undefined,
+              conversationId: "conversation-1",
+              detail: undefined,
+              eventLogOpen: true,
+              pending: {
+                archive: false,
+                delivery: false,
+                pin: false,
+                subscription: false,
+              },
+            }}
+            onDetailsClick={() => {}}
+            onSearchChange={() => {}}
+            onViewChange={() => {}}
+            privacy={null}
+            search=""
+            searchMatch={{
+              count: 0,
+              index: 0,
+              reset: () => {},
+              setMatches: () => {},
+              step: () => {},
+            }}
+            title="Header QA"
+            view="raw"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(html).toContain('title="Back to conversation"');
     expect(html).toMatch(/aria-current="page"[^>]*>Event log</);

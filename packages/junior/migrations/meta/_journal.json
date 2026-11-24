@@ -1198,6 +1198,13 @@
       "when": 1795473600618,
       "tag": "0170_code_change_conversations_index",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1795530294656,
+      "tag": "0171_drop_user_preferences",
+      "breakpoints": true
     }
   ]
 }

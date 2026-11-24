@@ -1,0 +1,1 @@
+ALTER TABLE "junior_users" DROP COLUMN "preferences";

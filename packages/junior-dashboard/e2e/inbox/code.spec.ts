@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   openRepositoryConversations,
@@ -9,10 +10,9 @@ import {
   prReview,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("the Code row opens Mine, and stays the origin of a Conversation that Code opens", async ({
     page,
     dashboard,
@@ -660,5 +660,109 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).not.toHaveURL(/[?&]state=/);
     await expect(working).toBeVisible();
     await expect(done).toBeVisible();
+  });
+
+  test.describe("the repository Conversations tab holds its order", () => {
+    /**
+     * List "Older conversation" below "Newer conversation". The returned
+     * function moves new activity to the older one, or takes it back, and
+     * moves the token that the versions poll reads.
+     */
+    async function mockMovingConversations(page: Page) {
+      const now = Date.now();
+      let moved = false;
+      const versions = {
+        conversationDetails: {},
+        conversations: "feed-1",
+        inboxItems: "items-1",
+        spend: "spend-1",
+      };
+      await page.route("**/api/versions*", (route) =>
+        route.fulfill({ json: versions }),
+      );
+      await page.route(
+        /\/api\/conversations\?.*codeRepositoryId=/,
+        async (route) => {
+          const response = await route.fetch();
+          const feed = await response.json();
+          const [first] = feed.conversations;
+          const row = (name: string, ageMs: number) => ({
+            ...first,
+            conversationId: `${first.conversationId}-${name}`,
+            displayTitle: `${name} conversation`,
+            lastSeenAt: new Date(now - ageMs).toISOString(),
+            pinnedAt: null,
+          });
+          return route.fulfill({
+            response,
+            json: {
+              ...feed,
+              conversations: [
+                row("Older", moved ? 60_000 : 180_000),
+                row("Newer", 120_000),
+              ],
+            },
+          });
+        },
+      );
+      let version = 1;
+      return (next: boolean) => {
+        moved = next;
+        version += 1;
+        versions.conversations = `feed-${version}`;
+      };
+    }
+
+    test("holds the order under the pointer and offers the new one", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.clock.install();
+      await page.setViewportSize(desktop);
+      const setMoved = await mockMovingConversations(page);
+      const list = await openRepositoryConversations(page, dashboard.baseURL);
+      const rows = list.getByRole("link", { name: /^Open \w+ conversation$/ });
+      const older = list.getByRole("link", {
+        name: "Open Older conversation",
+      });
+      const pill = page.getByRole("button", { name: "1 updated" });
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+
+      // While the pointer is on the list, the rows keep their place, and the
+      // pill offers the new order.
+      await older.hover();
+      setMoved(true);
+      // The next versions poll reads the new feed token.
+      await page.clock.fastForward(5_000);
+      await expect(pill).toBeVisible();
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+      await screenshot(page, "repository-conversations-held", {
+        lightTheme: true,
+        view: "desktop",
+      });
+
+      // The pill applies the new order.
+      await pill.click();
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Older conversation",
+      );
+      await expect(pill).toHaveCount(0);
+
+      // Leaving the list, pointer and focus both, applies the next order.
+      await older.hover();
+      setMoved(false);
+      // The next versions poll reads the new feed token.
+      await page.clock.fastForward(5_000);
+      await expect(pill).toBeVisible();
+      await page.mouse.move(5, 890);
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+      await expect(pill).toHaveCount(0);
+    });
   });
 });

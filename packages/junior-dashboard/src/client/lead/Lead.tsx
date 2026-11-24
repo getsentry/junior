@@ -1,13 +1,8 @@
 import { leadSchema } from "@sentry/junior/api/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Compass } from "lucide-react";
 import { useEffect } from "react";
-import { Link } from "react-router";
 
-import { buttonVariants } from "../components/ui/button";
 import { fetchDashboardJson } from "../http";
-import { cn } from "../styles";
-import { conversationPath } from "../conversations/conversationRoutes";
 
 const LEAD_QUERY_KEY = ["dashboard", "lead"] as const;
 
@@ -64,19 +59,4 @@ export function useLeadWatchRefresh(
       queryKey: LEAD_QUERY_KEY,
     });
   }, [lastSeq, queryClient, readSeq]);
-}
-
-/** Open the viewer's Lead from the narrow conversation list. */
-export function LeadLink() {
-  const lead = useLead();
-  if (!lead.data) return null;
-  return (
-    <Link
-      className={cn(buttonVariants({ variant: "ghost" }), "shrink-0")}
-      to={conversationPath(lead.data.conversationId)}
-    >
-      <Compass aria-hidden="true" className="size-4" strokeWidth={2} />
-      Your Lead
-    </Link>
-  );
 }

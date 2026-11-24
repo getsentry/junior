@@ -2,8 +2,7 @@ import type { Page } from "@playwright/test";
 import { waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // Link, file, and linked-work cards in comfortable Inbox rows.
 
   const checkout = "Investigate checkout latency";

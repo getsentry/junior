@@ -179,7 +179,7 @@ test.describe("checks less often while the reader is away", () => {
 
 test.describe("refreshes each Conversation on screen from its token", () => {
   test.use({ controlTimers: true });
-  test("an Inbox card shows its pull request merged when the token moves @new", async ({
+  test("an Inbox card shows its pull request merged when the token moves", async ({
     page,
     dashboard,
   }) => {
@@ -271,7 +271,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     expect(detailReads).toBe(settled + 1);
   });
 
-  test("a card whose Conversation read failed reads it again @new", async ({
+  test("a card whose Conversation read failed reads it again", async ({
     page,
     dashboard,
   }) => {

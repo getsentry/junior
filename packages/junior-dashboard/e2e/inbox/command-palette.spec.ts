@@ -9,8 +9,7 @@ import { desktop, mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 import { expectRequestBudget } from "../request-budget";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
   const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 

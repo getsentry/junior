@@ -11,8 +11,7 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   /** Show or hide Details beside the chat. A wide screen opens it at first. */

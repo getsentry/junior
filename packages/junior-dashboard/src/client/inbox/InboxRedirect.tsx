@@ -13,7 +13,7 @@ export function isOldInboxLink(search: string): boolean {
 }
 
 /**
- * Old Inbox links and the classic UI's `/inbox` and `/review` links open the list:
+ * Old Inbox links and `/review` links open the list:
  * `?bundle=` picks the matching entry, and `?item=` expands that item's
  * row, on Done when the item has closed. `?snooze=` stays, for
  * `LinkedSnoozeDialog`.

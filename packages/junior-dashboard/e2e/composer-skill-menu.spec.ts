@@ -39,7 +39,7 @@ async function routeSkills(page: Page) {
   );
 }
 
-test("shows skill details and opens SKILL.md from the composer @classic", async ({
+test("shows skill details and opens SKILL.md from the composer", async ({
   page,
   dashboard,
 }) => {
@@ -93,7 +93,7 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   });
 });
 
-test("describes the skill reference at the caret @classic", async ({
+test("describes the skill reference at the caret", async ({
   page,
   dashboard,
 }) => {
@@ -153,7 +153,7 @@ test("describes the skill reference at the caret @classic", async ({
   await expect(card).toHaveCount(0);
 });
 
-test("a skill reference in the draft is styled and stays plain text @classic", async ({
+test("a skill reference in the draft is styled and stays plain text", async ({
   page,
   dashboard,
 }) => {
@@ -211,7 +211,7 @@ test("a skill reference in the draft is styled and stays plain text @classic", a
   await readSaved;
 });
 
-test("a caret move before the skill list loads shows the card @classic", async ({
+test("a caret move before the skill list loads shows the card", async ({
   page,
   dashboard,
 }) => {
@@ -245,7 +245,7 @@ test("a caret move before the skill list loads shows the card @classic", async (
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("expands a row and opens SKILL.md from it @classic", async ({
+  test("expands a row and opens SKILL.md from it", async ({
     page,
     dashboard,
   }) => {
@@ -305,7 +305,7 @@ test.describe("on a touch screen", () => {
   });
 });
 
-test("Esc closes the menu, not the question in the transcript @classic", async ({
+test("Esc closes the menu, not the question in the transcript", async ({
   page,
   dashboard,
 }) => {
@@ -341,7 +341,7 @@ test("Esc closes the menu, not the question in the transcript @classic", async (
   await expect(question).toBeVisible();
 });
 
-test("the pane follows the pointer only after it rests on a row @classic", async ({
+test("the pane follows the pointer only after it rests on a row", async ({
   page,
   dashboard,
 }) => {
@@ -365,7 +365,7 @@ test("the pane follows the pointer only after it rests on a row @classic", async
   await expect(cell("self-update")).toHaveAttribute("aria-selected", "true");
 });
 
-test("the reply composer with Details open stays split @classic", async ({
+test("the reply composer with Details open stays split", async ({
   page,
   dashboard,
 }) => {
