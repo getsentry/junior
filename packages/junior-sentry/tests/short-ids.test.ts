@@ -6,7 +6,13 @@ const CONFIG = { org: "sentry", project: "junior" };
 function format(text: string, config: Record<string, string> = CONFIG) {
   const hook = sentryPlugin().hooks?.formatMarkdown;
   if (!hook) throw new Error("The Sentry plugin has no formatMarkdown hook");
-  return hook({ config, mention: () => undefined, platform: "slack", text });
+  return hook({
+    config,
+    mention: () => undefined,
+    objectUrl: () => undefined,
+    platform: "slack",
+    text,
+  });
 }
 
 describe("Sentry short id links", () => {

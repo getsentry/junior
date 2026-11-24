@@ -543,6 +543,8 @@ export interface PluginMarkdownFormat {
   configuration?: Record<string, unknown> | undefined;
   /** Slack mentions of known people, by lowercase `provider:handle`. */
   mentions?: ReadonlyMap<string, string> | undefined;
+  /** URLs of the Conversation's annotations, by `plugin:key`. */
+  objectUrls?: ReadonlyMap<string, string> | undefined;
   /** Where the text shows. Defaults to Slack. */
   platform?: "slack" | "web";
   /** The provider that wrote the text or that it went to. */
@@ -576,6 +578,8 @@ export function applyPluginFormatMarkdown(
       const next = hook({
         config: pluginConfigValues(plugin.manifest.name, resolved),
         mention,
+        objectUrl: (key) =>
+          format.objectUrls?.get(`${plugin.manifest.name}:${key}`),
         platform,
         ...(format.provider ? { provider: format.provider } : undefined),
         text: transformed,

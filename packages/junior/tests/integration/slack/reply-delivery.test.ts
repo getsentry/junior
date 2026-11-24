@@ -1,14 +1,19 @@
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { closeDb, getSqlExecutor } from "@/chat/db";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   type CapturedSlackApiCall,
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import {
+  BASE_MS,
+  seedConversation,
+} from "../../fixtures/conversation-retention";
 
 function markdownBody(call: CapturedSlackApiCall): string {
   const [block] = call.params["blocks"] as Array<{
@@ -357,10 +362,26 @@ describe("sendSlackReply", () => {
       providerSubjectId: "gh-requester",
       handle: "Requester",
     });
+    // The Conversation opened #12, so it knows that #12 is a pull request.
+    const conversationId = "slack:C123:1700000000.000100";
+    await seedConversation(getSqlExecutor(), {
+      conversationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#12",
+      label: "getsentry/junior#12",
+      url: "https://github.com/getsentry/junior/pull/12",
+    });
 
     await sendSlackReply({
       channelId: "C123",
-      conversationId: "slack:C123:1700000000.000100",
+      conversationId,
       formatting: {
         configuration: { "github.repo": "getsentry/junior" },
         teamId: "T123",
@@ -372,7 +393,7 @@ describe("sendSlackReply", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          text: "<@U123> fixed [getsentry/junior#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
+          text: "<@U123> fixed [getsentry/junior#12](https://github.com/getsentry/junior/pull/12). Thanks @octocat.",
         }),
       }),
     ]);
