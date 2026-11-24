@@ -76,7 +76,8 @@ function useCodeChangeSource(query: string): ComposerMenuSource {
     changes.flatMap((change) => (change.state === "open" ? change.url : [])),
   );
   const rows = changes.map((change): ComposerMenuRow => {
-    const draft = listedDraft(listedOf(change.url));
+    const listed = listedOf(change.url);
+    const draft = listedDraft(listed);
     const reference: ComposerReference = {
       kind: "code_change",
       url: change.url,
@@ -100,7 +101,9 @@ function useCodeChangeSource(query: string): ComposerMenuSource {
         />
       ),
       insertion: { reference },
-      stale,
+      // An open change goes in with its draft state, so it waits for its
+      // card.
+      stale: stale || (change.state === "open" && !listed.settled),
     };
   });
   return { pending: Boolean(query) && (stale || search.isLoading), rows };
