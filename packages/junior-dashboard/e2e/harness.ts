@@ -101,6 +101,11 @@ const BACKGROUND_READS: readonly RegExp[] = [
   /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
 ];
 
+/** Read the text that the page last copied to the clipboard. */
+export function readClipboard(page: Page): Promise<string> {
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+
 /**
  * Wait until `count` versions checks are answered, then let the page finish
  * the work that the last answer started. A test that controls timers moves
