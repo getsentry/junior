@@ -168,4 +168,34 @@ describe("a child agent asks a person", () => {
       await harness.close();
     }
   });
+
+  it("keeps the parent of an asking child from reporting completed while the answer is open", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-parent", {
+        kind: "task",
+      });
+      const grandchildId = await startThread(harness, "task-grandchild", {
+        kind: "task",
+        parentConversationId: childId,
+      });
+
+      await askInTask(harness, grandchildId, person);
+      // The `waiting` update waits out its batch window.
+      vi.setSystemTime(Date.now() + 60_000);
+      // The child takes its task and the grandchild's `waiting` update, and
+      // ends each Turn with `noReply`.
+      harness.onRun(async (run) => await finishRun(run, { noReply: {} }));
+      await harness.drain(childId);
+      harness.onRun(undefined);
+
+      // The grandchild still waits on the person, so the root gets no
+      // completed result from the child.
+      expect(await parentMessages()).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
