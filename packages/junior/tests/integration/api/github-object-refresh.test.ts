@@ -596,16 +596,18 @@ describe("GitHub pull request cache refresh", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    await sendGitHubWebhook(app, "pull_request", {
-      action: "opened",
-      pull_request: pullRequest(34, {
-        body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
-        user: { login: "junior-test[bot]" },
-      }),
-    });
+    for (const number of [34, 35]) {
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "opened",
+        pull_request: pullRequest(number, {
+          body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+          user: { login: "junior-test[bot]" },
+        }),
+      });
+    }
 
-    // A day later, the open pull request is due for its reconcile, and a
-    // finished check suite adds a patch.
+    // A day later, the open pull requests are due for their reconcile, and
+    // a finished check suite adds a patch for each.
     vi.setSystemTime(start + 24.5 * 60 * 60_000);
     await sendGitHubWebhook(app, "check_suite", {
       action: "completed",
@@ -614,12 +616,13 @@ describe("GitHub pull request cache refresh", () => {
         head_branch: "feat/object-cache",
         head_sha: "aaa111",
         id: 7002,
-        pull_requests: [{ number: 34 }],
+        pull_requests: [{ number: 34 }, { number: 35 }],
         status: "completed",
       },
     });
     vi.setSystemTime(Date.now() + 60_000);
     await runTestHeartbeat(queue, Date.now());
+    // The failed patch query does not split. Its patches wait.
     expect(operations).toEqual([
       "PullRequestHeadFacts",
       "PullRequestLifecycles",

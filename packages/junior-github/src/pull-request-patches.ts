@@ -29,7 +29,6 @@ import {
   aliasedPullRequests,
   githubCheckCounts,
   githubMergeable,
-  loadInHalves,
   pullRequestChunks,
   pullRequestHeadFactsNodeSchema,
   type PullRequestRef,
@@ -154,12 +153,13 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
 
 /**
  * Run the due patches: one query reads the merge state and checks of up
- * to 25 pull requests, and a failed query splits in halves. A patch whose
- * merge state GitHub still computes, whose read is older than its entry,
- * or whose query fails alone, waits for the next heartbeat. A patch with
- * no pull request in the answer, or out of attempts, is dropped, and its
- * entry is read again soon. A failed query is logged, not thrown, so the
- * rest of the heartbeat still runs.
+ * to 25 pull requests. A patch whose merge state GitHub still computes,
+ * whose read is older than its entry, or whose query fails, waits for the
+ * next heartbeat. A failed query does not split, so an outage costs one
+ * query per chunk. A patch with no pull request in the answer, or out of
+ * attempts, is dropped, and its entry is read again
+ * soon. A failed query is logged, not thrown, so the rest of the heartbeat
+ * still runs.
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;
@@ -184,49 +184,41 @@ export async function runGitHubPullRequestPatches(args: {
     if (!ref) dropped.push(key);
     return ref ? [{ due: [key, patch] satisfies Due, ref }] : [];
   });
-  // The queries of every chunk and of its halves share one limit.
-  const queries = pLimit(PATCH_QUERY_CONCURRENCY);
   await pLimit(PATCH_QUERY_CONCURRENCY).map(
     pullRequestChunks(reads),
-    async (chunk) =>
-      await loadInHalves({
-        failed: async ([read], error) => {
-          if (!read) return;
-          again.push(read.due);
-          args.log.error(
-            "GitHub pull request patch query failed",
-            {
-              number: read.ref.number,
-              repository: `${read.ref.owner}/${read.ref.name}`,
-            },
-            error,
-          );
-        },
-        items: chunk,
-        load: async (part) => {
-          // Answer `p<i>` is the pull request of `part[i]`.
-          const nodes = aliasedPullRequests(
-            await queries(() =>
-              args.loadHeadFacts(part.map((read) => read.ref)),
-            ),
-            part.length,
-            pullRequestHeadFactsNodeSchema,
-          );
-          for (const [index, { due: entry }] of part.entries()) {
-            const [key, patch] = entry;
-            const node = nodes[index];
-            if (!node) {
-              dropped.push(key);
-              continue;
-            }
-            const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
-            // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-            if (await writeHeadFacts(args.cache, key, node, last)) {
-              again.push(entry);
-            }
-          }
-        },
-      }),
+    async (chunk) => {
+      let response: unknown;
+      try {
+        response = await args.loadHeadFacts(chunk.map((read) => read.ref));
+      } catch (error) {
+        again.push(...chunk.map((read) => read.due));
+        args.log.error(
+          "GitHub pull request patch query failed",
+          { pullRequests: chunk.length },
+          error,
+        );
+        return;
+      }
+      // Answer `p<i>` is the pull request of `chunk[i]`.
+      const nodes = aliasedPullRequests(
+        response,
+        chunk.length,
+        pullRequestHeadFactsNodeSchema,
+      );
+      for (const [index, { due: entry }] of chunk.entries()) {
+        const [key, patch] = entry;
+        const node = nodes[index];
+        if (!node) {
+          dropped.push(key);
+          continue;
+        }
+        const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
+        // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
+        if (await writeHeadFacts(args.cache, key, node, last)) {
+          again.push(entry);
+        }
+      }
+    },
   );
   const retries = again.filter(
     ([, patch]) => patch.attempts + 1 < PATCH_MAX_ATTEMPTS,

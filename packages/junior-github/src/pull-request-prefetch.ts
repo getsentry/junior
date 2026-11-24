@@ -18,7 +18,6 @@ import {
 import {
   aliasedPullRequests,
   githubPullRequestFieldsFromNode,
-  loadInHalves,
   pullRequestCardNodeSchema,
   pullRequestChunks,
   type PullRequestRef,
@@ -99,6 +98,31 @@ async function loadChunk(
     const node = nodes[index];
     if (node) await storeCard(ctx, cacheKey(ref), node);
   });
+}
+
+// Run `load` on `items`. A failed run splits in halves, and the halves are
+// its retry, while `canSplit` allows it. A run that cannot split goes to
+// `failed`.
+async function loadInHalves<T>(args: {
+  canSplit(): boolean;
+  failed(items: T[], error: unknown): Promise<void>;
+  items: T[];
+  load(items: T[]): Promise<void>;
+}): Promise<void> {
+  try {
+    await args.load(args.items);
+  } catch (error) {
+    if (args.items.length === 1 || !args.canSplit()) {
+      await args.failed(args.items, error);
+      return;
+    }
+    const half = Math.ceil(args.items.length / 2);
+    await Promise.all(
+      [args.items.slice(0, half), args.items.slice(half)].map((items) =>
+        loadInHalves({ ...args, items }),
+      ),
+    );
+  }
 }
 
 // A chunk that fails splits in halves, and the halves are its retry. A pull
