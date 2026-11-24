@@ -56,10 +56,10 @@ Check the rows in this order. The first match decides.
   example, `messageAgent` from a private Conversation to a public one is
   denied. Together with row 4, a private Conversation writes only into
   Conversations at its own Destination.
-- One exception: a Lead may write into a public root where its person is a
-  Participant. The Lead writes there for that person, as the person could.
-  It never writes into another person's public root.
-- A Lead's `startAgent` makes a public root on its team. It runs as the
+- One exception: a Lead may write into a public root. The Lead writes there
+  for its person, as the person could. It stops and archives only the public
+  roots where its person is a Participant.
+- A Lead's `startAgent` makes a public root of its person. It runs as the
   person, and the Lead's task is its first message. The start is not
   reviewed. Action review judges the new root's own tool calls, the same
   way it judges a child agent's.

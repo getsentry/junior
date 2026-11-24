@@ -2,7 +2,7 @@ import * as z from "zod";
 import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
-import { getConversationStore } from "@/chat/db";
+import { isLeadTeamRoot } from "@/chat/agent-invocations/team";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -23,7 +23,7 @@ export const stopAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Stop an agent that you started, and every child agent that it started. Use it when its work is no longer needed or goes in the wrong direction. A stopped agent sends no result. To give it new work later, use messageAgent.",
+    "Stop an agent on your team, and every child agent that it started. Use it when its work is no longer needed or goes in the wrong direction. A stopped agent sends no result. To give it new work later, use messageAgent.",
   annotations: {
     destructiveHint: true,
     idempotentHint: true,
@@ -46,12 +46,12 @@ export const stopAgentToolDefinition = zodToolDefinition({
 
 /**
  * Create the tool that stops one agent on the team of one conversation: a
- * child agent, or a root that it started as a Lead.
+ * child agent, or for a Lead, a root of its person.
  */
 export function createStopAgentTool(
   conversationId: string,
   options: {
-    /** A Lead stops the roots that it started. */
+    /** A Lead stops the roots of its person. */
     lead?: boolean;
     queue?: ConversationWorkQueue | undefined;
   } = {},
@@ -71,7 +71,7 @@ export function createStopAgentTool(
           });
       if (!stopped) {
         throw new ToolInputError(
-          `${input.conversation_id} is not an agent that you started. Use listAgents to find its conversation_id.`,
+          `${input.conversation_id} is not an agent on your team. Use listAgents to find its conversation_id.`,
         );
       }
       return {
@@ -82,16 +82,20 @@ export function createStopAgentTool(
   });
 }
 
-// A Lead stops its root for its person, the same as the person's own stop.
+// A Lead stops a root for its person, the same as the person's own stop.
 async function stopLeadRoot(args: {
   conversationId: string;
   leadConversationId: string;
   queue: ConversationWorkQueue;
 }): Promise<{ stopped: boolean } | undefined> {
-  const root = await getConversationStore().get({
-    conversationId: args.conversationId,
-  });
-  if (root?.leadConversationId !== args.leadConversationId) return undefined;
+  if (
+    !(await isLeadTeamRoot({
+      conversationId: args.conversationId,
+      leadConversationId: args.leadConversationId,
+    }))
+  ) {
+    return undefined;
+  }
   const wasStopped =
     (await getConversationStoppedAtMs(args.conversationId)) !== undefined;
   await stopConversation({

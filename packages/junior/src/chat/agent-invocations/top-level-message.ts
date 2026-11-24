@@ -16,7 +16,8 @@ import {
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderDataTag } from "@/chat/input-tags";
-import { leadPersonParticipates } from "@/chat/lead/conversation";
+import { isLeadToRoot } from "@/chat/lead/conversation";
+import { isLeadTeamRoot } from "./team";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   enqueueAutomatedInput,
@@ -35,15 +36,14 @@ export const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
  * `policies/conversation-access.md`. Public agents can message each other.
  * A private agent can message only agents at its own Destination, such as
  * another thread in the same private Slack channel. A Lead can also message
- * a public root where its person is a Participant, so it can steer the
- * person's work.
+ * any public root, as its person could.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */
 async function requireTopLevelAgentAccess(args: {
   senderConversationId: string;
   to: string;
-}): Promise<{ fromLead: boolean }> {
+}): Promise<{ onLeadTeam: boolean }> {
   const notReachable = new AgentMessageTargetError(
     `"${args.to}" is not "${PARENT_AGENT_TARGET}", a child agent of this conversation, or a top-level agent that you can message`,
   );
@@ -77,22 +77,30 @@ async function requireTopLevelAgentAccess(args: {
     throw notReachable;
   }
   // A message writes the sender's data into the target. Private data never
-  // enters a public Conversation, except from a Lead into a root where its
-  // person takes part: the Lead writes there for that person. The target is
-  // public, so this error shows nothing private.
+  // enters a public Conversation, except from a Lead into a root: the Lead
+  // writes there for its person, as the person could. The target is public,
+  // so this error shows nothing private.
+  const fromLead = await isLeadToRoot({
+    leadConversationId: args.senderConversationId,
+    rootConversationId: args.to,
+  });
   if (
     receiver.visibility === "public" &&
     sender.visibility !== "public" &&
-    !(await leadPersonParticipates({
-      leadConversationId: args.senderConversationId,
-      rootConversationId: args.to,
-    }))
+    !fromLead
   ) {
     throw new AgentMessageTargetError(
       `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
     );
   }
-  return { fromLead: target.leadConversationId === args.senderConversationId };
+  return {
+    onLeadTeam:
+      fromLead &&
+      (await isLeadTeamRoot({
+        conversationId: args.to,
+        leadConversationId: args.senderConversationId,
+      })),
+  };
 }
 
 // Another agent wrote the text, so it is escaped data. The system prompt
@@ -117,7 +125,7 @@ function renderTopLevelMessageInput(args: {
  * wake the target. The access check runs on each call. A stopped target
  * holds the message, so once the automated-turn limit stops one of two
  * agents, they cannot keep each other running. A Lead's message to a root
- * that it started is the exception: it ends the stop. Repeat calls with the
+ * on its team is the exception: it ends the stop. Repeat calls with the
  * same `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
@@ -129,10 +137,10 @@ export async function enqueueTopLevelAgentMessage(args: {
   text: string;
   to: string;
 }): Promise<void> {
-  const { fromLead } = await requireTopLevelAgentAccess(args);
+  const { onLeadTeam } = await requireTopLevelAgentAccess(args);
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
-  if (fromLead) {
+  if (onLeadTeam) {
     await endStopForLeadMessage({
       conversationId: args.to,
       inboundMessageId,
@@ -177,7 +185,7 @@ export async function enqueueTopLevelAgentMessage(args: {
   });
 }
 
-// A Lead's message is new work for a root that it started, as a parent's
+// A Lead's message is new work for a root on its team, as a parent's
 // message is for a child, so it ends the root's stop. A replay is not new
 // work: the mailbox keeps the id, even of held input.
 async function endStopForLeadMessage(args: {

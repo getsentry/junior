@@ -127,8 +127,6 @@ describe("Lead", () => {
       await getConversationStore().get({ conversationId: started }),
     ).toMatchObject({
       kind: "root",
-      // The root is on the Lead's team. It has no parent.
-      leadConversationId: lead.conversationId,
       title: "Image cleanup",
       visibility: "public",
     });
@@ -136,7 +134,8 @@ describe("Lead", () => {
       (await getConversationStore().get({ conversationId: started }))
         ?.parentConversationId,
     ).toBeUndefined();
-    // The person is the root Actor, so they take part in the new root.
+    // The person is the root Actor, so they take part in the new root, and
+    // it is on the Lead's team. It has no parent.
     expect(
       await getDb()
         .select({ userId: juniorConversationParticipants.userId })
@@ -162,7 +161,7 @@ describe("Lead", () => {
     ).toEqual(new Map());
   });
 
-  it("lists, archives, and stops only the roots that it started", async () => {
+  it("lists, archives, and stops only the public roots of its person", async () => {
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
     const ana = await signedInViewer("lead-team@example.com");
@@ -192,6 +191,19 @@ describe("Lead", () => {
     const done = await start(lead.conversationId, "image cleanup");
     const taken = await start(lead.conversationId, "deploy check");
     const notOurs = await start(otherLead.conversationId, "other cleanup");
+    // The person started this root without the Lead.
+    const own = (
+      await createAndEnqueueConversation(
+        {
+          actor: webActorFromUser(ana),
+          idempotencyKey: "lead-team-own",
+          message: "Check the release.",
+        },
+        { queue: harness.queue, state: harness.state },
+      )
+    ).conversationId;
+    await harness.process(harness.queue.takeMessageFor(own));
+    await endTurn(own);
 
     const { agents } = (await createListAgentsTool({
       conversationId: lead.conversationId,
@@ -205,12 +217,14 @@ describe("Lead", () => {
         .sort(),
     ).toEqual(
       [
-        [done, "started"],
-        [taken, "started"],
+        [done, "person"],
+        [taken, "person"],
+        [own, "person"],
       ].sort(),
     );
 
-    // The person takes over one root after the brief.
+    // The person messages one root after the brief. The Lead acts as the
+    // person, so it can still archive it.
     await appendAndEnqueueWebMessage(
       {
         actor: webActorFromUser(ana),
@@ -233,21 +247,22 @@ describe("Lead", () => {
     ).toEqual(expect.any(Number));
     await expect(
       archive.execute!({ conversation_id: taken }, {}),
-    ).rejects.toThrow("A person messaged");
+    ).resolves.toMatchObject({ conversation_id: taken });
     await expect(
       archive.execute!({ conversation_id: notOurs }, {}),
-    ).rejects.toThrow("is not an agent that you started");
+    ).rejects.toThrow("is not an agent on your team");
 
     const stop = createStopAgentTool(lead.conversationId, {
       lead: true,
       queue: harness.queue,
     });
-    await expect(
-      stop.execute!({ conversation_id: taken }, {}),
-    ).resolves.toEqual({ conversation_id: taken, stopped: true });
+    await expect(stop.execute!({ conversation_id: own }, {})).resolves.toEqual({
+      conversation_id: own,
+      stopped: true,
+    });
     await expect(
       stop.execute!({ conversation_id: notOurs }, {}),
-    ).rejects.toThrow("is not an agent that you started");
+    ).rejects.toThrow("is not an agent on your team");
 
     // The Lead's next message is new work, so it ends the stop. A replay of
     // that message is not new work, so it does not end a later stop.
@@ -255,7 +270,7 @@ describe("Lead", () => {
       actor: webActorFromUser(ana),
       conversationId: lead.conversationId,
       destination: lead.destination!,
-      instruction: { text: "Pick the deploy check back up." },
+      instruction: { text: "Pick the release check back up." },
       source: createWebSource(lead.conversationId, "private"),
       turnId: "lead-team-steer-turn",
     };
@@ -266,17 +281,17 @@ describe("Lead", () => {
           state: harness.state,
         })!,
       ).execute!(
-        { text: "Check the deploy again.", to: taken },
+        { text: "Check the release again.", to: own },
         { toolCallId: "call-steer" },
       );
     await steer();
-    expect(await getConversationStoppedAtMs(taken)).toBeUndefined();
-    await stop.execute!({ conversation_id: taken }, {});
+    expect(await getConversationStoppedAtMs(own)).toBeUndefined();
+    await stop.execute!({ conversation_id: own }, {});
     await steer();
-    expect(await getConversationStoppedAtMs(taken)).toEqual(expect.any(Number));
+    expect(await getConversationStoppedAtMs(own)).toEqual(expect.any(Number));
   });
 
-  it("finds and steers only the public roots that its person takes part in", async () => {
+  it("finds and steers any public root, its person's first", async () => {
     const runner = readRunsAgentRunner();
     const { queue, state } = await createConversationWorkHarness(
       runner.agentRunner,
@@ -341,9 +356,12 @@ describe("Lead", () => {
       conversation_id: anaWork.conversationId,
       delivery: "queued",
     });
-    await expect(send(boWork.conversationId, "call-bo")).rejects.toThrow(
-      "is a public conversation and this conversation is private",
-    );
+    // The Lead writes for its person, as the person could, also into a
+    // root that its person does not take part in.
+    await expect(send(boWork.conversationId, "call-bo")).resolves.toEqual({
+      conversation_id: boWork.conversationId,
+      delivery: "queued",
+    });
 
     // A root from an older deploy has no kind and still counts as a root.
     await getDb()

@@ -2,5 +2,5 @@
 export const AGENTS_TOOL_SOURCE = {
   id: "agents",
   description:
-    "Find your team or any conversation that you may read, or stop or archive an agent that you started.",
+    "Find your team or any conversation that you may read, or stop or archive an agent on your team.",
 } as const;

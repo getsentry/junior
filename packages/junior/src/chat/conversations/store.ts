@@ -87,11 +87,6 @@ export interface Conversation {
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
-  /**
-   * Immutable Lead that started this root. The root is on its team, not its
-   * child: it has no parent.
-   */
-  leadConversationId?: string;
   /** Immutable root of the Conversation tree, read from storage. */
   rootConversationId?: string;
   /**
@@ -226,8 +221,6 @@ export interface ConversationStore {
      * keeps its kind.
      */
     kind?: TopLevelConversationKind;
-    /** Lead that starts a new root. An existing Conversation keeps its own. */
-    leadConversationId?: string | undefined;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved

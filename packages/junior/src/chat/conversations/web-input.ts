@@ -75,8 +75,8 @@ export interface AppendWebMessageInput {
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
-  /** Applied only when this call creates the conversation root. */
-  rootLeadConversationId?: string;
+  /** A Lead wrote this Message for its person, as the brief of a root. */
+  fromLead?: true;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -178,6 +178,8 @@ export function buildWebInboundMessage(args: {
   delivery?: InboundMessageDelivery | undefined;
   /** Existing Conversation Destination. A child's work keeps none. */
   destination?: Destination | undefined;
+  /** A Lead wrote this Message for its person. */
+  fromLead?: true;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
@@ -216,6 +218,7 @@ export function buildWebInboundMessage(args: {
         : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
+        ...(args.fromLead && { fromLead: true }),
         ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
         authorUserId: args.actor.userId,
         ...(args.actor.userName && { authorUserName: args.actor.userName }),
@@ -249,8 +252,6 @@ export async function recordWebConversationActivity(args: {
   rootVisibility?: ConversationPrivacy;
   /** Applied only when this call creates the Conversation root. */
   rootKind?: TopLevelConversationKind;
-  /** Applied only when this call creates the Conversation root. */
-  rootLeadConversationId?: string;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -279,9 +280,6 @@ export async function recordWebConversationActivity(args: {
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
     ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
-    ...(isNewRoot && args.rootLeadConversationId
-      ? { leadConversationId: args.rootLeadConversationId }
-      : undefined),
   });
   return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }
@@ -344,9 +342,6 @@ export async function appendAndEnqueueWebMessage(
     nowMs,
     ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
-    ...(input.rootLeadConversationId && {
-      rootLeadConversationId: input.rootLeadConversationId,
-    }),
   });
   let attachments: MessageAttachment[] = [];
   if (input.uploads?.length) {
@@ -376,6 +371,7 @@ export async function appendAndEnqueueWebMessage(
         conversationId: input.conversationId,
         delivery: input.delivery,
         destination,
+        ...(input.fromLead && { fromLead: input.fromLead }),
         message: text,
         attachments,
         messageId,

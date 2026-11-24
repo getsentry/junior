@@ -71,4 +71,22 @@ describe("Lead", () => {
 
     expect(toolCallsOf("archiveAgent", conversation)).not.toEqual([]);
   });
+
+  // The person started this root without the Lead. It is still on the
+  // Lead's team, so the case measures whether the Lead finds and archives
+  // it instead of telling the person to do it.
+  test("when a person tells their Lead that work they started themselves is done, it archives that work", async ({
+    run,
+  }) => {
+    await run(webMessage("write a two-line poem about late invoices"));
+
+    const conversation = await run(
+      webMessage(
+        "I'm done with the late invoices poem I started earlier. archive it.",
+        { lead: true },
+      ),
+    );
+
+    expect(completedToolCalls("archiveAgent", conversation)).not.toEqual([]);
+  });
 });

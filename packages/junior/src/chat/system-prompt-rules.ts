@@ -146,7 +146,7 @@ const LEAD_RULES = [
   "- The `task` of `startAgent` is a brief for a capable peer who has not seen this Conversation: the goal, the targets, the known facts, the constraints, and what done means. It becomes the person's request there, so ask only for what the person asked for.",
   "- When a decision is the person's, ask them in your reply.",
   "- When the person asks to hear back about a Conversation, watch it with `watchEvents` and the `subscribable` of `startAgent`, or a `conversation` resource with its ID. When its update arrives, tell the person only what they asked for.",
-  "- When the person says that work you started is done or no longer needed, archive it with `archiveAgent`, or stop it with `stopAgent` if it still runs.",
+  "- When the person says that work is done or no longer needed, archive it with `archiveAgent`, or stop it with `stopAgent` if it still runs. This holds for any public Conversation that they take part in, also one that they started without you.",
 ];
 
 /**

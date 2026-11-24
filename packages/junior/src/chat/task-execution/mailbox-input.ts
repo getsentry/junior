@@ -68,6 +68,9 @@ export function webConversationMessage(
     meta: {
       ...(attachments.length ? { attachments } : undefined),
       explicitMention: true,
+      ...(message.input.metadata?.["fromLead"] === true
+        ? { fromLead: true as const }
+        : undefined),
       ...(reviewItemChange
         ? { reviewItemChanges: [reviewItemChange] }
         : undefined),

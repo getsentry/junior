@@ -41,7 +41,7 @@ const AGENT_RELATIONS = [
   "parent",
   "child",
   "sibling",
-  "started",
+  "person",
   "other",
 ] as const;
 type AgentRelation = (typeof AGENT_RELATIONS)[number];
@@ -99,7 +99,7 @@ const listedAgentSchema = z
     relation: z
       .enum(AGENT_RELATIONS)
       .describe(
-        "self: this conversation. parent: the agent that started it. child: a child agent that it started. sibling: another child of its parent. started: a root that this Lead started. other: a search match outside your team.",
+        "self: this conversation. parent: the agent that started it. child: a child agent that it started. sibling: another child of its parent. person: for a Lead, a root that its person takes part in. other: a search match outside your team.",
       ),
     conversation_id: z
       .string()
@@ -216,7 +216,7 @@ function listedChildAgent(
 function listedLeadRoot(root: LeadRoot): ListedAgent {
   const url = getDashboardConversationLink(root.conversationId);
   return {
-    relation: "started",
+    relation: "person",
     conversation_id: root.conversationId,
     status: conversationAgentStatus(
       root.status,
@@ -249,7 +249,7 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
   agents: z
     .array(listedAgentSchema)
     .describe(
-      "Without a query: this conversation, its parent, its child agents, the roots it started, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations your person takes part in.",
+      "Without a query: this conversation, its parent, its child agents, for a Lead the roots of its person, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations your person takes part in.",
     ),
 });
 
@@ -258,7 +258,7 @@ export const listAgentsToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "List your team, with the state recorded by the runtime: the agents you started and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.",
+    "List your team, with the state recorded by the runtime: the agents you started, for a Lead the roots that its person takes part in, and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -284,7 +284,7 @@ export const listAgentsToolDefinition = zodToolDefinition({
 
 /**
  * Create the read-only tool that lists the team of one conversation: its
- * child agents, the roots that it started as a Lead, and, for a child agent,
+ * child agents, the roots of its person as a Lead, and, for a child agent,
  * itself, its parent, and its siblings. A query searches every
  * conversation that it may find, its team first.
  */
@@ -334,14 +334,14 @@ export function createListAgentsTool(
 
 type TeamContext = {
   conversationId: string;
-  /** A Lead lists the roots that it started. */
+  /** A Lead lists the roots of its person. */
   lead?: boolean;
   parentConversationId?: string | undefined;
 };
 
 /**
  * List the team of one conversation: itself and its parent for a child
- * agent, its child agents, the roots that it started as a Lead, then its
+ * agent, its child agents, the roots of its person as a Lead, then its
  * siblings.
  */
 async function listTeam(context: TeamContext): Promise<ListedAgent[]> {

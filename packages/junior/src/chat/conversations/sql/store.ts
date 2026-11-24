@@ -209,9 +209,6 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.leadConversationId
-      ? { leadConversationId: row.leadConversationId }
-      : undefined),
     ...(row.rootConversationId
       ? { rootConversationId: row.rootConversationId }
       : undefined),
@@ -243,7 +240,6 @@ function emptyConversation(args: {
   conversationId: string;
   destination?: Destination | undefined;
   kind?: TopLevelConversationKind | undefined;
-  leadConversationId?: string | undefined;
   nowMs: number;
   source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
@@ -253,9 +249,6 @@ function emptyConversation(args: {
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
     kind: args.kind ?? "root",
-    ...(args.leadConversationId
-      ? { leadConversationId: args.leadConversationId }
-      : undefined),
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -401,7 +394,6 @@ export class SqlStore implements ConversationStore {
     title?: string;
     visibility?: ConversationPrivacy;
     kind?: TopLevelConversationKind;
-    leadConversationId?: string | undefined;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -423,7 +415,6 @@ export class SqlStore implements ConversationStore {
           conversationId: args.conversationId,
           destination: args.destination,
           kind: args.kind,
-          leadConversationId: args.leadConversationId,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -814,7 +805,6 @@ export class SqlStore implements ConversationStore {
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
-        leadConversationId: conversation.leadConversationId ?? null,
         kind: conversation.kind,
         rootConversationId,
       })
@@ -843,8 +833,6 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
-          // Set once at create, like the parent.
-          leadConversationId: sql`coalesce(${juniorConversations.leadConversationId}, excluded.lead_conversation_id)`,
           detailVersion: nextDetailVersion,
         },
       })

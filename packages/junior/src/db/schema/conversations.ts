@@ -103,13 +103,6 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
       { onDelete: "set null" },
     ),
-    // The Lead that started this root: the root is on the Lead's team, so the
-    // Lead can list, stop, and archive it. It is not a parent: the root has
-    // no parent and its own tree. Set once at create.
-    leadConversationId: text("lead_conversation_id").references(
-      (): AnyPgColumn => juniorConversations.conversationId,
-      { onDelete: "set null" },
-    ),
     // Set while a fork is a Quick question that nobody kept. Lists and search
     // hide it. Keep as fork clears it.
     quickQuestionAt: timestamptz("quick_question_at"),
@@ -173,10 +166,6 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
-    // The roots that one Lead started.
-    index("junior_conversations_lead_idx")
-      .on(table.leadConversationId)
-      .where(sql`${table.leadConversationId} is not null`),
     // One lead per Identity. Only web creates a lead, so its root Actor is
     // the web Identity of its User.
     uniqueIndex("junior_conversations_lead_actor_idx")

@@ -28,7 +28,7 @@ import {
 } from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
-  isLeadBriefTurn,
+  isLeadBrief,
   leadBriefProvenance,
 } from "@/chat/lead/start-conversation";
 import {
@@ -201,6 +201,9 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
+    // The brief of a root that a Lead started is the person's request, but
+    // not a Message that the person wrote.
+    let fromLead = false;
     // A parent agent's task or message. On resume, its saved author says so.
     let fromParent =
       resolved.kind === "mailbox" &&
@@ -246,6 +249,7 @@ export function createConversationTurnWorker(
       );
       authorIdentityId = sharedAuthorIdentityId(messages);
       turnInputFacts = first;
+      fromLead = isLeadBrief(webInputMessages);
     } else {
       turnId = resolved.turnId;
     }
@@ -309,6 +313,7 @@ export function createConversationTurnWorker(
       attachments = turnInputs.flatMap(
         (message) => message.meta?.attachments ?? [],
       );
+      fromLead = isLeadBrief(turnInputs);
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = turnInputs.map((message) => message.id);
     }
@@ -318,15 +323,6 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
-    // The brief of a root that a Lead started is the person's request, but
-    // not a Message that the person wrote.
-    const fromLead = storedConversation
-      ? await isLeadBriefTurn({
-          actor,
-          conversation: storedConversation,
-          inputMessageIds,
-        })
-      : false;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
     const instructionActor = instructionActorFor(actor);
@@ -482,11 +478,7 @@ export function createConversationTurnWorker(
               index === 0
                 ? {
                     ...message,
-                    meta: {
-                      ...message.meta,
-                      ...(fromLead ? { fromLead: true as const } : undefined),
-                      replied: false,
-                    },
+                    meta: { ...message.meta, replied: false },
                   }
                 : message,
             );

@@ -2,7 +2,7 @@ import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
 import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
-import { readLastLeadWorkAtMs } from "@/chat/agent-invocations/team";
+import { isLeadTeamRoot } from "@/chat/agent-invocations/team";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -28,7 +28,7 @@ export const archiveAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Archive an agent that you started, for everyone, when its work is done. A person's new message restores it. A result does not mean that people are done with it: people message a Thread or a root directly, and you do not see those messages. The archive fails when a person messaged it since you last gave it work: that person decides, and can archive it from its url.",
+    "Archive an agent on your team, for everyone, when its work is done. A person's new message restores it. A result does not mean that people are done with it: people message a Thread or a root directly, and you do not see those messages. A child agent's archive fails when a person messaged it since you last gave it work: that person decides, and can archive it from its url.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -58,7 +58,7 @@ export const archiveAgentToolDefinition = zodToolDefinition({
 
 /**
  * Create the tool that archives one agent on the team of one conversation:
- * a child agent of any kind, or a root that it started as a Lead.
+ * a child agent of any kind, or for a Lead, a root of its person.
  */
 export function createArchiveAgentTool(conversationId: string) {
   return zodTool({
@@ -69,9 +69,16 @@ export function createArchiveAgentTool(conversationId: string) {
         conversationId: agentConversationId,
       });
       const isChild = agent?.parentConversationId === conversationId;
-      if (!agent || (!isChild && agent.leadConversationId !== conversationId)) {
+      if (
+        !agent ||
+        (!isChild &&
+          !(await isLeadTeamRoot({
+            conversationId: agentConversationId,
+            leadConversationId: conversationId,
+          })))
+      ) {
         throw new ToolInputError(
-          `${agentConversationId} is not an agent that you started. Use listAgents to find its conversation_id.`,
+          `${agentConversationId} is not an agent on your team. Use listAgents to find its conversation_id.`,
         );
       }
       if (agent.archivedAtMs !== undefined) {
@@ -91,24 +98,21 @@ export function createArchiveAgentTool(conversationId: string) {
           `${agentConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
-      // A person who messaged the agent since this conversation last gave
-      // it work took it over, so only people archive it from then on. A
-      // Lead's brief is not a person's message.
-      const personMessageAt =
-        await readLastPersonMessageAtMs(agentConversationId);
-      const lastWorkAt = isChild
-        ? await readLastParentMessageAtMs(agentConversationId)
-        : await readLastLeadWorkAtMs({
-            leadConversationId: conversationId,
-            rootConversationId: agentConversationId,
-          });
-      if (
-        personMessageAt !== undefined &&
-        personMessageAt > (lastWorkAt ?? 0)
-      ) {
-        throw new ToolInputError(
-          `A person messaged ${agentConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
-        );
+      // A person who messaged a child agent since its parent last gave it
+      // work took it over, so only people archive it from then on. A Lead
+      // archives a root as its person could.
+      if (isChild) {
+        const personMessageAt =
+          await readLastPersonMessageAtMs(agentConversationId);
+        const lastWorkAt = await readLastParentMessageAtMs(agentConversationId);
+        if (
+          personMessageAt !== undefined &&
+          personMessageAt > (lastWorkAt ?? 0)
+        ) {
+          throw new ToolInputError(
+            `A person messaged ${agentConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
+          );
+        }
       }
       const result = await setConversationArchive({
         applyToChildren: input.apply_to_children ?? false,

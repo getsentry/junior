@@ -112,8 +112,8 @@ export interface ConversationSearch {
   rootsOnly: boolean;
   /**
    * Also search the requester's own tree, except the requester, and rank
-   * its team first: its own tree and the roots that it started as a Lead.
-   * Then rank the Conversations of its person.
+   * it first. Then rank the Conversations of its person, which are the team
+   * of a Lead.
    */
   team?: { personUserId?: string | undefined };
   /** Only Conversations whose root has this User as a Participant. */
@@ -257,7 +257,7 @@ export async function searchConversations(
   const teamRank = team
     ? [
         desc(
-          sql`case when ${ownTree} or ${conversations.leadConversationId} = ${requesterConversationId} then 2 when ${team.personUserId ? participates(team.personUserId) : sql`false`} then 1 else 0 end`,
+          sql`case when ${ownTree} then 2 when ${team.personUserId ? participates(team.personUserId) : sql`false`} then 1 else 0 end`,
         ),
       ]
     : [];

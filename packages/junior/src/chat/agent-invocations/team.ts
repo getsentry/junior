@@ -1,18 +1,86 @@
 /**
- * The roots that a Lead started are on its team, next to the child agents
- * of other agents (`design/agent-teams.md`). A root stores its Lead, not a
- * parent: it has no parent, and it runs as the Lead's person.
+ * A Lead acts as its person, so its team is every public root where its
+ * person is a Participant, next to the child agents of other agents
+ * (`design/agent-teams.md`). A root has no parent and stores no link to the
+ * Lead: the Lead manages it as its person could.
  */
 import { and, desc, eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { conversationKindSql } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "./top-level-message";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorDestinations,
+  juniorIdentities,
+} from "@/db/schema";
 
 /** Bound the roots that one listing reads, like child agents. */
 const LEAD_ROOT_LIST_LIMIT = 200;
 
-/** One root that a Lead started. */
+// Public roots where the person of the Lead is a Participant. The Lead may
+// read only public roots (`policies/conversation-access.md`).
+function leadTeamRoots(leadConversationId: string) {
+  const lead = alias(juniorConversations, "lead");
+  return getSqlExecutor()
+    .db()
+    .select({
+      archivedAt: juniorConversations.archivedAt,
+      conversationId: juniorConversations.conversationId,
+      executionUpdatedAt: juniorConversations.executionUpdatedAt,
+      status: juniorConversations.executionStatus,
+      stoppedAt: juniorConversations.stoppedAt,
+      title: juniorConversations.title,
+      updatedAt: juniorConversations.updatedAt,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorDestinations,
+      and(
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+        eq(juniorDestinations.visibility, "public"),
+      ),
+    )
+    .innerJoin(
+      juniorConversationParticipants,
+      eq(
+        juniorConversationParticipants.rootConversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.userId, juniorConversationParticipants.userId),
+    )
+    .innerJoin(
+      lead,
+      and(
+        eq(lead.actorIdentityId, juniorIdentities.id),
+        eq(lead.conversationId, leadConversationId),
+        eq(lead.kind, "lead"),
+      ),
+    )
+    .$dynamic();
+}
+
+// Rows from older deploys have no kind; decode them like other readers.
+const isRoot = eq(conversationKindSql(juniorConversations), "root");
+
+/** Return whether a root is on the team of one Lead. */
+export async function isLeadTeamRoot(args: {
+  conversationId: string;
+  leadConversationId: string;
+}): Promise<boolean> {
+  const [row] = await leadTeamRoots(args.leadConversationId)
+    .where(
+      and(eq(juniorConversations.conversationId, args.conversationId), isRoot),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/** One root on the team of a Lead. */
 export type LeadRoot = {
   archivedAtMs?: number;
   conversationId: string;
@@ -22,24 +90,13 @@ export type LeadRoot = {
   updatedAtMs: number;
 };
 
-/** List the roots that one Lead started, with the newest activity first. */
+/** List the roots on the team of one Lead, with the newest activity first. */
 export async function listLeadRoots(
   leadConversationId: string,
 ): Promise<LeadRoot[]> {
   const updatedAt = sql<Date>`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
-  const rows = await getSqlExecutor()
-    .db()
-    .select({
-      archivedAt: juniorConversations.archivedAt,
-      conversationId: juniorConversations.conversationId,
-      status: juniorConversations.executionStatus,
-      stoppedAt: juniorConversations.stoppedAt,
-      title: juniorConversations.title,
-      updatedAt: juniorConversations.updatedAt,
-      executionUpdatedAt: juniorConversations.executionUpdatedAt,
-    })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.leadConversationId, leadConversationId))
+  const rows = await leadTeamRoots(leadConversationId)
+    .where(isRoot)
     .orderBy(desc(updatedAt))
     .limit(LEAD_ROOT_LIST_LIMIT);
   return rows.map((row) => ({
@@ -52,29 +109,4 @@ export async function listLeadRoots(
     ...(row.title ? { title: row.title } : undefined),
     updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
   }));
-}
-
-/**
- * Read when a Lead last gave one of its roots work: its brief, or its
- * latest message. The brief is the root's first Message.
- */
-export async function readLastLeadWorkAtMs(args: {
-  leadConversationId: string;
-  rootConversationId: string;
-}): Promise<number | undefined> {
-  const payload = juniorConversationEvents.payload;
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ createdAt: juniorConversationEvents.createdAt })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, args.rootConversationId),
-        eq(juniorConversationEvents.type, "message"),
-        sql`((${payload}->'meta'->>'fromLead') = 'true' or ((${payload}->'meta'->>'eventType') = ${TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE} and (${payload}->'meta'->>'eventIdentifier') = ${args.leadConversationId}))`,
-      ),
-    )
-    .orderBy(desc(juniorConversationEvents.createdAt))
-    .limit(1);
-  return row?.createdAt.getTime();
 }
