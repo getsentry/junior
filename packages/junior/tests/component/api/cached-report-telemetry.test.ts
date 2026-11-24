@@ -37,6 +37,8 @@ describe("cached report telemetry", () => {
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
     const background = createWaitUntilCollector();
     const readReport = createCachedReport({
+      freshMs: 5 * 60_000,
+      keepMs: 60 * 60_000,
       key: "telemetry-test-report",
       read: async () => ({ count: 1 }),
       refreshFailedEvent: "telemetry_test_report.refresh.failed",
