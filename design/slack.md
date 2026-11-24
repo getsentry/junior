@@ -14,14 +14,6 @@ channels for context.
   organization, so that its messages are context for work elsewhere. It
   takes no requests there.
 
-## Entry points
-
-- Slack: a DM, or `@jr` in a channel thread. After Junior replies in a
-  thread, later replies there need no mention.
-- Slack: a channel-message Automation ([Automations](./automations.md)).
-- Slack: a link to a message or thread in another channel, which Junior
-  reads.
-
 ## Rules
 
 - In a channel shared with another organization, no message starts a Turn

@@ -4,6 +4,7 @@ import {
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
+  type ObjectLinkPrefetchOutcome,
   type ObjectType,
   type OwnedObjectAnnotation,
   type PluginRegistration,
@@ -90,8 +91,13 @@ function coreLinkTypes(): ObjectLinkType[] {
   ];
 }
 
-function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
+function objectLinkContext(
+  name: string,
+  viewer: User,
+  prefetched?: ObjectLinkPrefetchOutcome,
+): ObjectLinkContext {
   return {
+    ...(prefetched ? { prefetchOutcome: prefetched } : undefined),
     cache: createPluginCache(name),
     db: getDb(),
     egress: createPluginEgress({
@@ -119,14 +125,21 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
 function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
   return (plugin.objectLinks ?? []).map((link) => ({
-    canView: (viewer, url) =>
-      link.canView(objectLinkContext(name, viewer), url),
+    ...(link.cacheCards === false ? { cacheCards: false } : undefined),
+    canView: (viewer, url, prefetched) =>
+      link.canView(objectLinkContext(name, viewer, prefetched), url),
     filters: link.filters,
     objectTypes: link.objectTypes,
     owner: name,
+    ...(link.prefetch
+      ? {
+          prefetch: async (viewer: User, urls: URL[]) =>
+            await link.prefetch?.(objectLinkContext(name, viewer), urls),
+        }
+      : undefined),
     readTool: link.readTool,
-    resolve: (viewer, url) =>
-      link.resolve(objectLinkContext(name, viewer), url),
+    resolve: (viewer, url, prefetched) =>
+      link.resolve(objectLinkContext(name, viewer, prefetched), url),
     ...(link.webPageFallback ? { webPageFallback: true } : undefined),
   }));
 }
@@ -168,14 +181,15 @@ async function resolveWithLinkType(
   linkType: ObjectLinkType,
   viewer: User,
   url: URL,
+  prefetched?: ObjectLinkPrefetchOutcome,
 ): Promise<ResolvedObjectLink | null> {
-  if (!(await linkType.canView(viewer, url))) {
+  if (!(await linkType.canView(viewer, url, prefetched))) {
     // The web page card reads only what anyone can read signed out.
     return linkType.webPageFallback
       ? await resolveWithLinkType(webPageLinkType(), viewer, url)
       : null;
   }
-  const resolved = await linkType.resolve(viewer, url);
+  const resolved = await linkType.resolve(viewer, url, prefetched);
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
   if (!linkType.objectTypes.includes(object.objectType)) {
@@ -225,6 +239,38 @@ export async function viewerCanViewPluginLink(
   );
 }
 
+// Each link type loads its URLs in one call, so a page of cards does not
+// read the provider once per card. A failed prefetch only costs the
+// per-card reads. Returns the outcome of each URL that its link type
+// reported, for that URL's own resolve.
+async function prefetchLinks(
+  viewer: User,
+  links: ReadonlyArray<{ linkType: ObjectLinkType; parsed: URL }>,
+): Promise<
+  Map<ObjectLinkType, ReadonlyMap<string, ObjectLinkPrefetchOutcome>>
+> {
+  const byType = new Map<ObjectLinkType, URL[]>();
+  for (const { linkType, parsed } of links) {
+    if (linkType.prefetch)
+      byType.set(linkType, [...(byType.get(linkType) ?? []), parsed]);
+  }
+  const outcomes = new Map<
+    ObjectLinkType,
+    ReadonlyMap<string, ObjectLinkPrefetchOutcome>
+  >();
+  await mapBounded(byType, async ([linkType, typeUrls]) => {
+    try {
+      const typeOutcomes = await linkType.prefetch?.(viewer, typeUrls);
+      if (typeOutcomes) outcomes.set(linkType, typeOutcomes);
+    } catch (error) {
+      logException(error, "object_link.prefetch.failed", {
+        "app.plugin.name": linkType.owner,
+      });
+    }
+  });
+  return outcomes;
+}
+
 /**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
@@ -236,14 +282,24 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
-  const results = await mapBounded([...new Set(urls)], async (url) => {
+  const links = [...new Set(urls)].flatMap((url) => {
     const parsed = URL.canParse(url) ? new URL(url) : undefined;
     const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-    if (!parsed || !linkType) return [];
+    return parsed && linkType ? [{ linkType, parsed, url }] : [];
+  });
+  const prefetched = await prefetchLinks(viewer, links);
+  const results = await mapBounded(links, async ({ linkType, parsed, url }) => {
     // Each viewer has their own entry: a card holds only what they see.
     const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
     const resolve = async () =>
-      (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
+      (
+        await resolveWithLinkType(
+          linkType,
+          viewer,
+          parsed,
+          prefetched.get(linkType)?.get(parsed.href),
+        )
+      )?.object ?? null;
     try {
       const object =
         linkType.cacheCards === false

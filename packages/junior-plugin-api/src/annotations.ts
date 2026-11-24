@@ -1,7 +1,6 @@
 import * as z from "zod";
 import type { PluginContext } from "./context";
 import { objectAnnotationSchema } from "./object-annotations";
-import { codeChangeSizeSchema } from "./object-facts";
 import { objectTypeSchema } from "./object-presentation";
 
 function usesHttpProtocol(value: string): boolean {
@@ -85,8 +84,6 @@ export const conversationSidebarAnnotationSchema = z
     title: z.string().trim().min(1).max(512).optional(),
     url: httpUrlSchema.optional(),
     imageUrl: httpUrlSchema.optional(),
-    /** A code change's size, so a card can show it without a live read. */
-    size: codeChangeSizeSchema.optional(),
   })
   .strict();
 export type ConversationSidebarAnnotation = z.output<

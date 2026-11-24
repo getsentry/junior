@@ -120,9 +120,14 @@ wait_for_idle_cpu() {
   done
 }
 
+# The newest iOS runtime that can run the device type. Xcode can also ship a
+# runtime for only one new model, such as iOS-27-2-iPhone19-4.
 latest_runtime() {
-  xcrun simctl list runtimes -j |
-    jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | sort_by(.version) | last | .identifier'
+  local runtimes
+  runtimes="$(xcrun simctl list runtimes -j)"
+  jq -er --arg device "$device_type" '[.runtimes[] | select(.platform == "iOS" and .isAvailable)
+    | select(any(.supportedDeviceTypes[]; .identifier == $device or .name == $device))]
+    | sort_by(.version) | last | .identifier' <<<"$runtimes"
 }
 
 boot_device() {
@@ -133,7 +138,9 @@ boot_device() {
     reused_appearance="$(xcrun simctl ui "$udid" appearance)"
     return
   fi
-  udid="$(xcrun simctl create "$device_prefix-$$" "$device_type" "$(latest_runtime)")"
+  local runtime
+  runtime="$(latest_runtime)" || { log "no available iOS runtime supports $device_type"; exit 1; }
+  udid="$(xcrun simctl create "$device_prefix-$$" "$device_type" "$runtime")"
   log "created $udid"
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b >/dev/null

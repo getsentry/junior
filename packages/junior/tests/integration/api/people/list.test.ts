@@ -8,6 +8,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import {
   expectNoFullScan,
+  expectPlanCost,
   expectSqlBudget,
   measureSql,
 } from "../../../fixtures/sql-budget";
@@ -30,21 +31,25 @@ describe("people list API", () => {
 
     try {
       await migrateSchema(fixture.sql);
-      const uncached = await measureSql(readPeople);
+      // Concurrent requests with no cached list read it once between them.
+      const uncached = await measureSql(() =>
+        Promise.all([readPeople(), readPeople()]),
+      );
       expect(uncached.sql.statements).toBe(4);
-      const first = uncached.result;
+      const [first, second] = uncached.result;
       expect(first.people).toEqual([]);
+      expect(second).toEqual(first);
 
       await seedPeople(fixture);
-      vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
+      vi.setSystemTime(new Date("2026-06-15T12:14:00.000Z"));
       const fresh = await measureSql(readPeople);
       expect(fresh.sql.statements).toBe(0);
       expect(fresh.result).toEqual(first);
       expect(background.pendingCount()).toBe(0);
 
-      // A stale list is served at once. Concurrent requests start one
-      // refresh between them.
-      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      // A list from days ago is still served at once. Concurrent requests
+      // start one refresh between them.
+      vi.setSystemTime(new Date("2026-06-18T09:00:00.000Z"));
       const stale = await measureSql(async () => {
         const reports = await Promise.all([readPeople(), readPeople()]);
         expect(background.pendingCount()).toBe(2);
@@ -140,12 +145,16 @@ describe("people list API", () => {
       }
 
       // One round of bounded reads, whatever the history length. Each read
-      // of a big table uses an index.
-      const report = await expectNoFullScan(() =>
-        expectSqlBudget(() => readPeopleListFromSql(), {
-          statements: 4,
-          serialRounds: 1,
-        }),
+      // of a big table uses an index. The Turn range read costs the most.
+      const report = await expectPlanCost(
+        () =>
+          expectNoFullScan(() =>
+            expectSqlBudget(() => readPeopleListFromSql(), {
+              statements: 4,
+              serialRounds: 1,
+            }),
+          ),
+        120,
       );
 
       expect(report.people.map((person) => person.actor.email)).toEqual([

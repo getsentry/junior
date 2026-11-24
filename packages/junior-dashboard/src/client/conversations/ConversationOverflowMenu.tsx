@@ -6,7 +6,12 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import { useInboxUi } from "../uiShell";
 import { HeaderIconButton } from "./ConversationHeaderActions";
+
+/** The bordered box of the new UI's conversation menu button. */
+export const CONVERSATION_MENU_BUTTON_CLASS =
+  "border border-dashboard-border-strong text-dashboard-text hover:border-dashboard-border-heavy";
 
 /**
  * Show the conversation `⋯` button and its menu. `children` are the menu
@@ -17,6 +22,8 @@ export function ConversationOverflowMenu(props: {
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // The new UI gives the button a border, so it reads as a button.
+  const inbox = useInboxUi();
   return (
     // Not modal, so the page keeps scrolling while the menu is open.
     <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
@@ -24,6 +31,7 @@ export function ConversationOverflowMenu(props: {
         ref={props.buttonRef}
         render={
           <HeaderIconButton
+            className={inbox ? CONVERSATION_MENU_BUTTON_CLASS : undefined}
             label={open ? "Close conversation menu" : "Conversation menu"}
             tooltipDisabled={open}
           >

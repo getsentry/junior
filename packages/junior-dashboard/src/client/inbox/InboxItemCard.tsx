@@ -27,7 +27,6 @@ import { InboxItemAssignees, InboxItemTitle } from "./InboxItemPeople";
 export function InboxItemCard(props: { item: InboxItemPayload }) {
   const { item } = props;
   const open = item.status === "open";
-  const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
     <section
       aria-label={`Inbox item: ${inboxItemTitleText(item)}`}
@@ -82,13 +81,7 @@ export function InboxItemCard(props: { item: InboxItemPayload }) {
           <ArrowRight aria-hidden="true" size={14} />
         </Link>
         <span className="min-w-0 truncate text-dashboard-text-muted">
-          {assigned ? (
-            <>
-              Assigned to <InboxItemAssignees item={item} />
-            </>
-          ) : (
-            "Unassigned"
-          )}
+          Assigned to <InboxItemAssignees item={item} />
         </span>
       </footer>
     </section>

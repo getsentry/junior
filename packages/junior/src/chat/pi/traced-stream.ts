@@ -1,10 +1,5 @@
 import { performance } from "node:perf_hooks";
 import {
-  createAssistantMessageEventStream,
-  type AssistantMessageEvent,
-  type AssistantMessageEventStream,
-} from "@earendil-works/pi-ai";
-import {
   type Api,
   type AssistantMessage,
   type Context,
@@ -19,11 +14,7 @@ import {
   normalizeGenAiFinishReason,
   serializeGenAiAttribute,
 } from "@/chat/logging";
-import {
-  GEN_AI_PROVIDER_NAME,
-  GEN_AI_SERVER_ADDRESS,
-  GEN_AI_SERVER_PORT,
-} from "@/chat/pi/client";
+import { GEN_AI_PROVIDER_NAME, GEN_AI_SERVER_ADDRESS } from "@/chat/pi/client";
 import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
@@ -38,14 +29,11 @@ import {
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
-type GenAiAttributeMode = "content" | "metadata";
-type TraceAttributeValue = string | number | boolean | string[];
-
-function attributeModeForPrivacy(
-  conversationPrivacy: ConversationPrivacy | undefined,
-): GenAiAttributeMode {
-  return conversationPrivacy === "public" ? "content" : "metadata";
-}
+// Sentry drops attributes whose value is undefined.
+type TraceAttributes = Record<
+  string,
+  string | number | boolean | string[] | undefined
+>;
 
 // Compose only the OTel GenAI attributes that are knowable at span start
 // (request-shape + system instructions). End-of-call attributes such as
@@ -54,254 +42,102 @@ function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
   options: Parameters<AgentRequestStreamFn>[2],
-  mode: GenAiAttributeMode,
-  conversationPrivacy: ConversationPrivacy | undefined,
+  conversationPrivacy: ConversationPrivacy,
   promptName: string | undefined,
-): Record<string, TraceAttributeValue> {
-  const attributes: Record<string, TraceAttributeValue> = {
+): TraceAttributes {
+  const recordContent = conversationPrivacy === "public";
+  return {
     "gen_ai.operation.name": "chat",
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.request.model": model.id,
-    ...(promptName ? { "gen_ai.prompt.name": promptName } : undefined),
-    "gen_ai.request.stream": true,
-    "gen_ai.output.type": "text",
+    "gen_ai.prompt.name": promptName,
     "server.address": GEN_AI_SERVER_ADDRESS,
-    "server.port": GEN_AI_SERVER_PORT,
-    ...(options?.temperature !== undefined
-      ? { "gen_ai.request.temperature": options.temperature }
-      : undefined),
-    ...(options?.maxTokens !== undefined
-      ? { "gen_ai.request.max_tokens": options.maxTokens }
-      : undefined),
-    ...(options?.reasoning
-      ? { "gen_ai.request.reasoning.level": options.reasoning }
-      : undefined),
-    ...(hasCompactedConversationContext(context.messages)
-      ? { "gen_ai.conversation.compacted": true }
-      : undefined),
-    ...(conversationPrivacy
-      ? { "app.conversation.privacy": conversationPrivacy }
-      : undefined),
+    "gen_ai.request.temperature": options?.temperature,
+    "gen_ai.request.max_tokens": options?.maxTokens,
+    "gen_ai.request.reasoning.level": options?.reasoning,
+    "gen_ai.conversation.compacted":
+      hasCompactedConversationContext(context.messages) || undefined,
+    "app.conversation.privacy": conversationPrivacy,
     ...toGenAiMessagesTraceAttributes("gen_ai.input", context.messages),
+    "gen_ai.input.messages": recordContent
+      ? serializeGenAiAttribute(context.messages.map(toCanonicalInputMessage))
+      : undefined,
+    "gen_ai.system_instructions":
+      recordContent && context.systemPrompt
+        ? serializeGenAiAttribute([
+            { type: "text", content: context.systemPrompt },
+          ])
+        : undefined,
+    "gen_ai.system_instructions.content_chars": context.systemPrompt?.length,
   };
-
-  if (mode === "content") {
-    const inputMessages = serializeGenAiAttribute(
-      context.messages.map(toCanonicalInputMessage),
-    );
-    if (inputMessages) {
-      attributes["gen_ai.input.messages"] = inputMessages;
-    }
-  }
-
-  if (context.systemPrompt) {
-    if (mode === "content") {
-      const systemInstructions = serializeGenAiAttribute([
-        { type: "text", content: context.systemPrompt },
-      ]);
-      if (systemInstructions) {
-        attributes["gen_ai.system_instructions"] = systemInstructions;
-      }
-    }
-    attributes["gen_ai.system_instructions.content_chars"] =
-      context.systemPrompt.length;
-  }
-
-  return attributes;
 }
 
 // Composes post-stream attributes for the chat span.
 function buildChatEndAttributes(
   message: AssistantMessage,
-  mode: GenAiAttributeMode,
-): Record<string, TraceAttributeValue> {
-  const attributes: Record<string, TraceAttributeValue> = {
-    ...toGenAiMessagesTraceAttributes("gen_ai.output", [message]),
-  };
-
-  if (mode === "content") {
-    const outputMessages = serializeGenAiAttribute([
-      toCanonicalOutputMessage(message),
-    ]);
-    if (outputMessages) {
-      attributes["gen_ai.output.messages"] = outputMessages;
-    }
-  }
-
-  Object.assign(attributes, extractGenAiUsageAttributes(message));
-  // The 1h-retention part of the cache write. The 5m part is the rest of
-  // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
-  // because Sentry scrubs keys that contain it.
-  if (message.usage.cacheWrite1h !== undefined) {
-    attributes["app.ai.usage.cache_write_1h"] = message.usage.cacheWrite1h;
-  }
-
-  if (message.stopReason) {
-    attributes["gen_ai.response.finish_reasons"] = [
-      normalizeGenAiFinishReason(message.stopReason),
-    ];
-  }
-
-  if (message.model) {
-    attributes["gen_ai.response.model"] = message.model;
-  }
-
-  if (message.responseId) {
-    attributes["gen_ai.response.id"] = message.responseId;
-  }
-
-  if (message.stopReason === "error") {
-    const providerError = createAssistantProviderError(message);
-    Object.assign(attributes, getProviderErrorAttributes(providerError));
-    attributes["error.type"] = providerError.kind;
-  }
-
-  return attributes;
-}
-
-// Events that do not carry model content. Pi pushes `start` when the HTTP
-// response resolves. Content block events (`*_start`, `*_delta`, `*_end`) all
-// count as content: a block start arrives when the model starts that block,
-// and a tool call start already carries the tool name.
-const NON_CONTENT_EVENT_TYPES = new Set(["start", "done", "error"]);
-
-// Records when the first event and the first content event arrive. A terminal
-// `error` event is not a response chunk, so a call that fails or aborts before
-// any event records `streaming: false` and no timing.
-function createResponseTiming(requestStartedAtMs: number): {
-  observe: (event: AssistantMessageEvent) => void;
-  attributes: () => Record<string, TraceAttributeValue>;
-} {
-  let firstByteAtMs: number | undefined;
-  let firstToken: { type: string; receivedAtMs: number } | undefined;
+  conversationPrivacy: ConversationPrivacy,
+): TraceAttributes {
+  const providerError =
+    message.stopReason === "error"
+      ? createAssistantProviderError(message)
+      : undefined;
   return {
-    observe: (event) => {
-      if (firstByteAtMs === undefined && event.type !== "error") {
-        firstByteAtMs = Date.now();
-      }
-      if (!firstToken && !NON_CONTENT_EVENT_TYPES.has(event.type)) {
-        firstToken = { type: event.type, receivedAtMs: Date.now() };
-      }
-    },
-    attributes: () => {
-      if (firstByteAtMs === undefined) {
-        return { "gen_ai.response.streaming": false };
-      }
-      return {
-        "gen_ai.response.streaming": true,
-        "app.ai.time_to_first_byte_ms": firstByteAtMs - requestStartedAtMs,
-        ...(firstToken
-          ? {
-              "gen_ai.response.time_to_first_chunk":
-                (firstToken.receivedAtMs - requestStartedAtMs) / 1000,
-              "app.ai.first_token_type": firstToken.type,
-            }
-          : undefined),
-      };
-    },
+    ...toGenAiMessagesTraceAttributes("gen_ai.output", [message]),
+    "gen_ai.output.messages":
+      conversationPrivacy === "public"
+        ? serializeGenAiAttribute([toCanonicalOutputMessage(message)])
+        : undefined,
+    ...extractGenAiUsageAttributes(message),
+    // The 1h-retention part of the cache write. The 5m part is the rest of
+    // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
+    // because Sentry scrubs keys that contain it.
+    "app.ai.usage.cache_write_1h": message.usage.cacheWrite1h,
+    "gen_ai.response.finish_reasons": [
+      normalizeGenAiFinishReason(message.stopReason),
+    ],
+    "gen_ai.response.model": message.model,
+    "gen_ai.response.id": message.responseId,
+    ...(providerError && {
+      ...getProviderErrorAttributes(providerError),
+      "error.type": providerError.kind,
+    }),
   };
 }
 
-// Wraps `onResponse`, which Pi calls when the response headers arrive. It
-// records the Vercel edge request id (its POP chain) and the event loop
-// utilization since the span started. High utilization means a busy event
-// loop could have delayed the request on Junior's side.
-function traceResponseHeaders(
+// Wraps the Pi hooks of one request:
+// - `onPayload` gets the provider request body. It records the cache prefix
+//   hashes and returns the wrapped hook's result, so the body is unchanged.
+// - `onResponse` gets the response headers. It records the Vercel edge request
+//   id (its POP chain) and the event loop utilization since the request
+//   started. High utilization means Junior's busy event loop could have
+//   delayed the request.
+// - `onProviderStreamEvent` gets each raw stream event. It records how AI
+//   Gateway routed the request.
+function traceRequestHooks(
   span: Sentry.Span,
   options: Parameters<AgentRequestStreamFn>[2],
 ): Parameters<AgentRequestStreamFn>[2] {
   const eventLoopStart = performance.eventLoopUtilization();
-  const onResponse = options?.onResponse;
-  return {
-    ...options,
-    onResponse: async (response, model) => {
-      try {
-        const vercelId = response.headers["x-vercel-id"];
-        if (vercelId) {
-          span.setAttribute("app.ai.gateway.vercel_id", vercelId);
-        }
-        const { utilization } =
-          performance.eventLoopUtilization(eventLoopStart);
-        span.setAttribute(
-          "app.ai.event_loop.utilization",
-          Math.round(utilization * 1000) / 1000,
-        );
-      } catch {
-        // Diagnostic only.
-      }
-      await onResponse?.(response, model);
-    },
-  };
-}
-
-// Wraps `onPayload`, which Pi calls with the provider request body before it
-// sends it. It records the cache prefix hashes of that body. It returns the
-// result of the wrapped hook, so it never changes the payload itself.
-function traceRequestPayload(
-  span: Sentry.Span,
-  options: Parameters<AgentRequestStreamFn>[2],
-): Parameters<AgentRequestStreamFn>[2] {
-  const onPayload = options?.onPayload;
   return {
     ...options,
     onPayload: async (payload, model) => {
-      const nextPayload = await onPayload?.(payload, model);
+      const nextPayload = await options?.onPayload?.(payload, model);
       span.setAttributes(requestPrefixAttributes(nextPayload ?? payload));
       return nextPayload;
     },
-  };
-}
-
-// Wraps `onProviderStreamEvent`, which Pi calls with each raw provider stream
-// event. It records how AI Gateway routed the request.
-function traceGatewayRouting(
-  span: Sentry.Span,
-  options: Parameters<AgentRequestStreamFn>[2],
-): Parameters<AgentRequestStreamFn>[2] {
-  const onProviderStreamEvent = options?.onProviderStreamEvent;
-  return {
-    ...options,
+    onResponse: async (response, model) => {
+      const { utilization } = performance.eventLoopUtilization(eventLoopStart);
+      span.setAttributes({
+        "app.ai.gateway.vercel_id": response.headers["x-vercel-id"],
+        "app.ai.event_loop.utilization": Math.round(utilization * 1000) / 1000,
+      });
+      await options?.onResponse?.(response, model);
+    },
     onProviderStreamEvent: async (event, model) => {
-      const attributes = gatewayRoutingAttributes(event);
-      if (attributes) {
-        span.setAttributes(attributes);
-      }
-      await onProviderStreamEvent?.(event, model);
+      span.setAttributes(gatewayRoutingAttributes(event) ?? {});
+      await options?.onProviderStreamEvent?.(event, model);
     },
   };
-}
-
-// A pi-ai event stream has one consumer. This relay is the consumer of the
-// provider stream: it shows each event to `onEvent` as the event arrives, then
-// pushes the same event object to the stream that the agent loop reads. The
-// relayed stream always ends when the provider stream ends. `finished`
-// settles after the relay has seen the last event.
-function relayStream(
-  source: AssistantMessageEventStream,
-  onEvent: (event: AssistantMessageEvent) => void,
-): { stream: AssistantMessageEventStream; finished: Promise<void> } {
-  const relayed = createAssistantMessageEventStream();
-  const finished = (async () => {
-    try {
-      for await (const event of source) {
-        onEvent(event);
-        relayed.push(event);
-      }
-    } finally {
-      relayed.end();
-    }
-  })();
-  // A provider can end its stream with `end(message)` and no terminal event.
-  // Pass that message on only after every event is relayed, because the
-  // relayed stream drops events pushed after it ends. pi-ai's `result()` does
-  // not reject.
-  void finished
-    .then(() => source.result())
-    .then(
-      (message) => relayed.end(message),
-      () => {},
-    );
-  return { stream: relayed, finished };
 }
 
 /**
@@ -309,43 +145,21 @@ function relayStream(
  * loop produces its own `gen_ai.chat` Sentry span. The returned function is
  * passed to `new Agent({ streamFn: ... })` and runs once per loop iteration.
  *
- * The base argument exists so tests can inject a stub stream function.
- * `promptName` names a request that is not an agent loop call, such as a
- * context summary. `endAttributes` adds caller attributes from the final
- * message.
+ * `base` replaces `streamSimple`, for example in tests. `promptName` names a
+ * request that is not an agent loop call, such as a context summary.
+ * `endAttributes` adds caller attributes from the final message.
  */
-export function createTracedStreamFn(
-  baseOrOptions:
-    | AgentRequestStreamFn
-    | {
-        conversationPrivacy?: ConversationPrivacy | undefined;
-        base?: AgentRequestStreamFn;
-        endAttributes?: (
-          message: AssistantMessage,
-        ) => Record<string, TraceAttributeValue> | undefined;
-        promptName?: string;
-      } = streamSimple,
-): AgentRequestStreamFn {
-  const base =
-    typeof baseOrOptions === "function"
-      ? baseOrOptions
-      : (baseOrOptions.base ?? streamSimple);
-  const mode = attributeModeForPrivacy(
-    typeof baseOrOptions === "function"
-      ? undefined
-      : baseOrOptions.conversationPrivacy,
-  );
-  const conversationPrivacy =
-    typeof baseOrOptions === "function"
-      ? undefined
-      : baseOrOptions.conversationPrivacy;
-  const effectivePrivacy = conversationPrivacy ?? "private";
-  const promptName =
-    typeof baseOrOptions === "function" ? undefined : baseOrOptions.promptName;
-  const callerEndAttributes =
-    typeof baseOrOptions === "function"
-      ? undefined
-      : baseOrOptions.endAttributes;
+export function createTracedStreamFn({
+  base = streamSimple,
+  conversationPrivacy = "private",
+  endAttributes,
+  promptName,
+}: {
+  base?: AgentRequestStreamFn | undefined;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  endAttributes?: (message: AssistantMessage) => TraceAttributes | undefined;
+  promptName?: string | undefined;
+} = {}): AgentRequestStreamFn {
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
@@ -356,48 +170,29 @@ export function createTracedStreamFn(
           model,
           context,
           options,
-          mode,
-          effectivePrivacy,
+          conversationPrivacy,
           promptName,
         ),
       },
     });
 
     try {
-      const requestStartedAtMs = Date.now();
       const stream = await Sentry.withActiveSpan(span, () =>
-        Promise.resolve(
-          base(
-            model,
-            context,
-            traceGatewayRouting(
-              span,
-              traceRequestPayload(span, traceResponseHeaders(span, options)),
-            ),
-          ),
-        ),
+        base(model, context, traceRequestHooks(span, options)),
       );
-      const responseTiming = createResponseTiming(requestStartedAtMs);
-      const relay = relayStream(stream, responseTiming.observe);
-
-      // End the span after the relay has seen every event, so the timing
-      // attributes are complete even when the provider pushes all events at
-      // once.
-      relay.finished
-        .then(() => stream.result())
+      // pi-ai's `result()` settles when the provider stream ends.
+      stream
+        .result()
         .then(
-          (finalMessage: AssistantMessage) => {
+          (message) => {
             try {
-              const endAttributes = {
-                ...buildChatEndAttributes(finalMessage, mode),
-                ...responseTiming.attributes(),
-                ...callerEndAttributes?.(finalMessage),
+              const attributes = {
+                ...buildChatEndAttributes(message, conversationPrivacy),
+                ...endAttributes?.(message),
               };
-              for (const [key, value] of Object.entries(endAttributes)) {
-                span.setAttribute(key, value);
-              }
-              if (finalMessage.stopReason === "error") {
-                const summary = endAttributes["app.ai.provider_error.summary"];
+              span.setAttributes(attributes);
+              if (message.stopReason === "error") {
+                const summary = attributes["app.ai.provider_error.summary"];
                 span.setStatus({
                   code: 2,
                   message:
@@ -409,7 +204,6 @@ export function createTracedStreamFn(
             }
           },
           (error: unknown) => {
-            span.setAttributes(responseTiming.attributes());
             span.setAttribute(
               "error.type",
               error instanceof Error ? error.name : typeof error,
@@ -419,11 +213,10 @@ export function createTracedStreamFn(
           },
         )
         .catch(() => {
-          // setAttribute is best-effort; suppress unexpected attribute-write
-          // errors so they don't surface as unhandled promise rejections.
+          // Attributes are best-effort. A failed write must not surface as an
+          // unhandled rejection.
         });
-
-      return relay.stream;
+      return stream;
     } catch (error) {
       span.setAttribute(
         "error.type",

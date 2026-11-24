@@ -55,8 +55,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation status**: what one Conversation's own work needs, shared
   by everyone and derived from runtime state only. `needs_input`: it waits on
   a person: an open action Inbox item it added, a sign-in, or its starter
-  while no Turn is queued or running (a failed latest Turn, a `partial` or
-  `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
+  while no Turn is queued or running (a failed latest Turn or an answer the
+  starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
 - **Starter**: the User of a root's actor, the person whose message started

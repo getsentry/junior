@@ -25,6 +25,16 @@ public struct ConversationStatus: OpenEnum {
   public static let done = Self(rawValue: "done")
 }
 
+/// What a Conversation and its child Conversations need from the viewer
+/// (`conversationTreeStateSchema`), the "Viewer state" in `TERMINOLOGY.md`.
+public struct ConversationTreeState: OpenEnum {
+  public let rawValue: String
+  public init(rawValue: String) { self.rawValue = rawValue }
+  public static let needsYou = Self(rawValue: "needs_you")
+  public static let working = Self(rawValue: "working")
+  public static let done = Self(rawValue: "done")
+}
+
 public struct ConversationVisibility: OpenEnum {
   public let rawValue: String
   public init(rawValue: String) { self.rawValue = rawValue }

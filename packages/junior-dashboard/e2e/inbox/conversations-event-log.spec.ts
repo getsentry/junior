@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
+import { waitForHighlightedCode } from "../highlighted-code";
 import { expect, test } from "../test";
 import { desktop, mobile, screenshot } from "../screenshot";
 import {
@@ -87,8 +88,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
     // Search must still reveal a result that the reader has closed.
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
     await page
       .getByPlaceholder("Search transcript…")
       .fill("payments-v42 deploy notes");
@@ -103,6 +105,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     const report = await openConversation(page, dashboard.baseURL);
+    // Highlighted code renders after the transcript opens, and the transcript
+    // pins to its bottom again. A switch before that keeps the log pinned to
+    // its bottom, a row below the first event.
+    await waitForHighlightedCode(
+      page.getByLabel("Conversation transcript", { exact: true }),
+    );
     await chooseTranscriptView(page, "Event log");
     const log = page.getByRole("region", { name: "Conversation event log" });
     const entries = log.getByRole("button", { name: /^Event \d+:/ });
@@ -358,7 +366,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(page).not.toHaveURL(/[?&]event=/);
     // The title in the Event log breadcrumb leads back to the Conversation.
-    await page.getByTitle("Back to conversation").click();
+    await page.getByTitle("Back to conversation", { exact: true }).click();
     await expect(log).toBeHidden();
     await expect(
       page.getByText(
@@ -814,6 +822,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
         body: "The rollout plan has three open decisions.",
         canAct: true,
+        canAnswer: true,
         canTake: false,
         conversationIds: [conversationId],
         createdAt: report.startedAt,

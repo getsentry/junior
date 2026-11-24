@@ -15,9 +15,10 @@ import type {
   PluginConversationEventReader,
   PluginConversationEventStats,
 } from "./conversation-events";
-import type { CodeChangePublisher } from "./code";
+import type { PluginCodeChanges } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
 import type { PluginConversationInboxItems } from "./inbox-items";
+import type { PluginTaskStarter } from "./tasks";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -34,7 +35,7 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Conversation annotations, as from a plugin route. */
   annotations: PluginConversationAnnotations;
   /** Junior's native code index, as from a plugin route. */
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   /** Annotation and Inbox item changes in one write, as from a plugin route. */
   conversationChanges: PluginConversationChanges;
   /** Host embedder bound to the configured embedding model. */
@@ -45,6 +46,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Inbox items, as from a plugin route. */
   inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Start this plugin's tasks, as from a plugin route. */
+  tasks: PluginTaskStarter;
 }
 
 export interface HeartbeatResult {
@@ -52,6 +55,8 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /**
    * Bounded conversation candidates selected by the host, with the child
    * conversations of candidate roots. Work in a child counts for its root.
@@ -202,8 +207,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
     ): Promise<IdentityDispatchResult>;
   };
   annotations: PluginConversationAnnotations;
-  /** Provider-neutral write boundary for Junior's native code index. */
-  codeChanges: CodeChangePublisher;
+  /** Provider-neutral boundary for Junior's native code index. */
+  codeChanges: PluginCodeChanges;
   /** Annotation and Inbox item changes that readers must see together. */
   conversationChanges: PluginConversationChanges;
   /** Core-owned delivery boundary for provider webhook events. */
@@ -212,6 +217,11 @@ export interface RouteRegistrationHookContext extends PluginContext {
   inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
+  /**
+   * Start a task with a `payload` schema from this plugin's `tasks`. Use it
+   * when a write fails and must run again after the route returns.
+   */
+  tasks: PluginTaskStarter;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

@@ -17,14 +17,6 @@ Workspace account, so the user connects nothing.
 - Google access goes only through the Google tools, which apply these rules.
   Commands in a Sandbox get no Google credential.
 
-## Entry points
-
-- Slack: ask Junior in a thread or DM, or paste a Docs, Sheets, Slides,
-  Drive, or Calendar link.
-- Dashboard: Admin, Google account, to connect Junior's account; file and
-  event cards in Conversations.
-- CLI: `junior google connect`.
-
 ## Rules
 
 - Junior edits an existing Doc or presentation only when the requester can

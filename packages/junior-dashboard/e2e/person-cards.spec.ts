@@ -94,6 +94,41 @@ test("a message header name opens the person card", async ({
   await expect(name).toHaveAttribute("aria-expanded", "false");
 });
 
+test("a merged change with no size shows no size separator", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The live cards of the merged changes have no size.
+  await page.route("**/api/objects?*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const item of body.objects ?? []) {
+      const facts = item.object?.facts;
+      if (facts?.type === "code_change") {
+        delete facts.additions;
+        delete facts.deletions;
+        delete facts.changedFiles;
+      }
+    }
+    await route.fulfill({ json: body, response });
+  });
+  await openConversation(page, dashboard.baseURL);
+  await page
+    .getByRole("article")
+    .getByRole("link", { name: "Dashboard User", exact: true })
+    .first()
+    .hover();
+  const item = personCard(page, "Dashboard User")
+    .getByRole("region", { name: "Recently shipped" })
+    .getByRole("listitem")
+    .filter({ hasText: "Pin Node 22 in CI" });
+  await expect(item).toContainText(" · merged ");
+  await expect
+    .poll(async () => (await item.textContent())?.trim().endsWith("·"))
+    .toBe(false);
+});
+
 test("a Slack mention shows the photo and name, and opens the person card", async ({
   dashboard,
   page,

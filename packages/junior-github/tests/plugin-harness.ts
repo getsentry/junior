@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
 import type {
-  CodeChangeInput,
   ConversationAnnotationInput,
   ConversationChangeBatch,
   EventInput,
@@ -8,6 +7,7 @@ import type {
   HeartbeatHookContext,
   PluginReviewNotice,
   PluginState,
+  PluginTaskStartInput,
 } from "@sentry/junior-plugin-api";
 import { expect } from "vitest";
 import { githubPlugin } from "../src/index";
@@ -83,8 +83,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
     /** Batches of annotation and Inbox item changes, in order. */
     batches: [] as ConversationChangeBatch[],
     closedNotices: [] as string[],
-    codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
+    /** Tasks that the plugin started and that have not run yet. */
+    startedTasks: [] as PluginTaskStartInput[],
     /** Inbox items added. A change to an open item adds none. */
     notices: [] as Array<{
       conversationId: string;
@@ -106,6 +107,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
+  const { codeChanges } = fixture.codeIndex;
   /** Dedupe keys of the open inbox items. */
   const openNotices = new Set<string>();
   const events: EventPublisher = {
@@ -148,9 +150,14 @@ export function createPluginHarness(fixture: GitHubFixture) {
     },
   };
   const cache: HeartbeatHookContext["cache"] = {
+    async get() {
+      return undefined;
+    },
     async getOrLoad(_key, load) {
       return (await load()).value;
     },
+    async update() {},
+    async delete() {},
   };
 
   async function deliver(request: Request): Promise<void> {
@@ -172,11 +179,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       agent: { dispatchForIdentity: unused },
       annotations,
       cache,
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record() {},
-      },
+      codeChanges,
       conversationChanges: conversationChangesThrough({
         annotations,
         batches: recorded.batches,
@@ -188,6 +191,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: { start: unused },
       users: {
         async readIdentity() {
           return undefined;
@@ -220,13 +224,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       agent: { dispatch: unused, dispatchForIdentity: unused, get: unused },
       annotations,
       cache,
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record(input) {
-          recorded.codeChanges.push(input);
-        },
-      },
+      codeChanges,
       conversationChanges: conversationChangesThrough({
         annotations,
         batches: recorded.batches,
@@ -244,7 +242,40 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: {
+        async start(input) {
+          recorded.startedTasks.push(input);
+        },
+      },
     });
+  }
+
+  /** Run the started tasks, as the plugin task queue does. */
+  async function runStartedTasks(): Promise<void> {
+    const unused = () => {
+      throw new Error("The started GitHub tasks here do not use this");
+    };
+    for (const started of recorded.startedTasks.splice(0)) {
+      const task = githubPlugin().tasks?.[started.name];
+      if (!task?.payload) throw new Error(`No started task ${started.name}`);
+      await task.run({
+        annotations: { forConversation: unused },
+        cache,
+        codeChanges,
+        conversationChanges: { apply: unused },
+        db: fixture.db(),
+        lastDelivery: false,
+        log: {
+          error: (message) => recorded.heartbeatLogs.push(["error", message]),
+          info() {},
+          warn: (message) => recorded.heartbeatLogs.push(["warn", message]),
+        },
+        name: started.name,
+        payload: task.payload.parse(started.payload),
+        plugin: { name: "github" },
+        state,
+      });
+    }
   }
 
   /**
@@ -262,6 +293,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
+      codeChanges,
       db: fixture.db(),
       events,
       log: { error() {}, info() {}, warn() {} },
@@ -309,6 +341,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     failures,
     heartbeat,
     inboxItems,
+    runStartedTasks,
     watches,
   };
 }

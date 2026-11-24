@@ -37,6 +37,7 @@ import {
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -466,6 +467,10 @@ export function createConversationTurnWorker(
               }
               throw error;
             }
+            await indexEndedTurnEvents({
+              conversationId: context.conversationId,
+              turnId,
+            });
             return { status: "completed" };
           };
 
@@ -476,13 +481,8 @@ export function createConversationTurnWorker(
         } else {
           // Save each web Message apart, so an answer in a batch stays an
           // answer in the transcript and on resume.
-          for (const [index, message] of webInputMessages.entries()) {
-            upsertConversationMessage(
-              conversation,
-              index === 0
-                ? { ...message, meta: { ...message.meta, replied: false } }
-                : message,
-            );
+          for (const message of webInputMessages) {
+            upsertConversationMessage(conversation, message);
           }
           // An Event or parent batch saves one Message with its inputs.
           if (webInputMessages.length === 0) {
@@ -892,6 +892,12 @@ export function createConversationTurnWorker(
                 },
               );
             }
+          } else {
+            // The event search task runs only with the session tasks above.
+            await indexEndedTurnEvents({
+              conversationId: context.conversationId,
+              turnId,
+            });
           }
 
           await acknowledge();
@@ -972,6 +978,10 @@ export function createConversationTurnWorker(
           await reportFailure(
             failure instanceof Error ? failure.message : String(failure),
           );
+          await indexEndedTurnEvents({
+            conversationId: context.conversationId,
+            turnId,
+          });
           await acknowledge();
           return { status: "completed" };
         }

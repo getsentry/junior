@@ -1,5 +1,15 @@
 import type { Page } from "@playwright/test";
 
+/**
+ * Find a row of the open conversation `⋯` menu: a menu item, or a button of
+ * the bottom sheet that the new UI shows on a phone.
+ */
+export function conversationMenuRow(page: Page, name: string | RegExp) {
+  return page
+    .getByRole("menuitem", { name, exact: true })
+    .or(page.getByRole("dialog").getByRole("button", { name, exact: true }));
+}
+
 /** Switch the transcript view from the conversation `⋯` menu. */
 export async function chooseTranscriptView(
   page: Page,
@@ -7,7 +17,7 @@ export async function chooseTranscriptView(
 ) {
   await page.getByRole("button", { name: "Conversation menu" }).click();
   const name = view === "Event log" ? "Open event log" : "Back to conversation";
-  await page.getByRole("menuitem", { name, exact: true }).click();
+  await conversationMenuRow(page, name).click();
 }
 
 /**

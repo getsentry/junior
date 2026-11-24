@@ -4,6 +4,7 @@ import {
   getDashboardInboxItemLink,
   getDashboardInboxItemSnoozeLink,
 } from "@/chat/dashboard-link";
+import { isInboxItemForEveryone } from "@/chat/inbox-items/access";
 import {
   INBOX_ITEM_REPLIED_REASON,
   type InboxItem,
@@ -50,10 +51,10 @@ function personName(person: InboxItemAssignee): string {
 
 function assigneeText(item: InboxItem): string {
   const names = [
-    ...(item.assignedToEveryone ? ["Everyone"] : []),
+    ...(isInboxItemForEveryone(item) ? ["Everyone"] : []),
     ...item.assignees.map(personName),
   ];
-  return names.length ? `For ${names.join(", ")}` : "Not assigned";
+  return `For ${names.join(", ")}`;
 }
 
 /**

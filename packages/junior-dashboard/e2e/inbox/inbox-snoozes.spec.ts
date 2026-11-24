@@ -452,7 +452,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const ask = { ...prReview, canAct: false };
+    const ask = { ...prReview, canAct: false, canAnswer: false };
     await mockInboxItems(page, { open: [license, ask] });
     await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -537,6 +537,116 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("region", { name: "To do" })
         .getByRole("link", { name: new RegExp(checkout) }),
     ).toHaveCount(0);
+  });
+
+  test("a found open pull request is picked only once its card says whether it is a draft", async ({
+    dashboard,
+    page,
+  }) => {
+    // Hold the live cards until the test lets them through.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname === "/api/objects",
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await mockInboxItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, checkout));
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page
+      .getByRole("dialog", { name: "Snooze until" })
+      .getByRole("button", { name: "Custom…" })
+      .click();
+    await customOf(page).getByRole("button", { name: "Add condition" }).click();
+    await page
+      .getByPlaceholder("Search pull requests or paste a link")
+      .fill("reference chips");
+    const found = page.getByRole("option", { name: /getsentry\/junior#3838/ });
+    await expect(found).toHaveAttribute("aria-disabled", "true");
+
+    release();
+    await expect(found).not.toHaveAttribute("aria-disabled", "true");
+    await pickOption(found);
+    await expect(
+      customOf(page).getByRole("combobox", { name: "Event" }),
+    ).toBeVisible();
+  });
+
+  // Hold the live cards, and open the search of a new snooze condition.
+  async function searchWithHeldCards(
+    page: Page,
+    dashboard: { baseURL: string },
+  ) {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname === "/api/objects",
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await mockInboxItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, checkout));
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page
+      .getByRole("dialog", { name: "Snooze until" })
+      .getByRole("button", { name: "Custom…" })
+      .click();
+    await customOf(page).getByRole("button", { name: "Add condition" }).click();
+    const search = page.getByPlaceholder(
+      "Search pull requests or paste a link",
+    );
+    await search.fill("composer");
+    const option = (number: number) =>
+      page.getByRole("option", { name: new RegExp(`#${number}\\b`) });
+    // While the open rows wait, the first merged row has the highlight.
+    await expect(option(3842)).toHaveAttribute("aria-disabled", "true");
+    await expect(option(3760)).toHaveAttribute("aria-selected", "true");
+    return { option, release, search };
+  }
+
+  test("Enter picks the top found pull request once the cards arrive", async ({
+    dashboard,
+    page,
+  }) => {
+    const { option, release, search } = await searchWithHeldCards(
+      page,
+      dashboard,
+    );
+    release();
+    await expect(option(3842)).toHaveAttribute("aria-selected", "true");
+    await search.press("Enter");
+    await pickEvent(page, 0, "is merged");
+    await expect(
+      customOf(page).getByRole("group", {
+        name: "When getsentry/junior#3842 is merged",
+      }),
+    ).toBeVisible();
+  });
+
+  test("a highlight that the viewer moves stays when the cards arrive", async ({
+    dashboard,
+    page,
+  }) => {
+    const { option, release, search } = await searchWithHeldCards(
+      page,
+      dashboard,
+    );
+    await search.press("ArrowDown");
+    await expect(option(3701)).toHaveAttribute("aria-selected", "true");
+    release();
+    await expect(option(3842)).not.toHaveAttribute("aria-disabled", "true");
+    await expect(option(3701)).toHaveAttribute("aria-selected", "true");
   });
 
   test("a pull request row snoozes until an Event on its pull request or an issue that the viewer pastes", async ({
