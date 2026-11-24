@@ -360,6 +360,16 @@ function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
   return parsed.success ? parsed.data : undefined;
 }
 
+const inboxItemActionResultSchema = z.object({
+  /** Client time when the server answered the action. */
+  acceptedAtMs: z.number(),
+  item: inboxItemSchema,
+});
+
+function resultOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
+  return inboxItemActionResultSchema.safeParse(mutation.state.data).data;
+}
+
 function closesItem(body: InboxItemActionBody): boolean {
   return body.action !== "take";
 }
@@ -551,12 +561,14 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
   const { optimistic = false } = options;
   return useMutation({
     mutationKey: INBOX_ITEM_ACTION_KEY,
-    mutationFn: (args: InboxItemAction) =>
-      post(
+    mutationFn: async (args: InboxItemAction) => {
+      const item = await post(
         inboxItemSchema,
         `/api/inbox-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
-      ),
+      );
+      return { acceptedAtMs: Date.now(), item };
+    },
     onMutate: (args) =>
       optimistic && closesItem(args.body)
         ? takeOutClosedItem(queryClient, args.id)
@@ -570,7 +582,7 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: async (item, args) => {
+    onSuccess: async ({ item }, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(inboxItemQueryKey(item.id), item);
       if (args.body.action === "submit")
@@ -620,9 +632,10 @@ export function useClosedByViewerInboxItemIds(): ReadonlySet<string> {
 
 /**
  * Whether an answer of the viewer starts a Turn in this Conversation that
- * the snapshot does not show yet: the answer is in flight, the snapshot read
- * its mailbox no later than the answer, or the mailbox still holds the
- * answer. A Turn takes the answer out of the mailbox only after it starts.
+ * the snapshot does not show yet: the answer is in flight, the snapshot
+ * started its mailbox read before the server answered, or the mailbox still
+ * holds the answer. The server puts the answer in the mailbox before it
+ * answers, and a Turn takes it out only after the Turn starts.
  */
 export function useAnswerAwaitsTurn(
   conversationId: string | undefined,
@@ -636,14 +649,13 @@ export function useAnswerAwaitsTurn(
     filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
     select: (mutation) => {
       const action = actionOf(mutation);
-      const { status, submittedAt } = mutation.state;
+      const { status } = mutation.state;
       return action?.turnConversationIds &&
         (status === "pending" || status === "success")
         ? {
+            acceptedAtMs: resultOf(mutation)?.acceptedAtMs,
             conversationIds: action.turnConversationIds,
             id: action.id,
-            pending: status === "pending",
-            submittedAt,
           }
         : undefined;
     },
@@ -653,8 +665,8 @@ export function useAnswerAwaitsTurn(
       answer !== undefined &&
       conversationId !== undefined &&
       answer.conversationIds.includes(conversationId) &&
-      (answer.pending ||
-        (snapshot?.mailboxReadAtMs ?? 0) <= answer.submittedAt ||
+      (answer.acceptedAtMs === undefined ||
+        (snapshot?.mailboxReadAtMs ?? 0) <= answer.acceptedAtMs ||
         snapshot?.mailbox?.messages.some(
           (message) => message.reviewItemChange?.reviewItemId === answer.id,
         )),
@@ -719,11 +731,11 @@ export function useClosingInboxItem(
     filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
     select: (mutation) => {
       const action = actionOf(mutation);
-      const { data, status, submittedAt } = mutation.state;
+      const { status, submittedAt } = mutation.state;
       return action
         ? {
             ...action,
-            closed: inboxItemSchema.safeParse(data).data,
+            closed: resultOf(mutation)?.item,
             status,
             submittedAt,
           }
