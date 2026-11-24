@@ -43,6 +43,12 @@ struct HomeScreen: View {
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
     }
+    .onChange(of: window.searchQuery, initial: true) { _, query in
+      if let query {
+        model.query = query
+        window.searchQuery = nil
+      }
+    }
     .onChange(of: window.focusSearch, initial: true) { _, focus in
       if focus {
         searchFocused = true
@@ -72,7 +78,9 @@ struct HomeScreen: View {
             VStack(spacing: 8) {
               ForEach(section.rows) { row in
                 ConversationCard(
-                  row: row, onArchive: { archive(row) }, onPin: { pin(row) }, onRename: { renaming = row })
+                  row: row, threadsExpanded: model.expandedThreads.contains(row.conversationId),
+                  onArchive: { archive(row) }, onPin: { pin(row) }, onRename: { renaming = row },
+                  onToggleThreads: { toggleThreads(row) })
               }
             }
           }
@@ -153,6 +161,10 @@ struct HomeScreen: View {
 }
 
 extension HomeScreen {
+  private func toggleThreads(_ row: MCPConversation) {
+    if model.expandedThreads.remove(row.conversationId) == nil { model.expandedThreads.insert(row.conversationId) }
+  }
+
   private func pin(_ row: MCPConversation) {
     Task {
       do {
@@ -202,16 +214,34 @@ private struct NewConversationRow: View {
 }
 
 /// One home card (`ConversationHomeList.tsx`): title, state, time, and where
-/// the Conversation lives.
+/// the Conversation lives, then its Threads.
 struct ConversationCard: View {
   @Environment(AppModel.self) private var app
   @Environment(WindowModel.self) private var window
   let row: MCPConversation
+  let threadsExpanded: Bool
   let onArchive: () -> Void
   let onPin: () -> Void
   let onRename: () -> Void
+  let onToggleThreads: () -> Void
 
   var body: some View {
+    let threads = threadRows(row.threads, expanded: threadsExpanded, selectedId: openId)
+    VStack(spacing: 0) {
+      card
+      if !threads.rows.isEmpty {
+        ConversationThreadList(threads: threads, expanded: threadsExpanded, onToggle: onToggleThreads)
+      }
+    }
+    .listCard(selected: window.path.first == route)
+  }
+
+  private var openId: String? {
+    guard case .conversation(let id)? = window.path.first else { return nil }
+    return id
+  }
+
+  private var card: some View {
     Button {
       window.path = [route]
     } label: {
@@ -237,7 +267,6 @@ struct ConversationCard: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard(selected: window.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))

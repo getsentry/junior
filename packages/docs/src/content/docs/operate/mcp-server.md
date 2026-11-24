@@ -47,7 +47,7 @@ Ask Claude Code to list your Junior Conversations:
 Use the junior MCP server to list my conversations.
 ```
 
-Claude Code calls the `searchConversations` tool. The result shows up to 50 Conversations, newest activity first. Each one has its title, status, viewer state, location, timestamps, and a dashboard link when the dashboard URL is known.
+Claude Code calls the `searchConversations` tool. The result shows up to 50 Conversations, newest activity first. Each one has its title, status, viewer state, location, timestamps, and a dashboard link when the dashboard URL is known. With `includeThreads`, each one also lists its Threads, nested as the dashboard shows them.
 
 Then ask for one Conversation:
 

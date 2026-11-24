@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 /// The home list (`searchConversations`): up to 50 Conversations, newest
-/// activity first, and the search query.
+/// activity first, each with its Threads, and the search query.
 @MainActor
 @Observable
 final class HomeModel {
@@ -14,6 +14,8 @@ final class HomeModel {
   var collapsed: Set<String> {
     didSet { UserDefaults.standard.set(Array(collapsed), forKey: "collapsedSections") }
   }
+  /// Roots that show all their Threads. Like the dashboard, this resets.
+  var expandedThreads: Set<String> = []
 
   init() {
     collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsedSections") ?? [])
@@ -38,8 +40,9 @@ final class HomeModel {
     defer { loading = false }
     let trimmed = String(query.trimmingCharacters(in: .whitespaces).prefix(200))
     do {
-      let list = try await app.call(
-        "searchConversations", trimmed.isEmpty ? [:] : ["q": .string(trimmed)], as: ConversationList.self)
+      var arguments: [String: JSONValue] = ["includeThreads": true]
+      if !trimmed.isEmpty { arguments["q"] = .string(trimmed) }
+      let list = try await app.call("searchConversations", arguments, as: ConversationList.self)
       guard ticket > appliedLoad else { return }
       appliedLoad = ticket
       rows = list.conversations

@@ -15,6 +15,8 @@ final class WindowModel {
   var demoWebNotice = false
   /// Focus the home search field ("Go to conversation").
   var focusSearch = false
+  /// Search the home list on arrival (`/?q=…`).
+  var searchQuery: String?
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
   /// Open the rename prompt on arrival (`?rename=1`).
@@ -57,6 +59,7 @@ final class WindowModel {
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
     openRename = components.queryItems?.contains { $0.name == "rename" } == true
+    searchQuery = components.queryItems?.first { $0.name == "q" }?.value
   }
 
   func go(_ place: Place) {
