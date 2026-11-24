@@ -59,7 +59,6 @@ import {
 } from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
-  normalizeGenAiFinishReason,
   serializeGenAiAttribute,
 } from "@/chat/logging";
 import {
@@ -314,47 +313,30 @@ export async function completeText(params: {
   const messageAttributeMode =
     params.messageAttributeMode ??
     (effectivePrivacy === "public" ? "content" : "metadata");
-  const requestMessagesAttribute =
-    messageAttributeMode === "content"
-      ? serializeGenAiAttribute(params.messages.map(toCanonicalInputMessage))
-      : undefined;
-  const systemInstructionsAttribute =
-    params.system && messageAttributeMode === "content"
-      ? serializeGenAiAttribute([{ type: "text", content: params.system }])
-      : undefined;
+  const recordContent = messageAttributeMode === "content";
   const baseAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
-    "gen_ai.output.type": "text",
-    ...(params.promptName
-      ? { "gen_ai.prompt.name": params.promptName }
-      : undefined),
+    "gen_ai.prompt.name": params.promptName,
     "server.address": GEN_AI_SERVER_ADDRESS,
-    "server.port": GEN_AI_SERVER_PORT,
-    ...(hasCompactedConversationContext(params.messages)
-      ? { "gen_ai.conversation.compacted": true }
-      : undefined),
+    "gen_ai.conversation.compacted":
+      hasCompactedConversationContext(params.messages) || undefined,
     "app.conversation.privacy": effectivePrivacy,
-    ...(params.thinkingLevel
-      ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-      : undefined),
-    ...(params.maxTokens !== undefined
-      ? { "gen_ai.request.max_tokens": params.maxTokens }
-      : undefined),
+    "gen_ai.request.reasoning.level": params.thinkingLevel,
+    "gen_ai.request.max_tokens": params.maxTokens,
   };
   const startAttributes = {
     ...baseAttributes,
     ...toGenAiMessagesTraceAttributes("gen_ai.input", params.messages),
-    ...(params.system
-      ? { "gen_ai.system_instructions.content_chars": params.system.length }
-      : undefined),
-    ...(systemInstructionsAttribute
-      ? { "gen_ai.system_instructions": systemInstructionsAttribute }
-      : undefined),
-    ...(requestMessagesAttribute
-      ? { "gen_ai.input.messages": requestMessagesAttribute }
-      : undefined),
+    "gen_ai.system_instructions.content_chars": params.system?.length,
+    "gen_ai.system_instructions":
+      recordContent && params.system
+        ? serializeGenAiAttribute([{ type: "text", content: params.system }])
+        : undefined,
+    "gen_ai.input.messages": recordContent
+      ? serializeGenAiAttribute(params.messages.map(toCanonicalInputMessage))
+      : undefined,
     "gen_ai.provider.auth_mode": authMode,
   };
   return withSpan(
@@ -386,16 +368,12 @@ export async function completeText(params: {
             // The edge request id lets Vercel trace how the gateway routed
             // the call, for example when a cache warmup misses.
             onResponse: (response) => {
-              const vercelId = response.headers["x-vercel-id"];
-              if (vercelId) {
-                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
-              }
+              setSpanAttributes({
+                "app.ai.gateway.vercel_id": response.headers["x-vercel-id"],
+              });
             },
             onProviderStreamEvent: (event) => {
-              const routing = gatewayRoutingAttributes(event);
-              if (routing) {
-                setSpanAttributes(routing);
-              }
+              setSpanAttributes(gatewayRoutingAttributes(event) ?? {});
             },
           },
         );
@@ -403,39 +381,21 @@ export async function completeText(params: {
         throw createProviderError(error, { modelId: params.modelId });
       }
       const outputText = extractText(message);
-      const outputMessagesAttribute = serializeGenAiAttribute(
-        messageAttributeMode === "content"
-          ? [toCanonicalOutputMessage(message)]
-          : undefined,
-      );
-      const usageAttributes = extractGenAiUsageAttributes(message);
-      const endAttributes = {
-        ...baseAttributes,
+      setSpanAttributes({
         ...toGenAiMessagesTraceAttributes("gen_ai.output", [
           {
             role: "assistant",
             content: outputText ? [{ type: "text", text: outputText }] : [],
           },
         ]),
-        ...(outputMessagesAttribute
-          ? { "gen_ai.output.messages": outputMessagesAttribute }
-          : undefined),
-        ...usageAttributes,
-        ...(message.stopReason
-          ? {
-              "gen_ai.response.finish_reasons": [
-                normalizeGenAiFinishReason(message.stopReason),
-              ],
-            }
-          : undefined),
-        ...(message.model
-          ? { "gen_ai.response.model": message.model }
-          : undefined),
-        ...(message.responseId
-          ? { "gen_ai.response.id": message.responseId }
-          : undefined),
-      };
-      setSpanAttributes(endAttributes);
+        "gen_ai.output.messages": recordContent
+          ? serializeGenAiAttribute([toCanonicalOutputMessage(message)])
+          : undefined,
+        ...extractGenAiUsageAttributes(message),
+        "gen_ai.response.finish_reasons": [message.stopReason],
+        "gen_ai.response.model": message.model,
+        "gen_ai.response.id": message.responseId,
+      });
       if (message.stopReason === "error") {
         const providerMessage =
           message.errorMessage?.trim() || "Unknown provider error";
@@ -594,19 +554,11 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "gen_ai.output.type": "json",
-        ...(params.promptName
-          ? { "gen_ai.prompt.name": params.promptName }
-          : undefined),
+        "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential.mode,
-        ...(params.thinkingLevel
-          ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-          : undefined),
-        ...(maxOutputTokens !== undefined
-          ? { "gen_ai.request.max_tokens": maxOutputTokens }
-          : undefined),
+        "gen_ai.request.reasoning.level": params.thinkingLevel,
+        "gen_ai.request.max_tokens": maxOutputTokens,
       },
     );
   } catch (error) {
@@ -660,11 +612,8 @@ export async function completeDecision<
           result.usage.inputTokens,
         );
         setSpanAttributes(
-          extractGenAiUsageAttributes({
-            ...result.usage,
-            ...(costUsd !== undefined
-              ? { cost: { input: costUsd, total: costUsd } }
-              : undefined),
+          extractGenAiUsageAttributes(result.usage, {
+            cost: { input: costUsd, total: costUsd },
           }),
         );
         return { answers: result.answers, costUsd };
@@ -673,11 +622,8 @@ export async function completeDecision<
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_DECIDE,
         "gen_ai.request.model": params.modelId,
-        ...(params.promptName
-          ? { "gen_ai.prompt.name": params.promptName }
-          : undefined),
+        "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential.mode,
       },
     );
@@ -767,9 +713,7 @@ export async function embedTexts(params: {
           "gen_ai.embeddings.dimension.count": dimensions,
           ...extractGenAiUsageAttributes({
             inputTokens: result.usage.tokens,
-            ...(costUsd !== undefined
-              ? { cost: { input: costUsd, total: costUsd } }
-              : undefined),
+            cost: { input: costUsd, total: costUsd },
           }),
         });
         return { costUsd, dimensions, result };
@@ -779,7 +723,6 @@ export async function embedTexts(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential.mode,
       },
     );
@@ -862,13 +805,9 @@ export async function rerankTexts(params: {
           );
         }
         const costUsd = gatewayCostUsd(result.providerMetadata);
-        if (costUsd !== undefined) {
-          setSpanAttributes(
-            extractGenAiUsageAttributes({
-              cost: { total: costUsd },
-            }),
-          );
-        }
+        setSpanAttributes(
+          extractGenAiUsageAttributes({ cost: { total: costUsd } }),
+        );
         return {
           ...(costUsd !== undefined ? { costUsd } : undefined),
           scores,
@@ -879,7 +818,6 @@ export async function rerankTexts(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential.mode,
         "app.rerank.document.count": params.documents.length,
       },
@@ -936,10 +874,9 @@ export async function searchWeb(params: {
       const costUsd = gatewayCostUsd(response.providerMetadata);
       setSpanAttributes({
         "gen_ai.response.finish_reasons": [response.finishReason],
-        ...extractGenAiUsageAttributes(
-          response.usage,
-          costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
-        ),
+        ...extractGenAiUsageAttributes(response.usage, {
+          cost: { total: costUsd },
+        }),
       });
       return {
         ...(costUsd !== undefined ? { costUsd } : undefined),
@@ -952,11 +889,8 @@ export async function searchWeb(params: {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
       "gen_ai.request.model": params.modelId,
-      ...(params.promptName
-        ? { "gen_ai.prompt.name": params.promptName }
-        : undefined),
+      "gen_ai.prompt.name": params.promptName,
       "server.address": GEN_AI_SERVER_ADDRESS,
-      "server.port": GEN_AI_SERVER_PORT,
       "gen_ai.provider.auth_mode": credential.mode,
     },
   );
