@@ -1,0 +1,169 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "3156d5c8-917d-416b-a19b-f58e7ee76acc",
+  "prevIds": ["6b12b332-4224-4e69-9ab7-51df6a4dd91c"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_request_requesters",
+        "conversation_id"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_request_requesters.conversation_id",
+        "n|col|public.junior_github_pull_request_requesters.conversation_id",
+        "e|col|public.junior_github_pull_request_requesters.conversation_id"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_request_requesters",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "ready_to_merge_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.ready_to_merge_at",
+        "n|col|public.junior_github_pull_requests.ready_to_merge_at",
+        "e|col|public.junior_github_pull_requests.ready_to_merge_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "ready_sync_requests"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.ready_sync_requests",
+        "n|col|public.junior_github_pull_requests.ready_sync_requests",
+        "e|col|public.junior_github_pull_requests.ready_sync_requests"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "ready_sync_id"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.ready_sync_id",
+        "n|col|public.junior_github_pull_requests.ready_sync_id",
+        "e|col|public.junior_github_pull_requests.ready_sync_id"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "ready_sync_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.ready_sync_at",
+        "n|col|public.junior_github_pull_requests.ready_sync_at",
+        "e|col|public.junior_github_pull_requests.ready_sync_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_request_requesters",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "ready_to_merge_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "ready_sync_requests",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "ready_sync_id",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "ready_sync_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

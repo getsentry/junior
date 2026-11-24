@@ -1,0 +1,55 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "cebfdc3d-f6b6-46e5-b6ec-d4498c7b2519",
+  "prevIds": ["7868d07f-46bb-436d-9a71-dd4a34e40435"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_workspace_repos",
+        "junior_workspace_repos_primary_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_workspace_repos_primary_idx",
+        "n|idx|public.junior_workspace_repos_primary_idx",
+        "e|idx|public.junior_workspace_repos_primary_idx",
+        "n|rel|public.junior_workspace_repos_primary_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_workspace_repos",
+        "n|sch|public",
+        "e|col|public.junior_workspace_repos.workspace_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_workspace_repos",
+        "is_primary"
+      ],
+      "writes": [
+        "s|col|public.junior_workspace_repos.is_primary",
+        "n|col|public.junior_workspace_repos.is_primary",
+        "e|col|public.junior_workspace_repos.is_primary"
+      ],
+      "reads": ["n|tbl|public.junior_workspace_repos", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_workspace_repos\",\"is_primary\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_workspace_repos_primary_idx\"]"
+    }
+  ]
+}

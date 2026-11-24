@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "cdab36df-cfaa-426f-bc00-3c200dfadcdd",
+  "prevIds": ["e0054620-72e7-424f-8592-85b6e87336e0"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_users", "timezone"],
+      "writes": [
+        "s|col|public.junior_users.timezone",
+        "n|col|public.junior_users.timezone",
+        "e|col|public.junior_users.timezone"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "timezone",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

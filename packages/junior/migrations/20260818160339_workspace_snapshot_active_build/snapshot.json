@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "30e30f6e-cfbc-4d22-aa24-8c0d8a5abc37",
+  "prevIds": ["7f66cacd-886c-4bbd-8b80-ea3ce8a0a466"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_snapshots",
+        "junior_snapshots_active_build_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_snapshots_active_build_uidx",
+        "n|idx|public.junior_snapshots_active_build_uidx",
+        "e|idx|public.junior_snapshots_active_build_uidx",
+        "n|rel|public.junior_snapshots_active_build_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.workspace_id",
+        "n|col|public.junior_snapshots.profile_hash"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_snapshots",
+        "name": "junior_snapshots_active_build_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "workspace_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "profile_hash",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_snapshots\".\"status\" = 'building'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

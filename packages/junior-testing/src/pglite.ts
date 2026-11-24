@@ -21,11 +21,9 @@ export interface LocalPgliteFixture<TDatabase> {
 class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   private activeTransaction: Transaction | undefined;
   readonly client: PGlite;
-  private readonly schema: Record<string, unknown>;
 
-  constructor(client: PGlite, schema: Record<string, unknown>) {
+  constructor(client: PGlite) {
     this.client = client;
-    this.schema = schema;
   }
 
   db(): TDatabase {
@@ -33,7 +31,6 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
     // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     return drizzle({
       client: this.queryClient() as PGlite,
-      schema: this.schema,
     }) as unknown as TDatabase;
   }
 
@@ -96,13 +93,13 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
 /**
  * Create a real in-memory PGlite database for integration-style tests.
  */
-export async function createLocalPgliteFixture<TDatabase>(
-  schema: Record<string, unknown>,
-): Promise<LocalPgliteFixture<TDatabase>> {
+export async function createLocalPgliteFixture<TDatabase>(): Promise<
+  LocalPgliteFixture<TDatabase>
+> {
   // The Junior schema stores Conversation embeddings in a pgvector column.
   const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`, {
     extensions: { vector },
   });
 
-  return new LocalPgliteExecutor<TDatabase>(client, schema);
+  return new LocalPgliteExecutor<TDatabase>(client);
 }

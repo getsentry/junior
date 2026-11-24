@@ -1,0 +1,2026 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a9c89fe6-259a-465c-a8e0-0815e4aeab77",
+  "prevIds": ["e4360a71-8d25-444f-8f38-1751b93e874f"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_item_assignees"],
+      "writes": [
+        "s|tbl|public.junior_inbox_item_assignees",
+        "n|tbl|public.junior_inbox_item_assignees",
+        "e|tbl|public.junior_inbox_item_assignees",
+        "n|rel|public.junior_inbox_item_assignees",
+        "n|type|public.junior_inbox_item_assignees",
+        "n|rel|public.junior_inbox_item_assignees_item_id_user_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_item_conversations"],
+      "writes": [
+        "s|tbl|public.junior_inbox_item_conversations",
+        "n|tbl|public.junior_inbox_item_conversations",
+        "e|tbl|public.junior_inbox_item_conversations",
+        "n|rel|public.junior_inbox_item_conversations",
+        "n|type|public.junior_inbox_item_conversations",
+        "n|rel|public.junior_inbox_item_conversations_item_id_conversation_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_item_slack_cards"],
+      "writes": [
+        "s|tbl|public.junior_inbox_item_slack_cards",
+        "n|tbl|public.junior_inbox_item_slack_cards",
+        "e|tbl|public.junior_inbox_item_slack_cards",
+        "n|rel|public.junior_inbox_item_slack_cards",
+        "n|type|public.junior_inbox_item_slack_cards",
+        "n|rel|public.junior_inbox_item_slack_cards_item_id_conversation_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|tbl|public.junior_inbox_items",
+        "n|tbl|public.junior_inbox_items",
+        "e|tbl|public.junior_inbox_items",
+        "n|rel|public.junior_inbox_items",
+        "n|type|public.junior_inbox_items",
+        "n|rel|public.junior_inbox_items_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "n|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "e|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "n|con|public.junior_inbox_snoozes.junior_inbox_snoozes_review_item_id_junior_review_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "e|col|public.junior_inbox_snoozes.review_item_id"
+      ]
+    },
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_review_item_assignees"],
+      "writes": [
+        "s|fk|public.junior_review_item_assignees.junior_review_item_assignees_item_id_junior_review_items_id_fk",
+        "n|fk|public.junior_review_item_assignees.junior_review_item_assignees_item_id_junior_review_items_id_fk",
+        "e|fk|public.junior_review_item_assignees.junior_review_item_assignees_item_id_junior_review_items_id_fk",
+        "n|con|public.junior_review_item_assignees.junior_review_item_assignees_item_id_junior_review_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_item_assignees",
+        "n|sch|public",
+        "e|col|public.junior_review_item_assignees.item_id"
+      ]
+    },
+    {
+      "statementType": "drop_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_review_item_conversations"
+      ],
+      "writes": [
+        "s|fk|public.junior_review_item_conversations.junior_review_item_conversations_item_id_junior_review_items_id",
+        "n|fk|public.junior_review_item_conversations.junior_review_item_conversations_item_id_junior_review_items_id",
+        "e|fk|public.junior_review_item_conversations.junior_review_item_conversations_item_id_junior_review_items_id",
+        "n|con|public.junior_review_item_conversations.junior_review_item_conversations_item_id_junior_review_items_id"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_item_conversations",
+        "n|sch|public",
+        "e|col|public.junior_review_item_conversations.item_id"
+      ]
+    },
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_review_item_slack_cards"],
+      "writes": [
+        "s|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "n|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "e|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "n|con|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_item_slack_cards",
+        "n|sch|public",
+        "e|col|public.junior_review_item_slack_cards.item_id"
+      ]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_review_item_assignees"],
+      "writes": [
+        "s|tbl|public.junior_review_item_assignees",
+        "n|tbl|public.junior_review_item_assignees",
+        "e|tbl|public.junior_review_item_assignees",
+        "n|rel|public.junior_review_item_assignees",
+        "n|type|public.junior_review_item_assignees"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_review_item_conversations"
+      ],
+      "writes": [
+        "s|tbl|public.junior_review_item_conversations",
+        "n|tbl|public.junior_review_item_conversations",
+        "e|tbl|public.junior_review_item_conversations",
+        "n|rel|public.junior_review_item_conversations",
+        "n|type|public.junior_review_item_conversations"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|tbl|public.junior_review_items",
+        "n|tbl|public.junior_review_items",
+        "e|tbl|public.junior_review_items",
+        "n|rel|public.junior_review_items",
+        "n|type|public.junior_review_items"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_review_item_slack_cards"],
+      "writes": [
+        "s|tbl|public.junior_review_item_slack_cards",
+        "n|tbl|public.junior_review_item_slack_cards",
+        "e|tbl|public.junior_review_item_slack_cards",
+        "n|rel|public.junior_review_item_slack_cards",
+        "n|type|public.junior_review_item_slack_cards"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_review_item_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_review_item_idx",
+        "n|idx|public.junior_inbox_snoozes_review_item_idx",
+        "e|idx|public.junior_inbox_snoozes_review_item_idx",
+        "n|rel|public.junior_inbox_snoozes_review_item_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "e|col|public.junior_inbox_snoozes.review_item_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_snoozes",
+        "inbox_item_id"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_snoozes.inbox_item_id",
+        "n|col|public.junior_inbox_snoozes.inbox_item_id",
+        "e|col|public.junior_inbox_snoozes.inbox_item_id"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_snoozes", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_snoozes",
+        "review_item_id"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_snoozes.review_item_id",
+        "n|col|public.junior_inbox_snoozes.review_item_id",
+        "e|col|public.junior_inbox_snoozes.review_item_id"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_snoozes", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_inbox_item_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_inbox_item_idx",
+        "n|idx|public.junior_inbox_snoozes_inbox_item_idx",
+        "e|idx|public.junior_inbox_snoozes_inbox_item_idx",
+        "n|rel|public.junior_inbox_snoozes_inbox_item_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.inbox_item_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_item_assignees",
+        "junior_inbox_item_assignees_user_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_item_assignees_user_idx",
+        "n|idx|public.junior_inbox_item_assignees_user_idx",
+        "e|idx|public.junior_inbox_item_assignees_user_idx",
+        "n|rel|public.junior_inbox_item_assignees_user_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_assignees",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_assignees.user_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_item_conversations",
+        "junior_inbox_item_conversations_conversation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_item_conversations_conversation_idx",
+        "n|idx|public.junior_inbox_item_conversations_conversation_idx",
+        "e|idx|public.junior_inbox_item_conversations_conversation_idx",
+        "n|rel|public.junior_inbox_item_conversations_conversation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_conversations",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_dedupe_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "n|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "e|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "n|rel|public.junior_inbox_items_open_dedupe_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.dedupe_key"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_status_idx",
+        "n|idx|public.junior_inbox_items_status_idx",
+        "e|idx|public.junior_inbox_items_status_idx",
+        "n|rel|public.junior_inbox_items_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.status",
+        "n|col|public.junior_inbox_items.updated_at",
+        "n|col|public.junior_inbox_items.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_subject_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_subject_idx",
+        "n|idx|public.junior_inbox_items_subject_idx",
+        "e|idx|public.junior_inbox_items_subject_idx",
+        "n|rel|public.junior_inbox_items_subject_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.subject_id",
+        "n|col|public.junior_inbox_items.status"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_owner_idx",
+        "n|idx|public.junior_inbox_items_owner_idx",
+        "e|idx|public.junior_inbox_items_owner_idx",
+        "n|rel|public.junior_inbox_items_owner_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_kind",
+        "n|col|public.junior_inbox_items.owner_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_action_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|idx|public.junior_inbox_items_open_action_owner_idx",
+        "e|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|rel|public.junior_inbox_items_open_action_owner_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_automation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_automation_idx",
+        "n|idx|public.junior_inbox_items_automation_idx",
+        "e|idx|public.junior_inbox_items_automation_idx",
+        "n|rel|public.junior_inbox_items_automation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.automation_id",
+        "n|col|public.junior_inbox_items.status"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_answered_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_answered_idx",
+        "n|idx|public.junior_inbox_items_answered_idx",
+        "e|idx|public.junior_inbox_items_answered_idx",
+        "n|rel|public.junior_inbox_items_answered_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_id",
+        "n|col|public.junior_inbox_items.closed_by_user_id",
+        "n|col|public.junior_inbox_items.closed_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "e|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|rel|public.junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.user_id",
+        "n|col|public.junior_inbox_snoozes.inbox_item_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
+        "n|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
+        "e|fk|public.junior_inbox_snoozes.junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
+        "n|con|public.junior_inbox_snoozes.junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.inbox_item_id",
+        "n|col|public.junior_inbox_items.id",
+        "e|uniqueness|public.junior_inbox_items.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_assignees"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
+        "n|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
+        "e|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
+        "n|con|public.junior_inbox_item_assignees.junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_assignees",
+        "n|sch|public",
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_assignees.item_id",
+        "n|col|public.junior_inbox_items.id",
+        "e|uniqueness|public.junior_inbox_items.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_assignees"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_user_id_junior_users_id_fk",
+        "n|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_user_id_junior_users_id_fk",
+        "e|fk|public.junior_inbox_item_assignees.junior_inbox_item_assignees_user_id_junior_users_id_fk",
+        "n|con|public.junior_inbox_item_assignees.junior_inbox_item_assignees_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_assignees",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_assignees.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_conversations"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_item_id_junior_inbox_items_id_f",
+        "n|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_item_id_junior_inbox_items_id_f",
+        "e|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_item_id_junior_inbox_items_id_f",
+        "n|con|public.junior_inbox_item_conversations.junior_inbox_item_conversations_item_id_junior_inbox_items_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_conversations.item_id",
+        "n|col|public.junior_inbox_items.id",
+        "e|uniqueness|public.junior_inbox_items.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_conversations"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_conversation_id_junior_conversa",
+        "n|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_conversation_id_junior_conversa",
+        "e|fk|public.junior_inbox_item_conversations.junior_inbox_item_conversations_conversation_id_junior_conversa",
+        "n|con|public.junior_inbox_item_conversations.junior_inbox_item_conversations_conversation_id_junior_conversa"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_conversations.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_slack_cards"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
+        "n|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
+        "e|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
+        "n|con|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_slack_cards",
+        "n|sch|public",
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_slack_cards.item_id",
+        "n|col|public.junior_inbox_items.id",
+        "e|uniqueness|public.junior_inbox_items.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_item_slack_cards"],
+      "writes": [
+        "s|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_conversation_id_junior_conversati",
+        "n|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_conversation_id_junior_conversati",
+        "e|fk|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_conversation_id_junior_conversati",
+        "n|con|public.junior_inbox_item_slack_cards.junior_inbox_item_slack_cards_conversation_id_junior_conversati"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_item_slack_cards",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_inbox_item_slack_cards.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|fk|public.junior_inbox_items.junior_inbox_items_automation_id_junior_automations_id_fk",
+        "n|fk|public.junior_inbox_items.junior_inbox_items_automation_id_junior_automations_id_fk",
+        "e|fk|public.junior_inbox_items.junior_inbox_items_automation_id_junior_automations_id_fk",
+        "n|con|public.junior_inbox_items.junior_inbox_items_automation_id_junior_automations_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.automation_id",
+        "n|col|public.junior_automations.id",
+        "e|uniqueness|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|fk|public.junior_inbox_items.junior_inbox_items_closed_by_user_id_junior_users_id_fk",
+        "n|fk|public.junior_inbox_items.junior_inbox_items_closed_by_user_id_junior_users_id_fk",
+        "e|fk|public.junior_inbox_items.junior_inbox_items_closed_by_user_id_junior_users_id_fk",
+        "n|con|public.junior_inbox_items.junior_inbox_items_closed_by_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.closed_by_user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_item_assignees",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_item_conversations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_item_slack_cards",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_inbox_items",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "inbox_item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "team_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "channel_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "message_ts",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "body",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "request",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "answer",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "assigned_to_everyone",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "dedupe_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "subject_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "subject_title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "subject_url",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "owner_kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'conversation'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "owner_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "added_by_turn_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "provider_tenant_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "automation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "closed_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "closed_by_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "close_reason",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_inbox_item_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "inbox_item_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "junior_inbox_item_assignees_user_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "junior_inbox_item_conversations_conversation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_open_dedupe_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "coalesce(\"provider\", '')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "coalesce(\"provider_tenant_id\", '')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "dedupe_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_inbox_items\".\"status\" = 'open'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_status_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "updated_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_subject_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "subject_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_owner_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "owner_kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_open_action_owner_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_automation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "automation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_answered_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_by_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_inbox_items\".\"answer\" is not null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
+        "nameExplicit": false,
+        "columns": ["inbox_item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_inbox_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
+        "nameExplicit": false,
+        "columns": ["item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_inbox_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "junior_inbox_item_assignees_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "junior_inbox_item_conversations_item_id_junior_inbox_items_id_f",
+        "nameExplicit": false,
+        "columns": ["item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_inbox_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "junior_inbox_item_conversations_conversation_id_junior_conversa",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
+        "nameExplicit": false,
+        "columns": ["item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_inbox_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "junior_inbox_item_slack_cards_conversation_id_junior_conversati",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
+        "nameExplicit": false,
+        "columns": ["automation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_automations",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "SET NULL",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["closed_by_user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "SET NULL",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_assignees",
+        "name": "junior_inbox_item_assignees_item_id_user_id_pk",
+        "columns": ["item_id", "user_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_conversations",
+        "name": "junior_inbox_item_conversations_item_id_conversation_id_pk",
+        "columns": ["item_id", "conversation_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_item_slack_cards",
+        "name": "junior_inbox_item_slack_cards_item_id_conversation_id_pk",
+        "columns": ["item_id", "conversation_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_kind_check",
+        "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_owner_check",
+        "value": "(\"junior_inbox_items\".\"owner_kind\" = 'conversation' and \"junior_inbox_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_inbox_items\".\"owner_kind\" = 'automation' and \"junior_inbox_items\".\"dedupe_key\" like 'automation:%')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_status_check",
+        "value": "(\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"closed_at\" is null) or (\"junior_inbox_items\".\"status\" in ('done', 'dismissed') and \"junior_inbox_items\".\"closed_at\" is not null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_tenant_check",
+        "value": "(\"junior_inbox_items\".\"provider\" is null) = (\"junior_inbox_items\".\"provider_tenant_id\" is null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_visibility_check",
+        "value": "\"junior_inbox_items\".\"visibility\" = 'public' or not \"junior_inbox_items\".\"assigned_to_everyone\"",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_review_item_assignees\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_review_item_conversations\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_review_items\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_review_item_slack_cards\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_assignees\",\"item_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_assignees\",\"user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_conversations\",\"item_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_conversations\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"kind\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"visibility\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"body\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"request\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"answer\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"assigned_to_everyone\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"dedupe_key\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"subject_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"subject_title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"subject_url\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"provider\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"provider_tenant_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"automation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"closed_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"closed_by_user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"close_reason\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"updated_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_slack_cards\",\"item_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_slack_cards\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_slack_cards\",\"team_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_slack_cards\",\"channel_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_item_slack_cards\",\"message_ts\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"added_by_turn_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_snoozes\",\"review_item_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"owner_kind\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"owner_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_item_assignees_user_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_item_conversations_conversation_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_open_dedupe_uidx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_status_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_subject_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_automation_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_answered_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_snoozes_review_item_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_open_action_owner_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_owner_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_assignees\",\"junior_review_item_assignees_item_id_junior_review_items_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_assignees\",\"junior_review_item_assignees_user_id_junior_users_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_conversations\",\"junior_review_item_conversations_item_id_junior_review_items_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_conversations\",\"junior_review_item_conversations_conversation_id_junior_convers\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_automation_id_junior_automations_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_closed_by_user_id_junior_users_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_slack_cards\",\"junior_review_item_slack_cards_item_id_junior_review_items_id_f\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_item_slack_cards\",\"junior_review_item_slack_cards_conversation_id_junior_conversat\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_inbox_snoozes\",\"junior_inbox_snoozes_review_item_id_junior_review_items_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_review_item_assignees\",\"junior_review_item_assignees_item_id_user_id_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_review_item_conversations\",\"junior_review_item_conversations_item_id_conversation_id_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_pkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_review_item_slack_cards\",\"junior_review_item_slack_cards_item_id_conversation_id_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_kind_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_status_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_tenant_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_visibility_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_owner_check\"]"
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_snoozes_snoozed_uidx\"]",
+      "set": {
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "inbox_item_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ]
+      }
+    }
+  ]
+}

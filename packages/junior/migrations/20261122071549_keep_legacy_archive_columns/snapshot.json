@@ -1,0 +1,49 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "4d4164d5-577c-48e5-9f02-409588cb1354",
+  "prevIds": ["5a1e63c6-65ba-4b46-bafc-7d4f3585369b"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_participants",
+        "archived_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_participants.archived_at",
+        "n|col|public.junior_conversation_participants.archived_at",
+        "e|col|public.junior_conversation_participants.archived_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_participants", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "child_archived_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.child_archived_at",
+        "n|col|public.junior_conversations.child_archived_at",
+        "e|col|public.junior_conversations.child_archived_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_participants\",\"archived_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversations\",\"child_archived_at\"]"
+    }
+  ]
+}

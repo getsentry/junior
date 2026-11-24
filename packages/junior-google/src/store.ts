@@ -1,9 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-import * as googleSqlSchema from "./db/schema";
+import type { PgAsyncDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { juniorGoogleAccounts } from "./db/schema";
 
-export type GoogleDb = PgDatabase<PgQueryResultHKT, typeof googleSqlSchema>;
+export type GoogleDb = PgAsyncDatabase<PgQueryResultHKT>;
 
 export type GoogleAccountRecord = typeof juniorGoogleAccounts.$inferSelect;
 
