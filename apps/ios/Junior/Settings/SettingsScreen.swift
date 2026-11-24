@@ -6,7 +6,6 @@ import UIKit
 /// the Junior this app is signed in to.
 struct SettingsScreen: View {
   @Environment(AppModel.self) private var app
-  @Environment(WindowModel.self) private var window
   @State private var archiving = false
   @State private var archiveResult: String?
   @State private var logsResult: String?
@@ -49,24 +48,6 @@ struct SettingsScreen: View {
             Button("Sign out", action: app.signOut)
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("sign-out")
-          }
-          card("Changelog", description: "Version \(AppBuild.current.label)") {
-            HStack(spacing: 8) {
-              if let whatsNew = app.whatsNew {
-                Button(action: { open(whatsNew) }) {
-                  HStack(spacing: 6) {
-                    Text("What's New")
-                    CountBadge(text: "New")
-                  }
-                }
-                .buttonStyle(.dashboard(.outline))
-                .accessibilityLabel("What's New, new")
-                .accessibilityIdentifier("whats-new")
-              }
-              Button("Show changelog") { window.changelog = .full() }
-                .buttonStyle(.dashboard(.outline))
-                .accessibilityIdentifier("show-changelog")
-            }
           }
           card("Logs", description: "Copy this launch's logs for a bug report. Message text is left out.") {
             Button("Copy logs", action: copyLogs)
@@ -112,13 +93,6 @@ struct SettingsScreen: View {
     } catch {
       logsResult = "Could not read the logs. \(error.localizedDescription)"
     }
-  }
-
-  /// Show What's New and clear its badge.
-  private func open(_ whatsNew: ChangelogPage) {
-    window.changelog = whatsNew
-    ChangelogPage.markSeen()
-    app.whatsNew = nil
   }
 
   /// A raised card: `text-lg font-bold` title, `text-sm` description.

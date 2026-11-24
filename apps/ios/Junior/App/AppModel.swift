@@ -52,8 +52,8 @@ final class AppModel {
 
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
-  /// What's New after an update, until the person opens it from Settings.
-  var whatsNew: ChangelogPage?
+  /// Badges the drawer's Changelog after an update, until the person opens it.
+  var changelogBadge = false
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
@@ -91,7 +91,7 @@ final class AppModel {
     self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
-    self.whatsNew = ChangelogPage.whatsNew()
+    self.changelogBadge = BundledChangelog.hasUnseen()
   }
 
   var clock: DisplayClock {

@@ -19,8 +19,8 @@ final class WindowModel {
   var openDetails = false
   /// Open the rename prompt on arrival (`?rename=1`).
   var openRename = false
-  /// The changelog sheet that Settings opens: What's New or the full one.
-  var changelog: ChangelogPage?
+  /// The changelog sheet, which the drawer opens.
+  var changelogOpen = false
 
   private let app: AppModel
 
@@ -60,7 +60,7 @@ final class WindowModel {
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
     openRename = components.queryItems?.contains { $0.name == "rename" } == true
     // `/settings?changelog=1` opens the full changelog (screenshots).
-    if components.queryItems?.contains(where: { $0.name == "changelog" }) == true { changelog = .full() }
+    changelogOpen = components.queryItems?.contains { $0.name == "changelog" } == true
   }
 
   func go(_ place: Place) {
@@ -97,6 +97,6 @@ final class WindowModel {
     drawerOpen = false
     webPage = nil
     demoWebNotice = false
-    changelog = nil
+    changelogOpen = false
   }
 }

@@ -40,7 +40,7 @@ targets:
     platform: iOS
     sources:
       - path: Junior
-      # Craft's changelog of each release. Settings and What's New read its
+      # Craft's changelog of each release. The drawer's Changelog reads its
       # iOS entries from the app bundle.
       - path: ../../CHANGELOG.md
         buildPhase: resources
