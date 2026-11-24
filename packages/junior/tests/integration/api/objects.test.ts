@@ -573,8 +573,8 @@ describe("object links API", () => {
         changes: { title: { from: "Add link cards" } },
         pull_request: { ...pullRequest(34), title: "Older title" },
       });
-      // A label on the same head commit. GitHub computes the merge state
-      // again, so the payload has it as null.
+      // A label on the same head commit. The payload has a null merge
+      // state, but nothing that GitHub computes changed.
       await sendGitHubWebhook(app, "pull_request", {
         action: "labeled",
         pull_request: {
@@ -637,12 +637,12 @@ describe("object links API", () => {
         checks: "pending",
         mergeable: "pending",
       });
-      // GitHub sends a null merge state while it computes it, so it turns
-      // pending until its patch reads it.
+      // A null merge state on the same head and base is a missing field,
+      // so the known one stays.
       expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
-        facts: { mergeable: "pending" },
+        facts: { mergeable: false },
       });
-      // The same for a merge state that was about the old base.
+      // A merge state that was about the old base turns pending.
       expect(next.objects.get(`${GITHUB_REPO}/pull/90`)).toMatchObject({
         facts: { mergeable: "pending" },
       });
