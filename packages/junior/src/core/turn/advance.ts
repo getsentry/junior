@@ -9,17 +9,16 @@
 // Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
 // sends the delivery message and the next step message that the stored
 // state calls for.
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import {
-  createAssistantProviderError,
-  getProviderErrorAttributes,
-} from "@/chat/services/provider-error";
-import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
+import {
+  ModelRequestError,
+  modelFailureAttributes,
+  type ModelFailure,
+} from "@/core/model/failure";
 import { assemblePrompt } from "@/core/prompt/assemble";
 import type { PromptLayout } from "@/core/prompt/layout";
 import { setActiveSpanAttributes } from "@/core/telemetry";
@@ -184,8 +183,10 @@ async function runClaimedStep(
     case "failed": {
       // The capture comes before the commit. A crash between the two runs
       // the step again, so a failure that repeats is captured twice.
-      const failure = captureModelFailure(result.reply);
-      if (await failTurn({ executor }, claim, result.error, failure)) {
+      const failure = captureModelFailure(result.failure);
+      if (
+        await failTurn({ executor }, claim, result.failure.message, failure)
+      ) {
         await reconcileTurn({ executor, queue }, claim.turnId);
       }
       return;
@@ -198,22 +199,24 @@ async function runClaimedStep(
 }
 
 /**
- * Reports a failed model request to Sentry the way main reports a provider
- * error, and returns the failure details that `failTurn` stores.
+ * Reports a failed model request to Sentry under main's event name, and
+ * returns the failure details that `failTurn` stores.
  */
-function captureModelFailure(reply: AssistantMessage): TurnFailure {
-  const providerError = createAssistantProviderError(reply);
-  const eventName = "agent.turn.provider_error";
-  const eventId = requireTurnFailureEventId(
-    logException(providerError, eventName, {
-      ...getProviderErrorAttributes(providerError),
-      "app.ai.failure_reason": providerError.kind,
-    }),
-    eventName,
+function captureModelFailure(failure: ModelFailure): TurnFailure {
+  const eventId = logException(
+    new ModelRequestError(failure),
+    "agent.turn.provider_error",
+    {
+      ...modelFailureAttributes(failure),
+      "app.ai.failure_reason": failure.kind,
+    },
   );
+  if (!eventId) {
+    throw new Error("Sentry did not return an event ID for a model failure");
+  }
   return {
     failureCode: "model_execution_failed",
-    failureReason: providerError.kind,
+    failureReason: failure.kind,
     eventId,
   };
 }

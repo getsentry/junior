@@ -13,7 +13,7 @@ describe("model client", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const reply = await client.complete(
+    const { message } = await client.complete(
       {
         model: {
           id: "anthropic/claude-opus-5.5",
@@ -26,6 +26,6 @@ describe("model client", () => {
       controller.signal,
     );
 
-    expect(reply.stopReason).toBe("aborted");
+    expect(message.stopReason).toBe("aborted");
   });
 });
