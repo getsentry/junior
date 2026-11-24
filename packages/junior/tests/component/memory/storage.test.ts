@@ -81,6 +81,8 @@ const memoryCache: PluginCache = {
   async getOrLoad(_key, load) {
     return (await load()).value;
   },
+  async update() {},
+  async delete() {},
 };
 
 function memoryHeartbeatContext(args: {

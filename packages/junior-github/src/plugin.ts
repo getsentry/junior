@@ -451,6 +451,7 @@ export function githubPlugin(
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
+            cache: ctx.cache,
             ...(options.trustedAuthors
               ? { trustedAuthors: options.trustedAuthors }
               : undefined),

@@ -3,6 +3,7 @@ import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
+  PluginCache,
   PluginCodeChanges,
   PluginConversationAnnotations,
   PluginConversationChanges,
@@ -19,6 +20,7 @@ import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
+import { refreshGitHubObjectCache } from "./object-cache.js";
 import {
   GITHUB_PULL_REQUEST_OUTCOME_TASK,
   githubPullRequestOutcomeTaskKey,
@@ -141,6 +143,8 @@ export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
   appIdEnv: string;
   botEmail(): string | undefined;
+  /** The plugin cache, whose issue and pull request entries webhooks refresh. */
+  cache: PluginCache;
   classifyPullRequestCommits?(input: {
     number: number;
     repositoryFullName: string;
@@ -221,6 +225,11 @@ export function createGitHubWebhookRoute(args: {
           status: 202,
         });
       }
+      await refreshGitHubObjectCache({
+        body,
+        cache: args.cache,
+        eventName,
+      });
       const botEmail = args.botEmail();
       const pullRequestOutcome =
         eventName === "pull_request"

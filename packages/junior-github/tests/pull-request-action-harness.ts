@@ -677,7 +677,12 @@ export function route(
     },
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
-    cache: { getOrLoad: unused },
+    cache: {
+      // The pull request webhook refreshes its cached object.
+      async update() {},
+      delete: unused,
+      getOrLoad: unused,
+    },
     inboxItems,
     state,
     tasks: { start: unused },

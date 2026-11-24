@@ -96,6 +96,13 @@ function route(
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
+    // The ready webhook refreshes its cached pull request.
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+      async update() {},
+    },
     annotations: {
       forConversation() {
         return {

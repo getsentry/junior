@@ -6,6 +6,7 @@ import {
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
+  type PluginCache,
   type PluginConversationAnnotations,
   type PluginConversationInboxItems,
   type PluginTaskStartInput,
@@ -80,6 +81,15 @@ function checkSuitePullRequest(
 
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+
+// These tests read no cached object.
+const objectCache: PluginCache = {
+  async getOrLoad(_key, load) {
+    return (await load()).value;
+  },
+  async update() {},
+  async delete() {},
+};
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {
   const fixture = await createGitHubFixture();
@@ -305,6 +315,7 @@ function webhookRoute(
   return createGitHubWebhookRoute({
     annotations: stores,
     appIdEnv: "GITHUB_APP_ID",
+    cache: objectCache,
     botEmail,
     classifyPullRequestCommits,
     codeChanges: fixture.codeIndex.codeChanges,
@@ -2271,6 +2282,7 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
+        cache: objectCache,
         annotations: {
           forConversation() {
             return {
@@ -2322,6 +2334,7 @@ describe("GitHub-owned pull request outcomes", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        cache: objectCache,
         annotations: {
           forConversation() {
             return {
@@ -2440,6 +2453,7 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const plugin = githubPlugin();
       const [route] = plugin.hooks!.routes!({
+        cache: objectCache,
         annotations: {
           forConversation() {
             return {
@@ -2566,6 +2580,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        cache: objectCache,
         annotations: {
           forConversation() {
             return {
@@ -2689,6 +2704,15 @@ describe("GitHub-owned pull request outcomes", () => {
             const entry = await load();
             if (entry.ttlMs) cached.set(key, entry.value);
             return entry.value;
+          },
+          async update<T>(
+            key: string,
+            next: (
+              current: T | undefined,
+            ) => { ttlMs?: number; value: T } | undefined,
+          ) {
+            const entry = next(cached.get(key) as T | undefined);
+            if (entry?.ttlMs) cached.set(key, entry.value);
           },
         },
         annotations: {
@@ -2819,14 +2843,7 @@ describe("GitHub-owned pull request outcomes", () => {
     const plugin = githubPlugin();
     const db = fixture.db();
     const pluginCtx = {
-      cache: {
-        async getOrLoad<T>(
-          _key: string,
-          load: () => Promise<{ ttlMs?: number; value: T }>,
-        ) {
-          return (await load()).value;
-        },
-      },
+      cache: objectCache,
       db,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
@@ -3448,6 +3465,7 @@ describe("GitHub-owned pull request outcomes", () => {
       const route = createGitHubWebhookRoute({
         annotations,
         appIdEnv: "GITHUB_APP_ID",
+        cache: objectCache,
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         classifyPullRequestCommits: async () => "mixed",
         codeChanges: fixture.codeIndex.codeChanges,
@@ -3552,6 +3570,7 @@ describe("GitHub-owned pull request outcomes", () => {
       const route = createGitHubWebhookRoute({
         annotations,
         appIdEnv: "GITHUB_APP_ID",
+        cache: objectCache,
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
@@ -3664,6 +3683,7 @@ describe("GitHub-owned pull request outcomes", () => {
       const route = createGitHubWebhookRoute({
         annotations,
         appIdEnv: "GITHUB_APP_ID",
+        cache: objectCache,
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
@@ -3807,6 +3827,7 @@ describe("GitHub-owned pull request outcomes", () => {
           },
         },
         appIdEnv: "GITHUB_APP_ID",
+        cache: objectCache,
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         codeChanges: fixture.codeIndex.codeChanges,
         db: fixture.db(),
