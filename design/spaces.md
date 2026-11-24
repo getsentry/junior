@@ -16,8 +16,9 @@ not need a home stays a one-off Conversation.
   Conversation, not something that is inferred from its history or parent.
 - Work that a Space starts stays in the Space. Each Conversation that the
   Space's Lead starts, and each child agent under it, is in the Space. The
-  Lead can read and find any Conversation that the person could, but its
-  reach does not move other work into the Space.
+  Lead reads and finds other Conversations by the usual access rules, as a
+  Conversation in its Space, so a member's private work never enters the
+  Space. Its reach does not move other work into the Space.
 - One-off work stays light. A Conversation with no Space is a one-off. It
   needs no setup, and nothing asks the person to choose a Space first.
 - Spaces are shared. A Space is public by default, so anyone in the
