@@ -1,17 +1,19 @@
 // Delivers the replies of core Turns on this deployment: the queue consumer of
-// delivery messages, with the sender of each Destination platform.
-import type { SlackAdapter } from "@chat-adapter/slack";
-import { RetryableDeliveryError } from "@/chat/agent/types";
+// delivery messages, with the Delivery that sends them.
 import type { QueueConsumer } from "@/chat/queue/provider";
-import { postSlackSystemReply } from "@/chat/providers/slack/system-turn";
-import { SlackActionError } from "@/chat/slack/client";
-import {
-  DeliveryRetryableError,
-  deliverTurn,
-  type Delivery,
-} from "@/core/delivery/deliver";
+import { deliverTurn, type Delivery } from "@/core/delivery/deliver";
 import { createDeliveryConsumer } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
+
+/**
+ * The Delivery of this deployment. No Destination platform has a sender in
+ * core yet, so each reply that has a Destination fails.
+ */
+export const deploymentDelivery: Delivery = {
+  send: async ({ destination }) => {
+    throw new Error(`No sender for ${destination.platform} Destinations`);
+  },
+};
 
 /**
  * The queue consumer of delivery messages. The host mounts it on
@@ -19,49 +21,9 @@ import type { EngineContext } from "@/core/engine-context";
  */
 export function deliveryConsumer(
   engineCtx: EngineContext,
-  args: { getSlackAdapter: () => SlackAdapter },
+  delivery: Delivery,
 ): QueueConsumer {
-  const delivery: Delivery = {
-    send: async ({ conversationId, destination, text }) => {
-      if (destination.platform !== "slack") {
-        throw new Error(`No sender for ${destination.platform} Destinations`);
-      }
-      const messageIds = await sendRetryable(() =>
-        postSlackSystemReply(args, {
-          conversationId,
-          target: destination,
-          text,
-        }),
-      );
-      const providerMessageId = messageIds.at(-1);
-      return providerMessageId ? { providerMessageId } : {};
-    },
-  };
   return createDeliveryConsumer(engineCtx, (message) =>
     deliverTurn(engineCtx, message, delivery),
   );
-}
-
-/**
- * Turns a retryable Slack failure into core's retryable error, with the
- * Retry-After of a rate limit.
- */
-async function sendRetryable<T>(send: () => Promise<T>): Promise<T> {
-  try {
-    return await send();
-  } catch (error) {
-    if (!(error instanceof RetryableDeliveryError)) {
-      throw error;
-    }
-    const { cause } = error;
-    const retryAfterSeconds =
-      cause instanceof SlackActionError ? cause.retryAfterSeconds : undefined;
-    throw new DeliveryRetryableError(
-      cause instanceof Error ? cause.message : error.message,
-      {
-        cause: error,
-        retryAfterMs: retryAfterSeconds ? retryAfterSeconds * 1000 : undefined,
-      },
-    );
-  }
 }
