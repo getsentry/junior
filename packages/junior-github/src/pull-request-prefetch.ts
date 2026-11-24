@@ -2,7 +2,7 @@
  * Load the cards of a page of pull request links by repository and number,
  * at most 25 pull requests per GraphQL query, before each card reads its
  * cache entry. Only pull requests with no fresh entry are read. A link that
- * this skips reads its entry as usual.
+ * this skips reads its entry as usual, unless the page's time ran out.
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import pLimit, { type LimitFunction } from "p-limit";
@@ -35,6 +35,13 @@ const PULL_REQUESTS_PER_QUERY = 25;
 // chunk splits.
 const QUERY_TIMEOUT_MS = 10_000;
 
+// How long one page waits for all of its card queries. After that, nothing
+// splits, and each card that is left shows its stale entry, or no card yet.
+const PAGE_BUDGET_MS = 20_000;
+
+// Long enough for the card reads of the page that ran out of time.
+const OUT_OF_TIME_TTL_MS = 30_000;
+
 // A pull request that GitHub cannot read is null, with an error, and the
 // others still come. No data at all means that the query failed.
 const cardsResponseSchema = z.object({
@@ -51,6 +58,14 @@ interface PullRequestRef {
 
 function cacheKey(ref: PullRequestRef): string {
   return githubObjectCacheKey("pulls", `${ref.owner}/${ref.name}`, ref.number);
+}
+
+/**
+ * The cache key that marks a pull request card that a page read ran out of
+ * time for, so that card does not read GitHub again.
+ */
+export function outOfTimeCacheKey(key: string): string {
+  return `${key}:out-of-time`;
 }
 
 // The cache entries that are not fresh, of repositories the viewer sees.
@@ -102,7 +117,10 @@ async function storeCard(
 async function loadChunk(
   ctx: ObjectLinkContext,
   refs: PullRequestRef[],
+  deadlineMs: number,
 ): Promise<void> {
+  const leftMs = deadlineMs - Date.now();
+  if (leftMs <= 0) throw new Error("The page has no time left for cards");
   const variables: Record<string, number | string> = {};
   for (const [index, ref] of refs.entries()) {
     variables[`owner${index}`] = ref.owner;
@@ -114,7 +132,7 @@ async function loadChunk(
     method: "POST",
     operation: "github.pull.get",
     path: "/graphql",
-    signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(Math.min(QUERY_TIMEOUT_MS, leftMs)),
   });
   if (!response.ok) {
     throw new Error(
@@ -137,15 +155,26 @@ async function loadChunk(
 
 // A chunk that fails splits in halves, and the halves are its retry. A pull
 // request that fails alone is skipped: its card reads on its own, and keeps
-// its stale entry when that read fails too.
+// its stale entry when that read fails too. A chunk that fails after the
+// page's time is marked, so its cards do not read GitHub again.
 async function loadRefs(
   ctx: ObjectLinkContext,
   limit: LimitFunction,
   refs: PullRequestRef[],
+  deadlineMs: number,
 ): Promise<void> {
   try {
-    await limit(() => loadChunk(ctx, refs));
+    await limit(() => loadChunk(ctx, refs, deadlineMs));
   } catch (error) {
+    if (Date.now() >= deadlineMs) {
+      await pLimit(PREFETCH_CONCURRENCY).map(refs, (ref) =>
+        ctx.cache.update(outOfTimeCacheKey(cacheKey(ref)), () => ({
+          ttlMs: OUT_OF_TIME_TTL_MS,
+          value: true,
+        })),
+      );
+      return;
+    }
     const [only] = refs;
     if (only && refs.length === 1) {
       ctx.log.error(
@@ -158,7 +187,7 @@ async function loadRefs(
     const half = Math.ceil(refs.length / 2);
     await Promise.all(
       [refs.slice(0, half), refs.slice(half)].map((part) =>
-        loadRefs(ctx, limit, part),
+        loadRefs(ctx, limit, part, deadlineMs),
       ),
     );
   }
@@ -169,6 +198,7 @@ export async function prefetchGitHubPullRequests(
   ctx: ObjectLinkContext,
   refs: PullRequestRef[],
 ): Promise<void> {
+  const deadlineMs = Date.now() + PAGE_BUDGET_MS;
   const missing = await missingRefs(ctx, refs);
   const chunks: PullRequestRef[][] = [];
   for (
@@ -181,6 +211,6 @@ export async function prefetchGitHubPullRequests(
   // The queries of every chunk and of its halves share one limit.
   const queries = pLimit(PREFETCH_CONCURRENCY);
   await pLimit(PREFETCH_CONCURRENCY).map(chunks, (chunk) =>
-    loadRefs(ctx, queries, chunk),
+    loadRefs(ctx, queries, chunk, deadlineMs),
   );
 }

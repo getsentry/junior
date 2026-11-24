@@ -367,6 +367,70 @@ describe("GitHub pull request cache refresh", () => {
     );
   });
 
+  it("stops reading cards when a page's time is used, and shows the stale ones", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
+        reads.push(`pulls/${String(params["number"])}`);
+        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
+    );
+    let reachGitHub!: () => void;
+    const reachedGitHub = new Promise<void>((resolve) => {
+      reachGitHub = resolve;
+    });
+    let answerGitHub!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answerGitHub = resolve;
+    });
+    // Each card query fails. The first one answers late.
+    const queries: number[][] = [];
+    mswServer.use(
+      http.post("https://api.github.com/graphql", async ({ request }) => {
+        const { variables } = (await request.json()) as {
+          variables: Record<string, unknown>;
+        };
+        queries.push(
+          Object.entries(variables).flatMap(([name, value]) =>
+            name.startsWith("number") ? [Number(value)] : [],
+          ),
+        );
+        if (queries.length === 1) {
+          reachGitHub();
+          await answered;
+        }
+        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
+    );
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "opened",
+      pull_request: pullRequest(34),
+    });
+
+    // #34 is stale, and no card has read #35 yet.
+    vi.setSystemTime(start + 61 * 60_000);
+    const urls = [34, 35].map((number) => `${GITHUB_REPO}/pull/${number}`);
+    const page = read(...urls);
+    await reachedGitHub;
+    vi.setSystemTime(Date.now() + 21_000);
+    answerGitHub();
+    const cards = (await page).objects;
+    // The failed query does not split, and no card reads on its own.
+    expect([queries, reads]).toEqual([[[34, 35]], []]);
+    expect(cards.get(urls[0]!)).toMatchObject({
+      title: "Cache GitHub objects",
+    });
+    expect(cards.has(urls[1]!)).toBe(false);
+  });
+
   it("shows an unknown merge state from a page read as pending, then a patch reads it", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);

@@ -24,13 +24,18 @@ import {
   type GitHubPullRequestFields,
 } from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
-import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
+import {
+  outOfTimeCacheKey,
+  prefetchGitHubPullRequests,
+} from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
 const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
+// The load of a card that the page read ran out of time for.
+const OUT_OF_TIME = new Error("The page read ran out of time for this card");
 
 interface GitHubObjectLink {
   kind: "issue" | "pull_request";
@@ -137,6 +142,17 @@ async function readFields<T>(
     }
     return { ...options, value: schema.parse(response.body) };
   };
+  // The page read ran out of time for this card, so it shows its stale
+  // entry, or no card yet, and does not wait for one more read.
+  if (collection === "pulls" && (await ctx.cache.get(outOfTimeCacheKey(key)))) {
+    const stale = await ctx.cache
+      .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
+      .catch((error: unknown) => {
+        if (error === OUT_OF_TIME) return undefined;
+        throw error;
+      });
+    return schema.nullable().safeParse(stale).data ?? null;
+  }
   const cached = schema
     .nullable()
     .safeParse(await ctx.cache.getOrLoad(key, load));
