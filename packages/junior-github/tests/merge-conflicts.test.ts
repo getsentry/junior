@@ -393,6 +393,22 @@ describe("merge conflict check on webhook events", () => {
       vi.useRealTimers();
     });
 
+    it("clears a conflict that the cache entry still knows when the pull request is mergeable", async () => {
+      const key = "pulls:getsentry/junior#947";
+      await h.cache.update(key, () => ({
+        ttlMs: 60 * minute,
+        value: { head: { sha: headSha }, mergeable: false, state: "open" },
+      }));
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+
+      expect(await h.cache.get(key)).toEqual({
+        head: { sha: headSha },
+        mergeable: true,
+        state: "open",
+      });
+    });
+
     it("publishes a conflict with one search for a burst of pushes", async () => {
       await deliver("push-1", pushRequest("refs/heads/main"));
       vi.setSystemTime(pushedAt + minute);

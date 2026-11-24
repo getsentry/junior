@@ -24,11 +24,7 @@ import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
-import {
-  GITHUB_PULL_REQUEST_CACHE,
-  githubObjectCacheKey,
-  type GitHubPullRequestFields,
-} from "../object-cache.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
 import {
   gitHubConflictResolvedEvents,
@@ -145,26 +141,6 @@ function deliveredPullRequest(
     : undefined;
 }
 
-// A webhook read does not refresh the cache entry, so a clean read clears a
-// conflict that the entry still knows for that head commit. Otherwise the
-// next push marks it again from the entry (`object-cache.ts`).
-async function clearCachedConflict(
-  cache: PluginCache,
-  ref: GitHubPullRequestRef,
-  headSha: string,
-): Promise<void> {
-  await cache.update<GitHubPullRequestFields | null>(
-    githubObjectCacheKey("pulls", ref.repositoryFullName, ref.number),
-    (current) =>
-      current?.mergeable === false && current.head?.sha === headSha
-        ? {
-            ...GITHUB_PULL_REQUEST_CACHE,
-            value: { ...current, mergeable: true },
-          }
-        : undefined,
-  );
-}
-
 /**
  * Return `pull_request.merge_conflict` events for the open pull requests that
  * these events are about, when a Watch or event automation wants them and
@@ -221,7 +197,7 @@ export async function loadGitHubMergeConflictEvents(args: {
       if (loaded.mergeable === true) {
         // Like the patch and the heartbeat, every clean read drops the mark,
         // so a later waiter does not wake on a fix that came before it.
-        await clearCachedConflict(args.cache, ref, loaded.head.sha);
+        await clearGitHubCachedConflict(args.cache, ref, loaded.head.sha);
         await publishGitHubConflictResolved({
           events: args.publisher,
           headSha: loaded.head.sha,

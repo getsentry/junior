@@ -407,6 +407,7 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,

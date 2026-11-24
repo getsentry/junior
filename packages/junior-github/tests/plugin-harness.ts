@@ -157,15 +157,34 @@ export function createPluginHarness(fixture: GitHubFixture) {
       };
     },
   };
+  // An in-memory cache with no TTL, so a test can read what a hook wrote.
+  const cacheEntries = new Map<string, unknown>();
   const cache: HeartbeatHookContext["cache"] = {
-    async get() {
-      return undefined;
+    async get<T>(key: string) {
+      return cacheEntries.get(key) as T | undefined;
     },
-    async getOrLoad(_key, load) {
-      return (await load()).value;
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      if (!options?.refresh && cacheEntries.has(key)) {
+        return cacheEntries.get(key) as T;
+      }
+      const { value } = await load();
+      cacheEntries.set(key, value);
+      return value;
     },
-    async update() {},
-    async delete() {},
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => { value: T } | undefined,
+    ) {
+      const entry = next(cacheEntries.get(key) as T | undefined);
+      if (entry) cacheEntries.set(key, entry.value);
+    },
+    async delete(key) {
+      cacheEntries.delete(key);
+    },
   };
 
   async function deliver(request: Request): Promise<void> {
@@ -342,6 +361,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
   return {
     ...recorded,
     answer,
+    cache,
     deliver,
     dismiss,
     events,

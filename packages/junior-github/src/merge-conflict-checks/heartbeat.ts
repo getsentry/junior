@@ -8,6 +8,7 @@
  */
 import type {
   EventPublisher,
+  PluginCache,
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
@@ -26,6 +27,7 @@ import {
   closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
 import {
   markGitHubConflict,
   publishGitHubConflictResolved,
@@ -141,6 +143,8 @@ async function checkRepository(
       if (node.mergeable === "UNKNOWN") unknown = true;
       if (node.mergeable === "MERGEABLE") {
         mergeable.push(node.number);
+        // oxlint-disable-next-line no-await-in-loop -- One entry write per mergeable pull request.
+        await clearGitHubCachedConflict(args.cache, ref, node.headRefOid);
         // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
         await publishGitHubConflictResolved({
           events: args.events,
@@ -183,6 +187,8 @@ async function checkRepository(
 }
 
 interface CheckArgs {
+  /** The plugin cache, whose entry a mergeable pull request clears of a conflict. */
+  cache: PluginCache;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
