@@ -73,6 +73,7 @@ export {
 export type {
   CodeActivityDay,
   CodeChangeSearchReport,
+  CodeChangeStack,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,

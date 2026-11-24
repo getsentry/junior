@@ -194,6 +194,74 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("Code · Mine stacks the changes of one Conversation or Automation in their group", async ({
+    dashboard,
+    page,
+  }) => {
+    const flakyDeploy = {
+      id: "slack:C1:1770000000.000100",
+      kind: "conversation" as const,
+      title: "Fix the flaky deploy",
+    };
+    const releaseTrain = {
+      id: "scheduled-3",
+      kind: "automation" as const,
+      title: "Release train",
+    };
+    await mockViewerCodeChanges(page, [
+      {
+        idleDays: 0,
+        number: 7,
+        stack: flakyDeploy,
+        title: "Tune the retry backoff",
+      },
+      { idleDays: 1, number: 8, title: "Drop the legacy webhook" },
+      {
+        idleDays: 2,
+        number: 9,
+        stack: flakyDeploy,
+        title: "Retry the deploy check",
+      },
+      { idleDays: 3, number: 10, stack: releaseTrain, title: "Bump zod" },
+      {
+        draft: true,
+        idleDays: 0,
+        number: 11,
+        stack: releaseTrain,
+        title: "Bump vitest",
+      },
+    ]);
+    await page.goto(`${dashboard.baseURL}/code`);
+    const others = page
+      .getByRole("region", { exact: true, name: "Code" })
+      .getByRole("region", { name: "Waiting on others" });
+    // The stack takes the place of its first change, so the group keeps its
+    // order.
+    const stack = others.getByRole("listitem", { name: flakyDeploy.title });
+    await expect(stack.getByRole("listitem")).toHaveText([
+      /Tune the retry backoff/,
+      /Retry the deploy check/,
+    ]);
+    await expect(others).toContainText(
+      /Fix the flaky deploy[\s\S]*Retry the deploy check[\s\S]*Drop the legacy webhook[\s\S]*Bump zod/,
+    );
+    await expect(
+      stack.getByRole("link", { exact: true, name: flakyDeploy.title }),
+    ).toHaveAttribute(
+      "href",
+      `/conversations/${encodeURIComponent(flakyDeploy.id)}`,
+    );
+    // A source stacks only within one group: its draft sits in Drafts, so
+    // its other change stays a plain row.
+    await expect(
+      others.getByRole("listitem", { name: releaseTrain.title }),
+    ).toHaveCount(0);
+    await expect(
+      others.getByRole("listitem", { name: "Bump zod" }),
+    ).toBeVisible();
+    await screenshot(page, "code-mine-stacks", { lightTheme: true });
+  });
+
   test("Code · Mine waits for your asks before it groups your changes, and says when they fail", async ({
     dashboard,
     page,
