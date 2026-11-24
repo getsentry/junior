@@ -23,6 +23,7 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
+import { childLastOutcomeSql, childResultOfOutcome } from "./markers";
 import { CHILD_AGENT_KINDS, type ChildAgent } from "./types";
 
 const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
@@ -37,8 +38,9 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * children of a parent, such as ones that a removed feature created, are not
  * listed. A child is `running` while a Turn or mailbox input that answers its
  * parent is open, and is `failed` when its last Turn failed, also when the
- * Turn ended with a model error and execution went back to idle. Turns do
- * not store a blocked result, so only a failure sets `lastResult`.
+ * Turn ended with a model error and execution went back to idle. Otherwise
+ * `lastResult` is the outcome of the newest ended parent message, from the
+ * parent's markers.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -51,6 +53,10 @@ export async function listChildAgents(
       conversationId: juniorConversations.conversationId,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
+      lastOutcome: childLastOutcomeSql(
+        parentConversationId,
+        juniorConversations.conversationId,
+      ),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
       turnFailed: conversationTurnFailedSql(juniorConversations),
@@ -97,6 +103,10 @@ export async function listChildAgents(
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
         ));
+      const lastResult =
+        row.turnFailed && !running
+          ? "failed"
+          : childResultOfOutcome(row.lastOutcome);
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         ...(row.archivedAt
@@ -104,7 +114,7 @@ export async function listChildAgents(
           : undefined),
         childConversationId: row.conversationId,
         kind,
-        ...(row.turnFailed && !running ? { lastResult: "failed" } : undefined),
+        ...(lastResult ? { lastResult } : undefined),
         status:
           stoppedAtMs !== undefined
             ? "stopped"

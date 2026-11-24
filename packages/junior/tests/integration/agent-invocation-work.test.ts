@@ -495,6 +495,7 @@ describe("child agent task work", () => {
       ],
       terminal: { outcome: "blocked", type: "turn_completed" },
       subagentOutcome: "blocked",
+      lastResult: "blocked" as const,
       parentMessages: [
         expect.stringMatching(
           /status="blocked">\n[\s\S]*\nApproval to open the PR/,
@@ -507,6 +508,7 @@ describe("child agent task work", () => {
       outputs: [quiet],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
+      lastResult: "completed" as const,
       parentMessages: [
         expect.stringMatching(
           /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
@@ -526,6 +528,7 @@ describe("child agent task work", () => {
       ],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
+      lastResult: "completed" as const,
       parentMessages: [],
     },
     {
@@ -536,6 +539,7 @@ describe("child agent task work", () => {
       outputs: [quiet],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
+      lastResult: "completed" as const,
       parentMessages: [
         expect.stringMatching(/status="completed">\n[\s\S]*\nLost reply\.\n/),
       ],
@@ -547,6 +551,7 @@ describe("child agent task work", () => {
       outputs: [quiet],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
+      lastResult: "completed" as const,
       parentMessages: [
         expect.stringMatching(
           /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
