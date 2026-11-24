@@ -33,14 +33,6 @@ child agents add to this is in `./child-agents.md`.
 - The contract does not depend on how many Leads a person has, or on which
   kind is the top of a person's work.
 
-## Entry points
-
-- The model: `startAgent`, `messageAgent`, `listAgents`, `stopAgent`,
-  `archiveAgent`, and `watchEvents` on an `agent` resource. To end a Turn:
-  final text, `noReply`, `reportBlocked`, or an Inbox item.
-- Slack and the dashboard: ask Junior to start, steer, or stop work. The
-  dashboard shows each agent, its team, and its latest update.
-
 ## Rules
 
 - A team is an agent and the agents that it started: its child agents, and
