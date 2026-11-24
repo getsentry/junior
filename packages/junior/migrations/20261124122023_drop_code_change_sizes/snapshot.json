@@ -1,0 +1,82 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "931371fa-b4c2-42c0-a61e-13e39c7cd162",
+  "prevIds": ["53cebd3e-2849-4abe-9840-450ae0fe2b07"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_code_changes", "draft"],
+      "writes": [
+        "s|col|public.junior_code_changes.draft",
+        "n|col|public.junior_code_changes.draft",
+        "e|col|public.junior_code_changes.draft"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "additions"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.additions",
+        "n|col|public.junior_code_changes.additions",
+        "e|col|public.junior_code_changes.additions"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "changed_files"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.changed_files",
+        "n|col|public.junior_code_changes.changed_files",
+        "e|col|public.junior_code_changes.changed_files"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "deletions"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.deletions",
+        "n|col|public.junior_code_changes.deletions",
+        "e|col|public.junior_code_changes.deletions"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_changes\",\"draft\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_changes\",\"additions\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_changes\",\"changed_files\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_changes\",\"deletions\"]"
+    }
+  ]
+}

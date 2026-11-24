@@ -14,13 +14,14 @@ const rootTurn = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    reply: "none",
+    reply: false,
     reportBlocked: "none",
     noReply: true,
   },
@@ -44,25 +45,29 @@ const agentInThreadTurn = {
   sender: "agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
-  gated: true,
-  missingAnswerError: "No reply was sent.",
+  gated: false,
   failureNotice: "parent",
   endResult: "parent",
   sessionTasks: false,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    reply: "parent",
+    reply: false,
     reportBlocked: "parent",
     noReply: true,
   },
 };
 
 const { sender: _sender, ...childAgentTurn } = agentInThreadTurn;
-const agentInTaskTurn = { ...childAgentTurn, promptMode: "child_agent" };
+const agentInTaskTurn = {
+  ...childAgentTurn,
+  promptMode: "child_agent",
+  conversationMetadata: false,
+};
 
 // An Automation run almost never gets an answer, so only pending work keeps
 // its cache warm.
@@ -76,10 +81,11 @@ const automationTurn = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,
-    reply: "automation",
+    reply: true,
     reportBlocked: "automation",
   },
 };

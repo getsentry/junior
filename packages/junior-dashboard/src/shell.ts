@@ -199,12 +199,8 @@ export function renderDashboard(
   const client = readDashboardClientManifest();
   // Without these hints, the browser finds the chunks only after the entry
   // has downloaded and parsed, and the fonts only after the stylesheet has.
-  // The page loads only the viewer's UI shell. Without core data, it loads
-  // the current UI, which reads /api/me itself and reports the failure.
-  const shell =
-    client.shells[bootstrap?.me.experimentalUi ? "inbox" : "classic"];
   const clientPreloads = [
-    ...shell.imports.map(
+    ...client.imports.map(
       (file) =>
         `<link rel="modulepreload" href="${DASHBOARD_ASSETS_PATH}/${file}" />`,
     ),
@@ -293,7 +289,7 @@ export function renderDashboard(
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${shell.entry}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${client.entry}"></script>
 </body>
 </html>`,
     {

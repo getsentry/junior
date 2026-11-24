@@ -6,13 +6,8 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import { OutboundLink } from "../components/OutboundLink";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { dashboardInlineLinkClass } from "../styles";
-import { useInboxUi } from "../uiShell";
 import { useLinkedConversationTitles } from "./queries";
-import {
-  inboxRowPath,
-  inboxItemPath,
-  inboxItemSubjectHref,
-} from "./inboxItemFormat";
+import { inboxRowPath, inboxItemSubjectHref } from "./inboxItemFormat";
 
 /** A list shows this many entries until the reader asks for the rest. */
 const COLLAPSED_ENTRIES = 3;
@@ -87,7 +82,6 @@ function Note(props: { text: string | undefined }) {
  */
 export function InboxItemEvidence(props: { item: InboxItemPayload }) {
   const { item } = props;
-  const inbox = useInboxUi();
   const evidence = item.request?.evidence ?? [];
   const relatedConversationIds = item.related?.conversationIds ?? [];
   const titles = useLinkedConversationTitles(relatedConversationIds);
@@ -120,11 +114,7 @@ export function InboxItemEvidence(props: { item: InboxItemPayload }) {
       node: (
         <Link
           className={dashboardInlineLinkClass}
-          to={
-            inbox
-              ? inboxRowPath({ id: related.id, status: "open" })
-              : inboxItemPath(related.id)
-          }
+          to={inboxRowPath({ id: related.id, status: "open" })}
         >
           <Inbox aria-hidden="true" className={iconClass} />
           {related.title}

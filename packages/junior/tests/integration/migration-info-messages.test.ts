@@ -35,23 +35,10 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
       });
       const dir = await mkdtemp(join(tmpdir(), "junior-info-messages-"));
       try {
-        await mkdir(join(dir, "meta"), { recursive: true });
-        await writeFile(join(dir, "0000_report.sql"), REPORTING_MIGRATION);
+        await mkdir(join(dir, "19700101000001_report"));
         await writeFile(
-          join(dir, "meta", "_journal.json"),
-          JSON.stringify({
-            dialect: "postgresql",
-            entries: [
-              {
-                breakpoints: true,
-                idx: 0,
-                tag: "0000_report",
-                version: "7",
-                when: 1000,
-              },
-            ],
-            version: "7",
-          }),
+          join(dir, "19700101000001_report", "migration.sql"),
+          REPORTING_MIGRATION,
         );
 
         await migratePluginSchemas(sql, [{ dir, pluginName: PLUGIN_NAME }]);

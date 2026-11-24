@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
+  "prevIds": ["496d0c67-2a83-4e91-b5bd-e848b6fc81d1"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_open_action_added_by_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_open_action_added_by_idx",
+        "n|idx|public.junior_review_items_open_action_added_by_idx",
+        "e|idx|public.junior_review_items_open_action_added_by_idx",
+        "n|rel|public.junior_review_items_open_action_added_by_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.added_by_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_open_action_added_by_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "added_by_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

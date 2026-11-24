@@ -1,0 +1,135 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "787c677c-20a2-48b4-8222-8bbb6aa5f45c",
+  "prevIds": ["dda04b3e-f251-4bec-80d0-9b5f57b72dd9"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "duration_ms"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.duration_ms",
+        "n|col|public.junior_conversations.duration_ms",
+        "e|col|public.junior_conversations.duration_ms"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "usage_json"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.usage_json",
+        "n|col|public.junior_conversations.usage_json",
+        "e|col|public.junior_conversations.usage_json"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "execution_duration_ms"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.execution_duration_ms",
+        "n|col|public.junior_conversations.execution_duration_ms",
+        "e|col|public.junior_conversations.execution_duration_ms"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "execution_usage_json"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.execution_usage_json",
+        "n|col|public.junior_conversations.execution_usage_json",
+        "e|col|public.junior_conversations.execution_usage_json"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "duration_ms",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "usage_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "execution_duration_ms",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "execution_usage_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

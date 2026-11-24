@@ -94,10 +94,7 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
+import { runTurnEndTasks } from "@/chat/task-execution/turn-end-tasks";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import { completeCancelledConversationTurn } from "@/chat/task-execution/turn-cancel";
@@ -481,13 +478,8 @@ export function createConversationTurnWorker(
         } else {
           // Save each web Message apart, so an answer in a batch stays an
           // answer in the transcript and on resume.
-          for (const [index, message] of webInputMessages.entries()) {
-            upsertConversationMessage(
-              conversation,
-              index === 0
-                ? { ...message, meta: { ...message.meta, replied: false } }
-                : message,
-            );
+          for (const message of webInputMessages) {
+            upsertConversationMessage(conversation, message);
           }
           // An Event or parent batch saves one Message with its inputs.
           if (webInputMessages.length === 0) {
@@ -738,10 +730,6 @@ export function createConversationTurnWorker(
                 await reportFailure(
                   reply.diagnostics.errorMessage ?? reply.text,
                 );
-              } else if (reply.reply && behavior.tools.reply === "parent") {
-                await sendToParent({ kind: "reply", reply: reply.reply });
-                // Keep the reply in the child's transcript, not its Location.
-                await deliverAssistantMessage(reply.reply.text);
               } else if (reply.reply) {
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
@@ -767,8 +755,8 @@ export function createConversationTurnWorker(
                   });
                 }
               } else if (behavior.endResult === "parent" && reply.text) {
-                // A person's Turn in a Thread ends with final text. The
-                // person sees it, and the parent gets it too.
+                // The final text of a child agent's Turn is its reply. It
+                // stays in the child's transcript, and the parent gets it.
                 await sendToParent({ kind: "completed", text: reply.text });
               }
 
@@ -867,47 +855,12 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          if (completedSuccessfully && behavior.sessionTasks) {
-            try {
-              await scheduleSessionCompletedPluginTasks(
-                {
-                  conversationId: context.conversationId,
-                  sessionId: turnId,
-                },
-                async (message) => {
-                  try {
-                    await processPluginTask(message);
-                  } catch (error) {
-                    logException(
-                      error,
-                      "conversation.plugin.session_completion_task.failed",
-                      {
-                        conversationId: context.conversationId,
-                        pluginName: message.plugin,
-                        taskName: message.name,
-                        turnId,
-                      },
-                    );
-                  }
-                },
-              );
-            } catch (error) {
-              logException(
-                error,
-                "conversation.plugin.session_completion_task.failed",
-                {
-                  conversationId: context.conversationId,
-                  turnId,
-                },
-              );
-            }
-          } else {
-            // The event search task runs only with the session tasks above.
-            await indexEndedTurnEvents({
-              conversationId: context.conversationId,
-              turnId,
-            });
-          }
+          await runTurnEndTasks({
+            behavior,
+            completed: completedSuccessfully,
+            conversationId: context.conversationId,
+            turnId,
+          });
 
           await acknowledge();
           return { status: "completed" };

@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "d814ccc1-bdb1-4766-a8b3-2f9ecb6dd89e",
+  "prevIds": ["110d2b53-92f1-4589-b0d9-e25adbd149e2"],
+  "footprints": [
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_open_dedupe_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_open_dedupe_uidx",
+        "n|idx|public.junior_review_items_open_dedupe_uidx",
+        "e|idx|public.junior_review_items_open_dedupe_uidx",
+        "n|rel|public.junior_review_items_open_dedupe_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.dedupe_key"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "bda45cbb3fedae7c"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_open_dedupe_uidx\"]",
+      "set": {
+        "columns": [
+          {
+            "value": "coalesce(\"provider\", '')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "coalesce(\"provider_tenant_id\", '')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "dedupe_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ]
+      }
+    }
+  ]
+}

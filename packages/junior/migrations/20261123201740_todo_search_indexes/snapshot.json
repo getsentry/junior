@@ -1,0 +1,89 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "f775cac5-699b-4d11-9b40-e8092bea55c4",
+  "prevIds": ["95db36c0-8ea2-4996-8e01-7625e5ed3391"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_todos",
+        "junior_todos_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_todos_search_idx",
+        "n|idx|public.junior_todos_search_idx",
+        "e|idx|public.junior_todos_search_idx",
+        "n|rel|public.junior_todos_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_todos", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_todos",
+        "junior_todos_title_trgm_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_todos_title_trgm_idx",
+        "n|idx|public.junior_todos_title_trgm_idx",
+        "e|idx|public.junior_todos_title_trgm_idx",
+        "n|rel|public.junior_todos_title_trgm_idx"
+      ],
+      "reads": ["n|tbl|public.junior_todos", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('simple', \"title\")",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_title_trgm_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lower(\"title\") gin_trgm_ops",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

@@ -66,24 +66,19 @@ async function mailboxTexts(conversationId: string) {
 const NO_ANSWER = "Do not answer.";
 
 /**
- * Reply with the input, or answer with plain text twice for `NO_ANSWER`.
+ * Reply with the input as final text, or end with no text for `NO_ANSWER`.
  * With `reply`, always reply with that text.
  */
 function taskModel(request: AgentRun, reply?: string): AgentRequestStreamFn {
-  return createModelStream(
-    reply === undefined && request.instruction.text.includes(NO_ANSWER)
-      ? [
-          { type: "text", text: "Thinking about it." },
-          { type: "text", text: "Still thinking." },
-        ]
-      : [
-          {
-            type: "toolCall",
-            name: "reply",
-            arguments: { text: reply ?? `result:${request.instruction.text}` },
-          },
-        ],
-  );
+  return createModelStream([
+    {
+      type: "text",
+      text:
+        reply === undefined && request.instruction.text.includes(NO_ANSWER)
+          ? ""
+          : (reply ?? `result:${request.instruction.text}`),
+    },
+  ]);
 }
 
 async function createHarness(
@@ -152,7 +147,7 @@ async function createHarness(
     queue,
     state,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
-    /** Spawn one child agent, as spawnAgent does. */
+    /** Spawn one child agent, as startAgent does. */
     spawn: async (
       overrides: Partial<SpawnChildAgentInput> & { idempotencyKey: string },
     ) =>
@@ -289,12 +284,7 @@ describe("child agent identity and concurrency", () => {
         bothStarted.resolve(undefined);
       }
       return createModelStream([
-        {
-          type: "toolCall",
-          name: "reply",
-          arguments: { text: `result:${task}` },
-          waitFor: release.promise,
-        },
+        { type: "text", text: `result:${task}`, waitFor: release.promise },
       ]);
     });
     try {
@@ -348,11 +338,7 @@ describe("child agent identity and concurrency", () => {
       createModelStream([
         request.instruction.text.includes("failing sibling")
           ? { type: "error", errorMessage: "sibling failed" }
-          : {
-              type: "toolCall",
-              name: "reply",
-              arguments: { text: "successful sibling result" },
-            },
+          : { type: "text", text: "successful sibling result" },
       ]),
     );
     try {
@@ -498,7 +484,7 @@ describe("child agent identity and concurrency", () => {
           role: "user",
         }),
       );
-      // Its `reply` reaches the parent once.
+      // Its final text reaches the parent once.
       const parentWork = await getConversationWorkState({
         conversationId: parentConversationId,
         state: harness.state,
@@ -596,8 +582,8 @@ describe("child agent identity and concurrency", () => {
 
   // An idle child, such as after a Watch Event Turn that spawned a helper,
   // gets the helper's result on its Conversation loop. That Turn answers the
-  // parent itself. After the re-ask, a child that ends without an answer
-  // tells the parent. It runs as the web user who started it, but cannot
+  // parent itself. A child Turn that ends with no text tells the parent that
+  // it failed. It runs as the web user who started it, but cannot
   // wait for that person to sign in.
   it.each([
     {
@@ -610,13 +596,13 @@ describe("child agent identity and concurrency", () => {
       name: "a Task with no answer",
       kind: "task",
       finding: NO_ANSWER,
-      expected: ["No reply was sent."],
+      expected: ['status="failed"'],
     },
     {
       name: "a Thread with no answer",
       kind: "thread",
       finding: NO_ANSWER,
-      expected: ["No reply was sent."],
+      expected: ['status="failed"'],
     },
   ] as const)(
     "runs a grandchild result on the child's Conversation loop for $name",

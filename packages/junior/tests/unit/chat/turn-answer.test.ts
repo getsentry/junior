@@ -98,7 +98,7 @@ describe("turn answer", () => {
 
 describe("reply", () => {
   function call(text: string) {
-    const tool = createReplyTool("automation");
+    const tool = createReplyTool();
     return tool.execute!(tool.prepareArguments({ text }), {});
   }
 

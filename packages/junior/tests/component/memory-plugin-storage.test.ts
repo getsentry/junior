@@ -107,7 +107,7 @@ function githubMigrationsDir(): string {
 
 function githubMigrationFiles(): string[] {
   return readdirSync(githubMigrationsDir())
-    .filter((filename) => filename.endsWith(".sql"))
+    .filter((folder) => /^\d{14}_/.test(folder))
     .sort();
 }
 

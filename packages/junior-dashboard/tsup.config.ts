@@ -111,10 +111,8 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
         for (const file of [
           clientManifest.stylesheet,
           ...clientManifest.fonts,
-          ...Object.values(clientManifest.shells).flatMap((shell) => [
-            shell.entry,
-            ...shell.imports,
-          ]),
+          clientManifest.entry,
+          ...clientManifest.imports,
         ]) {
           if (!Object.hasOwn(publicAssets, file)) {
             throw new Error(

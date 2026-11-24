@@ -56,8 +56,6 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
   skipped run again. This breaks "one stop stops the whole tree".
 - A parent does not archive its child agents when their work is done. This
   breaks "a parent manages the lifecycle of its child agents".
-- A parent cannot archive a Task. Only a Thread can be archived. This
-  breaks "a parent manages the lifecycle of its child agents".
 - A parent message that arrives while a person stops its child does not
   run, and a retried spawn can lose its task to a worker that holds the
   task of the failed spawn. In both cases the parent was told that the work

@@ -377,6 +377,22 @@ export {
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export { leadSchema } from "./schema/lead";
 export {
+  archiveSpaceBodySchema,
+  createSpaceBodySchema,
+  spaceListQuerySchema,
+  spaceListSchema,
+  spaceMemberListSchema,
+  spaceMemberSchema,
+  spaceParamsSchema,
+  spaceSchema,
+  updateSpaceBodySchema,
+} from "./schema/space";
+export type {
+  SpaceListReport,
+  SpaceMemberListReport,
+  SpaceReport,
+} from "./schema/space";
+export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,
 } from "./schema/user-customization";

@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2975fcbf-7615-4d37-b9ee-aa182fc7fbb4",
+  "prevIds": ["b43de5d9-64b5-4909-9bec-8731f09505af"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_slack_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_slack_idx",
+        "n|idx|public.junior_automations_creator_slack_idx",
+        "e|idx|public.junior_automations_creator_slack_idx",
+        "n|rel|public.junior_automations_creator_slack_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.team_id",
+        "n|col|public.junior_automations.creator_slack_user_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_creator_slack_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "creator_slack_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

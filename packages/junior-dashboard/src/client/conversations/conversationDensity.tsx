@@ -1,5 +1,5 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
-import { useEffect, useSyncExternalStore } from "react";
+import { createContext, useEffect, useSyncExternalStore } from "react";
 import { Bot, Rows2, Rows3 } from "lucide-react";
 
 import { useDashboardCoreData } from "../api";
@@ -63,16 +63,14 @@ export function useConversationDensity(): [
   return [density, saveDensity];
 }
 
+/** True when the reader chose comfortable density. `DashboardShell` provides it. */
+export const ComfortableDensityContext = createContext(false);
+
 /** Mirror the density on the root, for the `comfortable:` CSS variant. */
 export function useDensityRoot(): void {
   const [density] = useConversationDensity();
   useEffect(() => {
-    const root = document.documentElement;
-    root.dataset["density"] = density;
-    // The current UI has no density, so leaving the new UI clears it.
-    return () => {
-      delete root.dataset["density"];
-    };
+    document.documentElement.dataset["density"] = density;
   }, [density]);
 }
 

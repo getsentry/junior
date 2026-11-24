@@ -52,9 +52,9 @@ returns a result that shows the model its next step.
   use it. This breaks "the model sees only the tools and arguments that can
   work in the current Turn".
 - Some results cut long text and add only "…", such as Conversation
-  summaries in search results and the task of a child agent in its list.
-  The model does not learn how much is missing or how to get it. This
-  breaks "no part of a result is lost without notice".
+  summaries in search results. The model does not learn how much is
+  missing or how to get it. This breaks "no part of a result is lost
+  without notice".
 - Some arguments have no description, such as arguments of the Automation,
   Inbox item, and Google Calendar tools. This breaks "an argument
   description says what the value is".

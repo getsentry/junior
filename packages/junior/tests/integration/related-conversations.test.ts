@@ -1,12 +1,19 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { getConversationStore, getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
-import { closeConversationFixture } from "../fixtures/conversation";
+import {
+  closeConversationFixture,
+  webTestActor,
+} from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import { mockRetrievalModels } from "../fixtures/retrieval-models";
 
 const KAFKA_CONVERSATION_ID = "slack:CKAFKA:1700000000.100000";
 const LUNCH_CONVERSATION_ID = "slack:CLUNCH:1700000000.200000";
+const INBOX_CONVERSATION_ID = "slack:CINBOX:1700000000.300000";
+const LINKS_THREAD_ID = "agent:links-thread";
 
 // Public Conversations that another person started, with a completed Turn.
 async function recordOpenConversation(input: {
@@ -81,6 +88,59 @@ describe("related conversations", () => {
     // in history has the block.
     expect(rerankRequests).toHaveLength(1);
     expect(modelInputText(agent).split(RELATED_CONTEXT)).toHaveLength(2);
+  });
+
+  it("shows a Thread with its root, by title before its first summary", async () => {
+    await recordOpenConversation({
+      channelId: "CINBOX",
+      conversationId: INBOX_CONVERSATION_ID,
+      summary: "BYK is reviewing bundle baselines and snapshot flakes.",
+      title: "New Inbox",
+    });
+    // A Thread has its spawn title before its first Turn completes.
+    await getConversationStore().createChild({
+      childConversationId: LINKS_THREAD_ID,
+      kind: "thread",
+      parentConversationId: INBOX_CONVERSATION_ID,
+      nowMs: Date.now(),
+      title: "Open external links in new tabs",
+    });
+    // The person who asks and one other person take part in the root. The
+    // other person's name is only on their Slack Identity.
+    const requester = await resolveViewerUser(webTestActor.email);
+    const other = await resolveViewerUser("bob@example.com");
+    await getDb().insert(juniorIdentities).values({
+      createdAt: new Date(),
+      displayName: "Bob Example",
+      id: "identity-bob-slack",
+      kind: "user",
+      provider: "slack",
+      providerSubjectId: "UBOB",
+      updatedAt: new Date(),
+      userId: other!.id,
+    });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values(
+        [requester!, other!].map((user, index) => ({
+          lastMessageAt: new Date(Date.now() - index * 1_000),
+          rootConversationId: INBOX_CONVERSATION_ID,
+          userId: user.id,
+        })),
+      );
+    mockRetrievalModels({
+      rerank: (_query, document) => (/new tabs/i.test(document) ? 0.9 : 0.1),
+    });
+    const agent = await createAgent();
+
+    await agent.run("Open external links in new tabs");
+
+    const input = modelInputText(agent);
+    expect(input).toContain(`- conversation_id: ${LINKS_THREAD_ID}`);
+    expect(input).toContain(`root_conversation_id: ${INBOX_CONVERSATION_ID}`);
+    expect(input).toContain("root_title: New Inbox");
+    expect(input).toContain("participants: you, Bob Example");
+    expect(input).not.toContain(`- conversation_id: ${INBOX_CONVERSATION_ID}`);
   });
 
   it("runs the Turn without related conversations when reranking fails", async () => {

@@ -158,12 +158,13 @@ export const SLACK_MENTION_FORMAT_RULE =
 
 /**
  * Block 2, `<child-agent-run>`: the job rules for a run that a parent agent
- * started. No person reads the run, and only its `reply` reaches the parent.
+ * started. No person reads the run, and its final text is its reply to the
+ * parent.
  */
 const CHILD_AGENT_RUN_RULES = [
   "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. No person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
-  `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. \`${REPLY_TOOL_NAME}\` sends a message to the parent. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
+  `- Your final text is your reply. When the Turn ends, the parent gets it as your result. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
   `- ${SLACK_MENTION_FORMAT_RULE}`,
   "- The parent entry of `listAgents` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with `updateTodos`. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.",
@@ -332,7 +333,9 @@ const TOOL_POLICY_RULES = [
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   WATCH_POLICY_RULE,
   "- New scheduled and event automations run on your own credentials by default. Make the creator's connected credentials available only when the creator asks for that. Do not decide from the tools, access, or connections in this turn whether an automation's runs can do the work; each run loads its own tools. Do not ask for credential confirmation, access, or a connection before you create one.",
-  "- Before loading a skill or starting substantial work, decide whether `spawnAgent` fits better than inline work.",
+  "- Before loading a skill or starting substantial work, decide whether a child agent fits better than inline work. Start a Task with `startAgent` when the request splits into independent tracks that each need real investigation, such as several repos, services, or sources (start every track in the same message); when an answer needs reading across many files, logs, or sources and you need only the conclusion; when a side task does not block your main answer; or when you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion). Do the work yourself when it fits in a handful of tool calls, when you already know the file, symbol, or value to look up, or when you would only split one modest task into pieces. Each child rebuilds its context, so when in doubt, do not start one.",
+  "- Write a child's task as a brief for a capable peer who just joined: do the synthesis yourself, and name the exact question, files, or change instead of 'based on your findings, fix it'. The task is the child's instruction, and its action review judges the child's actions against it, so name only actions that your own conversation backs, with the exact target. Give a child a name when you may send it more work. To give more work to a child that exists, use `messageAgent`; it keeps its type and kind.",
+  "- After you delegate, do not do the same work yourself. You know nothing about a child's findings until its result arrives: do not predict them, wait, or poll, and if the user asks before then, give status. Share a Thread's url so people can find it, and post only updates that matter to them.",
   CODEMODE_POLICY_RULE,
 ];
 
@@ -411,12 +414,12 @@ const AUTOMATION_FAILURE_REPORTING_RULES = [
 ];
 
 /**
- * Block 6, `<failure-reporting>` for child agent runs. A `reply` is finished
+ * Block 6, `<failure-reporting>` for child agent runs. Final text is finished
  * work, so a failure that stops the task goes in the blocked report.
  */
 const CHILD_AGENT_FAILURE_REPORTING_RULES = [
-  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in \`${REPLY_TOOL_NAME}\`.`,
-  `- Keep raw tool payloads and internal routing metadata out of \`${REPLY_TOOL_NAME}\`.`,
+  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in your final text.`,
+  "- Keep raw tool payloads and internal routing metadata out of your final text.",
 ];
 
 /** Block 6 `<output>` line for every mode: how to report finished work. */

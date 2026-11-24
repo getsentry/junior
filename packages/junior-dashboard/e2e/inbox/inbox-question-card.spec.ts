@@ -17,8 +17,7 @@ async function precedes(first: Locator, second: Locator) {
   );
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   for (const view of [desktop, mobile]) {
     test(`an Inbox question shows its question, then Junior's message, then the form (${view.name})`, async ({
       dashboard,

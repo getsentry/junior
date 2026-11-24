@@ -62,10 +62,10 @@ function readTables(root, file) {
   return JSON.parse(fs.readFileSync(path.join(root, file), "utf8")).tables;
 }
 
-/** Check the latest snapshot of every package that has migrations. */
-export function run({ root }) {
+/** Check the migrated schema of every package that has migrations. */
+export async function run({ root }) {
   const listed = readTables(root, EXCEPTIONS);
-  return latestSnapshots(root).flatMap(
+  return (await latestSnapshots(root)).flatMap(
     ({ packageName, snapshotPath, snapshot }) =>
       checkSnapshot(packageName, snapshotPath, snapshot, listed),
   );

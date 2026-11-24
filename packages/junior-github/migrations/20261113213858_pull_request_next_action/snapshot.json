@@ -1,0 +1,61 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "055a183e-3fe9-4077-a93f-6fd5f0786389",
+  "prevIds": ["7b0a99a8-d5c9-4810-a220-3b6c8517c9cf"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "next_action"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.next_action",
+        "n|col|public.junior_github_pull_requests.next_action",
+        "e|col|public.junior_github_pull_requests.next_action"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "ready_to_merge_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.ready_to_merge_at",
+        "n|col|public.junior_github_pull_requests.ready_to_merge_at",
+        "e|col|public.junior_github_pull_requests.ready_to_merge_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "next_action",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_requests\",\"ready_to_merge_at\"]"
+    }
+  ]
+}

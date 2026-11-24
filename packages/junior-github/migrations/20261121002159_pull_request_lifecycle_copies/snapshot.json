@@ -1,0 +1,118 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "84ce1936-1b4b-461e-95a0-f3dbfd5d14fb",
+  "prevIds": ["a060e2c9-de82-4766-94c1-358cac925a4e"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_merged_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_merged_at_idx",
+        "n|idx|public.junior_github_pull_requests_merged_at_idx",
+        "e|idx|public.junior_github_pull_requests_merged_at_idx",
+        "n|rel|public.junior_github_pull_requests_merged_at_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "e|col|public.junior_github_pull_requests.merged_at"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_closed_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_closed_at_idx",
+        "n|idx|public.junior_github_pull_requests_closed_at_idx",
+        "e|idx|public.junior_github_pull_requests_closed_at_idx",
+        "n|rel|public.junior_github_pull_requests_closed_at_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "e|col|public.junior_github_pull_requests.closed_at"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "merged_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.merged_at",
+        "n|col|public.junior_github_pull_requests.merged_at",
+        "e|col|public.junior_github_pull_requests.merged_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "closed_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.closed_at",
+        "n|col|public.junior_github_pull_requests.closed_at",
+        "e|col|public.junior_github_pull_requests.closed_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "draft"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.draft",
+        "n|col|public.junior_github_pull_requests.draft",
+        "e|col|public.junior_github_pull_requests.draft"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_requests\",\"merged_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_requests\",\"closed_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_requests\",\"draft\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_github_pull_requests_merged_at_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_github_pull_requests_closed_at_idx\"]"
+    }
+  ]
+}

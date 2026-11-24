@@ -18,7 +18,11 @@ import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
-import { getRegistrations } from "./agent-hooks";
+import {
+  type AppEventPublisher,
+  createPluginEventPublisher,
+  getRegistrations,
+} from "./agent-hooks";
 import {
   PLUGIN_TASK_MAX_DELIVERIES,
   type StartedPluginTaskMessage,
@@ -28,6 +32,8 @@ import { startedTaskDefinition } from "./task-start";
 interface StartedTaskOptions {
   /** Queue delivery of this message, when the queue reports it. */
   deliveryCount?: number | undefined;
+  /** Core event publisher, which the queue consumer of the app supplies. */
+  events: AppEventPublisher;
   showInboxItem?: ShowInboxItem | undefined;
 }
 
@@ -54,6 +60,7 @@ function startedTaskContext(
       show: options.showInboxItem ?? (async () => {}),
     }),
     db: getDb(),
+    events: createPluginEventPublisher(plugin, options.events),
     lastDelivery: (options.deliveryCount ?? 0) >= PLUGIN_TASK_MAX_DELIVERIES,
     log: createPluginLogger(pluginName),
     name,
@@ -66,7 +73,7 @@ function startedTaskContext(
 /** Run one delivery of a started task. */
 export async function processStartedPluginTask(
   message: StartedPluginTaskMessage,
-  options: StartedTaskOptions = {},
+  options: StartedTaskOptions,
 ): Promise<void> {
   const attributes = {
     "app.plugin.name": message.plugin,

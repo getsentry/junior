@@ -11,8 +11,7 @@ import {
 import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
   const todo = (page: Page) => page.getByRole("region", { name: "To do" });
   // The To-do's row: the innermost list item with its link, also when it

@@ -2,12 +2,13 @@ import { conversationMenuRow } from "./conversationMenu";
 import type { Page } from "@playwright/test";
 import { readClipboard } from "../clipboard";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
+import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+  const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 
   async function openActiveConversation(page: Page, baseURL: string) {
     await page.goto(
@@ -232,13 +233,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    await expect(
-      page
-        .getByRole("region", { exact: true, name: "Conversations" })
-        .getByRole("link", { name: /Checkout latency triage/ })
-        .first(),
-    ).toBeVisible();
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+        await expect(
+          page
+            .getByRole("region", { exact: true, name: "Conversations" })
+            .getByRole("link", { name: /Checkout latency triage/ })
+            .first(),
+        ).toBeVisible();
+      },
+      { requests: 9, serialRounds: 2 },
+    );
     expect(requests).toBe(1);
 
     // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
@@ -259,6 +266,67 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     expect(await extraFeedFetch).toBe(false);
     expect(requests).toBe(1);
+  });
+
+  test("loads a finished conversation within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    // A running Conversation polls every 2 seconds, so a slow load would
+    // count a poll. Measure a finished one, which does not poll its detail.
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(
+          `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+          { waitUntil: "networkidle" },
+        );
+        await expect(
+          page.getByRole("heading", {
+            name: "Deployment investigation failed",
+            exact: true,
+          }),
+        ).toBeVisible();
+      },
+      { requests: 11, serialRounds: 2 },
+    );
+  });
+
+  test("reads the card of each link once, for rows near the screen", async ({
+    page,
+    dashboard,
+  }) => {
+    const asked: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/objects") {
+        asked.push(...url.searchParams.getAll("url"));
+      }
+    });
+    const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
+    // A pull request of a row below the fold.
+    const below = "https://github.com/getsentry/relay/pull/3396";
+    const firstRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/objects",
+    );
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+    await firstRead;
+    // A row's links and the links in its summary share one read.
+    expect(repeated()).toEqual([]);
+    expect(asked).not.toContain(below);
+
+    const belowRead = page.waitForResponse((response) =>
+      new URL(response.url()).searchParams
+        .getAll("url")
+        .some((url) => url === below),
+    );
+    await page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("link", { name: /Inbox comfortable rows pass/ })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await belowRead;
+    expect(repeated()).toEqual([]);
   });
 
   test("keeps cached conversation and draft available through reconnect", async ({

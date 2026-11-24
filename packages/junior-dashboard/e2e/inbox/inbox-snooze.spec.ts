@@ -10,8 +10,7 @@ import {
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("snooze times", { tag: "@new" }, () => {
+test.describe("snooze times", () => {
   // NOW_MS is Friday 08:00 in New York, so every choice for today shows.
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
@@ -81,9 +80,13 @@ test.describe("snooze times", { tag: "@new" }, () => {
       menu(page).getByRole("button", { name: /^15 minutes/ }),
     ).toBeFocused();
     await page.keyboard.press("9");
-    // Custom… opens the dialog in place of the menu, at its time field.
+    // Custom… opens the dialog in place of the menu, at its condition.
     await expect(menu(page)).toHaveCount(0);
-    await expect(custom(page).getByLabel("Wake at")).toBeFocused();
+    await expect(
+      custom(page).getByRole("button", {
+        name: "Pick a pull request or issue",
+      }),
+    ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(custom(page)).toHaveCount(0);
     await expect(rowHead(todo(page), checkout)).toBeVisible();

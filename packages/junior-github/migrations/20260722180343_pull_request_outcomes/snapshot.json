@@ -1,0 +1,315 @@
+{
+  "type": "base",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2c771be0-ac94-4eff-a69a-ade43801be34",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_github_pull_requests"],
+      "writes": [
+        "s|tbl|public.junior_github_pull_requests",
+        "n|tbl|public.junior_github_pull_requests",
+        "e|tbl|public.junior_github_pull_requests",
+        "n|rel|public.junior_github_pull_requests",
+        "n|type|public.junior_github_pull_requests",
+        "n|rel|public.junior_github_pull_requests_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_opened_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_opened_at_idx",
+        "n|idx|public.junior_github_pull_requests_opened_at_idx",
+        "e|idx|public.junior_github_pull_requests_opened_at_idx",
+        "n|rel|public.junior_github_pull_requests_opened_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "n|col|public.junior_github_pull_requests.opened_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_merged_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_merged_at_idx",
+        "n|idx|public.junior_github_pull_requests_merged_at_idx",
+        "e|idx|public.junior_github_pull_requests_merged_at_idx",
+        "n|rel|public.junior_github_pull_requests_merged_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "n|col|public.junior_github_pull_requests.merged_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_closed_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_closed_at_idx",
+        "n|idx|public.junior_github_pull_requests_closed_at_idx",
+        "e|idx|public.junior_github_pull_requests_closed_at_idx",
+        "n|rel|public.junior_github_pull_requests_closed_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "n|col|public.junior_github_pull_requests.closed_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_open_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_open_idx",
+        "n|idx|public.junior_github_pull_requests_open_idx",
+        "e|idx|public.junior_github_pull_requests_open_idx",
+        "n|rel|public.junior_github_pull_requests_open_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "n|col|public.junior_github_pull_requests.pull_request_id"
+      ]
+    }
+  ],
+  "ddl": [
+    {
+      "schema": "public",
+      "name": "junior_github_pull_requests",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "pull_request_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "repository_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "repository_full_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "number",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "state",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "opened_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "merged_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "closed_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "junior_github_pull_requests_opened_at_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "opened_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "junior_github_pull_requests_merged_at_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "merged_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "junior_github_pull_requests_closed_at_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "closed_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "junior_github_pull_requests_open_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "pull_request_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"junior_github_pull_requests\".\"state\" = 'open'",
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_github_pull_requests",
+      "name": "junior_github_pull_requests_pkey",
+      "columns": ["pull_request_id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    }
+  ]
+}

@@ -10,8 +10,7 @@ import {
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const SPEND_LABEL = "Personal model spend: 7 days $0.46, 30 days $0.46";
 
   test("shows the primary destinations at the top of every desktop pane", async ({
@@ -512,10 +511,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
     await page.reload({ waitUntil: "commit" });
-    // The rows read the cards of their links again after the reload. Wait
-    // from the commit of the new document, so a read from the page before
-    // the reload does not count.
-    const cardsRead = ["pull/5378", "people/dev"].map((link) =>
+    // The rows on screen read the cards of their links again after the
+    // reload. Wait from the commit of the new document, so a read from the
+    // page before the reload does not count.
+    const cardsRead = ["pull/2201", "people/dev"].map((link) =>
       page.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
@@ -631,7 +630,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
-  test("sends feedback about the new UI from the profile menu", async ({
+  test("sends feedback about the dashboard from the profile menu", async ({
     page,
     dashboard,
   }) => {
@@ -670,7 +669,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lightTheme: true,
       view: "desktop",
     });
-    await dialog.getByRole("radio", { name: "The new UI" }).click();
+    await dialog.getByRole("radio", { name: "The dashboard" }).click();
     await dialog
       .getByRole("textbox", { name: "Comment" })
       .fill("Snoozed rows are hard to find");
@@ -688,7 +687,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           source: "dashboard_feedback",
         },
       },
-      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+      tags: { "app.feedback.topic": "new_ui" },
     });
 
     // On a phone the entry is in the navigation sheet, and the dialog opens

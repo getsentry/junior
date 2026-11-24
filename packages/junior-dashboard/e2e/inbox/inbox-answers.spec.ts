@@ -25,8 +25,7 @@ function toasts(page: Page) {
     .getByRole("dialog");
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   for (const view of [
     { height: 900, name: "desktop", width: 1440 },
     { height: 844, name: "phone", width: 390 },

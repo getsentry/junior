@@ -3,6 +3,7 @@ import type { Locator } from "@playwright/test";
 import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 
 /**
  * Rest the pointer on an Inbox row's head until the row stops moving, so
@@ -40,8 +41,7 @@ async function restOnRow(head: Locator) {
     .toBe(true);
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // Only participants can archive or restore.
   test.beforeEach(async ({ page }) => viewAsParticipant(page));
 
@@ -326,6 +326,10 @@ test.describe("new UI", { tag: "@new" }, () => {
         name: /Dashboard QA edge cases/,
       });
       await conversationLink.hover();
+      // Stop the clock, so the time that the page takes to render the
+      // archive does not count against the undo timer. The clock started at
+      // NOW_MS within this test's timeout, so this time is still ahead.
+      await page.clock.pauseAt(NOW_MS + test.info().timeout);
       await page
         .getByRole("button", { name: "Archive Dashboard QA edge cases" })
         .click();
@@ -337,6 +341,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.clock.fastForward(5_000);
       await expect(undo).toBeVisible();
       await page.clock.fastForward(1_000);
+      // The closed toast leaves on the next frames.
+      await page.clock.resume();
       await expect(undo).toHaveCount(0);
     });
   });
@@ -374,6 +380,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
       await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+      // Stop the clock, so the time that the page takes to render the
+      // archive does not count against the undo timer. The clock started at
+      // NOW_MS within this test's timeout, so this time is still ahead.
+      await page.clock.pauseAt(NOW_MS + test.info().timeout);
       await page
         .getByRole("button", { name: "Archive Dashboard QA edge cases" })
         .click();
@@ -395,6 +405,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
       await expect(restoreError).toContainText("Dashboard QA edge cases");
       await expect(undo).toHaveText("Undo");
+      // The closed toast leaves on the next frames.
+      await page.clock.resume();
       await undo.click();
       await expect(undo).toHaveCount(0);
       expect(restoreRequests).toBe(2);

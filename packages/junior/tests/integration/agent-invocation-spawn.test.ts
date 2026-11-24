@@ -5,7 +5,6 @@ import { AgentNameInUseError } from "@/chat/agent-invocations/errors";
 import {
   getAgentReplyMessageId,
   getParentMessageId,
-  getTurnReplyKey,
 } from "@/chat/agent-invocations/ids";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -19,7 +18,7 @@ import {
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
@@ -187,7 +186,7 @@ describe("child agent spawn and result delivery", () => {
           },
           { conversationStore, maxAgentDepth: 1, queue, state },
         );
-        const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
+        const tool = createStartAgentTool(spawnAgent!, { owner: "none" });
         return tool.execute!(
           tool.prepareArguments({
             task: "Inspect the failing checks.",
@@ -285,8 +284,8 @@ describe("child agent spawn and result delivery", () => {
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
         result: {
-          kind: "reply",
-          reply: { text: "Opened #2.", toolCallId: "call-reply" },
+          kind: "completed",
+          text: "Opened #2.",
         },
         turnId: "turn_watch-event",
       });
@@ -296,12 +295,7 @@ describe("child agent spawn and result delivery", () => {
       await lifecycle.start({
         conversationId: slackParentConversationId,
         createdAtMs: 40_000,
-        inputMessageIds: [
-          getAgentReplyMessageId(
-            childId,
-            getTurnReplyKey("turn_watch-event", "call-reply"),
-          ),
-        ],
+        inputMessageIds: [getAgentReplyMessageId(childId, "turn_watch-event")],
         surface: "slack",
         turnId: "parent-loop-reply-turn",
       });
@@ -339,8 +333,8 @@ describe("child agent spawn and result delivery", () => {
         actor: slackInvocationInput.actor,
         conversationId: first,
         result: {
-          kind: "reply",
-          reply: { text: "First finding.", toolCallId: "call-reply" },
+          kind: "completed",
+          text: "First finding.",
         },
         turnId: taskTurnId("fan-out-first"),
       });
@@ -448,8 +442,8 @@ describe("child agent spawn and result delivery", () => {
           actor: EVENT_SYSTEM_ACTOR,
           conversationId: repliedId,
           result: {
-            kind: "reply",
-            reply: { text: "First finding.", toolCallId: "call-reply" },
+            kind: "completed",
+            text: "First finding.",
           },
           turnId,
         });
@@ -473,10 +467,7 @@ describe("child agent spawn and result delivery", () => {
 
         const messages = (await parentMessages(state)).slice(-2);
         expect(messages.map((message) => message.inboundMessageId)).toEqual([
-          getAgentReplyMessageId(
-            repliedId,
-            getTurnReplyKey(turnId, "call-reply"),
-          ),
+          getAgentReplyMessageId(repliedId, turnId),
           getAgentReplyMessageId(other.childConversationId, "turn_other"),
         ]);
         expect(messages[1]?.input.text).toContain("model unavailable");
@@ -503,8 +494,8 @@ describe("child agent spawn and result delivery", () => {
             actor: slackInvocationInput.actor,
             conversationId: childId,
             result: {
-              kind: "reply",
-              reply: { text: "Finding.", toolCallId: "call-reply" },
+              kind: "completed",
+              text: "Finding.",
             },
             turnId: taskTurnId(`fan-out-${["analyst", "auditor"][index]}`),
           }),

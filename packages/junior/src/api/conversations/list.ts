@@ -695,6 +695,7 @@ export async function readConversationFeedFromSql(
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
       const tenantId = conversationSlackTenantId({
+        provider: row.location?.provider,
         providerTenantId: row.location?.providerTenantId,
         sessionSource: row.conversation.sessionSource,
       });
