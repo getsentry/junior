@@ -106,10 +106,8 @@ child agents add to this is in `./child-agents.md`.
   breaks "an agent manages only its team".
 - Few agent tool results say the next step for a working agent, so agents
   can poll. This breaks "push, not poll".
-- A parent gets the updates of its child agents in a different way than a
-  watcher. It cannot make them quiet, and it gets no update when a child
-  ends a Turn with `noReply` and still has work. This breaks "a watch is
-  the same as a start".
+- A parent cannot make the updates of its child agents quiet. This breaks
+  "a watch is the same as a start".
 - A Turn that only Watch Events started sends its watchers no update, also
   when it replies. This breaks "one update".
 - When a person's Turn in a Thread adds an Inbox item, the parent gets no
