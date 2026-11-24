@@ -36,6 +36,7 @@ fixed behavior that code must control.
 | [Restream](/extend/restream-plugin/)           | Live stream events, chat, and recordings      |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
+| [Vimeo](/extend/vimeo-plugin/)                 | Private video uploads and processing status   |
 | [X](/extend/xdotcom-plugin/)                   | Public X posts and accounts (read-only)       |
 
 ## Install packaged plugins
