@@ -427,7 +427,6 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
-        "addInboxItem",
         "listWatches",
         "messageAgent",
         "noReply",
@@ -449,7 +448,6 @@ describe("static tool registry", () => {
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
-        "addInboxItem",
         "listWatches",
         "readConversationEvent",
         "searchConversationEvents",
