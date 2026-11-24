@@ -24,7 +24,9 @@ import { publishTurnStep } from "@/core/turn/queue";
 import {
   createTurn,
   findOpenTurn,
+  findOpenTurns,
   findTurn,
+  type OpenTurn,
   type Turn,
   type TurnRecord,
 } from "@/core/turn/state";
@@ -48,21 +50,43 @@ async function addInput(
 }
 
 /**
+ * How an input that arrives during a Turn is handled: `interrupt` joins the
+ * running Turn at its next step, `defer` waits for a Turn of its own.
+ */
+export type MailboxDelivery = "interrupt" | "defer";
+
+/**
  * Junior's rule for which Turn takes an input that is not a duplicate. Core
- * owns it, so every Source schedules the same way. Later rules, such as
- * superseding a Turn or checking for the same Actor, go here. It runs under
- * the Conversation lock, so `openTurn`, the Conversation's queued or running
- * Turn if any, cannot change before the write.
+ * owns it, so every Source schedules the same way. An input joins a Turn only
+ * from that Turn's Actor and Source. An interrupt joins the Turn that has
+ * started. Any input joins the last Turn in line while no step of it has
+ * started. Otherwise the input waits in a new Turn at the end of the line, so
+ * A1 B1 A2 makes A2 wait for B1. It runs under the Conversation lock, so
+ * `openTurns` cannot change before the write.
  */
 function assignTurn(
-  openTurn: Turn | undefined,
+  input: Pick<TurnInput, "actorIdentityId" | "source"> & {
+    delivery: MailboxDelivery;
+  },
+  openTurns: OpenTurn[],
 ): { join: Turn } | { create: { priority: number } } {
-  return openTurn ? { join: openTurn } : { create: { priority: 0 } };
+  const sameSender = (turn: OpenTurn) =>
+    turn.actorIdentityId === input.actorIdentityId &&
+    turn.source === input.source;
+  const started = openTurns.find((turn) => turn.started);
+  if (input.delivery === "interrupt" && started && sameSender(started)) {
+    return { join: started };
+  }
+  const last = openTurns.at(-1);
+  if (last && !last.started && sameSender(last)) {
+    return { join: last };
+  }
+  return { create: { priority: 0 } };
 }
 
 async function placeInput(
   { executor }: Pick<EngineContext, "executor">,
-  input: TurnInput,
+  { delivery, ...input }: TurnInput & { delivery: MailboxDelivery },
 ): Promise<Placement> {
   const existing = await findInputTurn({ executor }, input);
   if (existing) {
@@ -75,9 +99,8 @@ async function placeInput(
       publish: existing.state === "queued",
     };
   }
-  const choice = assignTurn(
-    await findOpenTurn({ executor }, input.conversationId),
-  );
+  const openTurns = await findOpenTurns({ executor }, input.conversationId);
+  const choice = assignTurn({ ...input, delivery }, openTurns);
   if ("join" in choice) {
     const { turnId } = choice.join;
     await addInput({ executor }, { ...input, turnId });
@@ -92,18 +115,25 @@ async function placeInput(
     },
   );
   await addInput({ executor }, { ...input, turnId: turn.turnId });
-  return { turnId: turn.turnId, created: true, publish: true };
+  // A Turn behind another one gets its message from `reconcileTurn` when the
+  // Turn before it ends.
+  return {
+    turnId: turn.turnId,
+    created: true,
+    publish: openTurns.length === 0,
+  };
 }
 
 /**
  * Puts an input into the Turn that `assignTurn` picks, and publishes a Turn
- * that the input created. An input with a known idempotency key writes
- * nothing. Call it outside a transaction: it publishes after its own commit,
- * and a publish error reaches the caller with the input already stored.
+ * that the input created when no other Turn is open. An input with a known
+ * idempotency key writes nothing. Call it outside a transaction: it publishes
+ * after its own commit, and a publish error reaches the caller with the input
+ * already stored.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  input: TurnInput,
+  input: TurnInput & { delivery: MailboxDelivery },
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
@@ -132,8 +162,9 @@ async function moveInputs(
 
 /**
  * Moves the unread inputs of a failed Turn that arrived after its last claim
- * to the Turn that `assignTurn` picks. The failed Turn keeps, and so drops,
- * the inputs that an attempt claimed it with.
+ * to the Turn that `assignTurn` picks for a deferred input. They share the
+ * failed Turn's Actor and Source, so they move together. The failed Turn
+ * keeps, and so drops, the inputs that an attempt claimed it with.
  */
 async function moveLeftovers(
   { executor }: Pick<EngineContext, "executor">,
@@ -147,7 +178,8 @@ async function moveLeftovers(
     return;
   }
   const choice = assignTurn(
-    await findOpenTurn({ executor }, ended.conversationId),
+    { ...first, delivery: "defer" },
+    await findOpenTurns({ executor }, ended.conversationId),
   );
   const target =
     "join" in choice

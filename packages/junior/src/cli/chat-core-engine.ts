@@ -160,6 +160,7 @@ export async function runCoreEnginePrompt(args: {
       idempotencyKey: `local-cli:${randomUUID()}`,
       sentAt: new Date(),
       source: "local",
+      delivery: "defer",
     });
     const turn = await waitForTurnEnd(engineCtx, turnId);
     if (turn.state !== "completed") {

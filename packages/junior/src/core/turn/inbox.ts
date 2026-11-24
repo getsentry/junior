@@ -59,7 +59,7 @@ const INPUT_EVENT_KEY_PREFIX = "inbox:";
 /** An input of a Turn that no history event has read yet. */
 export type UnreadInput = Pick<
   TurnInput,
-  "actorIdentityId" | "payload" | "sentAt"
+  "actorIdentityId" | "source" | "payload" | "sentAt"
 > & {
   inputId: string;
   traceContext: TurnInputTraceContext | null;
@@ -97,6 +97,7 @@ export async function findUnreadInputs(
     .select({
       inputId: juniorTurnInbox.id,
       actorIdentityId: juniorTurnInbox.actorIdentityId,
+      source: juniorTurnInbox.source,
       payload: juniorTurnInbox.payload,
       sentAt: juniorTurnInbox.sentAt,
       traceContext: juniorTurnInbox.traceContext,
