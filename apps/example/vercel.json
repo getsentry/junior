@@ -1,4 +1,4 @@
 {
   "framework": "nitro",
-  "buildCommand": "if [ \"$VERCEL_ENV\" = preview ]; then pnpm exec nitro build; else pnpm run prebuild && pnpm exec junior upgrade && pnpm build; fi"
+  "buildCommand": "pnpm run prebuild && if [ \"$VERCEL_ENV\" = preview ]; then pnpm exec nitro build; else pnpm exec junior upgrade && pnpm build; fi"
 }
