@@ -10,7 +10,6 @@ import type {
   ObjectAnnotation,
   PluginInboxItemSubject,
   PluginInboxSubjectKind,
-  PluginInboxViewer,
 } from "@sentry/junior-plugin-api";
 
 /** The subject kinds of GitHub Inbox items. */
@@ -20,24 +19,14 @@ export const GITHUB_INBOX_SUBJECTS = {
 } as const;
 
 /**
- * Name the viewer's ask on a Junior pull request from its live card. A
- * reviewer whose review GitHub requests reviews it. The requester merges it
- * after approval with no conflict, once it is no draft. A conflict has its
- * own item.
+ * Name the ask on a Junior pull request from its live card. Once it is
+ * approved, can merge with no conflict, and is no draft, the ask is the
+ * merge for every viewer, also a reviewer whose review GitHub still
+ * requests. Before that, it is the review. A conflict has its own item.
  */
-export function pullRequestAsk(
-  object: ObjectAnnotation,
-  viewer: PluginInboxViewer,
-): string | undefined {
+export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
   const facts = object.facts;
   if (facts?.type !== "code_change") return undefined;
-  const handle = viewer.handle?.toLowerCase();
-  if (
-    handle &&
-    facts.reviewers?.some((reviewer) => reviewer.toLowerCase() === handle)
-  ) {
-    return "Review requested";
-  }
   return facts.review === "approved" &&
     facts.mergeable !== false &&
     object.status !== "draft"

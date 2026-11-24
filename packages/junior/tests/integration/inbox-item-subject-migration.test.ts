@@ -89,6 +89,12 @@ describe("inbox item subject migration", () => {
         `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_id, owner_id, created_at, updated_at, request) VALUES ('deploy', 'action', 'open', 'public', 'Deploy it?', 'It merged.', 'deploy:947', 'https://GitHub.com/getsentry/junior/pull/947', 'slack:C123:1.000004', now(), now(), '{"question":"Deploy it?","fields":[],"evidence":[{"label":"Docs","url":"HTTPS://Docs.Example.com?page=Deploy"},{"label":"Dashboard","url":"https://Dash.Example.com"}]}')`,
       );
 
+      // A closed question already cites its subject link, in a form that
+      // new code does not store.
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, owner_id, created_at, updated_at, closed_at, request) VALUES ('shipped', 'action', 'done', 'public', 'Ship the site?', 'It is live.', 'shipped:site', 'https://Example.com', 'slack:C123:1.000005', now(), now(), now(), '{"question":"Ship the site?","fields":[],"evidence":[{"label":"Site","url":"https://Example.com"}]}')`,
+      );
+
       for (const statement of migration.sql.slice(start, end + 1)) {
         await fixture.sql.execute(statement);
       }
@@ -104,6 +110,7 @@ describe("inbox item subject migration", () => {
         { id: "review", status: "dismissed" },
         { id: "rollout", status: "open" },
         { id: "ship", status: "open" },
+        { id: "shipped", status: "done" },
       ]);
       // A question's key names it, so both questions stay open.
       expect(
@@ -115,6 +122,7 @@ describe("inbox item subject migration", () => {
         { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
         { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
         { id: "ship", subject_id: "ship:946", subject_kind: "question" },
+        { id: "shipped", subject_id: "shipped:site", subject_kind: "question" },
       ]);
       // Its old subject link is now its first evidence link, so its card and
       // related work still read the pull request.
@@ -152,6 +160,15 @@ describe("inbox item subject migration", () => {
             { label: "Dashboard", url: "https://dash.example.com/" },
           ],
         },
+      ]);
+      // A closed item's links get the same form, so its subject link is no
+      // second copy of the link that it cites.
+      expect(
+        await fixture.sql.query(
+          `SELECT request->'evidence' AS evidence FROM junior_inbox_items WHERE id = 'shipped'`,
+        ),
+      ).toEqual([
+        { evidence: [{ label: "Site", url: "https://example.com/" }] },
       ]);
       // Ana joins the item that stays open, so she keeps her ask.
       expect(

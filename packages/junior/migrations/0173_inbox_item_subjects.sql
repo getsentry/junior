@@ -75,9 +75,9 @@ BEGIN
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN coalesce(NEW."subject_url", NEW."subject_id", substr(NEW."dedupe_key", length('plugin:' || split_part(NEW."dedupe_key", ':', 2) || ':') + 1))
       ELSE coalesce(NEW."dedupe_key", 'ask:' || NEW."id"::text)
     END;
-  -- An open item's http(s) evidence links get the form that new code
-  -- stores.
-  IF NEW."status" = 'open' AND jsonb_typeof(NEW."request"->'evidence') = 'array' THEN
+  -- Every item's http(s) evidence links get the form that new code stores,
+  -- also a closed item's, so the duplicate check below sees its old link.
+  IF jsonb_typeof(NEW."request"->'evidence') = 'array' THEN
     NEW."request" := jsonb_set(NEW."request", '{evidence}', (SELECT coalesce(jsonb_agg(CASE WHEN entry->>'url' ~* '^https?://' THEN jsonb_set(entry, '{url}', to_jsonb("junior_inbox_items_web_link"(entry->>'url'))) ELSE entry END ORDER BY position), '[]'::jsonb) FROM jsonb_array_elements(NEW."request"->'evidence') WITH ORDINALITY AS evidence(entry, position)));
   END IF;
   -- A question reads what it is about from its evidence links, so its old
@@ -92,7 +92,7 @@ BEGIN
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_inbox_items_legacy_subject" BEFORE INSERT OR UPDATE ON "junior_inbox_items" FOR EACH ROW WHEN (NEW."subject_kind" IS NULL) EXECUTE FUNCTION "junior_inbox_items_legacy_subject"();--> statement-breakpoint
--- junior:bounded-backfill: every row needs its subject before 0174 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once. The same write gives the evidence links of open items the stored form.
+-- junior:bounded-backfill: every row needs its subject before 0174 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once. The same write gives the evidence links of every row the stored form.
 UPDATE "junior_inbox_items" SET "subject_kind" = NULL;--> statement-breakpoint
 -- junior:bounded-backfill: before the unique open subject index below, the older of two open items that now share a subject closes. It reads only the open items and closes the few duplicates, such as the review and merge asks of one pull request.
 UPDATE "junior_inbox_items" AS "item" SET "status" = 'dismissed', "closed_at" = now(), "close_reason" = 'A newer item asks about the same subject.', "updated_at" = now() WHERE "item"."status" = 'open' AND EXISTS (SELECT 1 FROM "junior_inbox_items" AS "newer" WHERE "newer"."status" = 'open' AND coalesce("newer"."provider", '') = coalesce("item"."provider", '') AND coalesce("newer"."provider_tenant_id", '') = coalesce("item"."provider_tenant_id", '') AND "newer"."subject_kind" = "item"."subject_kind" AND "newer"."subject_id" = "item"."subject_id" AND ("newer"."updated_at", "newer"."id") > ("item"."updated_at", "item"."id"));--> statement-breakpoint

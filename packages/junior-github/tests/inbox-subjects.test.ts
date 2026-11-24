@@ -18,26 +18,24 @@ function card(
 }
 
 describe("pull request ask", () => {
-  it("names the ask of each viewer of one pull request", () => {
-    const approved = card({ review: "approved", reviewers: ["Bo"] });
-    // GitHub still requests Bo's review, in any case of his login.
-    expect(pullRequestAsk(approved, { handle: "bo" })).toBe("Review requested");
-    // The requester's ask on the same pull request is the merge.
-    expect(pullRequestAsk(approved, { handle: "ana" })).toBe("Ready to merge");
+  it("names the ask on one pull request", () => {
+    expect(pullRequestAsk(card({ reviewers: ["Bo"] }))).toBe(
+      "Review requested",
+    );
+    // Ana asked for the pull request, and GitHub still requests her review
+    // after Bo approves it. Her ask is the merge.
+    expect(
+      pullRequestAsk(card({ review: "approved", reviewers: ["Ana", "Bo"] })),
+    ).toBe("Ready to merge");
     // A conflict has its own item, so a pull request that cannot merge is
     // no merge ask.
-    expect(
-      pullRequestAsk(card({ mergeable: false, review: "approved" }), {
-        handle: "ana",
-      }),
-    ).toBe("Review requested");
-    expect(pullRequestAsk(card({}), {})).toBe("Review requested");
+    expect(pullRequestAsk(card({ mergeable: false, review: "approved" }))).toBe(
+      "Review requested",
+    );
+    expect(pullRequestAsk(card({}))).toBe("Review requested");
     // GitHub does not merge a draft, even an approved one.
     expect(
-      pullRequestAsk(
-        { ...card({ review: "approved" }), status: "draft" },
-        { handle: "ana" },
-      ),
+      pullRequestAsk({ ...card({ review: "approved" }), status: "draft" }),
     ).toBe("Review requested");
   });
 });
