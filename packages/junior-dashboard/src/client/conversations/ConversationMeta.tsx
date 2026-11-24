@@ -28,6 +28,7 @@ import {
   formatConversationDuration,
   slackLocationLabel,
   summarizeCost,
+  summarizeModelCost,
   summarizeModelUsage,
   summarizeUsage,
   automationPath,
@@ -730,7 +731,8 @@ export function conversationCost(
   const live = conversationTurnIsActive(detail, conversation);
   // Some reports carry cost only in per-model usage.
   const modelUsage = detail?.modelUsage;
-  if (!costSummary && !auxiliaryCosts && !live && !modelUsage?.length) {
+  const modelCost = summarizeModelCost(modelUsage);
+  if (!costSummary && !modelCost && !auxiliaryCosts && !live) {
     return null;
   }
   return (

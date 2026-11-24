@@ -192,4 +192,22 @@ describe("ConversationGlanceMetrics", () => {
     ).replace(/<[^>]+>/g, " ");
     expect(text).toContain("$0.04");
   });
+  it("shows no cost for unpriced model usage", () => {
+    const report = detail({
+      modelUsage: [
+        {
+          modelId: "local/unpriced",
+          usage: { inputTokens: 1_000, outputTokens: 200 },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      <ConversationGlanceMetrics
+        conversation={conversationFromDetail(report)}
+        detail={report}
+      />,
+    );
+    expect(html).not.toContain("$");
+    expect(html).not.toContain("font-medium");
+  });
 });
