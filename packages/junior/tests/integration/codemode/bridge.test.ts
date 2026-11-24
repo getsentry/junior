@@ -265,7 +265,7 @@ describe("Code Mode bridge", () => {
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         try {
-          await tools.spawnAgent({ task: "Inspect the failing checks." });
+          await tools.startAgent({ task: "Inspect the failing checks." });
         } catch (error) {
           return error.message;
         }
@@ -277,8 +277,8 @@ describe("Code Mode bridge", () => {
     expect(result).toMatchObject({
       ok: true,
       value:
-        "spawnAgent does not run in a script. Call it directly, outside the script.",
-      calls: [{ toolName: "spawnAgent", status: "error" }],
+        "startAgent does not run in a script. Call it directly, outside the script.",
+      calls: [{ toolName: "startAgent", status: "error" }],
     });
 
     // A name that no tool has still gets pi's error.
@@ -286,7 +286,7 @@ describe("Code Mode bridge", () => {
       countToolCall: turnCount().countToolCall,
       modelOnlyTools,
       pipeline: pipelineFor(fakeGuardian()),
-      source: `await tools.spawnAgents({ task: "Inspect the failing checks." });`,
+      source: `await tools.startAgents({ task: "Inspect the failing checks." });`,
       toolCallId: CODEMODE_CALL_ID,
       tools: scriptTools,
     });
@@ -330,7 +330,7 @@ describe("Code Mode bridge", () => {
           .catch(() => null);
         await tools.searchTools({ query: "customers" }).catch(() => null);
         // Never awaited, so it never starts, but it keeps its error.
-        tools.executeTool({ tool_name: "spawnAgent", arguments: {} });
+        tools.executeTool({ tool_name: "startAgent", arguments: {} });
         return found;
       `,
       toolCallId: CODEMODE_CALL_ID,
@@ -358,7 +358,7 @@ describe("Code Mode bridge", () => {
           toolName: "executeTool",
           status: "not_started",
           error:
-            "executeTool does not run in a script, and spawnAgent is not a script tool. Call spawnAgent outside the script.",
+            "executeTool does not run in a script, and startAgent is not a script tool. Call startAgent outside the script.",
         },
       ],
     });

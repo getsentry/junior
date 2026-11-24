@@ -3,15 +3,15 @@ import {
   AgentInvocationLimitError,
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
-describe("spawnAgent", () => {
+describe("startAgent", () => {
   it("normalizes nullable optional fields before invoking the runtime control", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
-    const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
+    const tool = createStartAgentTool(spawnAgent, { owner: "none" });
 
     await expect(
       tool.execute!(
@@ -39,7 +39,7 @@ describe("spawnAgent", () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
-    const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
+    const tool = createStartAgentTool(spawnAgent, { owner: "none" });
 
     await tool.execute!(
       tool.prepareArguments({
@@ -62,7 +62,7 @@ describe("spawnAgent", () => {
   });
 
   it("requires the runtime tool call id used for durable replay", async () => {
-    const tool = createSpawnAgentTool(vi.fn(), { owner: "none" });
+    const tool = createStartAgentTool(vi.fn(), { owner: "none" });
 
     await expect(
       tool.execute!(
@@ -73,7 +73,7 @@ describe("spawnAgent", () => {
   });
 
   it("points a used name to messageAgent", async () => {
-    const tool = createSpawnAgentTool(
+    const tool = createStartAgentTool(
       vi.fn().mockRejectedValue(new AgentNameInUseError("researcher")),
       { owner: "none" },
     );
@@ -98,7 +98,7 @@ describe("spawnAgent", () => {
   });
 
   it("maps parent fan-out limit errors to tool input errors", async () => {
-    const tool = createSpawnAgentTool(
+    const tool = createStartAgentTool(
       vi.fn().mockRejectedValue(new AgentInvocationLimitError(8)),
       { owner: "none" },
     );

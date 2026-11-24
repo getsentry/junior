@@ -17,7 +17,7 @@ import {
 
 const actor = slackInvocationInput.actor;
 
-/** Spawn a child agent of `parentConversationId` as `spawnAgent` does. */
+/** Spawn a child agent of `parentConversationId` as `startAgent` does. */
 async function spawn(
   harness: Harness,
   idempotencyKey: string,

@@ -93,11 +93,16 @@ never lets one Conversation read another.
   `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed,
   before any text from the target reaches the watcher.
-- `searchConversations` finds Conversations whose root is public or is at
-  the Destination of the requester's root. It finds child agents only when
-  asked. It never finds the requester's own tree. Its results include the
-  summary and outcome status. `participating` keeps only roots where the
-  person is a Participant.
+- A Lead's `searchConversations` finds Conversations whose root is public
+  or is at the Destination of the requester's root. It finds child agents
+  only when asked. It never finds the requester's own tree. Its results
+  include the summary and outcome status. `participating` keeps only roots
+  where the person is a Participant.
+- `listAgents` with a `query` finds roots that are public or at the
+  Destination of the requester's root, and the Conversations in the
+  requester's own tree, except the requester. Its results include the
+  summary and outcome status. The requester's team ranks first, then the
+  roots where the person it works for is a Participant.
 - `searchConversationMessages` is only available in public Conversations
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.

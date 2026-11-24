@@ -74,7 +74,7 @@ export interface Conversation extends HarnessRun {
   ): Promise<Conversation>;
   fork(reply: Reply | HistoryReply): Promise<Conversation>;
   /**
-   * Open a child Conversation of this one, such as a Thread that a spawnAgent
+   * Open a child Conversation of this one, such as a Thread that a startAgent
    * call started. Its `continue()` posts as the person who reads this one.
    */
   child(conversationId: string): Promise<Conversation>;

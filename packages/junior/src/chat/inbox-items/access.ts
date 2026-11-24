@@ -556,7 +556,7 @@ export async function requireInboxItemLinks(args: {
     const conversation = access.get(conversationId);
     if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
       throw new ToolInputError(
-        `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+        `Conversation ${conversationId} is not found. Check conversation_ids, or search Conversations to find the id.`,
       );
     }
     if (args.allowedIds.has(conversationId)) continue;
@@ -569,7 +569,7 @@ export async function requireInboxItemLinks(args: {
       throw new ToolInputError(
         conversation.canViewPrivateContent
           ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+          : `Conversation ${conversationId} is not found. Check conversation_ids, or search Conversations to find the id.`,
       );
     }
   }
