@@ -37,7 +37,12 @@ import {
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import { createSlackDestination } from "@/chat/destination";
@@ -337,6 +342,12 @@ async function historyUserMessage(args: {
       throw new Error("Web history needs webMessage() inputs");
     }
     const actor = await webViewerActor(WEB_VIEWER_EMAIL);
+    // Web ingress resolves the author's identity, and a stored message
+    // carries it. Without it, a later save sees a changed message.
+    const authorIdentityId = await resolveActorIdentityId(
+      getSqlExecutor(),
+      actor,
+    );
     return {
       actor,
       agentMessage: {
@@ -358,6 +369,7 @@ async function historyUserMessage(args: {
           userId: actor.userId,
           userName: actor.userName,
         },
+        ...(authorIdentityId ? { authorIdentityId } : undefined),
         createdAtMs: args.createdAtMs,
         id: `api-msg:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
         // A web Turn saves its first input unreplied. `message_handled`
