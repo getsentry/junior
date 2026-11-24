@@ -1,12 +1,11 @@
 import { ChevronRight } from "lucide-react";
 
 import { cn, dashboardCountClass } from "../styles";
-import { useInboxUi } from "../uiShell";
 
 /**
  * Render a conversation section label that collapses its rows. The chevron
  * takes the same glyph column and gap as sidebar rows, so the label starts on
- * the row title edge. The new UI's rows use a wider column (`sidebarGrid`).
+ * the row title edge (`sidebarGrid`).
  * A `heading` is a step larger than the card titles under it, for a list
  * of cards such as the Inbox's.
  */
@@ -19,7 +18,6 @@ export function ConversationSectionHeading(props: {
   onToggle(): void;
   size?: "heading" | "label";
 }) {
-  const inbox = useInboxUi();
   return (
     <h3
       className={cn(
@@ -33,12 +31,7 @@ export function ConversationSectionHeading(props: {
     >
       <button
         aria-expanded={!props.collapsed}
-        className={cn(
-          "grid cursor-pointer items-center rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-          inbox
-            ? "grid-cols-[1rem_auto] gap-x-3"
-            : "grid-cols-[0.875rem_auto] gap-x-2",
-        )}
+        className="grid cursor-pointer grid-cols-[1rem_auto] items-center gap-x-3 rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
         onClick={props.onToggle}
         type="button"
       >

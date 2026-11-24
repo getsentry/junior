@@ -22,10 +22,12 @@ import {
   or,
   sql,
   type SQL,
-  type TablesRelationalConfig,
 } from "drizzle-orm";
-import { PgDatabase, type AnyPgColumn } from "drizzle-orm/pg-core";
-import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
+import {
+  PgAsyncDatabase,
+  type AnyPgColumn,
+  type PgQueryResultHKT,
+} from "drizzle-orm/pg-core";
 import * as z from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
 import { personSourcePlatform } from "@/chat/conversations/kind-behavior";
@@ -110,18 +112,14 @@ const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 /** Keep signal rows long enough to weigh recent activity. */
 const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
-export type MemoryDb = PgDatabase<
-  PgQueryResultHKT,
-  Record<string, unknown>,
-  TablesRelationalConfig
->;
+export type MemoryDb = PgAsyncDatabase<PgQueryResultHKT>;
 
 /**
  * Narrow the database of a plugin context to the Memory database. Core
  * passes its Postgres database, which holds the Memory tables.
  */
 export function memoryDb(db: unknown): MemoryDb {
-  if (!is(db, PgDatabase)) {
+  if (!is(db, PgAsyncDatabase)) {
     throw new TypeError("Memory needs a Postgres database.");
   }
   return db;

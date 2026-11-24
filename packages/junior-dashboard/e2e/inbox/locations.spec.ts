@@ -1,8 +1,7 @@
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("explores location activity", async ({ page, dashboard }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
     await page.goto(`${dashboard.baseURL}/locations?q=proj`);

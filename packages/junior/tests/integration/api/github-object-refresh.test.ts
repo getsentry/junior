@@ -3,26 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb } from "@/chat/db";
 import {
-  createConversationWorkQueueTestAdapter,
-  runTestHeartbeat,
-} from "../../fixtures/conversation-work";
-import {
+  cardNode,
+  checkRuns,
   createGitHubApp,
   GITHUB_API,
   GITHUB_REPO,
   linkGitHubMember,
-  sendGitHubWebhook,
-  stubGitHubApp,
-  viewerApi,
-} from "../../fixtures/github-objects";
-import {
-  cardNode,
-  checkRuns,
   patchQueries,
   pullRequest,
+  sendGitHubWebhook,
+  stubGitHubApp,
   stubGraphql,
   T0,
-} from "../../fixtures/github-pull-request-graphql";
+  viewerApi,
+} from "../../fixtures/github-objects";
+import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-queue";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
@@ -44,7 +39,7 @@ describe("GitHub pull request cache refresh", () => {
     await closeDb();
   });
 
-  it("shows merge state and checks as pending after a push, then one patch query fills them", async () => {
+  it("shows merge state and checks as pending after a push, then one patch task fills them", async () => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -75,12 +70,12 @@ describe("GitHub pull request cache refresh", () => {
         ],
       ],
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
@@ -88,17 +83,18 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
 
-    // Two pushes inside the patch delay. GitHub computes mergeability later.
-    for (const [offset, sha] of [
-      [10, "bbb222"],
-      [12, "ccc333"],
+    // A push and an edit of its head inside one 5 s window. GitHub
+    // computes mergeability later.
+    for (const [offset, action] of [
+      [10, "synchronize"],
+      [12, "edited"],
     ] as const) {
       vi.setSystemTime(start + offset * 1000);
       await sendGitHubWebhook(app, "pull_request", {
-        action: "synchronize",
+        action,
         pull_request: pullRequest(34, {
           additions: 130,
-          head: { ref: "feat/object-cache", sha },
+          head: { ref: "feat/object-cache", sha: "ccc333" },
           mergeable: null,
           updated_at: new Date(start + offset * 1000).toISOString(),
         }),
@@ -109,9 +105,13 @@ describe("GitHub pull request cache refresh", () => {
       checks: "pending",
       mergeable: "pending",
     });
+    // Both events share one task, which starts 5 s later.
+    expect(tasks.sent().map(({ options }) => options?.delaySeconds)).toEqual([
+      5,
+    ]);
 
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     // The page query has no card for #34, so it read on its own. Its entry
     // has no review decision, so the next page asks for the card again.
     // Then one query reads only the merge state and checks, not the whole
@@ -145,7 +145,7 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: false,
     });
     vi.setSystemTime(start + 120_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect(patchQueries(queries)).toHaveLength(2);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 1, passed: 5, pending: 0 },
@@ -172,14 +172,17 @@ describe("GitHub pull request cache refresh", () => {
       updatedAt: T0,
     });
     const queries = stubGraphql({
-      patches: [[headFacts(34, { SUCCESS: 3 }), headFacts(35, { FAILURE: 2 })]],
+      patches: Array.from({ length: 2 }, () => [
+        headFacts(34, { SUCCESS: 3 }),
+        headFacts(35, { FAILURE: 2 }),
+      ]),
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const urls = [35, 34].map((number) => `${GITHUB_REPO}/pull/${number}`);
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
@@ -197,11 +200,15 @@ describe("GitHub pull request cache refresh", () => {
       },
     });
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
-    // One query reads both, and each answer goes to its own pull request.
+    await tasks.deliver();
+    // Each pull request gets its own task, and the answer of each goes to
+    // its own pull request.
     expect(
       queries.filter((query) => query.operationName === "PullRequestHeadFacts"),
-    ).toEqual([{ numbers: [35, 34], operationName: "PullRequestHeadFacts" }]);
+    ).toEqual([
+      { numbers: [35], operationName: "PullRequestHeadFacts" },
+      { numbers: [34], operationName: "PullRequestHeadFacts" },
+    ]);
     const [card35, card34] = await Promise.all(
       urls.map(async (url) => (await read(url)).objects.get(url)?.facts),
     );
@@ -446,12 +453,12 @@ describe("GitHub pull request cache refresh", () => {
       }),
     );
     const queries = stubGraphql({ patches: [patch] });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start + 10_000);
@@ -464,7 +471,7 @@ describe("GitHub pull request cache refresh", () => {
       }),
     });
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestHeadFacts",
     ]);
@@ -481,59 +488,93 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34"]);
   });
 
-  it("reconciles pull requests in a heartbeat whose patch query fails", async () => {
+  it("retries a failed patch query, and its last delivery keeps pending only 15 s", async () => {
     stubGitHubApp();
-    vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
-    // Every query fails.
-    const operations: string[] = [];
+    const reads: string[] = [];
     mswServer.use(
-      http.get("https://api.github.com/repositories/2001", () =>
-        HttpResponse.json({ full_name: "getsentry/junior", id: 2001 }),
-      ),
-      http.post("https://api.github.com/graphql", async ({ request }) => {
-        const { operationName } = (await request.json()) as {
-          operationName: string;
-        };
-        operations.push(operationName);
-        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      http.get(`${GITHUB_API}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json(pullRequest(34));
       }),
+      // Every patch query fails.
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+      ),
     );
-    const app = await createGitHubApp();
-    const queue = createConversationWorkQueueTestAdapter();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "synchronize",
+      pull_request: pullRequest(34, {
+        head: { ref: "feat/object-cache", sha: "bbb222" },
+        mergeable: null,
+        updated_at: "2026-01-02T03:00:10Z",
+      }),
+    });
+    for (let delivery = 1; delivery <= 4; delivery++) {
+      vi.setSystemTime(start + delivery * 60_000);
+      expect(await tasks.deliver()).toBe(1);
+    }
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+
+    vi.setSystemTime(start + 5 * 60_000);
+    expect(await tasks.deliver()).toBe(1);
+    expect(await tasks.deliver()).toBe(0);
+    vi.setSystemTime(start + 5 * 60_000 + 16_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+    expect(reads).toEqual(["pulls/34"]);
+  });
+
+  it("starts one patch task per head commit and 5 s window of events", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () =>
+        HttpResponse.json(pullRequest(34)),
+      ),
+    );
+    stubGraphql({});
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    for (const number of [34, 35]) {
-      await sendGitHubWebhook(app, "pull_request", {
-        action: "opened",
-        pull_request: pullRequest(number, {
-          body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
-          user: { login: "junior-test[bot]" },
-        }),
+    await read(`${GITHUB_REPO}/pull/34`);
+    // The second event shares the first task. The third is 6 s later.
+    for (const offset of [1, 3, 9]) {
+      vi.setSystemTime(start + offset * 1000);
+      await sendGitHubWebhook(app, "check_run", {
+        action: "completed",
+        check_run: {
+          head_sha: "aaa111",
+          id: 8000 + offset,
+          pull_requests: [{ number: 34 }],
+        },
       });
     }
-
-    // A day later, the open pull requests are due for their reconcile, and
-    // a finished check suite adds a patch for each.
-    vi.setSystemTime(start + 24.5 * 60 * 60_000);
-    await sendGitHubWebhook(app, "check_suite", {
-      action: "completed",
-      check_suite: {
-        conclusion: "success",
-        head_branch: "feat/object-cache",
-        head_sha: "aaa111",
-        id: 7002,
-        pull_requests: [{ number: 34 }, { number: 35 }],
-        status: "completed",
-      },
-    });
-    vi.setSystemTime(Date.now() + 60_000);
-    await runTestHeartbeat(queue, Date.now());
-    // The failed patch query does not split. Its patches wait.
-    expect(operations).toEqual([
-      "PullRequestHeadFacts",
-      "PullRequestLifecycles",
-    ]);
+    const patch = {
+      delaySeconds: 5,
+      payload: { key: "pulls:getsentry/junior#34", sha: "aaa111" },
+    };
+    expect(
+      tasks.sent().map(({ message, options }) => ({
+        delaySeconds: options?.delaySeconds,
+        payload: "payload" in message ? message.payload : undefined,
+      })),
+    ).toEqual([patch, patch]);
   });
 
   it("shows an unknown merge state from a page read as pending, then reads it again after 15 s", async () => {
@@ -562,12 +603,12 @@ describe("GitHub pull request cache refresh", () => {
     // GitHub still computes the merge state on the first read.
     const answers = [card("UNKNOWN"), card("MERGEABLE")];
     const queries = stubGraphql({ cards: () => [answers.shift()!] });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
@@ -586,7 +627,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     // The card read adds no patch, and the pending state holds for 15 s.
     vi.setSystemTime(readAt + 10_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: "pending",
     });
@@ -631,12 +672,12 @@ describe("GitHub pull request cache refresh", () => {
         headFacts("ccc333", "MERGEABLE", "2026-01-02T03:04:30Z"),
       ],
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
@@ -655,21 +696,73 @@ describe("GitHub pull request cache refresh", () => {
     await push("bbb222", start + 10_000);
     for (let minute = 1; minute <= 4; minute++) {
       vi.setSystemTime(start + minute * 60_000);
-      await runTestHeartbeat(queue, Date.now());
+      await tasks.deliver();
     }
     await push("ccc333", start + 4 * 60_000 + 30_000);
+    // The first task makes its last delivery, which reads nothing because
+    // the new push's task owns the entry now. The new task makes its first.
     vi.setSystemTime(start + 5 * 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    expect(await tasks.deliver()).toBe(2);
     // The new head commit is still computing, so it is still pending.
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: "pending",
     });
     vi.setSystemTime(start + 6 * 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    expect(await tasks.deliver()).toBe(1);
     expect(patchQueries(queries)).toHaveLength(6);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: true,
     });
+  });
+
+  it("keeps a new push's pending fields when the old push's task fails its last delivery", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json(pullRequest(34));
+      }),
+      // Every patch query fails.
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+      ),
+    );
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    const push = async (sha: string, atMs: number) => {
+      vi.setSystemTime(atMs);
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: pullRequest(34, {
+          head: { ref: "feat/object-cache", sha },
+          mergeable: null,
+          updated_at: new Date(atMs).toISOString(),
+        }),
+      });
+    };
+    await push("bbb222", start + 10_000);
+    for (let minute = 1; minute <= 4; minute++) {
+      vi.setSystemTime(start + minute * 60_000);
+      await tasks.deliver();
+    }
+    await push("ccc333", start + 4 * 60_000 + 30_000);
+    // The old push's task makes its last delivery after the new push.
+    vi.setSystemTime(start + 5 * 60_000);
+    expect(await tasks.deliver()).toBe(2);
+
+    vi.setSystemTime(start + 5 * 60_000 + 16_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+      checks: "pending",
+    });
+    expect(reads).toEqual([]);
   });
 
   it("reads pending checks again when a webhook lands between a push and its patch", async () => {
@@ -695,12 +788,12 @@ describe("GitHub pull request cache refresh", () => {
         headFacts("2026-01-02T03:00:30Z"),
       ],
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
@@ -720,12 +813,12 @@ describe("GitHub pull request cache refresh", () => {
       });
     }
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: "pending",
     });
     vi.setSystemTime(start + 120_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect(patchQueries(queries)).toHaveLength(2);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 4, pending: 0 },
@@ -737,12 +830,12 @@ describe("GitHub pull request cache refresh", () => {
     const queries = stubGraphql({
       cards: [{ ...cardNode(34), reviewDecision: "APPROVED" }],
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse("2026-01-02T06:00:00Z");
     vi.setSystemTime(start);
@@ -759,7 +852,7 @@ describe("GitHub pull request cache refresh", () => {
       }),
     });
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestCards",
     ]);
@@ -786,12 +879,12 @@ describe("GitHub pull request cache refresh", () => {
         ],
       ],
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse("2026-01-02T06:00:00Z");
     vi.setSystemTime(start);
@@ -813,7 +906,7 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: "pending",
     });
     vi.setSystemTime(start + 60_000);
-    await runTestHeartbeat(queue, Date.now());
+    await tasks.deliver();
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestCards",
       "PullRequestHeadFacts",
@@ -823,7 +916,7 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: false,
     });
   });
-  it("asks GitHub again soon after the last patch attempt finds the merge state still computing", async () => {
+  it("asks GitHub again soon after the last patch delivery finds the merge state still computing", async () => {
     stubGitHubApp();
     const unknown = {
       commits: checkRuns({ SUCCESS: 1 }),
@@ -845,12 +938,12 @@ describe("GitHub pull request cache refresh", () => {
       ],
       patches: Array.from({ length: 5 }, () => [unknown]),
     });
-    const app = await createGitHubApp();
+    const tasks = createPluginTaskQueueTestAdapter();
+    const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
-    const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse("2026-01-02T06:00:00Z");
     vi.setSystemTime(start);
@@ -866,7 +959,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     for (let minute = 1; minute <= 5; minute++) {
       vi.setSystemTime(start + minute * 60_000);
-      await runTestHeartbeat(queue, Date.now());
+      await tasks.deliver();
     }
     const named = (operationName: string) =>
       queries.filter((query) => query.operationName === operationName);

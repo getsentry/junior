@@ -20,9 +20,9 @@ export default defineConfig({
       // do not create. Core depends on this package, so it cannot run core
       // migrations here.
       postgresSkipMigrations: [
-        "0008_native_code_backfill.sql",
-        "0020_pull_request_lifecycle_backfill.sql",
-        "0023_pull_request_requester_ids_backfill.sql",
+        "20260824190830_native_code_backfill",
+        "20261123224011_pull_request_lifecycle_backfill",
+        "20261124230103_pull_request_requester_ids_backfill",
       ],
     },
   },

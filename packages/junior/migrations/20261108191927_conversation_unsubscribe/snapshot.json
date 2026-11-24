@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "572b6755-e298-41a7-8b3c-5d271ca6b163",
+  "prevIds": ["428fbb17-a8db-4d8a-8259-4ac9511c5105"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_participants",
+        "unsubscribed_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_participants.unsubscribed_at",
+        "n|col|public.junior_conversation_participants.unsubscribed_at",
+        "e|col|public.junior_conversation_participants.unsubscribed_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_participants", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "unsubscribed_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

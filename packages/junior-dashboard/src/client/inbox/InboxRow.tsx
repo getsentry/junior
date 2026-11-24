@@ -1,17 +1,5 @@
-import {
-  AlarmClockOff,
-  Archive,
-  ArchiveRestore,
-  Pin,
-  PinOff,
-} from "lucide-react";
-import {
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { AlarmClockOff, Archive, ArchiveRestore, Pin } from "lucide-react";
+import { useMemo, useState, type ReactNode, type RefCallback } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
@@ -47,8 +35,11 @@ import {
 } from "../conversations/ConversationSidebarThreadRow";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
-import { usePinConversation } from "../conversations/usePinConversation";
-import { DisplayText } from "../display-text/DisplayText";
+import {
+  DisplayText,
+  NearScreenObjects,
+  useNearScreen,
+} from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
@@ -93,6 +84,7 @@ import {
   type InboxCardActions,
 } from "./RowHoverActions";
 import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { ExpandedPin } from "./ExpandedPin";
 import {
   ReplyNoticeLink,
   RowOwnerLink,
@@ -214,9 +206,10 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
+  // A row reads the live cards of its links once it comes near the screen.
+  const card = useNearScreen<HTMLLIElement>();
   // The rows below move with the row as it opens and closes.
-  const cardRef = useRef<HTMLLIElement>(null);
-  useAnimatedHeight(cardRef, String(props.expanded));
+  useAnimatedHeight(card.element, String(props.expanded));
   const open = props.bundle?.items.filter((item) => item.status === "open");
   const quickActions =
     props.itemActions && open?.length === 1 && props.cardActions ? (
@@ -231,22 +224,26 @@ export function InboxRow(props: InboxRowProps) {
         onExpand={props.onToggle}
       />
     ) : undefined;
-  return props.conversation ? (
-    <ConversationInboxRow
-      {...props}
-      cardRef={cardRef}
-      conversation={props.conversation}
-      quickActions={quickActions}
-    />
-  ) : (
-    <li
-      className={cn(inboxCardClass(props.expanded), "group")}
-      data-expanded={props.expanded || undefined}
-      data-inbox-row={props.rowKey}
-      ref={cardRef}
-    >
-      <InboxRowBody {...props} hoverActions={quickActions} />
-    </li>
+  return (
+    <NearScreenObjects near={card.near}>
+      {props.conversation ? (
+        <ConversationInboxRow
+          {...props}
+          cardRef={card.ref}
+          conversation={props.conversation}
+          quickActions={quickActions}
+        />
+      ) : (
+        <li
+          className={cn(inboxCardClass(props.expanded), "group")}
+          data-expanded={props.expanded || undefined}
+          data-inbox-row={props.rowKey}
+          ref={card.ref}
+        >
+          <InboxRowBody {...props} hoverActions={quickActions} />
+        </li>
+      )}
+    </NearScreenObjects>
   );
 }
 
@@ -257,7 +254,7 @@ function rowRegionId(rowKey: string): string {
 
 function ConversationInboxRow(
   props: InboxRowProps & {
-    cardRef: RefObject<HTMLLIElement | null>;
+    cardRef: RefCallback<HTMLLIElement>;
     conversation: Conversation;
     /** A row with one ask acts on it instead of pinning or archiving. */
     quickActions?: ReactNode;
@@ -956,39 +953,5 @@ function ExpandedActions(props: {
     <div className="flex flex-wrap items-center justify-end gap-1">
       {actions}
     </div>
-  );
-}
-
-/** Pin the Conversation from the open row. There is one pin: its own. */
-function ExpandedPin(props: {
-  conversation: Conversation;
-  look?: ButtonLook | undefined;
-}) {
-  const { clearActionError, showActionError } = useConversationActionToasts();
-  const pin = usePinConversation(props.conversation.id, {
-    onError: (pinning) =>
-      showActionError(
-        props.conversation,
-        pinning ? "Could not pin" : "Could not unpin",
-        () => pin.mutate(pinning),
-      ),
-    onSuccess: () => clearActionError(props.conversation),
-  });
-  const pinned = Boolean(props.conversation.pinnedAt);
-  return (
-    <Button
-      aria-pressed={pinned}
-      className={props.look && LOOK_CLASSES[props.look]}
-      disabled={pin.isPending}
-      onClick={() => pin.mutate(!pinned)}
-      variant="ghost"
-    >
-      {pinned ? (
-        <PinOff aria-hidden="true" size={15} />
-      ) : (
-        <Pin aria-hidden="true" size={15} />
-      )}
-      <ButtonLabel look={props.look}>{pinned ? "Unpin" : "Pin"}</ButtonLabel>
-    </Button>
   );
 }

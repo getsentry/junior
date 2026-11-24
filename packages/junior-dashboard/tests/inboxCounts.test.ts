@@ -15,6 +15,7 @@ function ask(
     ...template!,
     assignedToEveryone: false,
     canAct: true,
+    canAnswer: true,
     id,
     kind: "action",
     request:

@@ -54,6 +54,7 @@ function createDemoStore() {
   return {
     applied: [] as string[],
     failuresLeft: 0,
+    lastDeliveries: [] as boolean[],
     writes: 0,
     async write(value: string): Promise<void> {
       this.writes += 1;
@@ -76,6 +77,7 @@ function demoPlugin(store: DemoStore) {
       applyWrite: {
         payload: z.object({ value: z.string() }).strict(),
         async run(ctx: PluginStartedTaskContext<{ value: string }>) {
+          store.lastDeliveries.push(ctx.lastDelivery);
           await store.write(ctx.payload.value);
         },
       },
@@ -87,13 +89,18 @@ function demoPlugin(store: DemoStore) {
             method: "POST",
             path: "/api/webhooks/demo",
             async handler(request) {
-              const { key, value } = z
-                .object({ key: z.string(), value: z.string() })
+              const { delaySeconds, key, value } = z
+                .object({
+                  delaySeconds: z.number().optional(),
+                  key: z.string(),
+                  value: z.string(),
+                })
                 .parse(await request.json());
               try {
                 await store.write(value);
               } catch {
                 await ctx.tasks.start({
+                  delaySeconds,
                   key,
                   name: "applyWrite",
                   payload: { value },
@@ -110,7 +117,7 @@ function demoPlugin(store: DemoStore) {
 
 async function deliverWebhook(
   app: Awaited<ReturnType<typeof createApp>>,
-  body: { key: string; value: string },
+  body: { delaySeconds?: number; key: string; value: string },
 ): Promise<void> {
   const response = await app.request("/api/webhooks/demo", {
     body: JSON.stringify(body),
@@ -218,5 +225,26 @@ describe("plugin tasks that a route starts", () => {
     expect(store.writes).toBe(6);
     expect(store.applied).toEqual([]);
     expect(delays).toEqual([30, 60, 120, 240]);
+    expect(store.lastDeliveries).toEqual([false, false, false, false, true]);
+  }, 30_000);
+
+  it("waits the start delay before the first delivery", async () => {
+    const store = createDemoStore();
+    const app = await startQueuedApp(store);
+    const sentDelays: string[] = [];
+    mswServer.events.on("request:start", ({ request }) => {
+      const delay = request.headers.get("Vqs-Delay-Seconds");
+      if (delay !== null) sentDelays.push(delay);
+    });
+
+    // Injected fault: the provider store fails the inline write.
+    store.failuresLeft = 1;
+    const sentAt = Date.now();
+    await deliverWebhook(app, { delaySeconds: 2, key: "change-3", value: "a" });
+    await waitFor(() => store.applied.length > 0);
+
+    expect(sentDelays).toEqual(["2"]);
+    expect(Date.now() - sentAt).toBeGreaterThanOrEqual(2_000);
+    expect(store.lastDeliveries).toEqual([false]);
   }, 30_000);
 });

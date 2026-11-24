@@ -1,0 +1,184 @@
+import type { User } from "@sentry/junior-plugin-api";
+import { Hono } from "hono";
+import { afterEach, describe, expect, it } from "vitest";
+import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { getConversationStore, getDb } from "@/chat/db";
+import { insertInboxItem } from "@/chat/inbox-items/store";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { getConversation } from "@/chat/task-execution/store";
+import { juniorConversationParticipants } from "@/db/schema";
+import {
+  closeConversationFixture,
+  createConversationFixture,
+  type ConversationFixture,
+} from "../../../fixtures/conversation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+
+const REQUEST: UserInputRequest = {
+  question: "Approve or reject this entry?",
+  fields: [
+    {
+      id: "decision",
+      kind: "choice",
+      label: "Decision",
+      options: [{ label: "Approve" }, { label: "Reject" }],
+    },
+    { id: "reason", kind: "text", label: "Reason" },
+  ],
+};
+
+/** A person signed in to the dashboard, linked to Slack workspace T123. */
+async function user(email: string): Promise<User> {
+  const resolved = await resolveViewerUserFromSql(getDb(), email);
+  if (!resolved) throw new Error(`no user for ${email}`);
+  return {
+    ...resolved,
+    identities: [
+      {
+        id: `identity:slack:${email}`,
+        provider: "slack",
+        providerSubjectId: `U-${email}`,
+        providerTenantId: "T123",
+      },
+    ],
+  };
+}
+
+function api(fixture: ConversationFixture, viewer: User) {
+  const app = new Hono<{ Variables: JuniorApiVariables }>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi({ conversationWorkQueue: fixture.queue }));
+  return {
+    act: (id: string, body: unknown) =>
+      app.request(`http://localhost/api/inbox-items/${id}/actions`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    get: (path: string) =>
+      app.request(`http://localhost/api/inbox-items${path}`),
+  };
+}
+
+async function pendingMessages(conversationId: string) {
+  const conversation = await getConversation({ conversationId });
+  return conversation?.execution.pendingMessages ?? [];
+}
+
+// Who sees and answers the items of one Conversation on the dashboard.
+describe("inbox items of a Conversation", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("shows a Conversation's items to the people in it", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    const cal = await user("cal@example.com");
+    await user("ben@example.com");
+    // A public dashboard Conversation that Ben started. Ana joined and then
+    // unsubscribed, so she is an inactive Participant.
+    await getConversationStore().recordActivity({
+      actor: { email: "ben@example.com" },
+      conversationId: "local:web:shared",
+      destination: { platform: "local", conversationId: "local:web:shared" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "public",
+    });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1),
+        rootConversationId: "local:web:shared",
+        unsubscribedAt: new Date(2),
+        userId: ana.id,
+      });
+    // An event Turn asks without naming anyone, so the item goes to the
+    // active Participants: only Ben.
+    const tool = createAddInboxItemTool(
+      {
+        conversationId: "local:web:shared",
+        resolveActorIdentity: async () => undefined,
+        source: { kind: "event" } as any,
+      },
+      createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+    );
+    const { item } = await (tool as any).execute(
+      {
+        kind: "action",
+        title: "Close the tracking issue?",
+        body: "The pull request merged.",
+        request: REQUEST,
+      },
+      {},
+    );
+    const ids = async (viewer: User, path: string) =>
+      (await (await api(fixture, viewer).get(path)).json()).items.map(
+        (listed: any) => listed.id,
+      );
+
+    // Ana is not assigned, so the item is not in her Inbox. She is
+    // still a Participant, so the Conversation view shows it.
+    expect(await ids(ana, "")).toEqual([]);
+    expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
+      item.id,
+    ]);
+    expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
+    // A private item stays private when its Conversation is public.
+    const hidden = await insertInboxItem(getDb(), {
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "Added before the Conversation became public.",
+      conversationIds: ["local:web:shared"],
+      subject: { id: "private-question", kind: "question" },
+      kind: "action",
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      owner: { id: "local:web:shared", kind: "conversation" },
+      request: REQUEST,
+      title: "Private question",
+      visibility: "private",
+    });
+    // Cal can view the public Conversation but does not take part in it.
+    // He sees its public question and can answer it, but only an assignee
+    // dismisses or takes it.
+    const calView = await (
+      await api(fixture, cal).get("?conversationId=local:web:shared")
+    ).json();
+    expect(calView.items).toMatchObject([
+      { id: item.id, canAct: false, canAnswer: true, canTake: false },
+    ]);
+    expect((await api(fixture, cal).get(`/${hidden!.id}`)).status).toBe(404);
+    expect(
+      (
+        await api(fixture, cal).act(hidden!.id, {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await api(fixture, cal).act(item.id, { action: "dismiss" })).status,
+    ).toBe(403);
+    const answered = await api(fixture, cal).act(item.id, {
+      action: "submit",
+      answer: { values: { decision: ["Approve"] } },
+    });
+    expect(answered.status).toBe(200);
+    expect(await answered.json()).toMatchObject({
+      closedBy: { email: "cal@example.com" },
+      status: "done",
+    });
+    // The answer reaches the Conversation as Cal's own message, so his
+    // Turn runs as him.
+    const [message] = await pendingMessages("local:web:shared");
+    expect(message?.input.text).toContain("cal@example.com answered");
+    expect(message?.input.authorId).toBe(cal.id);
+  });
+});

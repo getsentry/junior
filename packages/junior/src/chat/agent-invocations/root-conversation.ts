@@ -14,7 +14,7 @@
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the
- * parent sent with spawnAgent or messageAgent count as the user there, and no
+ * parent sent with startAgent or messageAgent count as the user there, and no
  * person's message does. Each other message keeps its real author as a label
  * and is only context. Nothing is copied into the Run.
  */

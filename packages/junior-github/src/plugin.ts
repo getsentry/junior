@@ -37,7 +37,10 @@ import {
 } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
-import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
+import {
+  GITHUB_PULL_REQUEST_PATCH_TASK,
+  githubPullRequestPatchTask,
+} from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
@@ -220,6 +223,13 @@ export function githubPlugin(
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
+      [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
+        async (refs) =>
+          await loadPullRequestHeadFacts(
+            { appIdEnv, installationIdEnv, privateKeyEnv },
+            refs,
+          ),
+      ),
       [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
         async () =>
           await loadRepositoryFullNames({
@@ -447,6 +457,7 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
@@ -465,14 +476,6 @@ export function githubPlugin(
               author: `app/${login.replace(/\[bot\]$/, "")}`,
             });
           },
-          state: ctx.state,
-        });
-        await runGitHubPullRequestPatches({
-          cache: ctx.cache,
-          loadHeadFacts: async (refs) =>
-            await loadPullRequestHeadFacts(installationEnv, refs),
-          log: ctx.log,
-          nowMs: ctx.nowMs,
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({

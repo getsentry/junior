@@ -1,0 +1,190 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "c894a9e6-7ba9-4fc6-8d22-c95f15ccb156",
+  "prevIds": ["e195a34f-e236-4221-881e-ccdcee261e6e"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_read_positions"
+      ],
+      "writes": [
+        "s|tbl|public.junior_conversation_read_positions",
+        "n|tbl|public.junior_conversation_read_positions",
+        "e|tbl|public.junior_conversation_read_positions",
+        "n|rel|public.junior_conversation_read_positions",
+        "n|type|public.junior_conversation_read_positions",
+        "n|rel|public.junior_conversation_read_positions_user_conversation_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_read_positions"
+      ],
+      "writes": [
+        "s|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_user_id_junior_users_id_fk",
+        "n|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_user_id_junior_users_id_fk",
+        "e|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_user_id_junior_users_id_fk",
+        "n|con|public.junior_conversation_read_positions.junior_conversation_read_positions_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_read_positions",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_conversation_read_positions.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_read_positions"
+      ],
+      "writes": [
+        "s|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_conversation_id_junior_conve",
+        "n|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_conversation_id_junior_conve",
+        "e|fk|public.junior_conversation_read_positions.junior_conversation_read_positions_conversation_id_junior_conve",
+        "n|con|public.junior_conversation_read_positions.junior_conversation_read_positions_conversation_id_junior_conve"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_read_positions",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_read_positions.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_read_positions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "last_read_seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "junior_conversation_read_positions_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "junior_conversation_read_positions_conversation_id_junior_conve",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_read_positions",
+        "name": "junior_conversation_read_positions_user_conversation_pk",
+        "columns": ["user_id", "conversation_id"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

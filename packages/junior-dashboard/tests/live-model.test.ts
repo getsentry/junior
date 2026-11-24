@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
-import { liveModelId } from "../src/client/conversations/ConversationPage";
+import { liveModelId } from "../src/client/conversations/ConversationMeta";
 
 function detail(
   events: ConversationDetailReport["events"],

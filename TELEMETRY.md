@@ -104,7 +104,7 @@ attributes. Nested logs and spans inherit them.
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
-| Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+| Dashboard feedback by topic         | `app.feedback.topic` (`agent`, `new_ui`)                                                            | `packages/junior-dashboard/src/client/sentry.ts`                |
 | Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
 
 ## Trace Shape

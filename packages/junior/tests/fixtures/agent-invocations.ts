@@ -143,7 +143,7 @@ export type SpawnedChild = {
   parentConversationId: string;
 };
 
-/** Spawn a child agent as `spawnAgent` does. */
+/** Spawn a child agent as `startAgent` does. */
 export async function spawnChildAgent(
   args: ChildAgentArgs,
 ): Promise<SpawnedChild> {
@@ -328,7 +328,7 @@ export async function prepareSummarizedHistory(conversationId: string) {
 }
 
 /**
- * Commit parent history with an earlier `reply` and the `spawnAgent` call of
+ * Commit parent history with an earlier `reply` and the `startAgent` call of
  * a fork. Returns the id of that call.
  */
 export async function prepareForkParentHistory(): Promise<string> {
@@ -369,7 +369,7 @@ export async function prepareForkParentHistory(): Promise<string> {
           {
             type: "toolCall",
             id: toolCallId,
-            name: "spawnAgent",
+            name: "startAgent",
             arguments: { fork: true, task: invocationInput.input },
           },
         ],

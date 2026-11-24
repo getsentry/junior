@@ -47,12 +47,20 @@ import {
 /**
  * Who reads Inbox items. An item is visible when it is public and its
  * tenant is one of the reader's tenants, when the reader is an assigned
- * User, or when it is linked to the reader's Conversation or added by the
- * reader's Automation.
+ * User, when it is linked to the reader's Conversation or added by the
+ * reader's Automation, or when it is a public question linked to the public
+ * Conversation that the reader views.
  */
 export interface InboxItemReader {
   automationId?: string;
   conversationId?: string;
+  /**
+   * A public Conversation that a person views but does not take part in.
+   * Only its public questions (`action` items) are visible: a private item
+   * stays private when its Conversation becomes public, and a notice is for
+   * its assignees.
+   */
+  publicConversationId?: string;
   /** Provider tenants where the reader can see public items. */
   tenants?: readonly ProviderTenant[];
   userId?: string;
@@ -276,11 +284,25 @@ export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
       ...(reader.conversationId
         ? [inboxItemLinkedTo(reader.conversationId)]
         : []),
+      ...(reader.publicConversationId
+        ? [
+            and(
+              eq(juniorInboxItems.visibility, "public"),
+              eq(juniorInboxItems.kind, "action"),
+              inboxItemLinkedTo(reader.publicConversationId),
+            )!,
+          ]
+        : []),
       ...(reader.automationId
         ? [inboxItemAddedByAutomation(reader.automationId)]
         : []),
     ) ?? sql`false`
   );
+}
+
+/** Return whether an Inbox item is a public question (`action` item). */
+function isPublicQuestion(item: InboxItem): boolean {
+  return item.visibility === "public" && item.kind === "action";
 }
 
 /** Return whether a reader can see one Inbox item. */
@@ -298,17 +320,22 @@ export function canReadInboxItem(
       item.assignees.some((assignee) => assignee.userId === reader.userId)) ||
     (reader.conversationId !== undefined &&
       item.conversationIds.includes(reader.conversationId)) ||
+    (reader.publicConversationId !== undefined &&
+      isPublicQuestion(item) &&
+      item.conversationIds.includes(reader.publicConversationId)) ||
     (reader.automationId !== undefined &&
       item.addedByAutomationId === reader.automationId)
   );
 }
 
 /**
- * Return whether a person can read one Inbox item: by the reader rule, or
- * because they take part in a Conversation that the item links. The second
- * part is the person rule of `policies/conversation-access.md`; it lets the
- * Conversation view show its items. Viewing a public Conversation is not
- * enough: a private item stays private when its Conversation becomes public.
+ * Return whether a person can read one Inbox item: by the reader rule,
+ * because they take part in a Conversation that the item links, or because
+ * it is a public question that links a public Conversation, which every
+ * signed-in person can view. The second part is the person rule of
+ * `policies/conversation-access.md`; it lets the Conversation view show its
+ * items. Viewing a public Conversation is not enough for a private item: it
+ * stays private when its Conversation becomes public.
  */
 export async function canUserReadInboxItem(
   item: InboxItem,
@@ -334,15 +361,20 @@ export async function canUserReadInboxItem(
     item.conversationIds,
     user,
   );
-  return item.conversationIds.some(
-    (id) => access.get(id)?.isParticipant === true,
-  );
+  return item.conversationIds.some((id) => {
+    const conversation = access.get(id);
+    return (
+      conversation?.isParticipant === true ||
+      (isPublicQuestion(item) && conversation?.visibility === "public")
+    );
+  });
 }
 
 /**
  * The reader for one person who looks at one Conversation: the person's
  * reader, plus the items linked to the Conversation when they take part in
- * it. It is the list form of `canUserReadInboxItem`.
+ * it, or only its public questions when it is public. It is the list form of
+ * `canUserReadInboxItem`.
  */
 export async function inboxItemReaderForUserInConversation(
   user: User,
@@ -354,8 +386,10 @@ export async function inboxItemReaderForUserInConversation(
     [conversationId],
     user,
   );
-  return access.get(conversationId)?.isParticipant
-    ? { ...reader, conversationId }
+  const conversation = access.get(conversationId);
+  if (conversation?.isParticipant) return { ...reader, conversationId };
+  return conversation?.visibility === "public"
+    ? { ...reader, publicConversationId: conversationId }
     : reader;
 }
 
@@ -478,7 +512,7 @@ export async function requireInboxItemLinks(args: {
     const conversation = access.get(conversationId);
     if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
       throw new ToolInputError(
-        `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+        `Conversation ${conversationId} is not found. Check conversation_ids, or search Conversations to find the id.`,
       );
     }
     if (args.allowedIds.has(conversationId)) continue;
@@ -491,7 +525,7 @@ export async function requireInboxItemLinks(args: {
       throw new ToolInputError(
         conversation.canViewPrivateContent
           ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+          : `Conversation ${conversationId} is not found. Check conversation_ids, or search Conversations to find the id.`,
       );
     }
   }
@@ -555,6 +589,26 @@ export function canActOnInboxItem(item: InboxItem, userId: string): boolean {
   if (item.status !== "open") return false;
   if (isInboxItemForEveryone(item)) return true;
   return item.assignees.some((assignee) => assignee.userId === userId);
+}
+
+/**
+ * Return whether a User can answer an open question. Anyone who can act on
+ * it can (`canActOnInboxItem`). A public question that an agent asked in a
+ * Conversation is open to anyone who can see it, such as a member of its
+ * public Slack channel. A private item, a To-do, a plugin's item, and an
+ * Automation alert keep the assignee rule, and so do Take and Dismiss. The
+ * caller checks that the User can see the item.
+ */
+export function canAnswerInboxItem(item: InboxItem, userId: string): boolean {
+  if (canActOnInboxItem(item, userId)) return true;
+  return (
+    item.status === "open" &&
+    isPublicQuestion(item) &&
+    item.request !== undefined &&
+    item.owner.kind === "conversation" &&
+    !isPluginInboxItem(item) &&
+    item.subject.kind !== INBOX_SUBJECT_KINDS.todo
+  );
 }
 
 /**

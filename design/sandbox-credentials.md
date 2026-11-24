@@ -26,15 +26,6 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
   CLI works in any Turn without a skill load first.
 - A missing connection becomes a prompt to connect, not a silent failure.
 
-## Entry points
-
-- Sandbox commands: `bash`, git, provider CLIs such as `gh` and `sentry`,
-  scripts, and the browser.
-- Slack: the prompt to connect an account when a command needs it.
-- Dashboard: Settings, Identities, to connect or disconnect an account. An
-  Admin connects a Service account in the dashboard or with
-  `junior service-account connect`.
-
 ## Rules
 
 - Only domains that a plugin declares get credentials, and each domain has

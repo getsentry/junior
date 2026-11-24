@@ -78,10 +78,15 @@ function stripVolatile(value: unknown): unknown {
  * spent nothing. Memory recall events record what one run recalled, and
  * loaded history recalled nothing.
  */
-async function comparableRows(conversationId: string): Promise<unknown[]> {
+async function comparableRows(
+  conversationId: string,
+): Promise<{ rows: unknown[]; sources: unknown[][] }> {
   const rows = await getConversationEventStore().loadHistory(conversationId);
   const messages = new Map<string, Record<string, unknown>>();
+  // The raw message rows that each folded row came from, for failure output.
+  const messageSources = new Map<string, unknown[]>();
   const result: unknown[] = [];
+  const sources: unknown[][] = [];
   for (const row of rows) {
     const data = row.data as Record<string, unknown>;
     if (
@@ -107,6 +112,7 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
       continue;
     }
     if (data["type"] === "message_updated") {
+      messageSources.get(String(data["messageId"]))?.push(data);
       Object.assign(messages.get(String(data["messageId"])) ?? {}, {
         ...data,
         type: "message",
@@ -114,11 +120,18 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
       continue;
     }
     const copy = { ...data };
-    if (data["type"] === "message")
+    const source: unknown[] = [data];
+    if (data["type"] === "message") {
       messages.set(String(data["messageId"]), copy);
+      messageSources.set(String(data["messageId"]), source);
+    }
     result.push(copy);
+    sources.push(source);
   }
-  return result.map(stripVolatile);
+  return {
+    rows: result.map(stripVolatile),
+    sources: sources.map((source) => source.map(stripVolatile)),
+  };
 }
 
 async function compareWithRealTurn(
@@ -134,11 +147,12 @@ async function compareWithRealTurn(
     reply(realReply.text),
   );
   const loaded = await run(rest, { history: [input, ...replies] });
-  const realRows = await comparableRows(real.conversationId);
-  const loadedRows = await comparableRows(loaded.conversationId);
-  const loadedPrefix = loadedRows.slice(0, realRows.length);
+  const realHistory = await comparableRows(real.conversationId);
+  const loadedHistory = await comparableRows(loaded.conversationId);
+  const realRows = realHistory.rows;
+  const loadedPrefix = loadedHistory.rows.slice(0, realRows.length);
   // The eval reporter truncates the deep-equal diff, so the message names the
-  // first row that differs in full.
+  // first row that differs in full, with the raw rows that it folds.
   const differing = realRows.findIndex(
     (row, index) => !isDeepStrictEqual(loadedPrefix[index], row),
   );
@@ -146,7 +160,13 @@ async function compareWithRealTurn(
     loadedPrefix,
     differing === -1
       ? undefined
-      : `row ${differing}\nreal: ${JSON.stringify(realRows[differing])}\nloaded: ${JSON.stringify(loadedPrefix[differing])}`,
+      : [
+          `row ${differing}`,
+          `real: ${JSON.stringify(realRows[differing])}`,
+          `loaded: ${JSON.stringify(loadedPrefix[differing])}`,
+          `real sources: ${JSON.stringify(realHistory.sources[differing])}`,
+          `loaded sources: ${JSON.stringify(loadedHistory.sources[differing])}`,
+        ].join("\n"),
   ).toEqual(realRows);
   const store = getConversationStore();
   expect(

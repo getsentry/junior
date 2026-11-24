@@ -37,7 +37,7 @@ describeEval("Tool Search", toolSearchEvals, (it) => {
   it("when the agent tool is not in the catalog, it returns none", async ({
     run,
   }) => {
-    // spawnAgent is a direct tool, so the catalog does not have it.
+    // startAgent is a direct tool, so the catalog does not have it.
     await run({ query: "spawn agent reviewer", source: null, expected: null });
   });
 

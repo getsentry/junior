@@ -33,6 +33,7 @@ import {
   slackError,
   usersInfoOk,
 } from "../../fixtures/slack/factories/api";
+import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-queue";
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
@@ -540,7 +541,8 @@ describe("object links API", () => {
       }),
     );
     try {
-      const app = await createGitHubApp();
+      const tasks = createPluginTaskQueueTestAdapter();
+      const app = await createGitHubApp(tasks);
       setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
@@ -682,6 +684,15 @@ describe("object links API", () => {
         status: "draft",
         title: "Cache GitHub objects",
       });
+      // The push and the new base each start a patch of their pull request.
+      expect(
+        tasks
+          .sent()
+          .map(({ message }) => ("payload" in message ? message.payload : {})),
+      ).toEqual([
+        { key: "pulls:getsentry/junior#34", sha: "bbb222" },
+        { key: "pulls:getsentry/junior#90", sha: "aaa111" },
+      ]);
     } finally {
       vi.unstubAllEnvs();
     }

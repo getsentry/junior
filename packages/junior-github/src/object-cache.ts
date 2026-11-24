@@ -3,6 +3,7 @@
  * keeps the REST fields of one object that a card shows. A webhook merges
  * its payload into the entry, so the next card read needs no GitHub call.
  */
+import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
 // Webhooks refresh a changed issue, so the TTL bounds only a change that
@@ -138,6 +139,29 @@ export function githubObjectCacheKey(
   number: number | string,
 ): string {
   return `${collection}:${repo}#${number}`.toLowerCase();
+}
+
+/**
+ * Clear a conflict that the pull request entry still knows for `headSha`,
+ * after a read that is not the entry's own, such as a webhook or heartbeat
+ * merge conflict check, finds it mergeable. Otherwise the next push marks
+ * the fixed conflict again from the entry (`webhooks/object-cache.ts`).
+ */
+export async function clearGitHubCachedConflict(
+  cache: PluginCache,
+  ref: { number: number; repositoryFullName: string },
+  headSha: string,
+): Promise<void> {
+  await cache.update<GitHubPullRequestFields | null>(
+    githubObjectCacheKey("pulls", ref.repositoryFullName, ref.number),
+    (current) =>
+      current?.mergeable === false && current.head?.sha === headSha
+        ? {
+            ...GITHUB_PULL_REQUEST_CACHE,
+            value: { ...current, mergeable: true },
+          }
+        : undefined,
+  );
 }
 
 /** Whether `next` is older than `current`, so it must not replace it. */

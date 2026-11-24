@@ -14,28 +14,21 @@ const INDEX_NAME = "concurrent_index_items_group_idx";
 const CREATE_ITEMS = `CREATE TABLE "concurrent_index_items" ("id" integer PRIMARY KEY, "group_id" integer NOT NULL);`;
 const CREATE_GROUP_INDEX = `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${INDEX_NAME}" ON "concurrent_index_items" USING btree ("group_id");`;
 
+/** Write migration folders as drizzle-kit does, named by their `when` second. */
 async function writeMigrations(
   dir: string,
   migrations: readonly { sql: string; tag: string; when?: number }[],
 ): Promise<void> {
-  await mkdir(join(dir, "meta"), { recursive: true });
-  for (const migration of migrations) {
-    await writeFile(join(dir, `${migration.tag}.sql`), migration.sql);
+  await rm(dir, { force: true, recursive: true });
+  for (const [idx, migration] of migrations.entries()) {
+    const stamp = new Date(migration.when ?? (idx + 1) * 1000)
+      .toISOString()
+      .replace(/\D/g, "")
+      .slice(0, 14);
+    const folder = join(dir, `${stamp}_${migration.tag}`);
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "migration.sql"), migration.sql);
   }
-  await writeFile(
-    join(dir, "meta", "_journal.json"),
-    JSON.stringify({
-      dialect: "postgresql",
-      entries: migrations.map((migration, idx) => ({
-        breakpoints: true,
-        idx,
-        tag: migration.tag,
-        version: "7",
-        when: migration.when ?? (idx + 1) * 1000,
-      })),
-      version: "7",
-    }),
-  );
 }
 
 /** Apply the items table, then add migrations as a later release would. */
@@ -231,7 +224,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
           },
           {
             sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;`,
-            tag: "0002_items_note",
+            tag: "0001_items_note",
             when: 3000,
           },
         ]);
@@ -245,6 +238,46 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
             `SELECT "label", "note" FROM "concurrent_index_items"`,
           ),
         ).resolves.toEqual([]);
+      } finally {
+        await fixture.close();
+        await rm(pending.dir, { force: true, recursive: true });
+      }
+    });
+
+    it("upgrades a Drizzle 0.x migration table without replaying or skipping a migration", async () => {
+      const fixture = await createEmptyJuniorPostgresFixture();
+      const pending = await createItemsWithPendingMigration(fixture.sql, [
+        {
+          sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;`,
+          tag: "0001_items_note",
+        },
+      ]);
+
+      try {
+        const [{ tablename } = { tablename: "" }] = await fixture.sql.query<{
+          tablename: string;
+        }>(
+          `SELECT tablename FROM pg_tables WHERE schemaname = 'drizzle' AND tablename LIKE '__drizzle_concurrent_index_test_%'`,
+        );
+        const table = `drizzle."${tablename}"`;
+        // Drizzle 0.x has no name column and times from the journal in ms.
+        await fixture.sql.execute(
+          `ALTER TABLE ${table} DROP COLUMN name, DROP COLUMN applied_at`,
+        );
+        await fixture.sql.execute(
+          `UPDATE ${table} SET created_at = created_at + 123`,
+        );
+
+        await expect(pending.migrate()).resolves.toMatchObject({
+          existing: 1,
+          migrated: 1,
+        });
+        await expect(
+          fixture.sql.query(`SELECT name FROM ${table} ORDER BY id`),
+        ).resolves.toEqual([
+          { name: "19700101000001_0000_items" },
+          { name: "19700101000002_0001_items_note" },
+        ]);
       } finally {
         await fixture.close();
         await rm(pending.dir, { force: true, recursive: true });

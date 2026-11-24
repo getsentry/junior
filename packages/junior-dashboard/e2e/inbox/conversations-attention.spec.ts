@@ -3,8 +3,7 @@ import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { viewAsParticipant } from "./conversationMenu";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** The Conversations bundle, which lists every Conversation with its menu. */
   function conversationsList(page: Page): Locator {
     return page.getByRole("region", { name: "Conversations", exact: true });
@@ -193,11 +192,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       // The row menu shows the rows of the `⋯` menu, in the same order.
       await expect(page.getByRole("menuitem")).toHaveText([
         "Share",
-        "Copy as Markdown",
-        "Open event log",
         "Pin",
         "Rename",
+        "Copy as Markdown",
         "Subscribe",
+        "Open event log",
         "Archive",
       ]);
       await screenshot(page, "conversation-row-context-menu", {

@@ -29,7 +29,7 @@ describe("Threads", () => {
       ),
     );
 
-    const spawned = completedToolCalls("spawnAgent", conversation);
+    const spawned = completedToolCalls("startAgent", conversation);
     expect(spawned.map((call) => spawnInput(call).kind)).toContain("thread");
   });
 
@@ -44,7 +44,7 @@ describe("Threads", () => {
       ),
     );
 
-    const spawned = completedToolCalls("spawnAgent", conversation);
+    const spawned = completedToolCalls("startAgent", conversation);
     expect(spawned.map((call) => spawnInput(call).kind)).toContain("thread");
   });
 
@@ -56,7 +56,7 @@ describe("Threads", () => {
         "Start two threads that I can talk to directly. One drafts a three-line changelog entry for the new CSV export. The other lists five checks to run before a Postgres 17 upgrade. Keep both short.",
       ),
     );
-    const threads = completedToolCalls("spawnAgent", conversation).filter(
+    const threads = completedToolCalls("startAgent", conversation).filter(
       (call) => spawnInput(call).kind === "thread",
     );
     expect(threads).toHaveLength(2);
@@ -95,7 +95,7 @@ describe("Threads", () => {
         "Start a thread that I can talk to directly. It drafts a three-line changelog entry for the new CSV export.",
       ),
     );
-    const [thread] = completedToolCalls("spawnAgent", conversation).filter(
+    const [thread] = completedToolCalls("startAgent", conversation).filter(
       (call) => spawnInput(call).kind === "thread",
     );
     expect(

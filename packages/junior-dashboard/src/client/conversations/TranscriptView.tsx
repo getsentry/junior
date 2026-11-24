@@ -82,7 +82,6 @@ export function Transcript(props: {
   /** Keep the rows around this event seq mounted, so the page can show it. */
   revealSeq?: number | undefined;
   search?: string;
-  onSearchChange?(value: string): void;
   /** Index of the current search match. */
   searchMatch?: number;
   onSearchMatches?(count: number, prepended: number): void;
@@ -103,8 +102,7 @@ export function Transcript(props: {
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
-  const [localSearch, setLocalSearch] = useState("");
-  const search = props.search ?? localSearch;
+  const search = props.search ?? "";
   const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
@@ -234,7 +232,6 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
-            onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             scrollAnchorKey={bottomPinning.scrollAnchorKey}
             selectedSeq={props.selectedEventSeq}

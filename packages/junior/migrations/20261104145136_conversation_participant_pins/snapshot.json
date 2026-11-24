@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2e88a3fb-855b-4eef-927c-23647c6a70bf",
+  "prevIds": ["596de823-c4c5-4ffc-9a2b-bace35abecdd"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_participants",
+        "pinned_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_participants.pinned_at",
+        "n|col|public.junior_conversation_participants.pinned_at",
+        "e|col|public.junior_conversation_participants.pinned_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_participants", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "pinned_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

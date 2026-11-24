@@ -48,6 +48,7 @@ async function addItem(input: {
   automationId?: string;
   conversationId: string;
   key: string;
+  kind?: "action" | "notice";
   visibility: InboxItemVisibility;
 }): Promise<string> {
   // A run of an Automation adds its item from the run's own Conversation.
@@ -67,8 +68,17 @@ async function addItem(input: {
     assigneeUserIds: input.assigneeUserIds,
     body: "Body",
     conversationIds: [input.conversationId],
-    kind: "notice",
+    kind: input.kind ?? "notice",
     nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+    // An action item asks a question.
+    ...(input.kind === "action"
+      ? {
+          request: {
+            question: "Ship it?",
+            fields: [{ id: "note", kind: "text" as const, label: "Note" }],
+          },
+        }
+      : undefined),
     tenant: T123,
     title: input.key,
     visibility: input.visibility,
@@ -128,6 +138,21 @@ describe("inbox item access", () => {
         key: "private",
         visibility: "private",
       }),
+      publicQuestion: await addItem({
+        assigneeUserIds: [ana],
+        conversationId: PUBLIC_CONVERSATION,
+        key: "public-question",
+        kind: "action",
+        visibility: "public",
+      }),
+      // An item added before its Conversation became public stays private.
+      privateQuestionInPublic: await addItem({
+        assigneeUserIds: [ana],
+        conversationId: PUBLIC_CONVERSATION,
+        key: "private-question",
+        kind: "action",
+        visibility: "private",
+      }),
       privateAutomationItem: await addItem({
         assigneeUserIds: [carl],
         automationId: "auto-1",
@@ -140,14 +165,28 @@ describe("inbox item access", () => {
 
     const cases: Array<[string, InboxItemReader, Name[]]> = [
       ["nobody", {}, []],
-      ["same tenant", { tenants: [T123] }, ["publicItem"]],
+      ["same tenant", { tenants: [T123] }, ["publicItem", "publicQuestion"]],
       ["other tenant", { tenants: [T999] }, []],
-      ["assigned User", { userId: ana }, ["privateItem", "publicItem"]],
+      [
+        "assigned User",
+        { userId: ana },
+        [
+          "privateItem",
+          "privateQuestionInPublic",
+          "publicItem",
+          "publicQuestion",
+        ],
+      ],
       ["other assigned User", { userId: carl }, ["privateAutomationItem"]],
       [
         "public linked Conversation",
         { conversationId: PUBLIC_CONVERSATION },
-        ["publicItem"],
+        ["privateQuestionInPublic", "publicItem", "publicQuestion"],
+      ],
+      [
+        "person who views a public Conversation",
+        { publicConversationId: PUBLIC_CONVERSATION },
+        ["publicQuestion"],
       ],
       [
         "private linked Conversation",
@@ -157,7 +196,7 @@ describe("inbox item access", () => {
       [
         "agent in another Conversation of the tenant",
         { conversationId: OTHER_CONVERSATION, tenants: [T123] },
-        ["publicItem"],
+        ["publicItem", "publicQuestion"],
       ],
       [
         "Automation",

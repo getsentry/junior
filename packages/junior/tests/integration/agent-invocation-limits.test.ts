@@ -19,7 +19,7 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 
-/** Spawn one child agent, as spawnAgent does. */
+/** Spawn one child agent, as startAgent does. */
 async function spawn(
   harness: Harness,
   idempotencyKey: string,

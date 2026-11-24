@@ -61,8 +61,7 @@ const shownOpacity = (locator: Locator) =>
     return opacity;
   });
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a child agent's ask rolls up under its root's stack and names its sub-thread", async ({
     dashboard,
     page,

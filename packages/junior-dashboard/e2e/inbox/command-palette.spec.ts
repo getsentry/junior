@@ -9,8 +9,7 @@ import { desktop, mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 import { expectRequestBudget } from "../request-budget";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
   const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
@@ -27,6 +26,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ],
     body: "The rollback is ready.",
     canAct: true,
+    canAnswer: true,
     canTake: false,
     conversationIds: [CLOSED_ISSUE_ID],
     createdAt: "2026-08-07T08:00:00.000Z",
@@ -136,7 +136,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeFocused();
 
     // The open conversation is not a row, so Enter switches away from it.
-    await page.getByRole("button", { name: "Search" }).click();
+    // The sidebar button, not the header's "Search transcript".
+    await page.getByRole("button", { name: /^Search(?! transcript)/ }).click();
     await expect(input).toBeFocused();
     await expect(
       palette.getByRole("option", { name: /Checkout latency triage/ }),

@@ -662,9 +662,12 @@ const pullRequestWebhookSchema = z.object({
     updated_at: z.string().optional(),
   }),
   repository: repositorySchema,
+  // A `review_requested` webhook names one person or one team.
+  requested_reviewer: z.object({ login: z.string().min(1) }).nullish(),
+  requested_team: z.object({ slug: z.string().min(1) }).nullish(),
 });
 
-/** Normalize pull request opened, ready-for-review, and terminal lifecycle events. */
+/** Normalize pull request lifecycle, push, and review request events. */
 function normalizePullRequestEvent(
   deliveryId: string,
   body: unknown,
@@ -731,17 +734,52 @@ function normalizePullRequestEvent(
     return events;
   }
 
-  if (parsed.data.action === "ready_for_review") {
-    return lifecycleEvents({
-      eventType: "pull_request.ready_for_review",
-      isDraft: false,
-      occurredAtMs: providerTime(pullRequest.updated_at) ?? Date.now(),
-      trustedSummary: `${resource.label} is ready for review.`,
-      untrustedText,
-    });
+  const updatedAtMs = providerTime(pullRequest.updated_at) ?? Date.now();
+  switch (parsed.data.action) {
+    case "ready_for_review":
+      return lifecycleEvents({
+        eventType: "pull_request.ready_for_review",
+        isDraft: false,
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} is ready for review.`,
+        untrustedText,
+      });
+    case "reopened":
+      return lifecycleEvents({
+        eventType: "pull_request.reopened",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} was reopened.`,
+        untrustedText,
+      });
+    case "converted_to_draft":
+      return lifecycleEvents({
+        eventType: "pull_request.converted_to_draft",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} was converted to a draft.`,
+      });
+    case "review_requested": {
+      const reviewer =
+        nonBlank(parsed.data.requested_reviewer?.login) ??
+        (parsed.data.requested_team
+          ? `team ${parsed.data.requested_team.slug}`
+          : undefined);
+      return lifecycleEvents({
+        eventType: "pull_request.review_requested",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: reviewer
+          ? `${resource.label} has a review request for ${reviewer}.`
+          : `${resource.label} has a review request.`,
+      });
+    }
+    case "synchronize":
+      return lifecycleEvents({
+        eventType: "pull_request.synchronized",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} has new commits.`,
+      });
+    default:
+      return gitHubPullRequestTerminalEvents(body);
   }
-
-  return gitHubPullRequestTerminalEvents(body);
 }
 
 /**

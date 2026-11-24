@@ -19,6 +19,8 @@ import { isEventMailboxMetadata } from "@/chat/events/notification";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { mapBounded } from "@/chat/fan-out";
+import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { syncTodoInboxItems } from "./inbox-items";
 import { todoRef } from "./tool-output";
@@ -96,18 +98,28 @@ function validateChange(rows: Map<number, TodoRow>, change: TodoChange) {
 // A Drizzle transaction, not `executor.transaction`: the Inbox item writes
 // of `syncTodoInboxItems` open their own transactions, which nest as
 // savepoints only inside a Drizzle one. Call it outside an executor
-// transaction.
+// transaction. `sync` syncs the Conversation's To-do items in the
+// transaction. The items that it added or changed push after the commit,
+// because the push reads them outside the transaction.
 async function withTodosLock<T>(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  callback: (db: JuniorDatabase) => Promise<T>,
+  callback: (
+    db: JuniorDatabase,
+    sync: (nowMs: number) => Promise<void>,
+  ) => Promise<T>,
 ): Promise<T> {
-  return await executor.db().transaction(async (tx) => {
+  let itemIds: string[] = [];
+  const result = await executor.db().transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext(${`${TODOS_LOCK_PREFIX}:${conversationId}`}))`,
     );
-    return await callback(tx);
+    return await callback(tx, async (nowMs) => {
+      itemIds = await syncTodoInboxItems(tx, { conversationId, nowMs });
+    });
   });
+  await mapBounded(itemIds, (itemId) => syncInboxItemPush(itemId));
+  return result;
 }
 
 /**
@@ -122,7 +134,7 @@ export async function changeTodos(
 ): Promise<{ todos: Todo[]; replacedPersonChanges: Todo[] }> {
   const { change, conversationId } = args;
   const now = new Date(args.nowMs);
-  return await withTodosLock(executor, conversationId, async (db) => {
+  return await withTodosLock(executor, conversationId, async (db, sync) => {
     const rows = new Map(
       (
         await db
@@ -205,7 +217,7 @@ export async function changeTodos(
       changedIds.push(inserted!.id);
     }
     /* oxlint-enable no-await-in-loop */
-    await syncTodoInboxItems(db, { conversationId, nowMs: args.nowMs });
+    await sync(args.nowMs);
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
     const todos = await readTodos(db, conversationId);
@@ -236,7 +248,8 @@ export async function setTodoStatusByUser(
     userId: string;
   },
 ): Promise<Todo | undefined> {
-  return await withTodosLock(executor, args.conversationId, async (db) => {
+  const { conversationId } = args;
+  return await withTodosLock(executor, conversationId, async (db, sync) => {
     const updated = await db
       .update(juniorTodos)
       .set({
@@ -248,7 +261,7 @@ export async function setTodoStatusByUser(
       })
       .where(
         and(
-          eq(juniorTodos.conversationId, args.conversationId),
+          eq(juniorTodos.conversationId, conversationId),
           eq(juniorTodos.id, args.id),
           args.assignedOnly
             ? and(
@@ -260,12 +273,9 @@ export async function setTodoStatusByUser(
       )
       .returning({ id: juniorTodos.id });
     if (updated.length === 0) return undefined;
-    await syncTodoInboxItems(db, {
-      conversationId: args.conversationId,
-      nowMs: args.nowMs,
-    });
-    await touchConversationDetail(db, [args.conversationId]);
-    const todos = await readTodos(db, args.conversationId);
+    await sync(args.nowMs);
+    await touchConversationDetail(db, [conversationId]);
+    const todos = await readTodos(db, conversationId);
     return todos.find((todo) => todo.id === args.id);
   });
 }

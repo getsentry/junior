@@ -125,8 +125,3 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     }),
   ],
 );
-
-export const githubSqlSchema = {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-};

@@ -2,8 +2,7 @@ import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("groups automations into To do, then by latest run, on the landing page", async ({
     page,
     dashboard,

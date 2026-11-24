@@ -12,18 +12,28 @@ import path from "node:path";
  */
 
 const BASELINE = "scripts/inbox-item-fields-baseline.json";
-const MIGRATIONS_META = "packages/junior/migrations/meta";
+const SCHEMA = "packages/junior/src/db/schema/inbox-items.ts";
 const PAYLOAD_SCHEMA = "packages/junior/src/api/schema/inbox-item.ts";
 const TABLE = "junior_inbox_items";
 const FIX =
   "An Inbox item stores only fields that every item uses, and its subject { kind, id }. Read a field that one subject kind uses, such as a state, a title, or a provider id, from the subject (design/inbox.md).";
 
-/** Return the column names of the Inbox item table in one Drizzle snapshot. */
-export function snapshotColumns(snapshot) {
-  const table = Object.values(snapshot.tables ?? {}).find(
-    (candidate) => candidate.name === TABLE,
-  );
-  return Object.keys(table?.columns ?? {});
+/**
+ * Return the column names of the Inbox item table in the Drizzle schema
+ * source: the names in the column object of its `pgTable` call.
+ */
+export function schemaColumns(source) {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => line.trim() === `"${TABLE}",`);
+  if (start === -1) return undefined;
+  const column = /^ {4}[A-Za-z0-9]+: [A-Za-z0-9]+\("([a-z0-9_]+)"/;
+  const columns = [];
+  for (const line of lines.slice(start + 2)) {
+    if (line.startsWith("  }")) break;
+    const match = column.exec(line);
+    if (match) columns.push(match[1]);
+  }
+  return columns;
 }
 
 /**
@@ -70,28 +80,18 @@ export function compareFields(where, fields, allowed) {
   return errors;
 }
 
-/** Check the latest snapshot and the payload schema against the baseline. */
+/** Check the table schema and the payload schema against the baseline. */
 export function run({ root }) {
   const baseline = JSON.parse(
     fs.readFileSync(path.join(root, BASELINE), "utf8"),
-  );
-  const journal = JSON.parse(
-    fs.readFileSync(path.join(root, MIGRATIONS_META, "_journal.json"), "utf8"),
-  );
-  const last = journal.entries.at(-1);
-  const snapshotPath = path.join(
-    MIGRATIONS_META,
-    `${String(last.idx).padStart(4, "0")}_snapshot.json`,
   );
   const fields = payloadFields(
     fs.readFileSync(path.join(root, PAYLOAD_SCHEMA), "utf8"),
   );
   return [
     ...compareFields(
-      `${snapshotPath} ${TABLE}`,
-      snapshotColumns(
-        JSON.parse(fs.readFileSync(path.join(root, snapshotPath), "utf8")),
-      ),
+      `${SCHEMA} ${TABLE}`,
+      schemaColumns(fs.readFileSync(path.join(root, SCHEMA), "utf8")),
       baseline.columns,
     ),
     ...compareFields(

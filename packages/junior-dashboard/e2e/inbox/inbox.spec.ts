@@ -16,11 +16,11 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("lists To do first, and the tab badge counts it", async ({
@@ -737,5 +737,79 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await expect(message).toContainText("The canary error rate is flat");
     expect(reads).toBe(1);
+  });
+
+  test("loads the Inbox within its request budget", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page);
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox`);
+        await expect(
+          page
+            .getByRole("region", { name: "To do" })
+            .getByRole("link", { name: new RegExp(checkout) }),
+        ).toBeVisible();
+      },
+      // The pull request on the checkout row reads its live state.
+      { requests: 10, serialRounds: 2 },
+    );
+  });
+
+  test("an item from a Conversation outside the feed shows its title once the feed loads", async ({
+    dashboard,
+    page,
+  }) => {
+    const outsideId = "slack:CQA777:1770014400.000500";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          owner: { id: outsideId, kind: "conversation" },
+          rootConversationId: outsideId,
+        },
+      ],
+    });
+    // The feed leaves the Conversation out, so its title loads on its own.
+    let feedLoaded = false;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: feed.conversations.filter(
+              (row: { conversationId: string }) =>
+                row.conversationId !== outsideId,
+            ),
+          },
+        });
+        feedLoaded = true;
+      },
+    );
+    const titleReads: boolean[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.pathname.startsWith("/api/conversations/") &&
+        url.searchParams.get("limit") === "1"
+      ) {
+        titleReads.push(feedLoaded);
+      }
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(
+      page
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("link", { name: /Review the acme/ }) }),
+    ).toContainText("Deployment investigation failed");
+    // Only the Conversation outside the feed reads its title, after the feed.
+    expect(titleReads).toEqual([true]);
   });
 });

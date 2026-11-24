@@ -51,9 +51,6 @@ export type ReplyFocusState = {
 /** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;
 
-/** Ask the opened Conversation for its reply box, to type a new request. */
-export const COMPOSE_REPLY_STATE = { compose: true, focusReply: true } as const;
-
 /** Read the reply focus that navigation state asks for, if any. */
 export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
   if (
@@ -90,11 +87,8 @@ export function readOpenEventLog(state: unknown): boolean {
 /** Match the router path of one Conversation page, with no query. */
 export const CONVERSATION_PATH = /^\/conversations\/[^/]+$/;
 
-/** Dashboard home route. Legacy `/conversations/new` redirects here. */
-export const NEW_CONVERSATION_PATH = "/";
-
 /**
- * The new UI's composer for a new Conversation, which "+" opens. Its home
+ * The composer for a new Conversation, which "+" opens. Its home
  * is the Inbox.
  */
 export const COMPOSER_PATH = "/conversations/new";

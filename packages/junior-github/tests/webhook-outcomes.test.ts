@@ -3261,6 +3261,16 @@ describe("GitHub-owned pull request outcomes", () => {
           eventType: "pull_request.merged",
           identifier: "getsentry/junior",
         }),
+        // A late delivery still publishes its event; only the projection
+        // ignores it.
+        expect.objectContaining({
+          eventType: "pull_request.reopened",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.reopened",
+          identifier: "getsentry/junior",
+        }),
       ]);
     } finally {
       await fixture.close();

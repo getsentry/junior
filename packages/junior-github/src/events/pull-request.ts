@@ -15,7 +15,11 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.recovered",
   "pull_request.comment.created",
   "pull_request.opened",
+  "pull_request.reopened",
   "pull_request.ready_for_review",
+  "pull_request.converted_to_draft",
+  "pull_request.synchronized",
+  "pull_request.review_requested",
   "pull_request.review.approved",
   "pull_request.review.changes_requested",
   "pull_request.review.commented",
@@ -23,6 +27,7 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.merged",
   "pull_request.closed_unmerged",
   "pull_request.merge_conflict",
+  "pull_request.merge_conflict.resolved",
 ] as const;
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
@@ -201,12 +206,17 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /**
- * Pull request events that a GitHub webhook payload describes. GitHub sends
- * no webhook when a pull request gets a conflict, so the webhook reads the
- * pull request for `pull_request.merge_conflict` instead.
+ * Merge conflict events. GitHub sends no webhook when a pull request gets a
+ * conflict or loses it, so the plugin reads the pull request for them.
  */
+const GITHUB_MERGE_CONFLICT_EVENTS = new Set<GitHubPullRequestEvent>([
+  "pull_request.merge_conflict",
+  "pull_request.merge_conflict.resolved",
+]);
+
+/** Pull request events that a GitHub webhook payload describes. */
 const GITHUB_PULL_REQUEST_PAYLOAD_EVENTS = GITHUB_PULL_REQUEST_EVENTS.filter(
-  (eventType) => eventType !== "pull_request.merge_conflict",
+  (eventType) => !GITHUB_MERGE_CONFLICT_EVENTS.has(eventType),
 );
 
 /** Pull request events that a comment or review starts. */
@@ -232,7 +242,8 @@ const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
  * The pull request comment webhook has no head branch. A check suite result
  * that GitHub links to no pull request has no `pullRequest`. The webhook
  * checks for a Watch or event automation before it reads a pull request for
- * a conflict, so `pull_request.merge_conflict` matches only `repo` and
+ * a conflict, so `pull_request.merge_conflict` and
+ * `pull_request.merge_conflict.resolved` match only `repo` and
  * `pullRequest`.
  */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({

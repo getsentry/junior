@@ -1,1 +1,0 @@
-ALTER TABLE "junior_github_pull_request_requesters" ADD COLUMN "pull_request_id" text;

@@ -25,7 +25,11 @@ function githubRepositoryFromUrl(href: string) {
   };
 }
 
-function singleGitHubRepository(
+/**
+ * Name the one GitHub repository that linked work points to. Undefined
+ * when there is none, or when the work spans more than one.
+ */
+export function singleGitHubRepository(
   annotations: ConversationDetailReport["annotations"],
 ) {
   let repository: ReturnType<typeof githubRepositoryFromUrl>;

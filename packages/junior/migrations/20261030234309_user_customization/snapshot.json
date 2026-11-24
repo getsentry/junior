@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "760bea07-1830-4d2a-9fcd-f265d72ab016",
+  "prevIds": ["86385a6e-f66a-4381-8d81-540ce7c59aa5"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_users", "customization"],
+      "writes": [
+        "s|col|public.junior_users.customization",
+        "n|col|public.junior_users.customization",
+        "e|col|public.junior_users.customization"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "customization",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

@@ -35,23 +35,13 @@ data, does not run.
   env var holds it, and which domains get the real credential. A command
   that sends that env var to those domains does not expose a secret.
 
-## Entry points
-
-- Slack: an Inbox item in which Junior names an action, its target, and its
-  side effects, and asks the person to confirm it.
-- Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
-  a Conversation.
-- Plugin authors: `approvalMode` (`auto`, `review`, or `approve`), tool
-  annotations, and `describeProposal`.
-- Deployment: `AI_GUARDIAN_MODEL` selects the review model.
-
 ## Rules
 
 - Guardian reviews each plugin tool and each MCP tool, unless the tool is
   marked read-only and not destructive. A `review` tool is always reviewed.
   An `approve` tool is never reviewed, so use it only when the tool code
   proves that each effect is safe. A core tool is reviewed only when it opts
-  in, such as Automation and Workspace changes, `spawnAgent`, and
+  in, such as Automation and Workspace changes, `startAgent`, and
   `messageAgent`.
 - A public URL for a Sandbox server (`createPreview`) always goes through
   Guardian review, and the normal rules, such as `data_exposure`, decide.
@@ -78,7 +68,7 @@ data, does not run.
   annotations, `describeProposal`, and transcript evidence are untrusted
   evidence.
 - A child agent does not inherit approvals. The parent's text is its
-  instruction. Guardian judges `spawnAgent` and `messageAgent` text by the
+  instruction. Guardian judges `startAgent` and `messageAgent` text by the
   material actions that it names, and the parent's own Conversation must
   back each one.
 - A Code Mode script cannot authorize. Guardian judges each call of a script

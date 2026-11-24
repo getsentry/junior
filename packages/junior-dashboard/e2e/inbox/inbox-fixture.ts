@@ -17,6 +17,7 @@ const base = {
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
+  canAnswer: true,
   canTake: false,
   conversationIds: [] as string[],
   createdAt: "2026-08-07T08:00:00.000Z",
@@ -757,6 +758,10 @@ export async function openRow(head: Locator) {
   }
   await open.click();
 }
+
+/** The open row. Every row has its own quick Snooze, so scope to this one. */
+export const openRowOf = (page: Page) =>
+  page.locator("li[data-inbox-row][data-expanded]");
 
 /**
  * Expand the Inbox row whose head is `head` in place: an item row with its

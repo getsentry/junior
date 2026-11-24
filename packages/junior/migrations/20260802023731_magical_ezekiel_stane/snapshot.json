@@ -1,0 +1,266 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "15085af3-5b3d-41b9-b7f5-0e7accb9dff7",
+  "prevIds": ["7ee48964-32cb-4444-913d-33cc5680a64e"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_event_tasks"],
+      "writes": [
+        "s|tbl|public.junior_event_tasks",
+        "n|tbl|public.junior_event_tasks",
+        "e|tbl|public.junior_event_tasks",
+        "n|rel|public.junior_event_tasks",
+        "n|type|public.junior_event_tasks",
+        "n|rel|public.junior_event_tasks_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_event_tasks",
+        "junior_event_tasks_team_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_event_tasks_team_idx",
+        "n|idx|public.junior_event_tasks_team_idx",
+        "e|idx|public.junior_event_tasks_team_idx",
+        "n|rel|public.junior_event_tasks_team_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_event_tasks",
+        "n|sch|public",
+        "n|col|public.junior_event_tasks.team_id",
+        "n|col|public.junior_event_tasks.created_at_ms",
+        "n|col|public.junior_event_tasks.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_event_tasks",
+        "junior_event_tasks_match_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_event_tasks_match_idx",
+        "n|idx|public.junior_event_tasks_match_idx",
+        "e|idx|public.junior_event_tasks_match_idx",
+        "n|rel|public.junior_event_tasks_match_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_event_tasks",
+        "n|sch|public",
+        "n|col|public.junior_event_tasks.namespace",
+        "n|col|public.junior_event_tasks.identifier",
+        "n|col|public.junior_event_tasks.created_at_ms",
+        "n|col|public.junior_event_tasks.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_event_tasks",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "team_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "namespace",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "identifier",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "task_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "junior_event_tasks_team_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "junior_event_tasks_match_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "namespace",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "identifier",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "junior_event_tasks_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

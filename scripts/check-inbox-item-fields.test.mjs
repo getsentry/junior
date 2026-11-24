@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   compareFields,
   payloadFields,
-  snapshotColumns,
+  schemaColumns,
 } from "./check-inbox-item-fields.mjs";
 
 const SOURCE = `export const inboxItemSchema = z
@@ -27,16 +27,23 @@ test("reads the payload and subject fields", () => {
   });
 });
 
-test("reads the Inbox item columns of a snapshot", () => {
-  const snapshot = {
-    tables: {
-      "public.junior_inbox_items": {
-        name: "junior_inbox_items",
-        columns: { id: {}, subject_kind: {} },
-      },
-    },
-  };
-  assert.deepEqual(snapshotColumns(snapshot), ["id", "subject_kind"]);
+test("reads the Inbox item columns of the schema source", () => {
+  const source = `export const juniorInboxItems = pgTable(
+  "junior_inbox_items",
+  {
+    id: text("id").primaryKey(),
+    subjectKind: text("subject_kind").notNull(),
+    closedByUserId: text("closed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [index("x").on(table.id)],
+);`;
+  assert.deepEqual(schemaColumns(source), [
+    "id",
+    "subject_kind",
+    "closed_by_user_id",
+  ]);
 });
 
 test("reports a new field and a stale baseline entry", () => {

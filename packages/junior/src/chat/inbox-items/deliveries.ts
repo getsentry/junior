@@ -208,7 +208,10 @@ export async function recordRepeatInboxItemPush(
   });
 }
 
-/** Mark the sent deliveries of closed items as cleared. */
+/**
+ * Mark the sent deliveries of items as cleared: items that closed, or a
+ * To-do item that moved to another User.
+ */
 export async function clearInboxItemDeliveries(
   db: JuniorDatabase,
   itemIds: readonly string[],
@@ -222,6 +225,25 @@ export async function clearInboxItemDeliveries(
       and(
         inArray(juniorInboxItemDeliveries.itemId, [...itemIds]),
         eq(juniorInboxItemDeliveries.status, "sent"),
+      ),
+    );
+}
+
+/**
+ * Delete every delivery of one item to one User, so it pushes to them as a
+ * new item. A To-do item that comes back to an earlier assignee uses it: a
+ * new push with the item's tag replaces their old one on the device.
+ */
+export async function deleteInboxItemDeliveries(
+  db: JuniorDatabase,
+  input: { itemId: string; userId: string },
+): Promise<void> {
+  await db
+    .delete(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        eq(juniorInboxItemDeliveries.userId, input.userId),
       ),
     );
 }

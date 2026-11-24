@@ -150,7 +150,7 @@ describe("transcriptListRows", () => {
     const rows = transcriptListRows({
       entries: [
         messageEntry(0, "user"),
-        toolEntry(1, "spawnAgent"),
+        toolEntry(1, "startAgent"),
         subagentEntry(2),
         toolEntry(3),
         subagentEntry(4, "thread"),

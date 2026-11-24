@@ -11,6 +11,7 @@ import { useArchiveConversation } from "./conversationArchive";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";
 import { ConversationRowMenu } from "./ConversationRowMenu";
+import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { RenameConversationDialog } from "./RenameConversationDialog";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useConversationSubscription } from "./useConversationSubscription";
@@ -24,10 +25,15 @@ import { useRenameConversation } from "./useRenameConversation";
  * inside each menu it has, calls `onMenuOpenChange` from each, and renders
  * `dialogs` once. Failures show as toasts. `onRowAction` runs before an
  * action that can move rows, so a held list shows the result at once.
+ * `move` adds Move up and Move down, for a pin that the list can reorder.
  */
 export function useInboxRowActions(
   conversation: Conversation,
-  options: { onRowAction?(): void; selected: boolean },
+  options: {
+    move?: PinnedRowMove | undefined;
+    onRowAction?(): void;
+    selected: boolean;
+  },
 ) {
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
@@ -100,6 +106,7 @@ export function useInboxRowActions(
       }}
       conversation={conversation}
       conversationId={conversation.id}
+      move={options.move}
       pending={{
         archive: archive.isPending,
         delivery: delivery.isPending,

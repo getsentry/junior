@@ -352,21 +352,30 @@ async function prefetchLinks(
   ctx: ObjectLinkContext,
   urls: URL[],
 ): Promise<Map<string, ObjectLinkPrefetchOutcome>> {
-  const hrefs = new Map<string, string>();
+  // A page can link one pull request more than once, such as `/pull/12`
+  // and `/pull/12#discussion_r1`. Each link gets the outcome.
+  const hrefs = new Map<string, string[]>();
   const refs = urls.flatMap((url) => {
     const link = parseLink(url);
     if (link?.kind !== "pull_request") return [];
-    hrefs.set(`${link.owner}/${link.name}#${link.number}`, url.href);
+    const key = `${link.owner}/${link.name}#${link.number}`;
+    const known = hrefs.get(key);
+    if (known) {
+      known.push(url.href);
+      return [];
+    }
+    hrefs.set(key, [url.href]);
     return [
       { name: link.name, number: Number(link.number), owner: link.owner },
     ];
   });
   const outOfTime = await prefetchGitHubPullRequests(ctx, refs);
   return new Map(
-    outOfTime.flatMap((ref) => {
-      const href = hrefs.get(`${ref.owner}/${ref.name}#${ref.number}`);
-      return href ? [[href, "out_of_time" as const]] : [];
-    }),
+    outOfTime.flatMap((ref) =>
+      (hrefs.get(`${ref.owner}/${ref.name}#${ref.number}`) ?? []).map(
+        (href) => [href, "out_of_time" as const] as const,
+      ),
+    ),
   );
 }
 
