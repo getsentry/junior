@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { getConversationStore, getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { juniorConversationParticipants, juniorUsers } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
-import { closeConversationFixture } from "../fixtures/conversation";
+import {
+  closeConversationFixture,
+  webTestActor,
+} from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import { mockRetrievalModels } from "../fixtures/retrieval-models";
 
@@ -100,6 +106,22 @@ describe("related conversations", () => {
       nowMs: Date.now(),
       title: "Open external links in new tabs",
     });
+    // The person who asks and one other person take part in the root.
+    const requester = await resolveViewerUser(webTestActor.email);
+    const other = await resolveViewerUser("bob@example.com");
+    await getDb()
+      .update(juniorUsers)
+      .set({ displayName: "Bob Example" })
+      .where(eq(juniorUsers.id, other!.id));
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values(
+        [requester!, other!].map((user, index) => ({
+          lastMessageAt: new Date(Date.now() - index * 1_000),
+          rootConversationId: INBOX_CONVERSATION_ID,
+          userId: user.id,
+        })),
+      );
     mockRetrievalModels({
       rerank: (_query, document) => (/new tabs/i.test(document) ? 0.9 : 0.1),
     });
@@ -111,6 +133,7 @@ describe("related conversations", () => {
     expect(input).toContain(`- conversation_id: ${LINKS_THREAD_ID}`);
     expect(input).toContain(`root_conversation_id: ${INBOX_CONVERSATION_ID}`);
     expect(input).toContain("root_title: New Inbox");
+    expect(input).toContain("participants: you, Bob Example");
     expect(input).not.toContain(`- conversation_id: ${INBOX_CONVERSATION_ID}`);
   });
 

@@ -17,12 +17,17 @@ import {
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { mapBounded } from "@/chat/fan-out";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
   getConversationEventStore,
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import {
+  listRelatedParticipants,
+  type RelatedParticipants,
+} from "./participants";
 import {
   relatedConversationsContext,
   type RelatedConversation,
@@ -71,6 +76,7 @@ async function isFirstRequest(
 // related child names its root.
 async function toRelatedConversation(
   result: ConversationSearchResult,
+  participants: RelatedParticipants | undefined,
 ): Promise<RelatedConversation> {
   const url = getDashboardConversationLink(result.conversationId);
   const root =
@@ -93,6 +99,7 @@ async function toRelatedConversation(
           },
         }
       : undefined),
+    ...(participants ? { participants } : undefined),
     // A failed Turn waits for input, so its agent is idle.
     status: result.status === "failed" ? "idle" : result.status,
     ...(result.summary ? { summary: result.summary } : undefined),
@@ -133,13 +140,23 @@ async function rankRelatedConversations(
     query,
   });
   // Sort is stable, so equal scores keep search rank order.
-  const related = await Promise.all(
-    candidates
-      .map(({ result }, index) => ({ result, score: scores[index]! }))
-      .filter(({ score }) => score >= MIN_RERANK_SCORE)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, MAX_RELATED)
-      .map(({ result }) => toRelatedConversation(result)),
+  const top = candidates
+    .map(({ result }, index) => ({ result, score: scores[index]! }))
+    .filter(({ score }) => score >= MIN_RERANK_SCORE)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, MAX_RELATED)
+    .map(({ result }) => result);
+  const participants =
+    top.length === 0
+      ? new Map<string, RelatedParticipants>()
+      : await listRelatedParticipants(getDb(), {
+          requesterUserId: (await ctx.users.resolveActor())?.user?.id,
+          rootConversationIds: [
+            ...new Set(top.map((result) => result.rootConversationId)),
+          ],
+        });
+  const related = await mapBounded(top, (result) =>
+    toRelatedConversation(result, participants.get(result.rootConversationId)),
   );
   ctx.setSpanAttributes({
     "app.related-conversations.injected.count": related.length,
