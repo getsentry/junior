@@ -550,4 +550,26 @@ test.describe("new UI", () => {
       expect(directoryReads).toBe(1);
     });
   });
+
+  test("loads the System overview within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/system`);
+        await expect(page.getByText("Conversation activity")).toBeVisible();
+        await expect(
+          page.getByText("Net savings", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole("region", { name: "Cache health" })
+            .getByText("Warmups sent after", { exact: true }),
+        ).toBeVisible();
+      },
+      { requests: 10, serialRounds: 2 },
+    );
+  });
 });

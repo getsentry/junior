@@ -85,10 +85,12 @@ export type InboxFeedPages = {
 function useBuildInboxData(input: {
   conversations: Conversation[];
   feed: InboxFeedPages;
+  /** The first feed page has not loaded or failed yet. */
+  feedPending: boolean;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
-  const { conversations, feed, signedIn } = input;
+  const { conversations, feed, feedPending, signedIn } = input;
   // To do shows the first page even while collapsed, and the waiting sort
   // puts what needs the viewer on it.
   const { items: loaded, query: itemsQuery } = useInboxItemsData({
@@ -240,19 +242,23 @@ function useBuildInboxData(input: {
     [conversations],
   );
   // Items can come from Conversations outside the loaded feed, such as an
-  // Automation run. Those titles load on their own.
+  // Automation run. Those titles load on their own, once the feed says which
+  // Conversations it holds.
   const missingIds = useMemo(
-    () => [
-      ...new Set(
-        list.flatMap((item) =>
-          item.rootConversationId &&
-          !conversationById.has(item.rootConversationId)
-            ? [item.rootConversationId]
-            : [],
-        ),
-      ),
-    ],
-    [conversationById, list],
+    () =>
+      feedPending
+        ? []
+        : [
+            ...new Set(
+              list.flatMap((item) =>
+                item.rootConversationId &&
+                !conversationById.has(item.rootConversationId)
+                  ? [item.rootConversationId]
+                  : [],
+              ),
+            ),
+          ],
+    [conversationById, feedPending, list],
   );
   const missingTitles = useLinkedConversationTitles(missingIds);
   // An item that no Conversation owns has no Conversation title.
@@ -465,6 +471,7 @@ export function InboxDataProvider(props: {
       isFetchNextPageError: feed.isFetchNextPageError,
       isFetchingNextPage: feed.isFetchingNextPage,
     }),
+    feedPending: feed.isPending,
     signedIn: props.signedIn,
   });
   return (

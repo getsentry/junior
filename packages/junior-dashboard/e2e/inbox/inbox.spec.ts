@@ -757,4 +757,58 @@ test.describe("new UI", () => {
       { requests: 9, serialRounds: 2 },
     );
   });
+
+  test("an item from a Conversation outside the feed shows its title once the feed loads", async ({
+    dashboard,
+    page,
+  }) => {
+    const outsideId = "slack:CQA777:1770014400.000500";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          owner: { id: outsideId, kind: "conversation" },
+          rootConversationId: outsideId,
+        },
+      ],
+    });
+    // The feed leaves the Conversation out, so its title loads on its own.
+    let feedLoaded = false;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: feed.conversations.filter(
+              (row: { conversationId: string }) =>
+                row.conversationId !== outsideId,
+            ),
+          },
+        });
+        feedLoaded = true;
+      },
+    );
+    const titleReads: boolean[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.pathname.startsWith("/api/conversations/") &&
+        url.searchParams.get("limit") === "1"
+      ) {
+        titleReads.push(feedLoaded);
+      }
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(
+      page
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("link", { name: /Review the acme/ }) }),
+    ).toContainText("Deployment investigation failed");
+    // Only the Conversation outside the feed reads its title, after the feed.
+    expect(titleReads).toEqual([true]);
+  });
 });
