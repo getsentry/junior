@@ -83,6 +83,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-vimeo`
 - `@sentry/junior-xdotcom`
 
 Run `pnpm release:check` after you change this list. It keeps CI, the bump
