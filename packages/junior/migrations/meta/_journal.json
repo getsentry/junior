@@ -1212,6 +1212,13 @@
       "when": 1795530598488,
       "tag": "0172_conversation_root_lookup_index",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1795545232587,
+      "tag": "0173_legacy_brief_metadata_fill",
+      "breakpoints": true
     }
   ]
 }
