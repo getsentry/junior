@@ -100,10 +100,16 @@ export function createPluginHarness(fixture: GitHubFixture) {
     }>,
   };
   /**
-   * Whether any Watch gets comments and conflicts on 946, and whether the
-   * Conversation that asked for 946 has its own conflict Watch.
+   * Whether any Watch gets comments, conflicts, and conflict fixes on 946,
+   * and whether the Conversation that asked for 946 has its own conflict
+   * Watch.
    */
-  const watches = { comments: true, conflicts: true, ownConflicts: true };
+  const watches = {
+    comments: true,
+    conflicts: true,
+    fixes: false,
+    ownConflicts: true,
+  };
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
@@ -117,7 +123,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
           event.identifier === "getsentry/junior#946" &&
           (event.eventType === "pull_request.merge_conflict"
             ? watches.conflicts
-            : watches.comments),
+            : event.eventType === "pull_request.merge_conflict.resolved"
+              ? watches.fixes
+              : watches.comments),
       );
     },
     async publish(event) {

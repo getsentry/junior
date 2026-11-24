@@ -13,10 +13,11 @@
  * conflict check, a `pull_request` webhook, and the merge state patch after
  * a push. A card read cannot write plugin state, so a conflict that only a
  * card read found reaches the mark through the cache entry, at the next
- * push. The reads that publish are the patch and the heartbeat conflict
- * check. So a push that fixes the conflict publishes within minutes, and a
- * conflict that a change on the base branch fixes publishes only at the
- * next read, such as after the next push.
+ * push. The reads that publish are the patch, the heartbeat conflict check,
+ * and the webhook merge conflict check, which reads when a waiter wants this
+ * event. So a push that fixes the conflict publishes within minutes, and a
+ * conflict that a change on the base branch fixes publishes at the next
+ * read: the next comment, review, check result, or push.
  */
 import type {
   EventInput,

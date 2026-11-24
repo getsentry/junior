@@ -108,6 +108,34 @@ function stubMergeState(mergeable: string, head: string) {
   );
 }
 
+/**
+ * Comment on the pull request while GitHub reports `mergeable` for it. The
+ * comment webhook carries no merge state, so the plugin reads it.
+ */
+async function comment(mergeable: boolean) {
+  mswServer.use(
+    http.get("https://api.github.com/repos/getsentry/junior/pulls/1", () =>
+      HttpResponse.json(
+        pullRequest({
+          mergeable,
+          mergeable_state: mergeable ? "clean" : "dirty",
+        }),
+      ),
+    ),
+  );
+  await sendGitHubWebhook(app, "issue_comment", {
+    action: "created",
+    comment: { body: "Any update?", id: 4001, user: { login: "jane" } },
+    sender: { id: 3001, login: "jane" },
+    issue: {
+      number: 1,
+      pull_request: {
+        url: "https://api.github.com/repos/getsentry/junior/pulls/1",
+      },
+    },
+  });
+}
+
 /** Push `head` to the pull request, then run the patch that reads it. */
 async function push(head: string, mergeable: string) {
   stubMergeState(mergeable, head);
@@ -201,6 +229,28 @@ describe("GitHub pull request snoozes", () => {
     ).toMatchObject({ mergeable: false });
 
     await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([TITLE]);
+  });
+
+  it("wakes a snooze when a push fixes a merge conflict that a comment found", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+
+    await comment(false);
+    expect((await asAna.inbox()).inbox).toEqual([]);
+
+    await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([TITLE]);
+  });
+
+  it("wakes a snooze when a comment finds that the merge conflict is gone", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "labeled",
+      pull_request: pullRequest({ mergeable: false }),
+    });
+
+    // A change on the base branch fixed it, with no push to the pull request.
+    await comment(true);
     expect((await asAna.inbox()).inbox).toEqual([TITLE]);
   });
 

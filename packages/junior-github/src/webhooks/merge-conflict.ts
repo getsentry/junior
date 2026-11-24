@@ -24,7 +24,11 @@ import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
-import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
+import {
+  gitHubConflictResolvedEvents,
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "../merge-conflict-checks/resolved.js";
 import { pullRequestTargets } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 
@@ -142,7 +146,10 @@ function deliveredPullRequest(
  * mergeability when GitHub knows it. Otherwise the check reads the pull
  * request, which also makes GitHub calculate its mergeability. When GitHub
  * does not know it yet, a later event reads it again. The policy in
- * `merge-conflict-checks/policy.ts` decides if a conflict publishes.
+ * `merge-conflict-checks/policy.ts` decides if a conflict publishes. When a
+ * waiter wants `pull_request.merge_conflict.resolved`, the read also marks a
+ * conflict, and a clean read publishes the fix of a marked one
+ * (`merge-conflict-checks/resolved.ts`).
  */
 export async function loadGitHubMergeConflictEvents(args: {
   codeChanges: Pick<PluginCodeChanges, "list">;
@@ -161,26 +168,45 @@ export async function loadGitHubMergeConflictEvents(args: {
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
   inboxItems: PluginConversationInboxItems;
+  /** Publishes the fix of a marked conflict that a clean read finds. */
+  publisher: Pick<EventPublisher, "publish">;
   state: PluginState;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
   const check = async (ref: GitHubPullRequestRef): Promise<EventInput[]> => {
-    // Merge conflict events match only `repo` and `pullRequest`, so this
-    // answer is the same as for the full events.
-    if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) return [];
+    // Merge conflict events match only `repo` and `pullRequest`, so these
+    // answers are the same as for the full events. A waiter on the fix also
+    // needs the read: it marks a conflict, and a clean read publishes the fix
+    // of a marked one. The head commit names only the event key, so an empty
+    // one gives the same answer.
+    const [wantsConflict, wantsFix] = await Promise.all([
+      hasMatch(gitHubMergeConflictEvents(ref)),
+      hasMatch(gitHubConflictResolvedEvents(ref, "")),
+    ]);
+    if (!wantsConflict && !wantsFix) return [];
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??
         gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
-      if (
-        loaded.state !== "open" ||
-        loaded.mergeable !== false ||
-        loaded.mergeable_state !== "dirty"
-      ) {
+      if (loaded.state !== "open") return [];
+      if (loaded.mergeable === true) {
+        if (wantsFix) {
+          await publishGitHubConflictResolved({
+            events: args.publisher,
+            headSha: loaded.head.sha,
+            ref,
+            state: args.state,
+          });
+        }
+        return [];
+      }
+      if (loaded.mergeable !== false || loaded.mergeable_state !== "dirty") {
         return [];
       }
       await markGitHubConflict(args.state, ref);
+      // The conflict policy and its Inbox items are for conflict waiters.
+      if (!wantsConflict) return [];
       const conflict: GitHubMergeConflict = {
         baseBranch: loaded.base.ref,
         headSha: loaded.head.sha,

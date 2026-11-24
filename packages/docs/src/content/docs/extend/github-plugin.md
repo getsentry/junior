@@ -709,14 +709,17 @@ The pull request had merge conflicts, and now GitHub can merge it cleanly.
 GitHub sends no webhook for this either. When Junior reads a conflict, it
 marks the pull request for 30 days. The reads that mark it are the merge
 conflict checks, a `pull_request` webhook, the merge state read after a push,
-and a card that shows the pull request. After each push, Junior reads the
-merge state again a few seconds later. When that read finds no conflict on a
-marked pull request, Junior publishes this event and removes the mark. A pull
-request that had no conflict sends no event. Each head commit publishes one
-event. A conflict that a change on the base branch fixes, with no push to the
-pull request, publishes only at the next read, such as after the next push.
-For pull requests that Junior opened, a push to the default branch also
-starts that read. Trusted data includes the full head SHA.
+and a card that shows the pull request. When a watch, event automation, or
+snooze wants this event, a comment, review, or check result on the pull
+request also reads its merge state, the same as for
+`pull_request.merge_conflict`. After each push, Junior reads the merge state
+again a few seconds later. When a read finds no conflict on a marked pull
+request, Junior publishes this event and removes the mark. A pull request that
+had no conflict sends no event. Each head commit publishes one event. A
+conflict that a change on the base branch fixes, with no push to the pull
+request, publishes at the next read: the next comment, review, check result,
+or push. For pull requests that Junior opened, a push to the default branch
+also starts that read. Trusted data includes the full head SHA.
 
 </details>
 
