@@ -44,40 +44,6 @@ extension PathIcon {
   }
 }
 
-/// How the dashboard draws a linked object: its Octicon and color
-/// (`object-presentation.ts`).
-struct ObjectPresentation {
-  let icon: String
-  let color: Color
-
-  init(objectType: String?, status: String?) {
-    let base = objectType == "task" ? "issue-opened" : objectType == "code_change" ? "git-pull-request" : "file"
-    switch (objectType, status) {
-    case ("code_change", "draft"):
-      icon = "git-pull-request-draft"
-      color = Tokens.textMuted
-    case ("code_change", "merged"):
-      icon = "git-merge"
-      color = .palette(.violet, 400)
-    case ("code_change", "closed"):
-      icon = "git-pull-request-closed"
-      color = .palette(.rose, 500)
-    case ("task", "closed"), ("task", "done"):
-      icon = "issue-closed"
-      color = .palette(.violet, 400)
-    case (_, "warning"), (_, "blocked"):
-      icon = base
-      color = .palette(.amber, 500)
-    case ("code_change", _), ("task", _):
-      icon = base
-      color = .palette(.emerald, 500)
-    default:
-      icon = base
-      color = Tokens.textMuted
-    }
-  }
-}
-
 /// A dashboard icon: the Lucide icon the web draws (2pt stroke on a 24pt
 /// grid, scaled), or an SF Symbol for names Lucide does not have here.
 struct Icon: View {

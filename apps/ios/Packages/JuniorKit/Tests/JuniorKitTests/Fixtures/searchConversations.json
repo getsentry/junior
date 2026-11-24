@@ -3,6 +3,7 @@
     {
       "conversationId": "slack:CQA123:1770003600.000200",
       "title": "Investigate checkout latency",
+      "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
       "status": "working",
       "turnActive": true,
       "treeState": "working",
@@ -61,6 +62,7 @@
     {
       "conversationId": "slack:CQA123:1770000000.000100",
       "title": "Checkout latency triage",
+      "summary": "The checkout regression was traced to payments-v42. PAYMENTS-42 contained 418 events. The team chose to roll it back and merged the change that restored normal latency.",
       "status": "done",
       "turnActive": false,
       "treeState": "done",

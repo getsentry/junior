@@ -175,7 +175,7 @@ public actor DemoServer {
         "status": "working", "turnActive": true, "treeState": "working", "surface": "api",
         "startedAt": stamp, "lastSeenAt": stamp,
         "url": .string(JuniorServer.demo.page("/conversations/\(id)")!.absoluteString),
-      ], brief: nil, messages: [], pending: [], authorization: nil, listed: true)
+      ], messages: [], pending: [], authorization: nil, listed: true)
     let messageId = append(message, to: &conversation)
     conversations.insert(conversation, at: 0)
     remember(arguments, id, messageId)
@@ -421,7 +421,6 @@ typealias JSONObject = [String: JSONValue]
 /// whether the viewer's feed lists it, and when its canned reply comes.
 struct DemoConversation {
   var summary: JSONObject
-  var brief: JSONValue?
   var messages: [JSONObject]
   var pending: [JSONValue]
   var authorization: JSONValue?
@@ -432,15 +431,14 @@ struct DemoConversation {
   var lastSeq: Int { messages.last.map(messageSeq) ?? -1 }
   var lastSeenAt: Date { parsedDate(summary["lastSeenAt"]) }
 
-  /// Titles and Briefs, as the real search reads them.
+  /// Titles and summaries, as the real search reads them.
   var searchText: String {
-    [summary["title"]?.string, brief?["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
+    [summary["title"]?.string, summary["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
   }
 
   /// The `getConversation` fields without the cursor and messages.
   var state: JSONObject {
     var state: JSONObject = ["conversation": .object(summary), "pendingMessages": .array(pending)]
-    state["brief"] = brief
     state["authorization"] = authorization
     return state
   }
