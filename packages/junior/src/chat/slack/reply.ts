@@ -16,7 +16,8 @@ import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
 import { resolveHandleMentions } from "@/chat/events/people";
 import { logWarn } from "@/chat/logging";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { splitSlackReplyText } from "@/chat/slack/output";
+import { splitSlackReplyText, splitSlackText } from "@/chat/slack/output";
+import { SLACK_MAX_TEXT_OBJECT_CHARS } from "./limits";
 import { fitsSlackMetadataLimit } from "./work-object";
 
 /** Slack channel and optional thread where a Turn posts. */
@@ -102,14 +103,21 @@ export async function sendSlackReply(args: {
   // Keep previews in small groups so one reply does not become a wall of
   // cards. Slack ignores all metadata of a post that is too large, so a card
   // that does not fit its group starts the next post, and a card that is too
-  // large alone posts as text.
-  const groups: SlackCard[][] = [];
-  for (const card of args.cards ?? []) {
+  // large alone posts as text. Text longer than one section block posts as
+  // more sections, and each one takes a place in a group. So a post has at
+  // most one markdown block, five card blocks, and the footer, which is far
+  // below Slack's limit on blocks.
+  const slackCards = (args.cards ?? []).flatMap((card): SlackCard[] => {
     const rendered = renderSlackCard(card, args.conversationId);
-    const slackCard =
-      rendered.entity && !fitsSlackMetadataLimit([rendered.entity])
-        ? { entity: null, text: rendered.text }
-        : rendered;
+    if (rendered.entity && fitsSlackMetadataLimit([rendered.entity])) {
+      return [rendered];
+    }
+    return splitSlackText(rendered.text, SLACK_MAX_TEXT_OBJECT_CHARS).map(
+      (text) => ({ entity: null, text }),
+    );
+  });
+  const groups: SlackCard[][] = [];
+  for (const slackCard of slackCards) {
     const group = groups.at(-1);
     const entities = [...(group ?? []), slackCard].flatMap((item) =>
       item.entity ? [item.entity] : [],
