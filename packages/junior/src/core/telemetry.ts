@@ -10,19 +10,27 @@ import * as Sentry from "@sentry/node";
 /** Attribute values a span accepts. `undefined` values are not recorded. */
 export type SpanAttributes = Record<
   string,
-  string | number | boolean | undefined
+  string | number | boolean | string[] | undefined
 >;
 
 /** The part of a span that core code may change. */
 export type Span = {
-  setAttribute(key: string, value: string | number | boolean): void;
+  setAttribute(key: string, value: string | number | boolean | string[]): void;
   setAttributes(attributes: SpanAttributes): void;
+};
+
+/** A span that core code may also mark as failed. */
+export type FailableSpan = Span & {
+  /** Sets the error status, for a failure that does not throw. */
+  fail(message: string): void;
 };
 
 /** The `sentry-trace` header of one span, as sent with work to another host. */
 type TraceContext = { sentryTrace: string };
 
 type WithSpanOptions = {
+  /** The span's name, when it is not its op. */
+  spanName?: string;
   /**
    * Returns true for a throw that is a normal outcome, such as a timeout that
    * the caller handles. Only other throws set the error status.
@@ -58,21 +66,31 @@ export function setActiveSpanAttributes(attributes: SpanAttributes): void {
 // OpenTelemetry status code for an error.
 const SPAN_STATUS_ERROR = 2;
 
-/** Runs `run` in a span named `name`, which is also its op. */
+/** Runs `run` in a span whose op is `name`, and whose name is too by default. */
 export function withSpan<T>(
   name: string,
   attributes: SpanAttributes,
-  run: (span: Span) => Promise<T>,
+  run: (span: FailableSpan) => Promise<T>,
   options: WithSpanOptions = {},
 ): Promise<T> {
   // startSpanManual, not startSpan: startSpan sets the error status on every
   // throw, including expected ones.
   const start = () =>
     Sentry.startSpanManual(
-      { name, op: name, attributes, links: options.links?.flatMap(spanLink) },
+      {
+        name: options.spanName ?? name,
+        op: name,
+        attributes,
+        links: options.links?.flatMap(spanLink),
+      },
       async (span) => {
         try {
-          return await run(span);
+          return await run({
+            setAttribute: (key, value) => span.setAttribute(key, value),
+            setAttributes: (values) => span.setAttributes(values),
+            fail: (message) =>
+              span.setStatus({ code: SPAN_STATUS_ERROR, message }),
+          });
         } catch (error) {
           if (!options.isExpectedError?.(error)) {
             span.setStatus({

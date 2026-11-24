@@ -368,8 +368,8 @@ describe("runStep", () => {
 
     expect(result).toEqual({
       outcome: "failed",
-      error: "overloaded",
       reply: failure,
+      failure: { kind: "unknown", retryable: false, message: "overloaded" },
     });
   });
 

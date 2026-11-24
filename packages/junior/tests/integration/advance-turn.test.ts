@@ -231,7 +231,7 @@ describe("advanceTurn", () => {
 
     await expect(harness.turn(turnId)).resolves.toMatchObject({
       state: "failed",
-      endReason: expect.stringContaining("overloaded_error"),
+      endReason: "Overloaded",
       failureCode: "model_execution_failed",
       failureReason: "capacity",
       stepSeq: 0,
@@ -252,6 +252,7 @@ describe("advanceTurn", () => {
 
     await expect(harness.turn(turnId)).resolves.toMatchObject({
       state: "failed",
+      failureReason: "network",
       stepSeq: 0,
       leaseOwner: null,
     });

@@ -12,6 +12,7 @@ import {
   type ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
+import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
 import type { ToolDefinition, ToolResult } from "@/core/tool";
 import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
@@ -66,7 +67,7 @@ export type StepResult =
       outcome: "continue" | "completed";
       messages: Array<AssistantMessage | ToolResultMessage>;
     }
-  | { outcome: "failed"; error: string; reply: AssistantMessage };
+  | { outcome: "failed"; reply: AssistantMessage; failure: ModelFailure };
 
 /**
  * Runs one step of a Turn: the pending tool calls if there are any, else one
@@ -99,7 +100,7 @@ async function requestModel(
     signal,
   }: Pick<StepInput<unknown>, "client" | "session" | "tools" | "signal">,
 ): Promise<StepResult> {
-  const reply = await client.complete(
+  const { message: reply, failure } = await client.complete(
     {
       model,
       session,
@@ -114,13 +115,8 @@ async function requestModel(
   if (signal.aborted) {
     throw signal.reason;
   }
-  if (reply.stopReason === "error" || reply.stopReason === "aborted") {
-    return {
-      outcome: "failed",
-      error:
-        reply.errorMessage ?? `Model request ended with ${reply.stopReason}`,
-      reply,
-    };
+  if (failure) {
+    return { outcome: "failed", reply, failure };
   }
   if (reply.content.some((block) => block.type === "toolCall")) {
     return { outcome: "continue", messages: [reply] };
@@ -130,8 +126,12 @@ async function requestModel(
   }
   return {
     outcome: "failed",
-    error: `Unsupported stop reason: ${reply.stopReason}`,
     reply,
+    failure: {
+      kind: "invalid_response",
+      retryable: false,
+      message: `Unsupported stop reason: ${reply.stopReason}`,
+    },
   };
 }
 

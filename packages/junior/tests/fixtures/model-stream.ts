@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { ModelClient } from "@/core/model/client";
+import { classifyFailure } from "@/core/model/failure";
 
 type ModelToolCall = {
   name: string;
@@ -152,7 +153,12 @@ export function fakeModelClient(outputs: FixedModelOutput[]): ModelClient {
           new Error("No model output is left for this request"),
         );
       }
-      return respond(next.output, next.message, request.context, signal);
+      return respond(next.output, next.message, request.context, signal).then(
+        (message) =>
+          message.stopReason === "error" || message.stopReason === "aborted"
+            ? { message, failure: classifyFailure({}, message) }
+            : { message },
+      );
     },
   };
 }
