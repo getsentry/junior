@@ -37,12 +37,13 @@ const PARAGRAPH = {
   },
 };
 
-function check(constructs, files = FILES) {
+function check(constructs, files = FILES, baseline = []) {
   return checkRegistry({
     constructs,
     surfaces: SURFACES,
     handlers: HANDLERS,
     read: (file) => files[file],
+    baseline: new Set(baseline),
   });
 }
 
@@ -85,4 +86,19 @@ test("rejects an entry whose marker is not in its file", () => {
     },
   ]);
   assert.match(errors.join("\n"), /does not contain "gone"/);
+});
+
+test("accepts a baselined gap and rejects a baseline entry that renders now", () => {
+  const card = {
+    id: "object-card",
+    support: {
+      dashboard: { how: "native", ...MCP },
+      mcp: { how: "unsupported", note: "MCP drops cards", ...MCP },
+    },
+  };
+  assert.deepEqual(check([PARAGRAPH, card], FILES, ["object-card/mcp"]), []);
+  assert.match(
+    check([PARAGRAPH], FILES, ["paragraph/mcp"]).join("\n"),
+    /Remove "paragraph\/mcp"/,
+  );
 });

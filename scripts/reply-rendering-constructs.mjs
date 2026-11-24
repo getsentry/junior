@@ -14,7 +14,7 @@
  *   `note` says what the reader sees.
  * - `unsupported`: the surface drops it, or shows markup that the reader
  *   cannot resolve, such as a raw Slack user id. `note` says why. The check
- *   fails on it.
+ *   fails on it, unless `reply-rendering-baseline.json` lists it.
  *
  * `file` and `marker` point at the renderer code: `marker` is text in
  * `file`. `handles` lists the names that a surface's renderer uses for the

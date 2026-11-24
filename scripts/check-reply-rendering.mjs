@@ -9,13 +9,16 @@ import { CONSTRUCTS, SURFACES } from "./reply-rendering-constructs.mjs";
  * `scripts/reply-rendering-constructs.mjs` lists each construct and how
  * each surface renders it.
  *
- * - Each construct has one entry per surface. An `unsupported` entry fails.
+ * - Each construct has one entry per surface. An `unsupported` entry fails,
+ *   unless `BASELINE` lists it. The baseline lists the gaps that existed when
+ *   this check was added, and may only shrink.
  * - Each entry points at its renderer code: `marker` must be in `file`.
  * - `HANDLERS` reads the constructs that some renderers list. Each name must
  *   belong to a construct, so a construct cannot ship on one surface only.
  */
 
 const REGISTRY = "scripts/reply-rendering-constructs.mjs";
+const BASELINE = "scripts/reply-rendering-baseline.json";
 const HOW = new Set(["native", "fallback", "unsupported"]);
 
 /**
@@ -71,9 +74,16 @@ function describe(id, surface, support) {
 
 /**
  * Report the problems of a registry. `read(file)` returns the text of a repo
- * file, or undefined when it does not exist.
+ * file, or undefined when it does not exist. `baseline` holds the
+ * `construct/surface` keys of the known gaps.
  */
-export function checkRegistry({ constructs, surfaces, handlers, read }) {
+export function checkRegistry({
+  constructs,
+  surfaces,
+  handlers,
+  read,
+  baseline,
+}) {
   const errors = [];
   const claimed = new Map();
   for (const { id, support } of constructs) {
@@ -93,9 +103,15 @@ export function checkRegistry({ constructs, surfaces, handlers, read }) {
           `${describe(id, surface, entry)}: the file does not contain "${entry.marker}". Point the entry at the renderer code.`,
         );
       }
-      if (entry.how === "unsupported") {
+      const key = `${id}/${surface}`;
+      if (entry.how === "unsupported" && !baseline.has(key)) {
         errors.push(
           `${describe(id, surface, entry)} is unsupported: ${entry.note}. Render it there, natively or with a fallback that keeps its content, then update ${REGISTRY}.`,
+        );
+      }
+      if (entry.how !== "unsupported" && baseline.has(key)) {
+        errors.push(
+          `${describe(id, surface, entry)} renders now. Remove "${key}" from ${BASELINE}.`,
         );
       }
       for (const name of entry.handles ?? []) {
@@ -145,5 +161,6 @@ export function run({ root }) {
     surfaces: SURFACES,
     handlers: HANDLERS,
     read,
+    baseline: new Set(JSON.parse(read(BASELINE) ?? "[]")),
   });
 }
