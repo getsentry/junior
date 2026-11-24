@@ -191,14 +191,14 @@ export async function loadGitHubMergeConflictEvents(args: {
         gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
       if (loaded.state !== "open") return [];
       if (loaded.mergeable === true) {
-        if (wantsFix) {
-          await publishGitHubConflictResolved({
-            events: args.publisher,
-            headSha: loaded.head.sha,
-            ref,
-            state: args.state,
-          });
-        }
+        // Like the patch and the heartbeat, every clean read drops the mark,
+        // so a later waiter does not wake on a fix that came before it.
+        await publishGitHubConflictResolved({
+          events: args.publisher,
+          headSha: loaded.head.sha,
+          ref,
+          state: args.state,
+        });
         return [];
       }
       if (loaded.mergeable !== false || loaded.mergeable_state !== "dirty") {
