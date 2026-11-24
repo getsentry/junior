@@ -157,6 +157,7 @@ export async function createTurnHarness({
       idempotencyKey,
       sentAt: new Date(),
       source: "slack",
+      delivery: "interrupt",
     });
     const [row] = await db
       .select({ id: juniorTurnInbox.id })

@@ -15,7 +15,7 @@
 //
 // | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
 // | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
-// | claimTurn              | queued, or expired    | +1          | +1       |          | set      |
+// | claimTurn              | next, or expired      | +1          | +1       |          | set      |
 // | commitStep (continue)  | running, fenced, step |             | 0        | +1       | cleared  |
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
 // | failTurn               | running, fenced       |             |          |          | cleared  |
@@ -27,6 +27,9 @@
 //
 // cancelTurn publishes the Turn after the cancel. That message claims nothing,
 // so the step consumer runs `reconcileTurn` for it.
+//
+// Next: queued, and no other Turn of the Conversation is running or comes
+// before it in run order, so a Conversation runs one Turn at a time, in order.
 //
 // Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
 // over such a Turn, so the queue's redelivery after a crash resumes it.
@@ -43,7 +46,9 @@
 // Turn row. A writer that needs both takes them in this order, so writers
 // cannot deadlock.
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import type { Source } from "@sentry/junior-plugin-api";
+import { and, asc, eq, inArray, lte, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -58,7 +63,7 @@ import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
-import { juniorTurns } from "@/db/schema";
+import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
 
 /** A Turn's id and state. */
@@ -147,6 +152,15 @@ export async function findTurn(
   return turn;
 }
 
+// Run order of a Conversation's open Turns: the running Turn first, then
+// queued Turns by priority, age and id. claimTurn's `next` rule matches it.
+const runOrder = [
+  sql`${juniorTurns.state} = 'running' desc`,
+  asc(juniorTurns.priority),
+  asc(juniorTurns.createdAt),
+  asc(juniorTurns.id),
+];
+
 /**
  * Finds the Turn of a Conversation that has not ended: the running Turn, else
  * the next queued Turn by priority and age.
@@ -165,19 +179,57 @@ export async function findOpenTurn(
         inArray(juniorTurns.state, ["queued", "running"]),
       ),
     )
-    .orderBy(
-      sql`${juniorTurns.state} = 'running' desc`,
-      asc(juniorTurns.priority),
-      asc(juniorTurns.createdAt),
-    )
+    .orderBy(...runOrder)
     .limit(1);
   return turn;
 }
 
+/** A Turn that has not ended, with the Actor and Source of its inputs. */
+export type OpenTurn = Turn & {
+  actorIdentityId: string;
+  source: Source["kind"];
+  /** True once any step of the Turn has been claimed. */
+  started: boolean;
+};
+
+/** Finds the Turns of a Conversation that have not ended, in run order. */
+export async function findOpenTurns(
+  { executor }: Pick<EngineContext, "executor">,
+  conversationId: string,
+): Promise<OpenTurn[]> {
+  // Grouping by Source gives one row per Turn, because migration 0171 keeps
+  // the inputs of a Turn on one Source.
+  const rows = await executor
+    .db()
+    .select({
+      turnId: juniorTurns.id,
+      state: juniorTurns.state,
+      actorIdentityId: juniorTurns.actorIdentityId,
+      source: juniorTurnInbox.source,
+      stepSeq: juniorTurns.stepSeq,
+      attempts: juniorTurns.attempts,
+    })
+    .from(juniorTurns)
+    .innerJoin(juniorTurnInbox, eq(juniorTurnInbox.turnId, juniorTurns.id))
+    .where(
+      and(
+        eq(juniorTurns.conversationId, conversationId),
+        inArray(juniorTurns.state, ["queued", "running"]),
+      ),
+    )
+    .groupBy(juniorTurns.id, juniorTurnInbox.source)
+    .orderBy(...runOrder);
+  return rows.map(({ stepSeq, attempts, ...turn }) => ({
+    ...turn,
+    started: stepSeq > 0 || attempts > 0,
+  }));
+}
+
 /**
- * Claims a Turn to run its next step: a queued Turn, or a running Turn whose
- * lease expired. Returns undefined for any other Turn, so of two concurrent
- * claims only one gets the Turn.
+ * Claims a Turn to run its next step: the Conversation's next queued Turn, or
+ * a running Turn whose lease expired. Returns undefined for any other Turn, so
+ * of two concurrent claims only one gets the Turn, and a Turn waits while
+ * another Turn of its Conversation runs.
  */
 export async function claimTurn(
   {
@@ -187,8 +239,24 @@ export async function claimTurn(
   }: Pick<EngineContext, "executor" | "owner" | "leaseMs">,
   turnId: string,
 ): Promise<ClaimedTurn | undefined> {
-  const [claimed] = await executor
-    .db()
+  const db = executor.db();
+  const ahead = alias(juniorTurns, "ahead");
+  const turnAhead = db
+    .select({ one: sql`1` })
+    .from(ahead)
+    .where(
+      and(
+        eq(ahead.conversationId, juniorTurns.conversationId),
+        or(
+          eq(ahead.state, "running"),
+          and(
+            eq(ahead.state, "queued"),
+            sql`(${ahead.priority}, ${ahead.createdAt}, ${ahead.id}) < (${juniorTurns.priority}, ${juniorTurns.createdAt}, ${juniorTurns.id})`,
+          ),
+        ),
+      ),
+    );
+  const [claimed] = await db
     .update(juniorTurns)
     .set({
       state: "running",
@@ -202,7 +270,7 @@ export async function claimTurn(
       and(
         eq(juniorTurns.id, turnId),
         or(
-          eq(juniorTurns.state, "queued"),
+          and(eq(juniorTurns.state, "queued"), notExists(turnAhead)),
           and(
             eq(juniorTurns.state, "running"),
             lte(juniorTurns.leaseExpiresAt, sql`now()`),

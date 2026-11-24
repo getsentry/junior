@@ -46,15 +46,20 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       leaseMs: LEASE_MS,
     };
     observer = await createJuniorSqlFixture();
-    await fixture.sql.db().insert(juniorIdentities).values({
-      createdAt: new Date(),
-      id: "identity:actor",
-      kind: "user",
-      provider: "local",
-      providerSubjectId: "user-1",
-      providerTenantId: "",
-      updatedAt: new Date(),
-    });
+    await fixture.sql
+      .db()
+      .insert(juniorIdentities)
+      .values(
+        ["actor", "other"].map((name) => ({
+          createdAt: new Date(),
+          id: `identity:${name}`,
+          kind: "user" as const,
+          provider: "local",
+          providerSubjectId: name,
+          providerTenantId: "",
+          updatedAt: new Date(),
+        })),
+      );
     await fixture.sql
       .db()
       .insert(juniorConversations)
@@ -102,6 +107,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       idempotencyKey,
       sentAt: new Date("2026-11-21T08:00:00.000Z"),
       source: "local",
+      delivery: "interrupt",
     };
   }
 
@@ -175,17 +181,87 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("refuses to add an input from another Source to a Turn", async () => {
+  it("joins an interrupt from the same Actor and Source to the started Turn", async () => {
     const first = await schedule("event-1");
+    await claim(first.turnId);
+
+    await expect(schedule("event-2")).resolves.toEqual({
+      turnId: first.turnId,
+      created: false,
+    });
+    expect(publishes).toHaveLength(1);
+  });
+
+  it("puts a deferred input in a new Turn while the Turn runs, and joins the next one to it", async () => {
+    const first = await schedule("event-1");
+    await claim(first.turnId);
+    publishes = [];
+
+    const deferred = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      delivery: "defer",
+    });
+    await expect(
+      scheduleInput(engineCtx, { ...input("event-3"), delivery: "defer" }),
+    ).resolves.toEqual({ turnId: deferred.turnId, created: false });
+
+    expect(deferred).toEqual({ turnId: expect.any(String), created: true });
+    expect(deferred.turnId).not.toBe(first.turnId);
+    expect(publishes).toEqual([]);
+  });
+
+  it("queues an input from another Actor or Source in its own Turn, so A1 B1 A2 makes A2 wait", async () => {
+    const a1 = await schedule("event-1");
+    const b1 = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      actorIdentityId: "identity:other",
+    });
+    const a2 = await schedule("event-3");
+    const web = await scheduleInput(engineCtx, {
+      ...input("event-4"),
+      source: "web",
+    });
+
+    expect(new Set([a1, b1, a2, web].map((turn) => turn.turnId)).size).toBe(4);
+    expect(publishes).toEqual([{ turnId: a1.turnId, committed: true }]);
+  });
+
+  it("claims only the next Turn, and publishes the next one when a Turn ends", async () => {
+    const first = await schedule("event-1");
+    const second = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      actorIdentityId: "identity:other",
+    });
+
+    await expect(claimTurn(engineCtx, second.turnId)).resolves.toBeUndefined();
+    const running = await claim(first.turnId);
+    await expect(claimTurn(engineCtx, second.turnId)).resolves.toBeUndefined();
+
+    await failTurn(engineCtx, running, "overloaded", {
+      failureCode: "model_execution_failed",
+    });
+    publishes = [];
+    await reconcileTurn(engineCtx, first.turnId);
+
+    expect(publishes).toEqual([{ turnId: second.turnId, committed: true }]);
+    await expect(claimTurn(engineCtx, second.turnId)).resolves.toMatchObject({
+      turnId: second.turnId,
+    });
+  });
+
+  it("refuses an input row whose Source differs from its Turn's other inputs", async () => {
+    const local = await schedule("event-1");
+    await scheduleInput(engineCtx, { ...input("event-2"), source: "web" });
 
     await expect(
-      scheduleInput(engineCtx, { ...input("event-2"), source: "web" }),
+      fixture.sql
+        .db()
+        .update(juniorTurnInbox)
+        .set({ turnId: local.turnId })
+        .where(eq(juniorTurnInbox.idempotencyKey, "event-2")),
     ).rejects.toMatchObject({
       cause: { constraint: "junior_turn_inbox_one_source" },
     });
-    await expect(readInputs()).resolves.toEqual([
-      { turnId: first.turnId, idempotencyKey: "event-1" },
-    ]);
   });
 
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
