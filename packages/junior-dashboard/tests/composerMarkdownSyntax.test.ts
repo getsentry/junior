@@ -119,3 +119,14 @@ it("styles a span across lines and nested lists in quotes", () => {
     ],
   });
 });
+
+it("tells fences from code by the parsed block", () => {
+  const kinds = (lines: string[]) =>
+    parseMarkdownLines(lines).map((line) => line.kind);
+  // A shorter or other fence inside a block is code.
+  expect(kinds(["~~~~", "```", "~~~~"])).toEqual(["fence", "code", "fence"]);
+  // An unclosed fence runs to the end, so its last line is code.
+  expect(kinds(["```", "a"])).toEqual(["fence", "code"]);
+  expect(kinds(["> ```", "> a", "> ```"])).toEqual(["fence", "code", "fence"]);
+  expect(kinds(["    indented"])).toEqual(["code"]);
+});

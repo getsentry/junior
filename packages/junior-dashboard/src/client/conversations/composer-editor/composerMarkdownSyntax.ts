@@ -45,8 +45,6 @@ export type MarkdownLine = {
 type Marker = NonNullable<MarkdownSegment["marker"]>;
 
 const LINE_MARKER: Marker = { edge: "line", span: -1 };
-const FENCE = /^[ \t]*(```|~~~)/;
-const FENCED_CODE = /^ {0,3}(```|~~~)/;
 const SPAN_FORMATS: Partial<Record<MarkdownNode["type"], number>> = {
   delete: IS_STRIKETHROUGH,
   emphasis: IS_ITALIC,
@@ -75,98 +73,10 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
   const format = (start: number, end: number, flag: number) => {
     for (let at = start; at < end; at++) formats[at]! |= flag;
   };
-  // The marker at the start of each line in a block quote.
-  const quoteMarkers = (
-    node: MarkdownNode,
-    firstLine: number,
-    lastLine: number,
-  ) => {
-    const quoteMarker = /[ \t]*(?:>[ \t]?)+/y;
-    for (let line = firstLine; line <= lastLine; line++) {
-      quoteMarker.lastIndex =
-        line === firstLine ? node.position!.start.offset! : starts[line]!;
-      const match = quoteMarker.exec(text);
-      if (!match?.[0].includes(">")) continue;
-      mark(match.index, match.index + match[0].length, LINE_MARKER);
-      kinds[line] = "quote";
-    }
-  };
-
-  const visit = (node: MarkdownNode, ordered: boolean, number: number) => {
-    const start = node.position?.start.offset;
-    const end = node.position?.end.offset;
-    if (start === undefined || end === undefined) return;
-    const firstLine = node.position!.start.line - 1;
-    const lastLine = node.position!.end.line - 1;
-    switch (node.type) {
-      case "blockquote":
-        quoteMarkers(node, firstLine, lastLine);
-        break;
-      case "listItem": {
-        const content = node.children[0]?.position?.start;
-        const markerEnd =
-          content && content.line - 1 === firstLine
-            ? content.offset!
-            : lineEnd(starts, text, firstLine);
-        mark(start, markerEnd, LINE_MARKER);
-        kinds[firstLine] = ordered ? "ordered" : "bullet";
-        if (ordered) numbers.set(firstLine, number);
-        break;
-      }
-      case "code": {
-        const isFenced = FENCED_CODE.test(text.slice(start));
-        for (let line = firstLine; line <= lastLine; line++) {
-          const fenced =
-            isFenced &&
-            (line === firstLine ||
-              (line === lastLine && FENCE.test(lines[line]!)));
-          const from = line === firstLine ? start : starts[line]!;
-          const to = Math.min(lineEnd(starts, text, line), end);
-          kinds[line] = fenced ? "fence" : "code";
-          if (fenced) mark(starts[line]!, to, LINE_MARKER);
-          else format(from, to, IS_CODE);
-        }
-        return;
-      }
-      case "inlineCode": {
-        const source = text.slice(start, end);
-        const fence = /^`+/.exec(source)![0].length;
-        const span = nextSpan++;
-        mark(start, start + fence, { edge: "open", span });
-        mark(end - fence, end, { edge: "close", span });
-        format(start + fence, end - fence, IS_CODE);
-        return;
-      }
-      case "link":
-        // A bare or `<url>` link is one piece of text, with no syntax to
-        // show or hide.
-        if (text[start] !== "[") return;
-        spanMarkers(node, start, end);
-        break;
-      case "delete":
-      case "emphasis":
-      case "strong":
-        spanMarkers(node, start, end);
-        break;
-      default:
-        break;
-    }
-    if (!("children" in node)) return;
-    const list = node.type === "list" ? node : undefined;
-    for (const [index, child] of node.children.entries()) {
-      visit(
-        child,
-        list ? Boolean(list.ordered) : ordered,
-        (list?.start ?? 1) + index,
-      );
-    }
-  };
-
   // The source before the first child and after the last one is syntax.
   const spanMarkers = (
     node: Extract<MarkdownNode, { children: unknown }>,
-    start: number,
-    end: number,
+    { start, end }: NodeAt,
   ) => {
     const first = node.children[0]?.position?.start.offset ?? end;
     const last = node.children.at(-1)?.position?.end.offset ?? first;
@@ -176,7 +86,91 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
     format(start, end, SPAN_FORMATS[node.type] ?? 0);
   };
 
-  visit(parseMarkdown(text), false, 1);
+  // What each node type marks. A node's children are visited after it.
+  const visitors: Visitors = {
+    blockquote: (_, { start, firstLine, lastLine }) => {
+      for (let line = firstLine; line <= lastLine; line++) {
+        const from = line === firstLine ? start : starts[line]!;
+        const to = quoteMarkerEnd(text, from);
+        if (to === from) continue;
+        mark(from, to, LINE_MARKER);
+        kinds[line] = "quote";
+      }
+    },
+    code: (_, { start, end, firstLine, lastLine }) => {
+      // A fenced block starts at its fence. An indented one starts with
+      // its indent.
+      const fence = text[start];
+      const fenced = fence === "`" || fence === "~";
+      let length = 0;
+      while (fenced && text[start + length] === fence) length++;
+      for (let line = firstLine; line <= lastLine; line++) {
+        const isFence =
+          fenced &&
+          (line === firstLine ||
+            (line === lastLine && closesFence(lines[line]!, fence, length)));
+        const from = line === firstLine ? start : starts[line]!;
+        const to = Math.min(lineEnd(starts, text, line), end);
+        kinds[line] = isFence ? "fence" : "code";
+        if (isFence) mark(starts[line]!, to, LINE_MARKER);
+        else format(from, to, IS_CODE);
+      }
+    },
+    delete: spanMarkers,
+    emphasis: spanMarkers,
+    inlineCode: (_, { start, end }) => {
+      let fence = 0;
+      while (text[start + fence] === "`") fence++;
+      const span = nextSpan++;
+      mark(start, start + fence, { edge: "open", span });
+      mark(end - fence, end, { edge: "close", span });
+      format(start + fence, end - fence, IS_CODE);
+    },
+    link: (node, at) => {
+      // A bare or `<url>` link is one piece of text, with no syntax to
+      // show or hide.
+      if (text[at.start] === "[") spanMarkers(node, at);
+    },
+    listItem: (node, { start, firstLine, list }) => {
+      const content = node.children[0]?.position?.start;
+      const markerEnd =
+        content && content.line - 1 === firstLine
+          ? content.offset!
+          : lineEnd(starts, text, firstLine);
+      mark(start, markerEnd, LINE_MARKER);
+      kinds[firstLine] = list?.ordered ? "ordered" : "bullet";
+      if (list?.ordered) numbers.set(firstLine, list.number);
+    },
+    strong: spanMarkers,
+  };
+
+  const visit = (node: MarkdownNode, list: NodeAt["list"]) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    const at: NodeAt = {
+      start,
+      end,
+      firstLine: node.position!.start.line - 1,
+      lastLine: node.position!.end.line - 1,
+      list,
+    };
+    runVisitor(visitors, node.type, node, at);
+    if (!("children" in node)) return;
+    for (const [index, child] of node.children.entries()) {
+      visit(
+        child,
+        node.type === "list"
+          ? {
+              ordered: Boolean(node.ordered),
+              number: (node.start ?? 1) + index,
+            }
+          : list,
+      );
+    }
+  };
+
+  visit(parseMarkdown(text), undefined);
   return lines.map((line, index) => {
     const parsed: MarkdownLine = {
       kind: kinds[index]!,
@@ -186,6 +180,59 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
     if (number !== undefined) parsed.number = number;
     return parsed;
   });
+}
+
+// Where a node is in the draft. `list` is the list of a list item, with
+// the number that the item renders with.
+type NodeAt = {
+  start: number;
+  end: number;
+  firstLine: number;
+  lastLine: number;
+  list: { ordered: boolean; number: number } | undefined;
+};
+
+// Each Markdown node by its type.
+type NodeOf = { [Node in MarkdownNode as Node["type"]]: Node };
+
+type Visitors = {
+  [Type in keyof NodeOf]?: (node: NodeOf[Type], at: NodeAt) => void;
+};
+
+// Run the visitor of a node's type. Taking the type and the node apart
+// lets TypeScript match the visitor to the node.
+function runVisitor<Type extends keyof NodeOf>(
+  visitors: Visitors,
+  type: Type,
+  node: NodeOf[Type],
+  at: NodeAt,
+): void {
+  visitors[type]?.(node, at);
+}
+
+// The end of the quote markers at `from`: `>` with one optional space
+// each, after the line's indent.
+function quoteMarkerEnd(text: string, from: number): number {
+  let at = from;
+  while (text[at] === " " || text[at] === "\t") at++;
+  if (text[at] !== ">") return from;
+  while (text[at] === ">") {
+    at++;
+    if (text[at] === " " || text[at] === "\t") at++;
+  }
+  return at;
+}
+
+// A closing fence: at least `length` of the opening fence character, alone
+// on its line after the indent and quote markers of its container.
+function closesFence(line: string, fence: string, length: number): boolean {
+  const trimmed = line.trimEnd();
+  let at = trimmed.length;
+  while (at > 0 && trimmed[at - 1] === fence) at--;
+  return (
+    trimmed.length - at >= length &&
+    trimmed.slice(0, at).replaceAll(">", "").trim() === ""
+  );
 }
 
 // Runs of characters with one format and marker. Markers carry their
