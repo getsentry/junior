@@ -8,6 +8,7 @@
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -564,6 +565,10 @@ export function createAgentDispatchConversationWorker(
       const blockingError = getDispatchBlockingError(error);
       if (blockingError) {
         await persistBlockedDispatchTurn(dispatch, blockingError);
+        await indexEndedTurnEvents({
+          conversationId: context.conversationId,
+          turnId: getDispatchTurnId(dispatch.id),
+        });
         await acknowledge();
         return { status: "completed" };
       }
@@ -574,6 +579,10 @@ export function createAgentDispatchConversationWorker(
         dispatch.id,
         error instanceof Error ? error.message : "Dispatch turn failed",
       );
+      await indexEndedTurnEvents({
+        conversationId: context.conversationId,
+        turnId: getDispatchTurnId(dispatch.id),
+      });
       await acknowledge();
       return { status: "completed" };
     }

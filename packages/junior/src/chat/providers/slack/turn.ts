@@ -6,6 +6,7 @@
  */
 import { mapBounded } from "@/chat/fan-out";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -1357,6 +1358,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   failureCode: "agent_run_failed",
                   turnId,
                 });
+                await indexEndedTurnEvents({ conversationId, turnId });
               }
               runState = "released";
               return;
@@ -1443,6 +1445,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 "plugin.session.completed_task_schedule.failed",
               );
             }
+          } else if (conversationId) {
+            await indexEndedTurnEvents({ conversationId, turnId });
           }
         } catch (error) {
           if (runState === "settled") {
@@ -1514,6 +1518,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               outcome: "cancelled",
               turnId,
             });
+            await indexEndedTurnEvents({ conversationId, turnId });
             return;
           }
           const classifiedFailure =
