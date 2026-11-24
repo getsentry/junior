@@ -6,7 +6,7 @@ import pLimit from "p-limit";
 import type { RefObject } from "react";
 
 import { useToastManager } from "../components/ui/toast";
-import { useInboxItemAction } from "./queries";
+import { inboxItemActionArgs, useInboxItemAction } from "./queries";
 import type { SnoozeEnd } from "./inboxSnoozes";
 import type { InboxCardActions } from "./RowHoverActions";
 import { eventSnoozeOf, type EventSnooze } from "./snoozeChoices";
@@ -100,7 +100,7 @@ export function useInboxRowActs(options: {
     const limit = pLimit(ROW_ACTION_REQUESTS);
     const results = await Promise.allSettled(
       items.map((item) =>
-        limit(() => action.mutateAsync({ body, id: item.id })),
+        limit(() => action.mutateAsync(inboxItemActionArgs(item, body))),
       ),
     );
     const failed = items.filter(

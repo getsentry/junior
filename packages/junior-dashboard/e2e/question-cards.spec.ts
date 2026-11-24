@@ -93,7 +93,7 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("an answer closes the card at once, and a failed one comes back", async ({
+test("an answer closes the card and shows thinking at once, and a failed one comes back", async ({
   dashboard,
   page,
 }) => {
@@ -114,17 +114,25 @@ test("an answer closes the card at once, and a failed one comes back", async ({
   const card = page.getByRole("region", {
     name: "Asked Approve the payments-v42 rollout",
   });
+  const thinking = page
+    .getByRole("status")
+    .filter({ hasText: "Junior is thinking" });
   const hold = card.getByRole("button", { name: "Hold", exact: true });
   await hold.click();
+  await expect(thinking).toHaveCount(0);
   await card.getByRole("button", { name: "Send", exact: true }).click();
-  // The card closes before the server answers.
+  // The card closes before the server answers. A Turn added the question,
+  // so the answer starts a Turn.
   await expect(card.getByRole("region", { name: "Question" })).toHaveCount(0);
   await expect(card).toContainText("Answered");
   await expect(card).toContainText("Hold");
+  await expect(thinking).toBeVisible();
 
+  // A failed answer starts no Turn.
   release();
   await expect(card.getByText("The rollout is locked.")).toBeVisible();
   await expect(hold).toHaveAttribute("aria-pressed", "true");
+  await expect(thinking).toHaveCount(0);
 });
 
 test("a second click takes the pick back, and a note alone answers", async ({

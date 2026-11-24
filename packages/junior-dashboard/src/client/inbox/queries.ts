@@ -326,10 +326,31 @@ const INBOX_ITEM_ACTION_KEY = [...INBOX_ITEMS_QUERY_KEY, "action"];
 const inboxItemActionVariablesSchema = z.object({
   body: inboxItemActionSchema,
   id: z.string(),
+  /** The Conversations where this action starts a Turn. */
+  turnConversationIds: z.array(z.string()).optional(),
 });
 
 /** One action on one Inbox item, as `useInboxItemAction` sends it. */
 type InboxItemAction = z.output<typeof inboxItemActionVariablesSchema>;
+
+/**
+ * The arguments of one action on an item, for `useInboxItemAction`. An
+ * answer to a question that a Turn added starts a Turn in each linked
+ * Conversation, so it names them. A plugin does the work of its item's
+ * answer, and a dismiss or a take starts no Turn.
+ */
+export function inboxItemActionArgs(
+  item: Pick<InboxItemPayload, "addedByTurnId" | "conversationIds" | "id">,
+  body: InboxItemActionBody,
+): InboxItemAction {
+  return {
+    body,
+    id: item.id,
+    ...(body.action === "submit" && item.addedByTurnId
+      ? { turnConversationIds: item.conversationIds }
+      : undefined),
+  };
+}
 
 /** The action that a mutation of `useInboxItemAction` sends. */
 function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
@@ -337,6 +358,16 @@ function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
     mutation.state.variables,
   );
   return parsed.success ? parsed.data : undefined;
+}
+
+const inboxItemActionResultSchema = z.object({
+  /** Client time when the server answered the action. */
+  acceptedAtMs: z.number(),
+  item: inboxItemSchema,
+});
+
+function resultOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
+  return inboxItemActionResultSchema.safeParse(mutation.state.data).data;
 }
 
 function closesItem(body: InboxItemActionBody): boolean {
@@ -530,12 +561,14 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
   const { optimistic = false } = options;
   return useMutation({
     mutationKey: INBOX_ITEM_ACTION_KEY,
-    mutationFn: (args: InboxItemAction) =>
-      post(
+    mutationFn: async (args: InboxItemAction) => {
+      const item = await post(
         inboxItemSchema,
         `/api/inbox-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
-      ),
+      );
+      return { acceptedAtMs: Date.now(), item };
+    },
     onMutate: (args) =>
       optimistic && closesItem(args.body)
         ? takeOutClosedItem(queryClient, args.id)
@@ -549,7 +582,7 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: async (item, args) => {
+    onSuccess: async ({ item }, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(inboxItemQueryKey(item.id), item);
       if (args.body.action === "submit")
@@ -595,6 +628,49 @@ export function useClosedByViewerInboxItemIds(): ReadonlySet<string> {
   });
   const key = [...new Set(ids.filter(Boolean))].sort().join("\n");
   return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
+ * Whether an answer of the viewer starts a Turn in this Conversation that
+ * the snapshot does not show yet: the answer is in flight, the snapshot
+ * started its mailbox read before the server answered, or the mailbox still
+ * holds the answer. The server puts the answer in the mailbox before it
+ * answers, and a Turn takes it out only after the Turn starts.
+ */
+export function useAnswerAwaitsTurn(
+  conversationId: string | undefined,
+  snapshot:
+    | Pick<ConversationSnapshot, "mailbox" | "mailboxReadAtMs">
+    | undefined,
+): boolean {
+  // `useMutationState` reads `select` again only when a mutation changes, so
+  // `select` does not depend on the Conversation, which can change.
+  const answers = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { status } = mutation.state;
+      return action?.turnConversationIds &&
+        (status === "pending" || status === "success")
+        ? {
+            acceptedAtMs: resultOf(mutation)?.acceptedAtMs,
+            conversationIds: action.turnConversationIds,
+            id: action.id,
+          }
+        : undefined;
+    },
+  });
+  return answers.some(
+    (answer) =>
+      answer !== undefined &&
+      conversationId !== undefined &&
+      answer.conversationIds.includes(conversationId) &&
+      (answer.acceptedAtMs === undefined ||
+        (snapshot?.mailboxReadAtMs ?? 0) <= answer.acceptedAtMs ||
+        snapshot?.mailbox?.messages.some(
+          (message) => message.reviewItemChange?.reviewItemId === answer.id,
+        )),
+  );
 }
 
 /**
@@ -655,11 +731,11 @@ export function useClosingInboxItem(
     filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
     select: (mutation) => {
       const action = actionOf(mutation);
-      const { data, status, submittedAt } = mutation.state;
+      const { status, submittedAt } = mutation.state;
       return action
         ? {
             ...action,
-            closed: inboxItemSchema.safeParse(data).data,
+            closed: resultOf(mutation)?.item,
             status,
             submittedAt,
           }

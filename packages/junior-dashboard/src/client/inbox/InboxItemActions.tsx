@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import {
+  inboxItemActionArgs,
   useClosingInboxItem,
   useFailedInboxItemAction,
   useFailedInboxItemAnswer,
@@ -142,7 +143,7 @@ export function InboxItemActions(props: {
         setSending(false);
       }
     }
-    await action.mutateAsync({ body, id: item.id });
+    await action.mutateAsync(inboxItemActionArgs(item, body));
   }
 
   // A To-do for the viewer closes with Done, its main action.

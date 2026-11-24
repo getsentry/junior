@@ -305,14 +305,19 @@ export function conversationIsResponding(
 
 /**
  * Show thinking while a Turn runs, and from Enter for a send that history
- * does not have yet, because that send starts a Turn.
+ * does not have yet, because that send starts a Turn. An answer to a
+ * question that a Turn added starts a Turn too, so it shows thinking from
+ * Send.
  */
 export function conversationShowsThinking(detail: {
+  answerAwaitsTurn: boolean;
   data: ConversationDetailReport | undefined;
   inlineMessages: readonly unknown[];
 }): boolean {
   return (
-    conversationIsResponding(detail.data) || detail.inlineMessages.length > 0
+    conversationIsResponding(detail.data) ||
+    detail.inlineMessages.length > 0 ||
+    detail.answerAwaitsTurn
   );
 }
 
