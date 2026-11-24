@@ -580,6 +580,8 @@ describe("child agent task work", () => {
     {
       // Final text that the output limit cut off is a failure, not a reply.
       name: "cut off",
+      // The cut-off text is not delivered.
+      undelivered: ["Draft summary for the"],
       outputs: [cutOff("length")],
       terminal: {
         failureCode: "model_execution_failed",
@@ -595,6 +597,8 @@ describe("child agent task work", () => {
     },
     {
       name: "aborted thread",
+      // The cut-off text is not delivered.
+      undelivered: ["Draft summary for the"],
       kind: "thread" as const,
       outputs: [cutOff("aborted")],
       terminal: {
@@ -619,6 +623,7 @@ describe("child agent task work", () => {
       replied,
       subagentOutcome,
       terminal,
+      undelivered = [],
     }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const modelStream = vi.fn(createModelStream(outputs));
@@ -660,6 +665,12 @@ describe("child agent task work", () => {
         ).resolves.toMatchObject({ status: "completed" });
 
         expect(modelStream).toHaveBeenCalledTimes(outputs.length);
+        const delivered = JSON.stringify(
+          await loadMessageEvents(childConversationId),
+        );
+        expect(undelivered.filter((text) => delivered.includes(text))).toEqual(
+          [],
+        );
         await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
           expect.objectContaining({
             data: expect.objectContaining({ type: "turn_started", turnId }),
