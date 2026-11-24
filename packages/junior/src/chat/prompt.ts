@@ -128,7 +128,7 @@ function loadWorld(): string | null {
   );
 }
 
-export const JUNIOR_PERSONALITY = (() => {
+function readPersonality(): string {
   try {
     return loadSoul();
   } catch (error) {
@@ -138,9 +138,9 @@ export const JUNIOR_PERSONALITY = (() => {
     });
     return DEFAULT_SOUL;
   }
-})();
+}
 
-export const JUNIOR_WORLD = (() => {
+function readWorld(): string | null {
   try {
     return loadWorld();
   } catch (error) {
@@ -150,7 +150,9 @@ export const JUNIOR_WORLD = (() => {
     });
     return null;
   }
-})();
+}
+
+export const JUNIOR_PERSONALITY = readPersonality();
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
@@ -386,7 +388,7 @@ function buildIdentitySection(platform: PromptPlatform): string {
  * only. Core behavior must not depend on it.
  */
 function buildPersonalitySection(): string {
-  return ["# Personality", JUNIOR_PERSONALITY.trim()].join("\n");
+  return ["# Personality", readPersonality().trim()].join("\n");
 }
 
 /**
@@ -394,11 +396,12 @@ function buildPersonalitySection(): string {
  * operator, such as the company, repos, and resources.
  */
 function buildWorldSection(): string | null {
-  if (!JUNIOR_WORLD) {
+  const world = readWorld();
+  if (!world) {
     return null;
   }
 
-  return ["# World", JUNIOR_WORLD.trim()].join("\n");
+  return ["# World", world.trim()].join("\n");
 }
 
 function buildRuntimeSection(params: {
@@ -832,53 +835,29 @@ type TurnContextPromptInput = {
   configuration?: Record<string, unknown>;
 };
 
-function buildStaticSystemPrompt(
+/** A named, static piece of the system prompt. */
+export type SystemPromptSection = { name: string; text: string };
+
+/**
+ * Build the core blocks of the system prompt for one platform and Prompt
+ * mode, in order. It reads `SOUL.md` and `WORLD.md` on each call, so a build
+ * sees the current files.
+ */
+export function buildCoreSystemPromptSections(
   platform: PromptPlatform,
   mode: PromptMode,
-): string {
+): SystemPromptSection[] {
+  const world = buildWorldSection();
   return [
-    platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
-    buildIdentitySection(platform),
-    ...buildRuleBlocks(platform, mode),
-    buildPersonalitySection(),
-    buildWorldSection(),
-  ]
-    .filter((section): section is string => Boolean(section))
-    .join("\n\n");
-}
-
-const STATIC_SYSTEM_PROMPTS: Record<
-  PromptMode,
-  Record<PromptPlatform, string>
-> = {
-  automation: {
-    local: buildStaticSystemPrompt("local", "automation"),
-    slack: buildStaticSystemPrompt("slack", "automation"),
-  },
-  child_agent: {
-    local: buildStaticSystemPrompt("local", "child_agent"),
-    slack: buildStaticSystemPrompt("slack", "child_agent"),
-  },
-  conversation: {
-    local: buildStaticSystemPrompt("local", "conversation"),
-    slack: buildStaticSystemPrompt("slack", "conversation"),
-  },
-  lead: {
-    local: buildStaticSystemPrompt("local", "lead"),
-    slack: buildStaticSystemPrompt("slack", "lead"),
-  },
-  thread: {
-    local: buildStaticSystemPrompt("local", "thread"),
-    slack: buildStaticSystemPrompt("slack", "thread"),
-  },
-};
-
-/** Return the fixed instructions for one platform and prompt mode. */
-export function buildSystemPrompt(
-  platform: PromptPlatform,
-  mode: PromptMode = "conversation",
-): string {
-  return STATIC_SYSTEM_PROMPTS[mode][platform];
+    {
+      name: "header",
+      text: platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
+    },
+    { name: "identity", text: buildIdentitySection(platform) },
+    { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },
+    { name: "personality", text: buildPersonalitySection() },
+    ...(world ? [{ name: "world", text: world }] : []),
+  ];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

@@ -18,24 +18,12 @@ import type {
 import { type JuniorPluginSet } from "@/plugins";
 import type { JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
+import { isMissingVirtualModule } from "@/virtual-module";
 
 const DEFAULT_IO: UpgradeIo = {
   info: console.log,
 };
 const localPluginLoader = createJiti(import.meta.url, { moduleCache: false });
-
-function isMissingVirtualConfig(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
-      code === "ERR_MODULE_NOT_FOUND" ||
-      code === "MODULE_NOT_FOUND") &&
-    error.message.includes("#junior/config")
-  );
-}
 
 /** Resolve the plugin set available to upgrade migrations in source and built CLI runs. */
 export async function resolveUpgradePluginSet(): Promise<
@@ -47,7 +35,7 @@ export async function resolveUpgradePluginSet(): Promise<
     } = await import("#junior/config");
     return mod.pluginSet;
   } catch (error) {
-    if (!isMissingVirtualConfig(error)) {
+    if (!isMissingVirtualModule(error, "#junior/config")) {
       throw error;
     }
   }

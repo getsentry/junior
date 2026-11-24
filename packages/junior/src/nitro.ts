@@ -13,6 +13,7 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { injectVirtualSystemPrompts } from "@/build/virtual-system-prompts";
 import { queueCallbackRoutes } from "@/chat/queue/routes";
 import {
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
@@ -318,6 +319,11 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,
         });
+        injectVirtualSystemPrompts(nitro, async () =>
+          pluginRuntimeRegistrationsFromPluginSet(
+            await loadConfiguredPluginSet(),
+          ),
+        );
 
         const copyBuildContent = async () => {
           const pluginSet = await loadConfiguredPluginSet();

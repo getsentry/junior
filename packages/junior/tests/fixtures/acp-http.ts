@@ -12,7 +12,10 @@ import { createSlackAdapterFixture } from "./conversation-work";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
 
-/** Supply dashboard browser authentication for ACP integration tests. */
+/**
+ * Supply dashboard browser authentication and the build-time system prompts
+ * for ACP integration tests.
+ */
 export function mockAcpDashboardConfig(): void {
   vi.doMock("#junior/config", () => ({
     createDashboardApp: () => ({
@@ -24,6 +27,11 @@ export function mockAcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+  // A juniorNitro() build has both modules. This build has no plugins.
+  vi.doMock("#junior/system-prompts", async () => {
+    const { buildSystemPromptTable } = await import("@/chat/system-prompt");
+    return { systemPrompts: await buildSystemPromptTable([]) };
+  });
 }
 
 /** Read the browser verification code shown by an ACP URL elicitation. */

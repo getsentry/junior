@@ -25,3 +25,10 @@ declare module "#junior/config" {
   export const plugins: PluginCatalogConfig;
   export const pluginRuntimeRegistrations: string[];
 }
+
+/** System prompt table rendered by juniorNitro() at build time. */
+declare module "#junior/system-prompts" {
+  import type { SystemPromptTable } from "@/chat/system-prompt";
+
+  export const systemPrompts: SystemPromptTable;
+}

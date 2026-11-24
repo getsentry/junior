@@ -627,16 +627,22 @@ async function runPluginHooksAtOnce<T>(
 }
 
 /**
- * Collect stable plugin prompt contributions for the static system prompt of
- * one platform. Every Prompt mode reuses them. A hook gets no database or
- * cache.
+ * Collect the guidance of `plugins` for the static system prompts of one
+ * platform, in plugin name order, so a build and the runtime give the same
+ * text. Every Prompt mode on the platform reuses it. A hook gets no database
+ * or cache. A hook that throws, returns invalid guidance, or goes over the
+ * guidance budget throws an error that names its plugin, so the build fails.
  */
 export async function getPluginSystemPromptContributions(
+  plugins: readonly PluginRegistration[],
   platform: Platform,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
-  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
+  const ordered = [...plugins].sort((left, right) =>
+    left.manifest.name.localeCompare(right.manifest.name),
+  );
+  const outcomes = await runPluginHooksAtOnce(ordered, (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
     const name = plugin.manifest.name;
     return (
@@ -651,47 +657,32 @@ export async function getPluginSystemPromptContributions(
   });
   for (const outcome of outcomes) {
     const pluginName = outcome.plugin.manifest.name;
-    try {
-      if ("error" in outcome) throw outcome.error;
-      const pluginContributions = outcome.value;
-      const result =
-        systemPromptMessageArraySchema.safeParse(pluginContributions);
-      if (!result.success) {
-        logInvalidPromptContributions({
-          hookName: "systemPrompt",
-          pluginName,
-        });
-        continue;
-      }
-      const acceptedContributions = result.data.map((message, index) =>
-        toPromptContributionContext({
-          hookName: "systemPrompt",
-          index,
-          message,
-          pluginName,
-        }),
-      );
-      const pluginContributionChars = acceptedContributions.reduce(
-        (sum, contribution) => sum + contribution.text.length,
-        0,
-      );
-      if (
-        totalChars + pluginContributionChars >
-        PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS
-      ) {
-        logWarn("plugin.system_prompt.contribution_budget_exceeded", {
-          "app.plugin.name": pluginName,
-        });
-        continue;
-      }
-      totalChars += pluginContributionChars;
-      contributions.push(...acceptedContributions);
-    } catch (error) {
-      logWarn("plugin.system_prompt.hook.failed", {
-        "app.plugin.name": pluginName,
-        "exception.message": safeErrorMessage(error),
-      });
+    const failure = `Plugin "${pluginName}" systemPrompt hook failed for ${platform}`;
+    if ("error" in outcome) {
+      throw new Error(failure, { cause: outcome.error });
     }
+    const result = systemPromptMessageArraySchema.safeParse(outcome.value);
+    if (!result.success) {
+      throw new Error(`${failure}: invalid guidance`, { cause: result.error });
+    }
+    const acceptedContributions = result.data.map((message, index) =>
+      toPromptContributionContext({
+        hookName: "systemPrompt",
+        index,
+        message,
+        pluginName,
+      }),
+    );
+    totalChars += acceptedContributions.reduce(
+      (sum, contribution) => sum + contribution.text.length,
+      0,
+    );
+    if (totalChars > PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS) {
+      throw new Error(
+        `${failure}: plugin guidance is over ${PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS} characters`,
+      );
+    }
+    contributions.push(...acceptedContributions);
   }
   return contributions;
 }

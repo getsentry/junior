@@ -169,6 +169,7 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+import { isMissingVirtualModule } from "./virtual-module";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
@@ -335,24 +336,11 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
     };
   } catch (error) {
-    if (!isMissingVirtualConfig(error)) {
+    if (!isMissingVirtualModule(error, "#junior/config")) {
       throw error;
     }
     return undefined;
   }
-}
-
-function isMissingVirtualConfig(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
-      code === "ERR_MODULE_NOT_FOUND" ||
-      code === "MODULE_NOT_FOUND") &&
-    error.message.includes("#junior/config")
-  );
 }
 
 function hasConfiguredPluginCatalog(

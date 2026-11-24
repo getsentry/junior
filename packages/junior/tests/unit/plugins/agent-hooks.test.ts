@@ -278,8 +278,8 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects system prompt contributions from configured plugins", async () => {
-    const previous = setPlugins([
+  it("collects system prompt contributions in plugin name order", async () => {
+    const plugins = [
       defineJuniorPlugin({
         manifest: {
           name: "z-demo",
@@ -313,21 +313,17 @@ describe("agent plugin hooks", () => {
           },
         },
       }),
+    ];
+    await expect(
+      getPluginSystemPromptContributions(plugins, "local"),
+    ).resolves.toEqual([
+      { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
+      { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
     ]);
-    try {
-      await expect(
-        getPluginSystemPromptContributions("local"),
-      ).resolves.toEqual([
-        { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
-        { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
   });
 
-  it("omits malformed system prompt messages", async () => {
-    const previous = setPlugins([
+  it("names the plugin whose system prompt messages are malformed", async () => {
+    const plugins = [
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -340,14 +336,12 @@ describe("agent plugin hooks", () => {
           },
         },
       }),
-    ]);
-    try {
-      await expect(
-        getPluginSystemPromptContributions("local"),
-      ).resolves.toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+    ];
+    await expect(
+      getPluginSystemPromptContributions(plugins, "local"),
+    ).rejects.toThrow(
+      'Plugin "agent-demo" systemPrompt hook failed for local: invalid guidance',
+    );
   });
 
   it("collects user prompt messages from configured plugins", async () => {
