@@ -23,6 +23,7 @@ import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
   PULL_REQUEST_CONFLICT_HISTORY,
+  PULL_REQUEST_HEAD_FACTS,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
   pullRequestLifecycles,
@@ -187,6 +188,24 @@ export async function searchOpenPullRequestMergeability(
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
     },
+    token: token.token,
+  });
+}
+
+/**
+ * Read the merge state and check counts of up to 100 pull requests by
+ * GraphQL id, with a read-only token.
+ */
+export async function loadPullRequestHeadFacts(
+  env: GitHubInstallationEnv,
+  nodeIds: string[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: { ...PULL_REQUEST_HEAD_FACTS, variables: { ids: nodeIds } },
     token: token.token,
   });
 }

@@ -6,8 +6,8 @@
  * day for each repository, the heartbeat reads the stored open rows from
  * GitHub with GraphQL, and checks only their state. Each close goes through
  * the webhook write path, with its merged or closed_unmerged event. A pull
- * request that is still open gets its current title and draft state in the
- * code index, from the same read. The writes are guarded by `updatedAt`, so
+ * request that is still open gets its current title in the code index,
+ * from the same read. The writes are guarded by `updatedAt`, so
  * a replay cannot move a newer row back.
  */
 import type {
@@ -180,14 +180,13 @@ async function reconcilePullRequest(
   pullRequest: z.output<typeof lifecycleSchema>,
 ): Promise<void> {
   if (pullRequest.state === "OPEN") {
-    // No lifecycle webhook arrives for a title edit, and a draft webhook can
-    // be lost. Write both from this read. No conversation ids keeps the
+    // No lifecycle webhook arrives for a title edit. Write it from this
+    // read. No conversation ids keeps the
     // linked ones.
     await args.codeChanges.record(
       githubCodeChange(
         {
           candidateOwned: false,
-          draft: pullRequest.isDraft,
           number: pullRequest.number,
           openedAt: new Date(pullRequest.createdAt),
           pullRequestId: String(pullRequest.databaseId),

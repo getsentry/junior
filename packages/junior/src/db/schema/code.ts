@@ -1,7 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import {
   type AnyPgColumn,
-  boolean,
   index,
   integer,
   pgTable,
@@ -57,16 +56,11 @@ export const juniorCodeChanges = pgTable(
   "junior_code_changes",
   {
     id: uuid("id").primaryKey(),
-    // The size, as the code plugin last counted it. Null when unknown.
-    additions: integer("additions"),
-    changedFiles: integer("changed_files"),
     closedAt: timestamptz("closed_at"),
     conversationIds: text("conversation_ids")
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    deletions: integer("deletions"),
-    draft: boolean("draft").notNull().default(false),
     /** Latest push, review, or comment by a person, from the code plugin. */
     lastActivityAt: timestamptz("last_activity_at"),
     mergedAt: timestamptz("merged_at"),

@@ -1,0 +1,1 @@
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "node_id" text;

@@ -9,6 +9,7 @@
     "junior_github_pull_request_requesters": "Junior-owned: the people who asked Junior for the pull request, and where they asked.",
     "junior_github_pull_requests": {
       "pull_request_id": "Junior-owned: the key of the facts that Junior records for its pull request.",
+      "node_id": "Junior-owned: a key of its pull request, so one GraphQL query reads the cards of many pull requests.",
       "commit_composition": "Too expensive to derive: it needs every commit of the pull request.",
       "conversation_ids": "Junior-owned: the Conversations that worked on the pull request.",
       "updated_at": "Junior-owned: when Junior last wrote the row.",

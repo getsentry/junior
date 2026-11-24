@@ -1,11 +1,5 @@
 {
   "tables": {
-    "junior_code_changes": {
-      "additions": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
-      "changed_files": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
-      "deletions": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
-      "draft": "Mirror awaiting cleanup: cards read the draft state through object-link resolve."
-    },
     "junior_github_pull_requests": {
       "repository_id": "Mirror awaiting cleanup: core code changes hold the repository.",
       "repository_full_name": "Mirror awaiting cleanup: core code changes hold the repository.",

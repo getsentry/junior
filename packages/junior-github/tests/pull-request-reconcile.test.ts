@@ -20,7 +20,6 @@ describe("daily reconcile of open pull requests", () => {
   const now = Date.parse("2026-11-09T12:00:00.000Z");
   const day = 24 * 60 * 60_000;
   let queries: number[][];
-  let drafts: Set<number>;
 
   /** A pull request lifecycle as GitHub GraphQL returns it. */
   function lifecycle(number: number) {
@@ -33,7 +32,7 @@ describe("daily reconcile of open pull requests", () => {
       createdAt: new Date(now - 3 * day).toISOString(),
       databaseId: number * 10,
       headRefName: `feat/pr-${number}`,
-      isDraft: drafts.has(number),
+      isDraft: false,
       merged,
       mergedAt: merged ? new Date(now - day).toISOString() : null,
       number,
@@ -55,7 +54,6 @@ describe("daily reconcile of open pull requests", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     vi.useFakeTimers({ now, toFake: ["Date"] });
     queries = [];
-    drafts = new Set();
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
       "1234+sentry-junior[bot]@users.noreply.github.com",
@@ -263,23 +261,6 @@ describe("daily reconcile of open pull requests", () => {
     vi.setSystemTime(now + day);
     await h.heartbeat(now + day);
     expect(queries[1]?.sort()).toEqual([947, 950, 951]);
-  });
-
-  it("writes the current draft state to the code index", async () => {
-    drafts = new Set([947]);
-    await h.heartbeat(now);
-
-    expect(
-      h.codeChanges.map((change) => [
-        change.number,
-        change.state,
-        change.draft,
-      ]),
-    ).toEqual([
-      [946, "merged", undefined],
-      [947, "open", true],
-      [949, "closed", undefined],
-    ]);
   });
 
   it("publishes a corrected close with the key of its webhook", async () => {

@@ -419,3 +419,81 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
     }),
   );
 }
+
+/**
+ * Read the card fields of many pull requests, at most 100 ids per query.
+ * The check run counts are of each head commit. The App has no commit
+ * status permission, so statuses do not count.
+ */
+export const PULL_REQUEST_CARDS = githubGraphql(`
+  query PullRequestCards($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on PullRequest {
+        id
+        url
+        number
+        state
+        title
+        body
+        updatedAt
+        author { login }
+        isDraft
+        merged
+        headRefName
+        headRefOid
+        baseRefName
+        mergeable
+        additions
+        deletions
+        changedFiles
+        reviewRequests(first: 5) {
+          nodes {
+            requestedReviewer {
+              ... on User { login }
+              ... on Bot { login }
+            }
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 1) {
+                  checkRunCountsByState { state count }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * Read only the merge state and check counts of many pull requests, for
+ * the patch after a push. At most 100 ids per query.
+ */
+export const PULL_REQUEST_HEAD_FACTS = githubGraphql(`
+  query PullRequestHeadFacts($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on PullRequest {
+        id
+        updatedAt
+        headRefOid
+        mergeable
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 1) {
+                  checkRunCountsByState { state count }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);

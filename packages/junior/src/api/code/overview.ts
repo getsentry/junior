@@ -14,10 +14,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import * as z from "zod";
-import type {
-  CodeChangeSize,
-  CodeChangeState,
-} from "@sentry/junior-plugin-api";
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { codeChangeUrl, codeRepositoryUrl } from "@/chat/code/links";
 import { getDb } from "@/chat/db";
 import {
@@ -290,11 +287,7 @@ export async function readCodeWindows(args: {
 
 /** Columns read for one code change report row. */
 export const codeChangeReportColumns = {
-  additions: juniorCodeChanges.additions,
-  changedFiles: juniorCodeChanges.changedFiles,
   closedAt: juniorCodeChanges.closedAt,
-  deletions: juniorCodeChanges.deletions,
-  draft: juniorCodeChanges.draft,
   id: juniorCodeChanges.id,
   lastActivityAt: juniorCodeChanges.lastActivityAt,
   mergedAt: juniorCodeChanges.mergedAt,
@@ -307,17 +300,8 @@ export const codeChangeReportColumns = {
 };
 
 /** Convert one code change row to its report shape. */
-export function codeChangeReport({
-  additions,
-  changedFiles,
-  deletions,
-  ...change
-}: {
-  additions: number | null;
-  changedFiles: number | null;
+export function codeChangeReport(change: {
   closedAt: Date | null;
-  deletions: number | null;
-  draft: boolean;
   id: string;
   lastActivityAt: Date | null;
   mergedAt: Date | null;
@@ -328,14 +312,8 @@ export function codeChangeReport({
   state: CodeChangeState;
   title: string | null;
 }) {
-  // Each part is set only when known, so an unknown count never reads as 0.
-  const size: CodeChangeSize = {};
-  if (additions !== null) size.additions = additions;
-  if (deletions !== null) size.deletions = deletions;
-  if (changedFiles !== null) size.changedFiles = changedFiles;
   return {
     ...change,
-    ...(Object.keys(size).length > 0 ? { size } : undefined),
     closedAt: change.closedAt?.toISOString(),
     lastActivityAt: change.lastActivityAt?.toISOString(),
     mergedAt: change.mergedAt?.toISOString(),

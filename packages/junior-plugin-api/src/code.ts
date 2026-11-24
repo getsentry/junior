@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { codeChangeSizeSchema } from "./object-facts";
 
 export const codeChangeStateSchema = z.enum(["closed", "merged", "open"]);
 export type CodeChangeState = z.output<typeof codeChangeStateSchema>;
@@ -8,11 +7,6 @@ export const codeChangeInputSchema = z
   .object({
     closedAt: z.date().optional(),
     conversationIds: z.array(z.string().min(1)).default([]),
-    /**
-     * Whether the code change is a draft. When omitted, Junior keeps the
-     * stored value; a new code change is not a draft.
-     */
-    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -23,11 +17,6 @@ export const codeChangeInputSchema = z
         providerId: z.string().min(1),
       })
       .strict(),
-    /**
-     * The size as the provider counts it now. Junior keeps the stored value
-     * of each part that is omitted.
-     */
-    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),

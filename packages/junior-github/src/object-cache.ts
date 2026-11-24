@@ -5,19 +5,39 @@
  */
 import * as z from "zod";
 
-// Webhooks refresh a changed object, so the TTL bounds only a change that
+// Webhooks refresh a changed issue, so the TTL bounds only a change that
 // sends no webhook.
-const OBJECT_CACHE_TTL_MS = 60_000;
+const ISSUE_CACHE_TTL_MS = 60_000;
 
 /**
- * How long an object entry is fresh. When GitHub fails after the TTL, the
+ * How long a pull request entry is fresh. Pull request and check webhooks
+ * refresh it, so this bounds only a change that sends no webhook, such as
+ * a new review request from a person who left the repository.
+ */
+const GITHUB_PULL_REQUEST_CACHE_TTL_MS = 60 * 60_000;
+
+/**
+ * How long an issue entry is fresh. When GitHub fails after the TTL, the
  * card keeps the last object read. The repository access check still
  * expires, so access is never extended.
  */
-export const GITHUB_OBJECT_CACHE = {
+export const GITHUB_ISSUE_CACHE = {
   staleIfError: true,
-  ttlMs: OBJECT_CACHE_TTL_MS,
+  ttlMs: ISSUE_CACHE_TTL_MS,
 } as const;
+
+/** How long a pull request entry is fresh, as for issues. */
+export const GITHUB_PULL_REQUEST_CACHE = {
+  staleIfError: true,
+  ttlMs: GITHUB_PULL_REQUEST_CACHE_TTL_MS,
+} as const;
+
+/** The cache entry options of one collection. */
+export function githubObjectCacheOptions(collection: "issues" | "pulls") {
+  return collection === "pulls"
+    ? GITHUB_PULL_REQUEST_CACHE
+    : GITHUB_ISSUE_CACHE;
+}
 
 const person = z.object({ login: z.string() });
 const label = z.union([z.string(), z.object({ name: z.string() })]);
@@ -42,17 +62,35 @@ export const githubIssueFieldsSchema = z.object({
   pull_request: z.object({}).optional(),
 });
 
-/** The fields of a pull request that its card reads. */
+const count = z.number().int().nonnegative();
+
+/** Check counts of a head commit, as a card shows them. */
+const githubCheckCountsSchema = z.object({
+  failed: count,
+  passed: count,
+  pending: count,
+});
+
+/**
+ * The fields of a pull request that its card reads. `pending` marks merge
+ * state and checks that a patch reads soon (`pull-request-patches.ts`).
+ */
 export const githubPullRequestFieldsSchema = z.object({
   ...objectFields,
-  additions: z.number().int().nonnegative().optional(),
+  additions: count.optional(),
   base: z.object({ ref: z.string() }).optional(),
-  changed_files: z.number().int().nonnegative().optional(),
-  deletions: z.number().int().nonnegative().optional(),
+  changed_files: count.optional(),
+  checks: z.union([githubCheckCountsSchema, z.literal("pending")]).optional(),
+  deletions: count.optional(),
   draft: z.boolean().optional(),
   head: z.object({ ref: z.string(), sha: z.string().optional() }).optional(),
-  mergeable: z.boolean().nullable().optional(),
+  mergeable: z
+    .union([z.boolean(), z.literal("pending")])
+    .nullable()
+    .optional(),
   merged: z.boolean().optional(),
+  // The GraphQL id, so one query can read many pull requests.
+  node_id: z.string().optional(),
   requested_reviewers: z.array(person).optional(),
 });
 
@@ -73,6 +111,18 @@ export function githubObjectCacheKey(
   return `${collection}:${repo}#${number}`.toLowerCase();
 }
 
+/** Whether `next` is older than `current`, so it must not replace it. */
+export function isOlderGitHubObject(
+  current: { updated_at?: string | undefined } | null | undefined,
+  next: { updated_at?: string | undefined },
+): boolean {
+  return Boolean(
+    current?.updated_at &&
+    next.updated_at &&
+    Date.parse(next.updated_at) < Date.parse(current.updated_at),
+  );
+}
+
 /**
  * Merge webhook fields into a cached object. A field in the payload
  * replaces the cached one, and a missing field stays. Returns nothing when
@@ -81,25 +131,34 @@ export function githubObjectCacheKey(
 export function mergeGitHubObject<
   T extends GitHubIssueFields | GitHubPullRequestFields,
 >(current: T | null | undefined, payload: T): T | undefined {
-  if (
-    current?.updated_at &&
-    payload.updated_at &&
-    Date.parse(payload.updated_at) < Date.parse(current.updated_at)
-  ) {
-    return undefined;
+  if (isOlderGitHubObject(current, payload)) return undefined;
+  return { ...current, ...payload };
+}
+
+/**
+ * Merge a pull request webhook into its entry, and say whether its merge
+ * state and checks need a patch. GitHub computes both for one head commit,
+ * and sends `mergeable: null` while it computes. After a push, or with
+ * `null`, the cached values are about an old commit, so they turn
+ * `pending` until the patch reads them. Only an open pull request shows
+ * them, so only an open one gets a patch. Keep this decision here, so a
+ * later policy can change it in one place.
+ */
+export function mergeGitHubPullRequest(
+  current: GitHubPullRequestFields | null | undefined,
+  payload: GitHubPullRequestFields,
+): { fields: GitHubPullRequestFields; patch: boolean } | undefined {
+  const fields = mergeGitHubObject(current, payload);
+  if (!fields) return undefined;
+  const newHead =
+    current?.head?.sha !== undefined &&
+    payload.head?.sha !== undefined &&
+    current.head.sha !== payload.head.sha;
+  if (fields.state !== "open" || (payload.mergeable !== null && !newHead)) {
+    return { fields, patch: false };
   }
-  const merged = { ...current, ...payload };
-  // GitHub computes mergeability for one head commit. After a push, the
-  // cached value is about the old commit, so it is unknown until GitHub
-  // sends or answers it again.
-  if (
-    "head" in merged &&
-    current &&
-    "head" in current &&
-    current.head?.sha !== merged.head?.sha &&
-    !("mergeable" in payload)
-  ) {
-    delete merged.mergeable;
-  }
-  return merged;
+  return {
+    fields: { ...fields, checks: "pending", mergeable: "pending" },
+    patch: true,
+  };
 }

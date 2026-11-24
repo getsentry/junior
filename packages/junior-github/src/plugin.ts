@@ -29,6 +29,7 @@ import {
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
+import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
@@ -36,6 +37,7 @@ import {
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
   loadPullRequestCommitPages,
+  loadPullRequestHeadFacts,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -410,6 +412,13 @@ export function githubPlugin(
               author: `app/${login.replace(/\[bot\]$/, "")}`,
             });
           },
+          state: ctx.state,
+        });
+        await runGitHubPullRequestPatches({
+          cache: ctx.cache,
+          loadHeadFacts: async (nodeIds) =>
+            await loadPullRequestHeadFacts(installationEnv, nodeIds),
+          nowMs: ctx.nowMs,
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({

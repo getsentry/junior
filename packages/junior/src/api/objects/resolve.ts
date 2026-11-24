@@ -125,6 +125,13 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     filters: link.filters,
     objectTypes: link.objectTypes,
     owner: name,
+    ...(link.prefetch
+      ? {
+          prefetch: async (viewer: User, urls: URL[]) => {
+            await link.prefetch?.(objectLinkContext(name, viewer), urls);
+          },
+        }
+      : undefined),
     readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(objectLinkContext(name, viewer), url),
@@ -226,6 +233,29 @@ export async function viewerCanViewPluginLink(
   );
 }
 
+// Each link type loads its URLs in one call, so a page of cards does not
+// read the provider once per card. A failed prefetch only costs the
+// per-card reads.
+async function prefetchLinks(
+  viewer: User,
+  links: ReadonlyArray<{ linkType: ObjectLinkType; parsed: URL }>,
+): Promise<void> {
+  const byType = new Map<ObjectLinkType, URL[]>();
+  for (const { linkType, parsed } of links) {
+    if (linkType.prefetch)
+      byType.set(linkType, [...(byType.get(linkType) ?? []), parsed]);
+  }
+  await mapBounded(byType, async ([linkType, typeUrls]) => {
+    try {
+      await linkType.prefetch?.(viewer, typeUrls);
+    } catch (error) {
+      logException(error, "object_link.prefetch.failed", {
+        "app.plugin.name": linkType.owner,
+      });
+    }
+  });
+}
+
 /**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
@@ -237,10 +267,13 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
-  const results = await mapBounded([...new Set(urls)], async (url) => {
+  const links = [...new Set(urls)].flatMap((url) => {
     const parsed = URL.canParse(url) ? new URL(url) : undefined;
     const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-    if (!parsed || !linkType) return [];
+    return parsed && linkType ? [{ linkType, parsed, url }] : [];
+  });
+  await prefetchLinks(viewer, links);
+  const results = await mapBounded(links, async ({ linkType, parsed, url }) => {
     // Each viewer has their own entry: a card holds only what they see.
     const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
     const resolve = async () =>

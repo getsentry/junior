@@ -65,10 +65,7 @@ export async function recordCodeChange(
     change.conversationIds.map((conversationId) => sql`${conversationId}`),
     sql`, `,
   );
-  const { additions, changedFiles, deletions } = change.size ?? {};
   const values = {
-    ...(additions !== undefined ? { additions } : undefined),
-    ...(changedFiles !== undefined ? { changedFiles } : undefined),
     closedAt: change.closedAt ?? null,
     conversationIds:
       change.conversationIds.length > 0
@@ -81,8 +78,6 @@ export async function recordCodeChange(
             ORDER BY value
           )`
         : juniorCodeChanges.conversationIds,
-    ...(deletions !== undefined ? { deletions } : undefined),
-    ...(change.draft !== undefined ? { draft: change.draft } : undefined),
     mergedAt: change.mergedAt ?? null,
     number: change.number,
     openedAt: change.openedAt,

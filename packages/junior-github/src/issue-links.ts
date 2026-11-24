@@ -16,7 +16,7 @@ import type {
 import * as z from "zod";
 import { githubObjectAnnotation } from "./annotations.js";
 import {
-  GITHUB_OBJECT_CACHE,
+  githubObjectCacheOptions,
   githubIssueFieldsSchema,
   githubObjectCacheKey,
   githubPullRequestFieldsSchema,
@@ -24,6 +24,7 @@ import {
   type GitHubPullRequestFields,
 } from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
+import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
@@ -118,6 +119,7 @@ async function readFields<T>(
     `${link.owner}/${link.name}`,
     link.number,
   );
+  const options = githubObjectCacheOptions(collection);
   const load = async () => {
     const response = await githubApi(ctx.egress, {
       followRedirects: true,
@@ -126,14 +128,14 @@ async function readFields<T>(
     });
     // GitHub answers 404 for a missing object, and 410 for a deleted issue.
     if (response.status === 404 || response.status === 410) {
-      return { ...GITHUB_OBJECT_CACHE, value: null };
+      return { ...options, value: null };
     }
     if (!response.ok) {
       throw new Error(
         `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
       );
     }
-    return { ...GITHUB_OBJECT_CACHE, value: schema.parse(response.body) };
+    return { ...options, value: schema.parse(response.body) };
   };
   const cached = schema
     .nullable()
@@ -198,12 +200,29 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
   webPageFallback: true,
 };
 
+async function prefetchLinks(
+  ctx: ObjectLinkContext,
+  urls: URL[],
+): Promise<void> {
+  await prefetchGitHubPullRequests(
+    ctx,
+    urls.flatMap((url) => {
+      const link = parseLink(url);
+      return link?.kind === "pull_request"
+        ? [{ name: link.name, number: Number(link.number), owner: link.owner }]
+        : [];
+    }),
+  );
+}
+
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
   cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
   objectTypes: ["code_change"],
+  // A page of pull request cards reads GitHub in one query.
+  prefetch: prefetchLinks,
   readTool: () => "github_getPullRequest",
   resolve: resolveLink,
   webPageFallback: true,

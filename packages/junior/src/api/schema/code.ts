@@ -1,8 +1,5 @@
 import * as z from "zod";
-import {
-  codeChangeSizeSchema,
-  codeChangeStateSchema,
-} from "@sentry/junior-plugin-api";
+import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
 export const codeChangeSummarySchema = z
   .object({
@@ -54,8 +51,6 @@ export const codeRepositorySummarySchema = z
 export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
-    /** Whether the code change is a draft. Readers ignore it unless open. */
-    draft: z.boolean(),
     id: z.string().uuid(),
     /**
      * Latest push, review, or comment by a person. Absent when the code
@@ -67,8 +62,6 @@ export const codeChangeSummaryReportSchema = z
     openedAt: z.string(),
     provider: z.string().min(1),
     repository: z.string().min(1),
-    /** Lines and files changed. Unknown parts are absent. */
-    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().optional(),
     url: z.string().url().optional(),
@@ -97,7 +90,6 @@ export const codeChangeSearchQuerySchema = z
 /** A tracked code change that a Message can link to. */
 export const mentionableCodeChangeSchema = z
   .object({
-    draft: z.boolean(),
     number: z.number().int(),
     /** `owner/repo`. */
     repository: z.string(),
