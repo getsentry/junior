@@ -46,16 +46,6 @@ run.
   rule applied, and why, so that a production case can become an eval case,
   and a policy change is measured before it ships.
 
-## Entry points
-
-- Slack and dashboard: an Inbox item that names an action, its target, and
-  its side effects, and asks the person to confirm it.
-- Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
-  a Conversation.
-- Plugin authors: the tool permission (`allow`, `review`, `ask`, or `deny`),
-  tool annotations, `describeProposal`, and destination facts.
-- Deployment: `AI_GUARDIAN_MODEL` selects the review model.
-
 ## Rules
 
 - Each tool call gets one permission. `deny` never runs. `ask` always waits

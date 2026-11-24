@@ -7,6 +7,7 @@
  * consistent.
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { botConfig } from "@/chat/config";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
@@ -218,12 +219,26 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
   };
 }
 
-async function handleResumeFailure(args: {
+type ResumeFailure = {
   error: unknown;
   eventName: "slack.resume.turn.failed" | "slack.resume.pause_handler.failed";
   failureCode: ConversationTurnFailureCode;
   resume: ResumeSlackTurnArgs;
-}): Promise<void> {
+};
+
+async function handleResumeFailure(args: ResumeFailure): Promise<void> {
+  try {
+    await failResumedTurn(args);
+  } finally {
+    // Index even when the failure notice or a state write throws.
+    await indexEndedTurnEvents({
+      conversationId: args.resume.conversationId,
+      turnId: args.resume.turnId,
+    });
+  }
+}
+
+async function failResumedTurn(args: ResumeFailure): Promise<void> {
   const turnLifecycle = getTurnLifecycle();
   const capturedEventId = logException(args.error, args.eventName);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
@@ -302,6 +317,10 @@ async function completeStoppedResume(
     conversationId: resume.conversationId,
     createdAtMs: Date.now(),
     outcome: "cancelled",
+    turnId: resume.turnId,
+  });
+  await indexEndedTurnEvents({
+    conversationId: resume.conversationId,
     turnId: resume.turnId,
   });
 }
@@ -796,6 +815,11 @@ async function resumeSlackTurnInContext(
           "plugin.session.completed_task_schedule.failed",
         );
       }
+    } else if (outcome.status === "completed") {
+      await indexEndedTurnEvents({
+        conversationId: runArgs.conversationId,
+        turnId: runArgs.turnId,
+      });
     }
   } catch (error) {
     await status.clear();
@@ -854,6 +878,10 @@ async function resumeSlackTurnInContext(
       createdAtMs: Date.now(),
       failureCode: "persistence_failed",
       ...(eventId ? { eventId } : undefined),
+    });
+    await indexEndedTurnEvents({
+      conversationId: runArgs.conversationId,
+      turnId: runArgs.turnId,
     });
     throw postDeliveryCommitError;
   }

@@ -172,9 +172,10 @@ public actor DemoServer {
     var conversation = DemoConversation(
       summary: [
         "conversationId": .string(id), "title": .string(arguments.text("title") ?? title(for: message)),
-        "status": "working", "turnActive": true, "surface": "api", "startedAt": stamp, "lastSeenAt": stamp,
+        "status": "working", "turnActive": true, "treeState": "working", "surface": "api",
+        "startedAt": stamp, "lastSeenAt": stamp,
         "url": .string(JuniorServer.demo.page("/conversations/\(id)")!.absoluteString),
-      ], brief: nil, messages: [], pending: [], authorization: nil, listed: true)
+      ], messages: [], pending: [], authorization: nil, listed: true)
     let messageId = append(message, to: &conversation)
     conversations.insert(conversation, at: 0)
     remember(arguments, id, messageId)
@@ -202,6 +203,7 @@ public actor DemoServer {
     ])
     conversation.summary["status"] = "working"
     conversation.summary["turnActive"] = true
+    conversation.summary["treeState"] = "working"
     conversation.summary["lastSeenAt"] = stamp
     conversation.summary["archivedAt"] = nil
     conversation.replyAt = now().addingTimeInterval(Self.replyDelay)
@@ -220,6 +222,7 @@ public actor DemoServer {
       ])
       conversations[index].summary["status"] = "done"
       conversations[index].summary["turnActive"] = false
+      conversations[index].summary["treeState"] = "done"
       conversations[index].summary["lastSeenAt"] = stamp
       conversations[index].replyAt = nil
     }
@@ -318,6 +321,7 @@ public actor DemoServer {
     conversations[index].replyAt = nil
     conversations[index].summary["turnActive"] = false
     conversations[index].summary["status"] = "done"
+    conversations[index].summary["treeState"] = "done"
     return .object([
       "conversationId": id, "status": "requested", "stoppedInboundMessageIds": .array(dropped),
       "stoppedMessages": .array([]),
@@ -418,7 +422,6 @@ typealias JSONObject = [String: JSONValue]
 /// whether the viewer's feed lists it, and when its canned reply comes.
 struct DemoConversation {
   var summary: JSONObject
-  var brief: JSONValue?
   var messages: [JSONObject]
   var pending: [JSONValue]
   var authorization: JSONValue?
@@ -429,15 +432,14 @@ struct DemoConversation {
   var lastSeq: Int { messages.last.map(messageSeq) ?? -1 }
   var lastSeenAt: Date { parsedDate(summary["lastSeenAt"]) }
 
-  /// Titles and Briefs, as the real search reads them.
+  /// Titles and summaries, as the real search reads them.
   var searchText: String {
-    [summary["title"]?.string, brief?["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
+    [summary["title"]?.string, summary["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
   }
 
   /// The `getConversation` fields without the cursor and messages.
   var state: JSONObject {
     var state: JSONObject = ["conversation": .object(summary), "pendingMessages": .array(pending)]
-    state["brief"] = brief
     state["authorization"] = authorization
     return state
   }

@@ -1,27 +1,15 @@
 {
   "tables": {
     "junior_code_changes": {
-      "additions": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
-      "changed_files": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
       "closed_at": "Too expensive to derive: the Code pages filter and count code changes by state.",
-      "deletions": "Mirror awaiting cleanup: cards read the size through object-link resolve.",
-      "draft": "Mirror awaiting cleanup: cards read the draft state through object-link resolve.",
       "merged_at": "Too expensive to derive: the Code pages filter and count code changes by state.",
       "state": "Too expensive to derive: the Code pages filter and count code changes by state.",
       "title": "Too expensive to derive: search matches code changes by title."
     },
-    "junior_github_issues": "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer, and nothing reads the rest.",
     "junior_github_pull_request_requesters": "Junior-owned: the people who asked Junior for the pull request, and where they asked.",
     "junior_github_pull_requests": {
       "pull_request_id": "Junior-owned: the key of the facts that Junior records for its pull request.",
-      "repository_id": "Mirror awaiting cleanup: core code changes hold the repository.",
-      "repository_full_name": "Mirror awaiting cleanup: core code changes hold the repository.",
-      "number": "Mirror awaiting cleanup: core code changes hold the number.",
-      "state": "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-      "opened_at": "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-      "finished_at": "Mirror awaiting cleanup: core code changes hold the lifecycle.",
       "commit_composition": "Too expensive to derive: it needs every commit of the pull request.",
-      "conversation_ids": "Junior-owned: the Conversations that worked on the pull request.",
       "updated_at": "Junior-owned: when Junior last wrote the row.",
       "next_action": "Junior-owned: the requester action that Junior shows in the Inbox.",
       "ready_sync_requests": "Junior-owned: the next action check that Junior runs.",

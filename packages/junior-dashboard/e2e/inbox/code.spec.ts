@@ -188,10 +188,86 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
 
     // The ask stays with its pull request, and opens its row in the Inbox.
-    await waiting.getByRole("link", { name: /^Review requested/ }).click();
-    await expect(page).toHaveURL(
-      `${dashboard.baseURL}/?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+    // The Inbox drops `item` from the URL once the row shows, so the link
+    // and the open row prove it, not the URL in between.
+    const ask = waiting.getByRole("link", { name: /^Review requested/ });
+    await expect(ask).toHaveAttribute(
+      "href",
+      `/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
     );
+    await ask.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox?view=inbox`);
+    await expect(
+      page.getByRole("region", { name: `${prReview.title}: asks` }),
+    ).toBeVisible();
+  });
+
+  test("Code · Mine stacks the changes of one Conversation or Automation in their group", async ({
+    dashboard,
+    page,
+  }) => {
+    const flakyDeploy = {
+      id: "slack:C1:1770000000.000100",
+      kind: "conversation" as const,
+      title: "Fix the flaky deploy",
+    };
+    const releaseTrain = {
+      id: "scheduled-3",
+      kind: "automation" as const,
+      title: "Release train",
+    };
+    await mockViewerCodeChanges(page, [
+      {
+        idleDays: 0,
+        number: 7,
+        stack: flakyDeploy,
+        title: "Tune the retry backoff",
+      },
+      { idleDays: 1, number: 8, title: "Drop the legacy webhook" },
+      {
+        idleDays: 2,
+        number: 9,
+        stack: flakyDeploy,
+        title: "Retry the deploy check",
+      },
+      { idleDays: 3, number: 10, stack: releaseTrain, title: "Bump zod" },
+      {
+        draft: true,
+        idleDays: 0,
+        number: 11,
+        stack: releaseTrain,
+        title: "Bump vitest",
+      },
+    ]);
+    await page.goto(`${dashboard.baseURL}/code`);
+    const others = page
+      .getByRole("region", { exact: true, name: "Code" })
+      .getByRole("region", { name: "Waiting on others" });
+    // The stack takes the place of its first change, so the group keeps its
+    // order.
+    const stack = others.getByRole("listitem", { name: flakyDeploy.title });
+    await expect(stack.getByRole("listitem")).toHaveText([
+      /Tune the retry backoff/,
+      /Retry the deploy check/,
+    ]);
+    await expect(others).toContainText(
+      /Fix the flaky deploy[\s\S]*Retry the deploy check[\s\S]*Drop the legacy webhook[\s\S]*Bump zod/,
+    );
+    await expect(
+      stack.getByRole("link", { exact: true, name: flakyDeploy.title }),
+    ).toHaveAttribute(
+      "href",
+      `/conversations/${encodeURIComponent(flakyDeploy.id)}`,
+    );
+    // A source stacks only within one group: its draft sits in Drafts, so
+    // its other change stays a plain row.
+    await expect(
+      others.getByRole("listitem", { name: releaseTrain.title }),
+    ).toHaveCount(0);
+    await expect(
+      others.getByRole("listitem", { name: "Bump zod" }),
+    ).toBeVisible();
+    await screenshot(page, "code-mine-stacks", { lightTheme: true });
   });
 
   test("Code · Mine waits for your asks before it groups your changes, and says when they fail", async ({
@@ -244,7 +320,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       await page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { exact: true, name: "Code" })
@@ -286,7 +362,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await header
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     });
   });
 
@@ -322,7 +398,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       const state = new URL(route.request().url()).searchParams.get("state");
       const changes = (count: number, changeState: string, title: string) =>
         Array.from({ length: count }, (_, index) => ({
-          draft: false,
           id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
           number: index + 1,
           openedAt: report.generatedAt,
@@ -418,7 +493,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       const response = await route.fetch();
       const report = await response.json();
       const idleChange = {
-        draft: false,
         id: "00000000-0000-4000-8000-000000000099",
         lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
         number: 990,

@@ -39,7 +39,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const title = "Investigate checkout latency";
       const row = rowLink(list, title);
@@ -114,7 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const rows = list.getByRole("listitem");
       const waiting = rows.filter({
@@ -184,7 +184,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const finishedRow = list.getByRole("link", {
         name: /Closed issue summary/,
@@ -193,11 +193,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       // The row menu shows the rows of the `⋯` menu, in the same order.
       await expect(page.getByRole("menuitem")).toHaveText([
         "Share",
-        "Copy as Markdown",
-        "Open event log",
         "Pin",
         "Rename",
+        "Copy as Markdown",
         "Subscribe",
+        "Open event log",
         "Archive",
       ]);
       await screenshot(page, "conversation-row-context-menu", {
@@ -211,7 +211,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const renameRequest = page.waitForRequest(
         (request) =>

@@ -21,22 +21,14 @@ also wake a Conversation or run an Event automation.
 - Junior acts as its own App, and credits people in attribution, not by
   using their credentials.
 
-## Entry points
-
-- Slack: ask Junior in a thread or DM, or use `$github-code`.
-- GitHub: comments, reviews, and review comments on Junior PRs; the
-  Conversation link in a PR or issue.
-- Dashboard: Settings, Identities, to connect GitHub; Code, in the left bar
-  under Conversations, which opens Mine (your open PRs: Waiting on you,
-  Waiting on others, Drafts), with All (every repository) beside it; PR and
-  issue cards in Conversations.
-
 ## Rules
 
 - A user's linked GitHub account is used for attribution. In the
   dashboard, it also limits which PR and issue cards the user sees.
 - Code opens on Mine. Mine lists each of your open PRs once, with the Inbox
   asks that name it.
+- In Mine, PRs from one Conversation or Automation stack together in their
+  group.
 - Every PR names its Work owner. Junior refuses to open a PR that names
   nobody.
 - Images in PRs, issues, and comments are links to public Junior images.

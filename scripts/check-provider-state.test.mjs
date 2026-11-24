@@ -14,7 +14,7 @@ function snapshot(table, columns) {
 }
 
 const message = (key) =>
-  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-baseline.json with the reason.`;
+  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-exceptions.json with the reason.`;
 
 test("reports every GitHub plugin column that is not an exception", () => {
   assert.deepEqual(

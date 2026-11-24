@@ -14,6 +14,7 @@ declare module "#junior/config" {
     }>;
   }
 
+  export const botName: string;
   export const createDashboardApp:
     | ((options: VirtualDashboardOptions) => {
         fetch(request: Request): Promise<Response> | Response;
@@ -24,4 +25,11 @@ declare module "#junior/config" {
   export const pluginSet: JuniorPluginSet | undefined;
   export const plugins: PluginCatalogConfig;
   export const pluginRuntimeRegistrations: string[];
+}
+
+/** System prompt table rendered by juniorNitro() at build time. */
+declare module "#junior/system-prompts" {
+  import type { SystemPromptTable } from "@/chat/system-prompt-table";
+
+  export const systemPrompts: SystemPromptTable;
 }

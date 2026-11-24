@@ -3,9 +3,6 @@ import type {
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { parsePath } from "react-router";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
-
-import type { Conversation } from "../types";
 
 import {
   type InboxBundle,
@@ -66,12 +63,12 @@ export function inboxViewPath(
   options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
-  // Phones show the entries at `/`, so an item link names its entry.
+  // Phones show the entries at `/inbox`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
   if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
-  return search ? `/?${search}` : "/";
+  return search ? `/inbox?${search}` : "/inbox";
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
@@ -403,21 +400,6 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-/**
- * The size of the code change that an item is about, as its Conversation's
- * linked work saved it. Undefined when that work has no size.
- */
-export function subjectSize(
-  item: Pick<InboxItemPayload, "subject">,
-  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
-): CodeChangeSize | undefined {
-  const url = item.subject?.url;
-  if (!url) return undefined;
-  return conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.size;
 }
 
 /**

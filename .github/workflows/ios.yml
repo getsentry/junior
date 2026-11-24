@@ -23,7 +23,7 @@ concurrency:
 jobs:
   build:
     name: test / build
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -43,13 +43,15 @@ jobs:
 
   ui:
     name: test / ui and screenshots
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      - name: Test the beta status script
+        run: node --test apps/ios/scripts/ios-beta.test.mjs
       - name: Install the CI tools
         run: brew bundle --file=apps/ios/Brewfile.ci
       - name: Start the mock MCP server
@@ -87,7 +89,7 @@ jobs:
 
   ipad:
     name: screenshots / ipad ${{ matrix.orientation }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
     strategy:
       fail-fast: false

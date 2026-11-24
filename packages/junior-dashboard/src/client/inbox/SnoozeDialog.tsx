@@ -4,7 +4,7 @@ import {
   INBOX_SNOOZE_MAX_TRIGGERS,
 } from "@sentry/junior/api/schema";
 import { ChevronsUpDown, Link2, Plus, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { type KeyboardEvent, useId, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -44,8 +44,13 @@ import {
 } from "../conversations/ComposerReference";
 import type { ComposerReference } from "../conversations/composerReferences";
 import { useDebouncedValue } from "../debouncedValue";
+import {
+  MessageObjectsProvider,
+  useListedObjects,
+} from "../display-text/DisplayText";
 import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
+import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
@@ -315,6 +320,12 @@ function useCodeChangeSearch(query: string) {
   };
 }
 
+/** Whether a key press moves a command list's highlight. */
+function movesHighlight(event: KeyboardEvent): boolean {
+  if (["ArrowDown", "ArrowUp", "End", "Home"].includes(event.key)) return true;
+  return event.ctrlKey && ["j", "k", "n", "p"].includes(event.key);
+}
+
 /**
  * Pick the page to watch: the row's subject, a pull request that the
  * search finds, or a pasted link to a pull request or issue.
@@ -329,15 +340,50 @@ function WatchPicker(props: {
   const search = useCodeChangeSearch(
     link ? "" : text.slice(0, SEARCH_MAX_LENGTH),
   );
+  // Only an open change can be a draft, so only it needs its live card.
+  const listedOf = useListedObjects(
+    search.changes.flatMap((change) =>
+      change.state === "open" ? change.url : [],
+    ),
+  );
+  const waits = (change: { state: string; url: string }) =>
+    change.state === "open" && !listedOf(change.url).settled;
+  // The highlight stays on the first row that can be picked, so it moves up
+  // when the cards of open rows arrive. A row that the viewer moved to by
+  // key or pointer keeps it until the search changes.
+  const [moved, setMoved] = useState<{ query: string; value: string }>();
+  const viewerMove = useRef(false);
+  // The flag lasts the whole event: React runs capture and bubble handlers
+  // in separate listeners, so a microtask would end it before cmdk moves.
+  const markViewerMove = () => {
+    viewerMove.current = true;
+    setTimeout(() => {
+      viewerMove.current = false;
+    });
+  };
+  const first =
+    props.subject && !text
+      ? "subject"
+      : (link ?? search.changes.find((change) => !waits(change))?.url ?? "");
   return (
-    <Command label="Pull request or issue" shouldFilter={false}>
+    <Command
+      label="Pull request or issue"
+      onKeyDownCapture={(event) => {
+        if (movesHighlight(event)) markViewerMove();
+      }}
+      onValueChange={(value) => {
+        if (viewerMove.current) setMoved({ query, value });
+      }}
+      shouldFilter={false}
+      value={moved?.query === query ? moved.value : first}
+    >
       <CommandInput
         autoFocus
         onValueChange={setQuery}
         placeholder="Search pull requests or paste a link"
         value={query}
       />
-      <CommandList className="max-h-64">
+      <CommandList className="max-h-64" onPointerMoveCapture={markViewerMove}>
         {props.subject && !text ? (
           <CommandGroup heading="This item">
             <CommandItem
@@ -362,8 +408,9 @@ function WatchPicker(props: {
         {search.changes.length > 0 ? (
           <CommandGroup heading="Pull requests">
             {search.changes.map((change) => {
+              const listed = listedOf(change.url);
               const reference: ComposerReference = {
-                draft: change.draft,
+                draft: listedDraft(listed),
                 kind: "code_change",
                 number: change.number,
                 repository: change.repository,
@@ -372,6 +419,9 @@ function WatchPicker(props: {
               };
               return (
                 <CommandItem
+                  // An open change is saved with its draft state, so it
+                  // waits for its card.
+                  disabled={waits(change)}
                   key={change.url}
                   onSelect={() =>
                     props.onPick({ kind: "page", reference, url: change.url })
@@ -475,13 +525,17 @@ function ConditionRow(props: {
             align="start"
             className="w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-80 overflow-hidden p-0"
           >
-            <WatchPicker
-              onPick={(next) => {
-                props.onChange({ id: condition.id, watched: next });
-                setOpen(false);
-              }}
-              subject={subject}
-            />
+            {/* The found pull requests read their live cards in one
+                request. */}
+            <MessageObjectsProvider>
+              <WatchPicker
+                onPick={(next) => {
+                  props.onChange({ id: condition.id, watched: next });
+                  setOpen(false);
+                }}
+                subject={subject}
+              />
+            </MessageObjectsProvider>
           </PopoverContent>
         </Popover>
         <Select<string>

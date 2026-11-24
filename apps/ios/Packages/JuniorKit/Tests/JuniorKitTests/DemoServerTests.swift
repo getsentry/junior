@@ -33,6 +33,11 @@ final class ManualClock: @unchecked Sendable {
     // The mock data's times move to the demo's start.
     let lastSeen = try #require(active.conversations.first?.lastSeenAt.date)
     #expect(abs(lastSeen.timeIntervalSince(clock.now)) < 3600)
+    #expect(active.conversations.contains { $0.treeState == .needsYou })
+    // A search reads summaries as well as titles.
+    let found = try await client.call("searchConversations", ["q": "serializer"], as: ConversationList.self)
+    #expect(!found.conversations.isEmpty)
+    #expect(found.conversations.allSatisfy { $0.summary?.contains("serializer") == true })
     for row in active.conversations + archived.conversations {
       let state = try await client.call("getConversation", id(row.conversationId), as: ConversationState.self)
       #expect(state.conversation.conversationId == row.conversationId)
@@ -41,6 +46,10 @@ final class ManualClock: @unchecked Sendable {
     }
     let items = try await client.call("searchInboxItems", ["limit": 50], as: InboxItemList.self)
     #expect(!items.items.isEmpty)
+    let replyNotice = try #require(items.items.first { $0.id == "qa-reply-dashboard-qa" })
+    #expect(replyNotice.canAct && !replyNotice.needsViewer)
+    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
+    #expect(todo.question == nil && todo.needsViewer)
     for item in items.items {
       _ = try await client.call("getInboxItem", ["id": .string(item.id)], as: InboxItemResult.self)
       for conversationId in item.conversationIds {
@@ -68,7 +77,7 @@ final class ManualClock: @unchecked Sendable {
     let working = try await client.call(
       "getConversation", id(row.conversationId).merging(["after": .string(sent.cursor)]) { a, _ in a },
       as: ConversationState.self)
-    #expect(working.conversation.turnActive)
+    #expect(working.conversation.turnActive && working.conversation.treeState == .working)
     #expect(working.messages?.map(\.text) == ["Hello"])
 
     let retry = try await client.call(
@@ -80,7 +89,7 @@ final class ManualClock: @unchecked Sendable {
     let done = try await client.call(
       "getConversation", id(row.conversationId).merging(["after": .string(working.cursor)]) { a, _ in a },
       as: ConversationState.self)
-    #expect(!done.conversation.turnActive)
+    #expect(!done.conversation.turnActive && done.conversation.treeState == .done)
     #expect(done.messages?.map(\.isAssistant) == [true])
   }
 
@@ -91,6 +100,11 @@ final class ManualClock: @unchecked Sendable {
     let list = try await client.call("searchConversations", as: ConversationList.self)
     #expect(list.conversations.first?.conversationId == accepted.conversationId)
     #expect(list.conversations.first?.title == "Check the deploy")
+    #expect(list.conversations.first?.treeState == .working)
+    struct Stopped: Decodable, Sendable { var status: String }
+    _ = try await client.call("stopConversation", id(accepted.conversationId), as: Stopped.self)
+    let stopped = try await client.call("searchConversations", as: ConversationList.self)
+    #expect(stopped.conversations.first?.treeState == .done)
   }
 
   @Test func archivesAndPins() async throws {

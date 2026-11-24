@@ -1,6 +1,6 @@
-import { viewAsParticipant } from "./conversationMenu";
+import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
 import type { Locator } from "@playwright/test";
-import { openRow } from "./inbox-fixture";
+import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 
@@ -50,7 +50,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const sidebarLink = page.getByRole("link", {
       name: /Archived restore target/,
     });
@@ -78,7 +78,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       archived: false,
     });
     // The list shows the row again.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(sidebarLink).toBeVisible();
   });
 
@@ -87,6 +87,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
+    // A Conversation outside the feed comes back while it has open asks, so
+    // this one has none.
+    await mockInboxItems(page, { open: [] });
     let archived = false;
     await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
       const response = await route.fetch();
@@ -117,7 +120,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
       });
     });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const conversationLink = page.getByRole("link", {
       name: /Dashboard QA edge cases/,
     });
@@ -185,7 +188,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             : { json: { error: "Archive failed" }, status: 500 },
         );
       });
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       await openRow(
         page.getByRole("link", { name: /Dashboard QA edge cases/ }),
       );
@@ -201,7 +204,9 @@ test.describe("new UI", { tag: "@new" }, () => {
         .click();
 
       // The list shows before the archive request finishes.
-      await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+      await expect(page).toHaveURL(
+        `${dashboard.baseURL}/inbox?view=conversations`,
+      );
       const conversationLink = page.getByRole("link", {
         name: /Dashboard QA edge cases/,
       });
@@ -238,10 +243,10 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       }),
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
+    await conversationMenuRow(page, "Archive").click();
 
     const undoNotice = page
       .getByRole("region", { name: "Notifications" })
@@ -288,7 +293,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       archived: true,
     });
     // A direct link has no origin, so the archive returns to Conversations.
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
   });
 
   test("shows why a child restore is refused", async ({ page, dashboard }) => {
@@ -313,7 +320,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           json: { archivedAt: "2026-08-21T16:45:00.000Z" },
         });
       });
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
       const conversationLink = page.getByRole("link", {
         name: /Dashboard QA edge cases/,
@@ -364,7 +371,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         }
         await route.fulfill({ json: { archivedAt: null } });
       });
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
       await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
       await page
@@ -405,7 +412,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           json: { archivedAt: "2026-08-21T16:45:00.000Z" },
         });
       });
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
       await restOnRow(
         page.getByRole("link", { name: /Dashboard QA edge cases/ }),
@@ -463,7 +470,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { archivedAt: "2026-08-21T16:45:00.000Z" },
       });
     });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     const conversationLink = page.getByRole("link", {
       name: /Dashboard QA edge cases/,
@@ -514,7 +521,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         status: 500,
       });
     });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     const firstConversation = page.getByRole("link", {
       name: /Dashboard QA edge cases/,

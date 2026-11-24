@@ -25,6 +25,7 @@ const TEST_VIEWER_COOKIE = "junior_test_viewer";
  */
 export function mockMcpDashboardConfig(): void {
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp: (options: {
       authenticatedRoutes?: readonly AuthenticatedRoute[];
     }) => {

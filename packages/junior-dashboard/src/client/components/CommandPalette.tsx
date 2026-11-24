@@ -107,7 +107,7 @@ function CommandPaletteBody(props: {
   const search = useDebouncedValue(query.trim());
   // The shell already holds the feed, so rows filter on each keystroke with
   // no request. The server search adds matches that the title filter
-  // misses, such as a Brief or an Annotation match.
+  // misses, such as a summary or an Annotation match.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
   const navigate = useNavigate();

@@ -38,7 +38,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [todoForYou],
     });
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     // It needs the viewer, so it counts in the tab.
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
     await expandRow(rowHead(todo(page), checkout));
@@ -60,7 +60,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [todoForYou],
     });
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     await expandRow(rowHead(todo(page), checkout));
     await rowOf(page)
       .getByRole("region", { name: todoForYou.title })
@@ -81,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, { open: [todoForYou] });
     // The shot keeps the pointer on the row, so it needs no resize.
     await page.setViewportSize(desktop);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await rowHead(todo(page), checkout).hover();
     await expect(ownActions(rowOf(page))).toHaveText([
       "Dismiss",
@@ -104,7 +104,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [todoForYou] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(todo(page), checkout));
     await rowOf(page)
       .getByRole("link", { name: "Open conversation" })
@@ -117,7 +117,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("Snooze puts a To-do away", async ({ dashboard, page }) => {
     await mockInboxItems(page, { automations: () => 0, open: [todoForYou] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(todo(page), checkout));
     await rowOf(page)
       .getByRole("button", { exact: true, name: "Snooze" })
@@ -144,7 +144,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, {
       open: [rollout, todoForYou],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const stack = todo(page).getByRole("listitem", { name: checkout });
     await expect(stack.getByRole("list").getByRole("listitem")).toHaveCount(2);
     await stack

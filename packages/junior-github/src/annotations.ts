@@ -55,17 +55,8 @@ export function githubSidebarAnnotations(
       if (annotation.kind === "object") {
         sidebar.title = annotation.title;
         if (annotation.facts?.type === "code_change") {
-          const { additions, changedFiles, deletions, previewImageUrls } =
-            annotation.facts;
-          const image = previewImageUrls?.[0];
+          const image = annotation.facts.previewImageUrls?.[0];
           if (image) sidebar.imageUrl = image;
-          if (
-            additions !== undefined ||
-            deletions !== undefined ||
-            changedFiles !== undefined
-          ) {
-            sidebar.size = { additions, changedFiles, deletions };
-          }
         }
       }
       if (annotation.url) sidebar.url = annotation.url;
@@ -153,12 +144,20 @@ function githubStatusAnnotation(
   };
 }
 
-/** Refresh an existing object's status without selecting a card for delivery. */
+/**
+ * Refresh an existing object's status without selecting a card for delivery.
+ * With `existingOnly`, a conversation with no annotation for the object gets
+ * none.
+ */
 async function updateGitHubAnnotation(
   store: PluginAnnotations,
   input: GitHubStatusUpdate,
+  existingOnly: boolean,
 ): Promise<void> {
-  await store.upsert(githubStatusAnnotation(await store.list(), input));
+  const annotations = await store.list();
+  const key = githubObjectKey(input.repo, input.number);
+  if (existingOnly && !annotations.some((item) => item.key === key)) return;
+  await store.upsert(githubStatusAnnotation(annotations, input));
 }
 
 /** Conversations whose annotation one update changes at once. */
@@ -171,6 +170,11 @@ export const ANNOTATION_UPDATE_CONCURRENCY = 8;
 export async function updateGitHubAnnotations(args: {
   annotations: PluginConversationAnnotations;
   conversationIds: string[];
+  /**
+   * Update only conversations that already hold an annotation for the
+   * object, for conversation ids that a person can edit, such as a footer.
+   */
+  existingOnly?: boolean;
   log?: Pick<PluginLogger, "error"> | undefined;
   update: GitHubStatusUpdate;
 }): Promise<void> {
@@ -181,6 +185,7 @@ export async function updateGitHubAnnotations(args: {
         updateGitHubAnnotation(
           args.annotations.forConversation(conversationId),
           args.update,
+          args.existingOnly ?? false,
         ),
       ),
     ),

@@ -17,7 +17,8 @@ import {
 } from "../../../components/controls/TimeRangeSelector";
 import { buildConversations, workspacePath } from "../../../format";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
-import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
+import { MessageObjectsProvider } from "../../../display-text/DisplayText";
+import { CodeChangeRows } from "../../../pages/code/CodeChangeRow";
 import { CodeSummaryCards } from "../../../pages/code/CodeSummaryCards";
 import {
   CODE_ALL_PATH,
@@ -174,12 +175,16 @@ function RepositoryOverview(props: { data: CodeRepositoryReport }) {
           viewAllTo={codeRepositoryPath(data.repository.id, "conversations")}
         >
           {conversations.length > 0 ? (
-            conversations.map((conversation) => (
-              <RecentConversationRow
-                conversation={conversation}
-                key={conversation.id}
-              />
-            ))
+            // The rows read the live status of their linked work in one
+            // request.
+            <MessageObjectsProvider>
+              {conversations.map((conversation) => (
+                <RecentConversationRow
+                  conversation={conversation}
+                  key={conversation.id}
+                />
+              ))}
+            </MessageObjectsProvider>
           ) : conversationsQuery.data || conversationsQuery.error ? (
             <div className="p-4">
               <EmptyTelemetry>
@@ -197,9 +202,7 @@ function RepositoryOverview(props: { data: CodeRepositoryReport }) {
           viewAllTo={codeRepositoryPath(data.repository.id, "changes")}
         >
           {changes.length > 0 ? (
-            changes.map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))
+            <CodeChangeRows changes={changes} />
           ) : (
             <div className="p-4">
               <EmptyTelemetry>No code changes are recorded yet.</EmptyTelemetry>

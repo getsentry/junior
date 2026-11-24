@@ -15,6 +15,7 @@ import {
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -67,6 +68,7 @@ async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
+  sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   let count = 0;
@@ -91,6 +93,7 @@ async function runPluginHeartbeats(args: {
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
+              sendPluginTask: args.sendPluginTask,
               showInboxItem: args.showInboxItem,
             }),
           ),
@@ -165,6 +168,8 @@ export async function runHeartbeat(args: {
   /** The app's event publisher. */
   events: AppEventPublisher;
   nowMs: number;
+  /** Sends plugin tasks. */
+  sendPluginTask: SendPluginTask;
   /** Shows an Inbox item that a plugin heartbeat changed. */
   showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
@@ -226,6 +231,7 @@ export async function runHeartbeat(args: {
     dispatchForIdentity: args.dispatchForIdentity,
     events: args.events,
     nowMs: args.nowMs,
+    sendPluginTask: args.sendPluginTask,
     showInboxItem: args.showInboxItem,
   });
   try {

@@ -83,7 +83,7 @@ use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 | Argument          | Effect                                                        |
 | ----------------- | ------------------------------------------------------------- |
-| `-JuniorServer`   | Dashboard origin. The default is `http://127.0.0.1:4317`.     |
+| `-JuniorServer`   | Dashboard origin. The default is the last server signed in to, else `https://junior-prod.sentry.dev`. |
 | `-JuniorOpen`     | A dashboard path to open, such as `/inbox?item=qa-rollout`.  |
 | `-JuniorTheme`    | `dark`, `light`, or `system`.                                 |
 | `-JuniorFixedNow` | An ISO time used as "now", for screenshots of the mock data.  |

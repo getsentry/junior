@@ -28,14 +28,6 @@ of it.
 - The Lead is one long transcript that never resets. Compaction keeps it
   usable, so each new request has the context of the earlier ones.
 
-## Entry points
-
-- Dashboard: the home page, "Your Lead". New work starts here. There is no
-  separate new conversation page.
-- The Lead's tools: `startConversation`, `messageAgent`, the Conversation
-  search and read tools, `watchEvents` and timers, the Inbox tools, and the
-  Automation tools.
-
 ## Rules
 
 - Each person has exactly one Lead. It is private: only that person sees it.
@@ -54,8 +46,10 @@ of it.
   This exception applies only to the Lead.
 - Search looks first at Conversations where the person is a Participant,
   and can also find other Conversations that the person can read.
-- Nothing reports to the Lead on its own. The Lead hears back from a
-  Conversation only through a Watch that it chose to create.
+- The Lead watches each Conversation that it starts, the same as any agent
+  that starts another. Each update starts a Lead Turn, and the Lead decides
+  whether to tell its person. It hears back from other Conversations only
+  through a Watch that it chose to create.
 - An Automation that the Lead creates posts to a public Slack channel. An
   Automation never delivers to the Lead or to the dashboard.
 - Private Conversations that the Lead starts are not supported.

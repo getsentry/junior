@@ -74,9 +74,10 @@ If Junior should receive events or report PR/issue outcomes, also:
 
 1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
-3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
-   Issue comment, Pull request, Pull request review, Pull request review
-   comment, Push, and Release.
+3. Subscribe the App to: Check run, Check suite, Deployment, Deployment
+   status, Issues, Issue comment, Pull request, Pull request review, Pull
+   request review comment, Push, and Release. Check run events keep the
+   check counts on pull request cards current.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -327,8 +328,8 @@ The next Vercel deploy applies this plugin's migrations, because the scaffolded
 build runs [junior upgrade](/cli/upgrade/). For a local database, run
 `pnpm exec junior upgrade` yourself.
 
-The migrations create the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and outcome tracking. Opened pull
+The migrations create the `junior_github_pull_requests` projection used by
+webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
 

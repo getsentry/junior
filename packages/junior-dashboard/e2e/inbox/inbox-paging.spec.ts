@@ -119,7 +119,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/inbox-items/count**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(row).toBeVisible();
     // A count that never answers does the same.
     await page.unroute("**/api/inbox-items/count**");
@@ -183,7 +183,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       title: `Approve rollout step ${index}`,
     }));
     await mockInboxItems(page, { open: asks, pageSize: 10 });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const rows = page
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
@@ -232,7 +232,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const { ask, notices } = askBehindNotices();
     await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
     await holdLaterInboxItemPages(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const rows = page
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
@@ -247,7 +247,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const { ask, notices } = askBehindNotices();
     await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
     await holdLaterInboxItemPages(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
     await expect(todo.locator("[data-inbox-row]")).toHaveCount(0);
@@ -300,7 +300,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
       route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const rows = page
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
@@ -322,7 +322,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       fail = false;
       return route.fulfill({ json: { error: "Read failed" }, status: 500 });
     });
-    await page.goto(`${dashboard.baseURL}/?view=done`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=done`);
     await expect(page.getByText("Could not load Done.")).toBeVisible();
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(
@@ -364,7 +364,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ],
     });
     await holdLaterInboxItemPages(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     const filters = page.getByRole("navigation", { name: "Asks to show" });
     await expect(
@@ -394,7 +394,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await holdLaterInboxItemPages(page);
     const linked = decisions[5]!;
-    await page.goto(`${dashboard.baseURL}/?item=${linked.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${linked.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(rowHead(todo, linked.title)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" });
@@ -415,7 +415,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
       route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     // The same server count as the badge, not the list that failed to load.
     await expect(nav.getByRole("link", { name: /^Automations/ })).toHaveText(
@@ -442,7 +442,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { ...body, conversations: done, nextCursor: "older" },
       });
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
     await expect(inbox.getByText("Nothing left here")).toBeVisible();
     await inbox
@@ -457,7 +457,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const cardsRead = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/objects",
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(
       page
         .getByRole("region", { exact: true, name: "Conversations" })
@@ -503,7 +503,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     const older = page.waitForRequest((request) =>
       /\/api\/conversations\?.*cursor=/.test(request.url()),
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations&state=working`);
+    await page.goto(
+      `${dashboard.baseURL}/inbox?view=conversations&state=working`,
+    );
     const list = page.getByRole("region", {
       exact: true,
       name: "Conversations",

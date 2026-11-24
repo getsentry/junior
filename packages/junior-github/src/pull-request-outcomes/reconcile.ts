@@ -1,21 +1,22 @@
 /**
  * The daily reconcile of open Junior pull requests.
  *
- * Only `pull_request` webhooks change a stored pull request. When GitHub
- * does not deliver a close, or its handler fails, the row stays open. Once a
- * day for each repository, the heartbeat reads the stored open rows from
- * GitHub with GraphQL, and checks only their state. Each close goes through
- * the webhook write path, with its merged or closed_unmerged event. A pull
- * request that is still open gets its current title and draft state in the
- * code index, from the same read. The writes are guarded by `updatedAt`, so
- * a replay cannot move a newer row back.
+ * Only `pull_request` webhooks change the lifecycle of a Junior pull request
+ * in Junior's code index. When GitHub does not deliver a close, or its
+ * handler fails, the code change stays open. Once a day for each repository,
+ * the heartbeat reads the open code changes from GitHub with GraphQL, and
+ * checks only their state. Each close goes through the webhook write path,
+ * with its merged or closed_unmerged event. A pull request that is still
+ * open gets its current title in the code index, from the same read. The
+ * writes are guarded by `updatedAt`, so a replay cannot move a newer state
+ * back.
  */
 import type {
-  CodeChangePublisher,
   EventPublisher,
   PluginConversationAnnotations,
   PluginConversationChanges,
   PluginConversationInboxItems,
+  PluginCodeChanges,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -32,11 +33,10 @@ import {
 } from "../webhooks/pull-request-people.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
 import { applyGitHubPullRequestOutcome, githubCodeChange } from "./apply.js";
-import { listGitHubStaleOpenPullRequests } from "./store.js";
 
 /**
- * Time between the reconciles of one repository. A row with a newer
- * lifecycle change waits, because its webhook can still arrive.
+ * Time between the reconciles of one repository. A code change with a newer
+ * update waits, because its webhook can still arrive.
  */
 const RECONCILE_MS = 24 * 60 * 60_000;
 
@@ -46,7 +46,8 @@ const REPOSITORY_LIMIT = 1;
 /**
  * Pull requests per GraphQL query. 100 is the GraphQL page size, which keeps
  * the query near one rate limit point and its response small. A repository
- * with more stale open rows uses more queries, so no row waits for others.
+ * with more stale open pull requests uses more queries, so none waits for
+ * others.
  */
 const PULL_REQUESTS_PER_QUERY = 100;
 
@@ -86,7 +87,7 @@ const lifecyclesResponseSchema = z.object({
 interface ReconcileArgs {
   annotations: PluginConversationAnnotations;
   botEmail?: string | undefined;
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   events: EventPublisher;
@@ -180,25 +181,20 @@ async function reconcilePullRequest(
   pullRequest: z.output<typeof lifecycleSchema>,
 ): Promise<void> {
   if (pullRequest.state === "OPEN") {
-    // No lifecycle webhook arrives for a title edit, and a draft webhook can
-    // be lost. Write both from this read. No conversation ids keeps the
-    // linked ones.
+    // No lifecycle webhook arrives for a title edit. Write it from this
+    // read. No conversation ids keeps the linked ones.
     await args.codeChanges.record(
-      githubCodeChange(
-        {
-          candidateOwned: false,
-          draft: pullRequest.isDraft,
-          number: pullRequest.number,
-          openedAt: new Date(pullRequest.createdAt),
-          pullRequestId: String(pullRequest.databaseId),
-          repositoryFullName: nameWithOwner,
-          repositoryId: String(databaseId),
-          state: "open",
-          title: pullRequest.title,
-          updatedAt: new Date(pullRequest.updatedAt),
-        },
-        [],
-      ),
+      githubCodeChange({
+        candidateOwned: false,
+        number: pullRequest.number,
+        openedAt: new Date(pullRequest.createdAt),
+        pullRequestId: String(pullRequest.databaseId),
+        repositoryFullName: nameWithOwner,
+        repositoryId: String(databaseId),
+        state: "open",
+        title: pullRequest.title,
+        updatedAt: new Date(pullRequest.updatedAt),
+      }),
     );
     return;
   }
@@ -208,7 +204,7 @@ async function reconcilePullRequest(
     botEmail: args.botEmail,
   });
   if (!outcome) return;
-  // Publish before the write. When the publish fails, the row stays open
+  // Publish before the write. When the publish fails, the change stays open
   // and the next reconcile tries again. The events have the key of the
   // webhook events for this close, so a Watch gets the close once.
   // Like the webhook, a merge names the people involved.
@@ -229,7 +225,7 @@ async function reconcilePullRequest(
     await args.events.publish({ ...event, objectType: "code_change" });
   }
   // No webhook closed the merge conflict item either. Like the
-  // publish, a failed close keeps the row open for the next reconcile.
+  // publish, a failed close keeps the change open for the next reconcile.
   await closeGitHubConflictItem({
     db: args.db,
     ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
@@ -258,19 +254,18 @@ async function reconcilePullRequest(
 export async function reconcileGitHubPullRequests(
   args: ReconcileArgs,
 ): Promise<void> {
-  // Group by the repository id. A rename changes the name, not the id, so
-  // rows with an old name stay in one group.
+  // Group by the repository id, which a rename does not change.
   const repositories = new Map<string, { name: string; numbers: number[] }>();
-  for (const row of await listGitHubStaleOpenPullRequests(
-    args.db,
-    new Date(args.nowMs - RECONCILE_MS),
-  )) {
-    const repository = repositories.get(row.repositoryId) ?? {
-      name: row.repositoryFullName,
+  for (const change of await args.codeChanges.list({
+    state: "open",
+    updatedBefore: new Date(args.nowMs - RECONCILE_MS),
+  })) {
+    const repository = repositories.get(change.repository.providerId) ?? {
+      name: change.repository.name,
       numbers: [],
     };
-    repository.numbers.push(row.number);
-    repositories.set(row.repositoryId, repository);
+    repository.numbers.push(change.number);
+    repositories.set(change.repository.providerId, repository);
   }
   let reconciled = 0;
   for (const [
@@ -293,8 +288,8 @@ export async function reconcileGitHubPullRequests(
       await reconcileRepository(args, Number(repositoryId), numbers);
     } catch (error) {
       if (error instanceof GitHubRepositoryUnreachableError) {
-        // The repository is gone, or the installation lost it. The rows
-        // stay open, and the check tries again the next day.
+        // The repository is gone, or the installation lost it. The code
+        // changes stay open, and the check tries again the next day.
         args.log.warn("GitHub pull request reconcile skipped a repository", {
           repository: repositoryFullName,
           repositoryId,

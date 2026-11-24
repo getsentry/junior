@@ -7,7 +7,7 @@ import { screenshot } from "./screenshot";
 
 // The current UI opens the Lead at home, so its list has its own path.
 const conversationListPath = (ui: string) =>
-  ui === "inbox" ? "/?view=conversations" : "/conversations";
+  ui === "inbox" ? "/inbox?view=conversations" : "/conversations";
 
 test("opens links outside the loaded rows from the page around them", async ({
   page,

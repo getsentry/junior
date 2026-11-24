@@ -21,11 +21,14 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   inboxItemTodo,
+  isInboxItemForEveryone,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
+  REPLY_NOTICE_KEY_PREFIX,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
 import {
@@ -214,10 +217,11 @@ function inboxItemPayload(
   const todo = inboxItemTodo(item);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
-    assignedToEveryone: item.assignedToEveryone,
+    assignedToEveryone: isInboxItemForEveryone(item),
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnInboxItem(item, viewer.id),
+    canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
       canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
     conversationIds: item.conversationIds,
@@ -242,6 +246,10 @@ function inboxItemPayload(
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
+      : undefined),
+    // Derived from the reply notice's dedupe key, so nothing more is stored.
+    ...(item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)
+      ? { replyNotice: true as const }
       : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),

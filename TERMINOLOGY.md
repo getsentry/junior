@@ -55,8 +55,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation status**: what one Conversation's own work needs, shared
   by everyone and derived from runtime state only. `needs_input`: it waits on
   a person: an open action Inbox item it added, a sign-in, or its starter
-  while no Turn is queued or running (a failed latest Turn, a `partial` or
-  `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
+  while no Turn is queued or running (a failed latest Turn or an answer the
+  starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
 - **Starter**: the User of a root's actor, the person whose message started
@@ -96,7 +96,8 @@ Canonical words for Junior code and docs. One concept, one word.
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed
   by `accounts.service-account` and connected by an Admin (dashboard or
-  `junior service-account connect`). It serves Actors with no own connection;
+  `junior service-account connect`). It serves Actors with no own connection,
+  for the MCP tools or `egress.fetch` operations that it lists;
   `accounts.user-oauth: false` makes it the only path.
 - **Automation**: a saved instruction run later, with a creator, trigger,
   instruction, and ordered outcomes.

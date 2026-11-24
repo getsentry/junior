@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
 import { createRequire } from "node:module";
 import {
@@ -81,6 +82,7 @@ const queue = createConversationWorkQueueTestAdapter();
 const services = createSlackInboxItemToolServices(() => queue);
 const heartbeat = () =>
   runHeartbeat({
+    sendPluginTask: sendVercelPluginTask,
     conversationWorkQueue: queue,
     dispatchForIdentity: createIdentityDispatcher({
       conversationWorkQueue: () => queue,
@@ -493,6 +495,7 @@ describe("inbox item push", () => {
     });
     const heartbeat = (nowMs: number) =>
       runHeartbeat({
+        sendPluginTask: sendVercelPluginTask,
         conversationWorkQueue: fixture.queue,
         dispatchForIdentity: createIdentityDispatcher({
           conversationWorkQueue: () => fixture.queue,

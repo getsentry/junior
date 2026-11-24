@@ -1,3 +1,4 @@
+import { conversationMenuRow } from "./conversationMenu";
 import { expect, test } from "./test";
 import { startDashboardE2eServer, waitForOutlineRead } from "./harness";
 
@@ -37,10 +38,7 @@ for (const touch of [false, true]) {
         });
         await page.getByRole("button", { name: "Conversation menu" }).click();
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
-        const shareButton = page.getByRole("menuitem", {
-          name: "Share",
-          exact: true,
-        });
+        const shareButton = conversationMenuRow(page, "Share");
         await shareButton.click();
         if (touch) {
           await expect.poll(() => shared).toEqual([{ url }]);
@@ -76,7 +74,7 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(
-            page.getByRole("menuitem", { name: "Share failed — retry" }),
+            conversationMenuRow(page, "Share failed — retry"),
           ).toBeEnabled();
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
@@ -89,15 +87,11 @@ for (const touch of [false, true]) {
               value: undefined,
             });
           });
-          await page
-            .getByRole("menuitem", { name: "Share failed — retry" })
-            .click();
+          await conversationMenuRow(page, "Share failed — retry").click();
         } else {
           expect(shared).toEqual([]);
         }
-        await expect(
-          page.getByRole("menuitem", { name: "Link copied" }),
-        ).toBeVisible();
+        await expect(conversationMenuRow(page, "Link copied")).toBeVisible();
         const copied = await page.evaluate(() =>
           navigator.clipboard.readText(),
         );

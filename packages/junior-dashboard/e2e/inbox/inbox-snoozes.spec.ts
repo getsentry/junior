@@ -59,7 +59,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     await mockInboxItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
@@ -86,7 +86,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
@@ -106,7 +106,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/automations/event-1", (route) =>
       route.fulfill({ json: automation }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, alert.title));
     // The card says what to fix, and acts on its Automation.
@@ -176,7 +176,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: rollout.rootConversationId,
     };
     await mockInboxItems(page, { open: [rollout, notice] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const created = page.waitForResponse(
       (response) =>
@@ -224,7 +224,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -251,7 +251,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("The row could not be woken")).toBeVisible();
@@ -280,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, {
       open: [license, pinReview, checklist, linked],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const linkedRow = todo
       .locator("[data-inbox-row]")
@@ -318,8 +318,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     // The link opens the row, so its Wake shows.
     await expect(page.getByRole("button", { name: "Wake" })).toBeVisible();
   });
@@ -341,7 +341,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/inbox-items?**snoozed=true**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(page).not.toHaveURL(/[?&]item=/);
@@ -354,7 +354,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
     // A pull request row opens from its item link.
-    await page.goto(`${dashboard.baseURL}/?type=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
@@ -380,7 +380,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?type=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
@@ -436,7 +436,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 560, width: 1280 });
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?type=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
@@ -452,9 +452,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const ask = { ...prReview, canAct: false };
+    const ask = { ...prReview, canAct: false, canAnswer: false };
     await mockInboxItems(page, { open: [license, ask] });
-    await page.goto(`${dashboard.baseURL}/?type=prs&item=${ask.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -485,7 +485,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -539,6 +539,116 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
   });
 
+  test("a found open pull request is picked only once its card says whether it is a draft", async ({
+    dashboard,
+    page,
+  }) => {
+    // Hold the live cards until the test lets them through.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname === "/api/objects",
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await mockInboxItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, checkout));
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page
+      .getByRole("dialog", { name: "Snooze until" })
+      .getByRole("button", { name: "Custom…" })
+      .click();
+    await customOf(page).getByRole("button", { name: "Add condition" }).click();
+    await page
+      .getByPlaceholder("Search pull requests or paste a link")
+      .fill("reference chips");
+    const found = page.getByRole("option", { name: /getsentry\/junior#3838/ });
+    await expect(found).toHaveAttribute("aria-disabled", "true");
+
+    release();
+    await expect(found).not.toHaveAttribute("aria-disabled", "true");
+    await pickOption(found);
+    await expect(
+      customOf(page).getByRole("combobox", { name: "Event" }),
+    ).toBeVisible();
+  });
+
+  // Hold the live cards, and open the search of a new snooze condition.
+  async function searchWithHeldCards(
+    page: Page,
+    dashboard: { baseURL: string },
+  ) {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname === "/api/objects",
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await mockInboxItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, checkout));
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page
+      .getByRole("dialog", { name: "Snooze until" })
+      .getByRole("button", { name: "Custom…" })
+      .click();
+    await customOf(page).getByRole("button", { name: "Add condition" }).click();
+    const search = page.getByPlaceholder(
+      "Search pull requests or paste a link",
+    );
+    await search.fill("composer");
+    const option = (number: number) =>
+      page.getByRole("option", { name: new RegExp(`#${number}\\b`) });
+    // While the open rows wait, the first merged row has the highlight.
+    await expect(option(3842)).toHaveAttribute("aria-disabled", "true");
+    await expect(option(3760)).toHaveAttribute("aria-selected", "true");
+    return { option, release, search };
+  }
+
+  test("Enter picks the top found pull request once the cards arrive", async ({
+    dashboard,
+    page,
+  }) => {
+    const { option, release, search } = await searchWithHeldCards(
+      page,
+      dashboard,
+    );
+    release();
+    await expect(option(3842)).toHaveAttribute("aria-selected", "true");
+    await search.press("Enter");
+    await pickEvent(page, 0, "is merged");
+    await expect(
+      customOf(page).getByRole("group", {
+        name: "When getsentry/junior#3842 is merged",
+      }),
+    ).toBeVisible();
+  });
+
+  test("a highlight that the viewer moves stays when the cards arrive", async ({
+    dashboard,
+    page,
+  }) => {
+    const { option, release, search } = await searchWithHeldCards(
+      page,
+      dashboard,
+    );
+    await search.press("ArrowDown");
+    await expect(option(3701)).toHaveAttribute("aria-selected", "true");
+    release();
+    await expect(option(3842)).not.toHaveAttribute("aria-disabled", "true");
+    await expect(option(3701)).toHaveAttribute("aria-selected", "true");
+  });
+
   test("a pull request row snoozes until an Event on its pull request or an issue that the viewer pastes", async ({
     dashboard,
     page,
@@ -547,7 +657,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, { open: [license, prReview] });
     // A phone shows the Inbox list on its own page.
     await page.goto(
-      `${dashboard.baseURL}/?view=inbox&type=prs&item=${prReview.id}`,
+      `${dashboard.baseURL}/inbox?view=inbox&type=prs&item=${prReview.id}`,
     );
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -601,7 +711,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?type=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -657,7 +767,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
@@ -697,7 +807,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         untilMs: NOW_MS + 86_400_000,
       })),
     });
-    await page.goto(`${dashboard.baseURL}/?item=${digest.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${digest.id}`);
     await expect(page).toHaveURL(/[?&]view=snoozed(?:&|$)/);
     await expect(rowHead(page, "Daily operations digest")).toBeVisible();
     await expect(rowHead(page, checkout)).toBeVisible();
@@ -731,7 +841,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ status: 500, json: { error: "boom" } })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expect(rowHead(page, checkout)).toBeVisible();
     await expect(
       page.getByText("Could not load your snoozed rows."),
@@ -764,7 +874,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await held;
       await route.fallback();
     });
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     // The link holds until Snoozed says whether a snooze hides the item.
@@ -790,7 +900,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const polled = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith("/api/versions"),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await polled;
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
