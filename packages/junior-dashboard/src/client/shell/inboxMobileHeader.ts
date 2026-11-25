@@ -6,11 +6,13 @@ import {
 import { INBOX_VIEW_LABELS, parseInboxView } from "../inbox/inboxModel";
 import { NAV_PAGES } from "../navPages";
 import { CODE_ALL_PATH } from "../pages/code/codeRepositoryRoutes";
+import { isSpacePath } from "../spaces/spaceRoutes";
 
 /**
  * Where the phone header's Back goes on an Inbox page, and its title: a
  * Conversation and the composer go back to the list, a list and Code go
- * back to the entries, and a repository goes back to Code · All.
+ * back to the entries, and a repository goes back to Code · All. A Space
+ * goes back to the entries too, and its page sets the title and the menu.
  */
 export function inboxMobileHeader(
   pathname: string,
@@ -31,6 +33,12 @@ export function inboxMobileHeader(
       title: "Code",
     };
   if (isCodePath(pathname)) return { ...back(CODE_ALL_PATH), title: "Code" };
+  if (isSpacePath(pathname))
+    return {
+      backLabel: "Back to the Inbox entries",
+      backTo: NAV_PAGES.inbox.to,
+      title: "Space",
+    };
   const view = new URLSearchParams(search).get("view");
   // A list's Back goes to the entries, which `/inbox` shows on a phone.
   if (pathname === NAV_PAGES.inbox.to && view !== null)

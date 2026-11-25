@@ -1,5 +1,5 @@
 import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
-import { desktop, screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
@@ -81,6 +81,24 @@ test("a non-member opens a Space and joins it", async ({ dashboard, page }) => {
   await page.getByRole("button", { name: "Space menu" }).click();
   await page.getByRole("menuitem", { name: "Leave Space" }).click();
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
+});
+
+test("a phone header names the Space and holds its actions", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(mobile);
+  await page.goto(`${dashboard.baseURL}${DOCS}`);
+  await expect(
+    page.getByRole("heading", { name: "Docs refresh" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Join" }).click();
+  await page.getByRole("button", { name: "Space menu" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Leave Space" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Back to the Inbox entries" }).click();
+  await expect(page).toHaveURL(/\/inbox$/);
 });
 
 test("archiving a Space asks first, and a restore brings back its composer", async ({
