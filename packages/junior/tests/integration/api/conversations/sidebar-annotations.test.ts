@@ -274,7 +274,7 @@ describe("conversation list sidebar annotations", () => {
         kind: "object",
         objectType: "code_change",
         key: "getsentry/junior#36",
-        label: "getsentry/junior#36",
+        label: "Saved label",
         title: "Draft: retry uploads",
         status: "open",
         url: `${GITHUB_REPO}/pull/36`,

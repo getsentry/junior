@@ -595,7 +595,8 @@ it("reads each delivered card once with the access of the person who started the
       kind: "object" as const,
       objectType: "code_change" as const,
       key: "getsentry/junior#38",
-      label: "getsentry/junior#38",
+      // A posted card never shows the stored label. GitHub makes it.
+      label: "Saved label",
       title: "Draft: retry uploads",
       status: "open",
       url: `${GITHUB_REPO}/pull/38`,
@@ -630,12 +631,13 @@ it("reads each delivered card once with the access of the person who started the
 
     // GitHub is down, so the card posts what Junior saved.
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
-      { ...saved, plugin: "github" },
+      { ...saved, label: "getsentry/junior#38", plugin: "github" },
     ]);
     githubUp = true;
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
       expect.objectContaining({
         key: saved.key,
+        label: "getsentry/junior#38",
         plugin: "github",
         status: "merged",
         title: "Retry uploads",

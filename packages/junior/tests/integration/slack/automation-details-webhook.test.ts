@@ -328,7 +328,8 @@ describe("Slack Work Object details", () => {
       kind: "object" as const,
       plugin: "github",
       key: "getsentry/junior#37",
-      label: "getsentry/junior#37",
+      // Details never show the stored label. GitHub makes it.
+      label: "Saved label",
       title: "Draft: live card details",
       objectType: "code_change" as const,
       status: "open",
@@ -377,7 +378,7 @@ describe("Slack Work Object details", () => {
         },
       });
       expect(JSON.stringify(outsider)).not.toMatch(
-        /Draft: live card details|Show live card details|"open"|"merged"/,
+        /Draft: live card details|Saved label|Show live card details|"open"|"merged"/,
       );
     } finally {
       vi.unstubAllEnvs();

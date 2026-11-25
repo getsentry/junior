@@ -1,7 +1,9 @@
 /**
  * Annotations as people see them: each object reads its title and state
- * live, with the same resolver as the Inbox. An Annotation whose plugin has
- * no link type for its object keeps what it saved.
+ * live, with the same resolver as the Inbox. A card never shows the stored
+ * label: the plugin makes the label from the object, or from its link when
+ * Junior cannot read it. An Annotation whose plugin has no link type for
+ * its object keeps what it saved.
  */
 import type { ConversationAnnotation, User } from "@sentry/junior-plugin-api";
 import { annotationSubject } from "@/chat/plugins/annotations";
@@ -9,9 +11,10 @@ import { resolveObjectCards, type ObjectCardView } from "./subject-cards";
 
 /**
  * What an Annotation shows when its object cannot be read live:
- * - `label`: only the stored label and link, for a viewer who cannot read
- *   the object or when its provider is down.
- * - `saved`: the saved facts, for a card that Junior posts once.
+ * - `label`: only the label of its link and the link, for a viewer who
+ *   cannot read the object or when its provider is down.
+ * - `saved`: the saved facts with the label of its link, for a card that
+ *   Junior posts once.
  */
 export type AnnotationFallback = "label" | "saved";
 
@@ -42,11 +45,12 @@ function liveAnnotation(
       updatedAt,
     };
   }
-  if (fallback === "saved") return annotation;
+  const label = view.label ?? view.url;
+  if (fallback === "saved") return { ...annotation, label };
   return {
     kind: "resource_link",
     key,
-    label: annotation.label,
+    label,
     ...(annotation.objectType
       ? { objectType: annotation.objectType }
       : undefined),

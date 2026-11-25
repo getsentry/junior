@@ -28,8 +28,13 @@ export interface ObjectCardSource {
   url?: string | null | undefined;
 }
 
-/** The link of one object, and its card when the viewer can read it. */
+/**
+ * The link of one object, and its card when the viewer can read it. A
+ * source with an owner also gets the label that its link type makes from
+ * the link, for a card that cannot read the object.
+ */
 export interface ObjectCardView {
+  label?: string;
   object?: OwnedObjectAnnotation;
   url: string;
 }
@@ -55,20 +60,25 @@ export async function resolveObjectCards(
       ? await readSubjectLinks(getDb(), subjects)
       : new Map<string, string>();
   const linkTypes = readObjectLinkTypes();
-  const urls = sources.map((source) => {
+  const labels: Array<string | undefined> = [];
+  const urls = sources.map((source, index) => {
     const url =
       (source.subject && links.get(subjectKey(source.subject))) ??
       source.url ??
       undefined;
     if (!url || !source.owner) return url;
     const { objectType, plugin } = source.owner;
-    const linkType = URL.canParse(url)
-      ? findObjectLinkType(linkTypes, new URL(url))
-      : undefined;
-    return linkType?.owner === plugin &&
-      linkType.objectTypes.includes(objectType)
-      ? url
-      : undefined;
+    const parsed = URL.parse(url);
+    const linkType = parsed && findObjectLinkType(linkTypes, parsed);
+    if (
+      !parsed ||
+      linkType?.owner !== plugin ||
+      !linkType.objectTypes.includes(objectType)
+    ) {
+      return undefined;
+    }
+    labels[index] = linkType.label?.(parsed) ?? parsed.host;
+    return url;
   });
   const read = [...new Set(urls.filter((url) => url !== undefined))];
   const cards = new Map(
@@ -83,8 +93,13 @@ export async function resolveObjectCards(
     if (!url) return undefined;
     const object = cards.get(url);
     const owner = sources[index]?.owner;
-    return object && (!owner || object.plugin === owner.plugin)
-      ? { object, url }
-      : { url };
+    const label = labels[index];
+    return {
+      ...(label ? { label } : undefined),
+      ...(object && (!owner || object.plugin === owner.plugin)
+        ? { object }
+        : undefined),
+      url,
+    };
   });
 }

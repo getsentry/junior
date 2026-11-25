@@ -490,7 +490,8 @@ describe("conversation detail API", () => {
       kind: "object",
       objectType: "code_change",
       key: "getsentry/junior#35",
-      label: "getsentry/junior#35",
+      // A card never shows the stored label. GitHub makes it.
+      label: "Saved label",
       title: "Draft title",
       status: "open",
       url: `${GITHUB_REPO}/pull/35`,
@@ -504,6 +505,7 @@ describe("conversation detail API", () => {
         expect.objectContaining({
           key: "getsentry/junior#35",
           kind: "object",
+          label: "getsentry/junior#35",
           plugin: "github",
           status: "merged",
           title: "Show screenshots on cards",
@@ -531,7 +533,8 @@ describe("conversation detail API", () => {
         source: "github",
       });
 
-      // A reader without access to the repository sees the label and link.
+      // A reader without access to the repository sees the label that
+      // GitHub makes from the link, and the link.
       const outsider = await readConversationDetail(conversationId, {
         viewer: await signedInViewer("bob@example.com"),
       });
@@ -548,7 +551,7 @@ describe("conversation detail API", () => {
         },
       ]);
       expect(JSON.stringify(outsider?.sidebarAnnotations)).not.toMatch(
-        /Draft title|Show screenshots|merged|open/,
+        /Draft title|Saved label|Show screenshots|merged|open/,
       );
     } finally {
       vi.unstubAllEnvs();
