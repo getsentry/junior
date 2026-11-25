@@ -1,5 +1,4 @@
 import { and, eq, gt, max, sql } from "drizzle-orm";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -38,10 +37,6 @@ export async function upsertReplyNotice(
     turnId: string;
   },
 ): Promise<string> {
-  const access = (
-    await readConversationAccessFromSql(db, [input.conversationId])
-  ).get(input.conversationId);
-  const tenant = access?.tenant;
   const content: InboxItemContent = {
     assignedToEveryone: false,
     assigneeUserIds: [input.starterUserId],
@@ -50,15 +45,11 @@ export async function upsertReplyNotice(
     kind: "notice",
     subject: { id: input.conversationId, kind: INBOX_SUBJECT_KINDS.reply },
     title: input.title,
-    visibility: access?.visibility === "public" ? "public" : "private",
   };
-  const open = await getOpenInboxItemBySubject(db, content.subject, tenant);
+  const open = await getOpenInboxItemBySubject(db, content.subject);
   if (open) {
     const updated = await updateInboxItemContent(db, {
       ...content,
-      // A private Conversation that turned public keeps its items private.
-      visibility:
-        open.visibility === "private" ? "private" : content.visibility,
       addedByTurnId: input.turnId,
       id: open.id,
       nowMs: input.nowMs,
@@ -70,7 +61,6 @@ export async function upsertReplyNotice(
     addedByTurnId: input.turnId,
     nowMs: input.nowMs,
     owner: { id: input.conversationId, kind: "conversation" },
-    ...(tenant ? { tenant } : undefined),
   });
   // Turns of one Conversation run one at a time, so a race here is
   // unexpected. The task retry then finds the open notice and updates it.

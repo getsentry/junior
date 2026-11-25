@@ -10,6 +10,7 @@ import type {
   ObjectAnnotation,
   PluginInboxItemSubject,
   PluginInboxSubjectKind,
+  PluginInboxSubjectOwner,
 } from "@sentry/junior-plugin-api";
 
 /** The subject kinds of GitHub Inbox items. */
@@ -34,6 +35,15 @@ export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
     : "Review requested";
 }
 
+// Both kinds use GitHub's pull request id as the subject id. The item
+// belongs to the Conversation where a person asked Junior to open the pull
+// request: only that opener row has both columns set.
+const pullRequestOwner: PluginInboxSubjectOwner = {
+  conversationId: "conversation_id",
+  subjectId: "pull_request_id",
+  table: "junior_github_pull_request_requesters",
+};
+
 /** The registered kinds and labels, for the plugin registration. */
 export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
   {
@@ -41,11 +51,13 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
     codeChange: true,
     kind: GITHUB_INBOX_SUBJECTS.pullRequest,
     label: "Pull request",
+    owner: pullRequestOwner,
   },
   {
     codeChange: true,
     kind: GITHUB_INBOX_SUBJECTS.mergeConflict,
     label: "Merge conflict",
+    owner: pullRequestOwner,
   },
 ];
 

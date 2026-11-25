@@ -308,9 +308,7 @@ export async function insertInboxItem(args: {
     kind: args.kind,
     nowMs: Date.now() - 60_000,
     subject: args.subject,
-    tenant: { provider: "slack", providerTenantId: args.destination.teamId },
     title: args.title,
-    visibility: "public",
     ...(args.request ? { request: args.request } : undefined),
   });
   if (!item) throw new Error(`Inbox item ${args.subject.id} is already open`);
@@ -338,7 +336,6 @@ export async function insertWebInboxItem(args: {
     nowMs: Date.now() - 60_000,
     subject: { id: fixtureId("inbox-item", 20), kind: "question" },
     title: args.item.title,
-    visibility: "public",
     ...(args.item.request ? { request: args.item.request } : undefined),
   });
   if (!item) throw new Error(`Inbox item ${args.item.title} is already open`);

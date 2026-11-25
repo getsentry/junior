@@ -58,7 +58,6 @@ function sameContent(item: InboxItem, content: InboxItemContent): boolean {
     item.title === content.title &&
     item.body === content.body &&
     item.kind === content.kind &&
-    item.visibility === content.visibility &&
     JSON.stringify(item.request) === JSON.stringify(content.request) &&
     item.conversationIds.length === content.conversationIds.length &&
     userIds.size === content.assigneeUserIds.length &&
@@ -95,16 +94,17 @@ function pluginItemSubject(plugin: string, subject: PluginInboxItemSubject) {
   return { id: subject.id, kind: pluginSubjectKind(plugin, subject.kind) };
 }
 
-async function readAccess(db: JuniorDatabase, conversationId: string) {
-  const access = (
-    await readConversationAccessFromSql(db, [conversationId])
-  ).get(conversationId);
-  if (!access) throw new Error(`Conversation ${conversationId} is not found`);
-  return access;
+/** Throw when the plugin's owner table gives the item another Conversation. */
+function requireOwner(item: InboxItem, conversationId: string): void {
+  if (ownerConversationId(item) !== conversationId) {
+    throw new Error(
+      `Inbox item ${item.id} belongs to another Conversation than ${conversationId}`,
+    );
+  }
 }
 
 /**
- * Close the open item of a plugin's subject, in the tenant of the
+ * Close the open item of a plugin's subject, which belongs to the
  * Conversation. Return the id of the item that closed, or undefined when no
  * item was open. Pass a transaction to save it with other changes. The
  * caller shows the item after the write.
@@ -119,13 +119,12 @@ export async function closePluginInboxItem(
     status: "done" | "dismissed";
   },
 ): Promise<string | undefined> {
-  const access = await readAccess(db, args.conversationId);
   const item = await getOpenInboxItemBySubject(
     db,
     pluginItemSubject(args.plugin, args.subject),
-    access.tenant,
   );
   if (!item) return undefined;
+  requireOwner(item, args.conversationId);
   const closed = await closeInboxItem(db, {
     id: item.id,
     nowMs: Date.now(),
@@ -137,11 +136,11 @@ export async function closePluginInboxItem(
 
 /**
  * Connect a plugin to the Inbox for one Conversation. Each item has one of
- * the plugin's registered subject kinds, stored as `<plugin>:<kind>`. Dedupe
- * keys are unique in the plugin's namespace, so a plugin changes only its
- * own items, and agents cannot change them. A change sends no message to the Conversation. It
- * only shows the new state through `show`. An item is private when the
- * Conversation is not public.
+ * the plugin's registered subject kinds, stored as `<plugin>:<kind>`, so a
+ * plugin changes only its own items, and agents cannot change them. A
+ * change sends no message to the Conversation. It only shows the new state
+ * through `show`. The plugin's owner table names the Conversation that owns
+ * each item, and its Destination sets who can see the item.
  */
 export function createPluginInboxItems(args: {
   conversationId: string;
@@ -158,24 +157,8 @@ export function createPluginInboxItems(args: {
         );
       }
       const db = getDb();
-      const access = await readAccess(db, conversationId);
-      const existing = await getOpenInboxItemBySubject(
-        db,
-        subject,
-        access.tenant,
-      );
-      // An item from a private Conversation stays private.
-      const isPrivate =
-        access.visibility !== "public" || existing?.visibility === "private";
-      if (
-        existing &&
-        isPrivate &&
-        ownerConversationId(existing) !== conversationId
-      ) {
-        throw new Error(
-          "A private inbox item links only to the Conversation that added it",
-        );
-      }
+      const existing = await getOpenInboxItemBySubject(db, subject);
+      if (existing) requireOwner(existing, conversationId);
       const [withAsk, asked] = await Promise.all([
         assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
         assigneeUsers(db, notice.askedIdentityIds, conversationId),
@@ -216,7 +199,6 @@ export function createPluginInboxItems(args: {
         // An item that waits on its assignees is an action: it needs them.
         kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
         title: notice.title,
-        visibility: isPrivate ? "private" : "public",
         subject,
         ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
       };
@@ -255,7 +237,6 @@ export function createPluginInboxItems(args: {
           ...content,
           owner: { id: conversationId, kind: "conversation" },
           nowMs: Date.now(),
-          ...(access.tenant ? { tenant: access.tenant } : undefined),
         });
         // Undefined means a concurrent upsert added the item first.
         if (!item) return;

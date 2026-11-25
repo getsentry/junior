@@ -51,7 +51,7 @@ describe("inbox item subject migration", () => {
       );
       // Before that migration, the old dedupe keys of one pull request's asks differ.
       await fixture.sql.execute(
-        `DROP INDEX "junior_inbox_items_open_subject_uidx"`,
+        `DROP INDEX "junior_inbox_items_open_subject_key_uidx"`,
       );
       for (const user of ["ana", "ben"]) {
         await fixture.sql.execute(

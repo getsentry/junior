@@ -389,7 +389,6 @@ describe("conversation auto-archive API", () => {
         question: "Merge or close the follow-up?",
       },
       title: "Follow-up",
-      visibility: "private",
     });
     // A Space's Lead is not a feed row, so it stays however long it has
     // been quiet.
@@ -679,7 +678,6 @@ describe("conversation auto-archive API", () => {
         nowMs: quietMs,
         request: REQUEST,
         title: "Release",
-        visibility: "public",
       });
       if (conversationId === childItemClosedId) {
         await closeInboxItem(getDb(), {
@@ -700,7 +698,6 @@ describe("conversation auto-archive API", () => {
       nowMs: quietMs,
       request: REQUEST,
       title: "Linked release",
-      visibility: "public",
     });
     await stopConversationTree([stoppedId], { stoppedAtMs: quietMs });
     await stopConversationTree([stoppedRecentlyId], { stoppedAtMs: nowMs });

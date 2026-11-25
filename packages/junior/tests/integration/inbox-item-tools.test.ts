@@ -627,7 +627,33 @@ describe("inbox item tools", () => {
       body: "The last run failed.",
       assignees: ["everyone"],
     };
-    // An alert that core added for a public Automation.
+    // An alert that core added for an Automation of a public channel.
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(1),
+        id: "identity:creator",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "UCREATOR",
+        providerTenantId: "T123",
+        updatedAt: new Date(1),
+        userId: ana.id,
+      });
+    await getDb()
+      .insert(juniorAutomations)
+      .values({
+        channelId: "CPUB",
+        createdAtMs: 1,
+        creatorIdentityId: "identity:creator",
+        creatorSlackUserId: "UCREATOR",
+        id: "sched_1",
+        instruction: "Post the digest.",
+        kind: "scheduled",
+        record: {} as any,
+        status: "active",
+        teamId: "T123",
+      });
     const alert = await insertInboxItem(getDb(), {
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
@@ -637,9 +663,7 @@ describe("inbox item tools", () => {
       nowMs: Date.now(),
       owner: { id: "sched_1", kind: "automation" },
       subject: { id: "sched_1", kind: "automation" },
-      tenant: { provider: "slack", providerTenantId: "T123" },
       title: "Daily digest",
-      visibility: "public",
     });
     // An agent's question is its own item, not the Automation's alert.
     const own = await execute(agent.add, notice);

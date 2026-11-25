@@ -7,6 +7,26 @@ type SqlFixture = {
   };
 };
 
+/**
+ * Inbox item columns that the migrations keep for one release, for old
+ * workers. The Drizzle schema no longer has them. Remove each name when its
+ * follow-up migration drops the column.
+ */
+export const RETIRED_INBOX_ITEM_COLUMNS: readonly string[] = [
+  // `20261125080100_inbox_item_subjects`
+  "automation_id",
+  "dedupe_key",
+  "subject_title",
+  "subject_title_parts",
+  "subject_url",
+  // `20261125090025_inbox_item_owners`
+  "owner_id",
+  "owner_kind",
+  "provider",
+  "provider_tenant_id",
+  "visibility",
+];
+
 /** Apply a contiguous slice of packaged core migrations. */
 export async function applyCoreMigrations(
   fixture: SqlFixture,

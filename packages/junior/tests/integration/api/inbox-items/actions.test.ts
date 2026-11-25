@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { recordCodeChange } from "@/chat/code/store";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -23,7 +24,7 @@ import {
   takeInboxItem,
 } from "@/chat/inbox-items/store";
 import { juniorIdentities } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
@@ -188,7 +189,6 @@ describe("inbox item actions API", () => {
         question: "Approve or reject this entry?",
       },
       title: "Review initech entry",
-      visibility: "private",
     });
 
     expect(
@@ -513,7 +513,6 @@ describe("inbox item actions API", () => {
         kind: "notice",
         nowMs,
         title,
-        visibility: conversationId.includes("6") ? "private" : "public",
       });
       if (!created) throw new Error(`${title} was not added`);
       return created.id;
@@ -606,7 +605,6 @@ describe("inbox item actions API", () => {
           : { kind }),
         nowMs,
         title: `Item ${index}`,
-        visibility: "private",
       });
       if (!created) throw new Error(`item ${index} was not added`);
       return created.id;
@@ -666,10 +664,24 @@ describe("inbox item actions API", () => {
         kind: "decision" | "notice" | "pr" | "prQuestion";
       },
     ) => {
-      const pr = {
-        id: `https://github.com/getsentry/junior/pull/${index}`,
-        kind: "github:pull_request_review",
-      };
+      const pr = { id: `${1000 + index}`, kind: "github:pull_request" };
+      const prUrl = `https://github.com/getsentry/junior/pull/${index}`;
+      if (input.kind === "pr" || input.kind === "notice") {
+        await recordCodeChange(getDb(), "github", {
+          conversationIds: [],
+          number: index,
+          openedAt: new Date(base),
+          providerId: pr.id,
+          repository: { name: "getsentry/junior", providerId: "repository-1" },
+          state: "open",
+          title: `Change ${index}`,
+          updatedAt: new Date(base),
+        });
+        // The opener's row names the Conversation that owns the item.
+        await getDb().execute(
+          sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${index}, 'identity:opener', 'slack:CPUB:1.000001', ${pr.id}, now(), now())`,
+        );
+      }
       const created = await insertInboxItem(getDb(), {
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
@@ -678,31 +690,25 @@ describe("inbox item actions API", () => {
         conversationIds: ["slack:CPUB:1.000001"],
         ...(input.kind === "decision"
           ? {
-              dedupeKey: `bundles:${index}`,
               kind: "action",
               request: REQUEST,
               subject: { id: `bundles:${index}`, kind: "question" },
             }
           : input.kind === "pr"
-            ? {
-                dedupeKey: `plugin:github:${index}`,
-                kind: "action",
-                subject: pr,
-              }
+            ? { kind: "action", subject: pr }
             : input.kind === "prQuestion"
               ? {
                   // A question about a pull request links it.
                   kind: "action",
                   request: {
                     ...REQUEST,
-                    related: [{ label: "The pull request", url: pr.id }],
+                    related: [{ label: "The pull request", url: prUrl }],
                   },
                   subject: { id: `bundles:${index}`, kind: "question" },
                 }
-              : { dedupeKey: `bundles:${index}`, kind: "notice", subject: pr }),
+              : { kind: "notice", subject: pr }),
         nowMs: base + index * 1_000,
         title: `Item ${index}`,
-        visibility: "private",
       });
       if (!created) throw new Error(`item ${index} was not added`);
       return created.id;

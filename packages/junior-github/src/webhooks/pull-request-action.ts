@@ -63,7 +63,10 @@ import {
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
 import { GITHUB_CONFLICT_GONE_REASON } from "../merge-conflict-checks/policy.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  listGitHubPullRequestOpeners,
+  recordGitHubPullRequestOpenerId,
+} from "../pull-request-requesters/store.js";
 import {
   dropGitHubReviewAsked,
   dropHeldGitHubReviewAsk,
@@ -464,6 +467,14 @@ async function syncOne(
   const pullRequestId = (await findGitHubPullRequest(args.codeChanges, target))
     ?.providerId;
   if (!pullRequestId) return;
+  if (!opener.pullRequestId) {
+    await recordGitHubPullRequestOpenerId(args.db, {
+      conversationId: opener.conversationId,
+      number: target.number,
+      pullRequestId,
+      repositoryFullName: target.repositoryFullName,
+    });
+  }
   // Save the reviewer before the claim, so the check that runs asks them,
   // also when another webhook's check holds the claim.
   if (target.reviewRequested) {

@@ -5,6 +5,7 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
+import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { juniorConversations, juniorInboxItems } from "@/db/schema";
@@ -89,7 +90,6 @@ describe("conversation status", () => {
       nowMs: Date.now(),
       request: REQUEST,
       title: "Pick a release name",
-      visibility: "public",
     });
     // Only the item changed, and a poll with the old version reloads.
     const polled = await fixture.request(detailPath(conversationId), {
@@ -399,7 +399,7 @@ describe("conversation status", () => {
     const [item] = await getDb()
       .select({ status: juniorInboxItems.status })
       .from(juniorInboxItems)
-      .where(eq(juniorInboxItems.ownerId, conversationId));
+      .where(inboxItemOwnedByConversation(conversationId));
     expect(item?.status).toBe("open");
   });
 });

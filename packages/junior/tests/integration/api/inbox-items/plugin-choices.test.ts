@@ -15,7 +15,6 @@ import {
 } from "@/chat/db";
 import { listWatches } from "@/chat/events/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { getConversation } from "@/chat/task-execution/store";
 import {
@@ -28,6 +27,10 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../../../fixtures/plugin-inbox-owners";
 
 const CONVERSATION_ID = "slack:CPUB:1.000001";
 
@@ -95,7 +98,13 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   await createApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
-        inboxSubjects: [{ kind: "deploy_stopped", label: "Deploys stopped" }],
+        inboxSubjects: [
+          {
+            kind: "deploy_stopped",
+            label: "Deploys stopped",
+            owner: TEST_PLUGIN_INBOX_OWNER,
+          },
+        ],
         manifest: {
           name: "deploys",
           displayName: "Deploys",
@@ -141,7 +150,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     visibility: "public",
   });
   const ana = await person("ana@example.com");
-  await createPluginInboxItems({
+  await ownedPluginInboxItems({
     conversationId: CONVERSATION_ID,
     plugin: "deploys",
     show: async () => {},

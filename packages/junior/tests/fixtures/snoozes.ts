@@ -52,7 +52,6 @@ export async function addItem(
   conversationId: string,
   assignees: User[],
   title: string,
-  visibility: "private" | "public" = "public",
   ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
@@ -77,7 +76,6 @@ export async function addItem(
       question: title,
     },
     title,
-    visibility,
   });
   return item!.id;
 }
@@ -176,9 +174,7 @@ export async function addPullRequestItem(
       related: [{ label: "Pull request", url }],
     },
     subject: { id: `review:${url}:${title}`, kind: "question" },
-    tenant: { provider: "slack", providerTenantId: "T123" },
     title,
-    visibility: "public",
   });
   return item!.id;
 }
@@ -208,9 +204,7 @@ export async function addEveryoneItem(
       ],
       question: title,
     },
-    tenant: { provider: "slack", providerTenantId: "T123" },
     title,
-    visibility: "public",
   });
   return item!.id;
 }
@@ -231,7 +225,6 @@ export async function addNotice(
     kind: "notice",
     nowMs: Date.now(),
     title,
-    visibility: "public",
   });
   return item!.id;
 }

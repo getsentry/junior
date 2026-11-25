@@ -48,6 +48,7 @@ export interface PluginRegistration extends PluginRegistrationInput {}
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const INBOX_SUBJECT_KIND_RE = /^[a-z][a-z0-9_]*$/;
+const SQL_IDENTIFIER_RE = /^[a-z][a-z0-9_]{0,62}$/;
 // Core Inbox subject kinds. A plugin kind starts with the plugin name, so a
 // plugin with one of these names could take over core items.
 const CORE_INBOX_SUBJECT_NAMESPACES = new Set([
@@ -265,6 +266,17 @@ function validateInboxSubjects(
     ) {
       throw new Error(
         `Plugin "${name}" inbox subjects need a snake_case kind and a label.`,
+      );
+    }
+    const owner = subject.owner;
+    if (
+      ![owner?.table, owner?.subjectId, owner?.conversationId].every(
+        (identifier) =>
+          typeof identifier === "string" && SQL_IDENTIFIER_RE.test(identifier),
+      )
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner table, subjectId column, and conversationId column in snake_case.`,
       );
     }
     if (seen.has(subject.kind)) {

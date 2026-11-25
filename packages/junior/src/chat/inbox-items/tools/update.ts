@@ -144,7 +144,7 @@ export function createUpdateInboxItemTool(
             ...(input.conversation_ids ?? item.conversationIds),
           ]),
         ];
-        // This tool never changes visibility.
+        // The item's owner sets its visibility.
         const visibility = item.visibility;
         await requireInboxItemLinks({
           allowedIds: new Set([
@@ -186,7 +186,6 @@ export function createUpdateInboxItemTool(
           kind: item.kind,
           nowMs: Date.now(),
           title: input.title ?? item.title,
-          visibility,
           subject: item.subject,
           ...(item.request ? { request: item.request } : undefined),
         });

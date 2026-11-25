@@ -295,7 +295,6 @@ describe("event automations", () => {
       nowMs: Date.now(),
       subject: { id: "review:1174", kind: "question" },
       title: "Answer the review",
-      visibility: "private",
     });
     await execute(
       createDeleteAutomationTool(

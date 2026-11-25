@@ -89,7 +89,6 @@ async function closedItem(input: {
     nowMs: START_MS,
     request: REQUEST,
     title: "Roll out payments-v42",
-    visibility: "public",
   });
   if (!item) throw new Error(`no item for ${input.key}`);
   await closeInboxItem(getDb(), {

@@ -419,7 +419,7 @@ describe("Automation alerts", () => {
     // Before the cutover, a blocked Automation had no Inbox item.
     await getDb()
       .delete(juniorInboxItems)
-      .where(eq(juniorInboxItems.ownerId, task.id));
+      .where(eq(juniorInboxItems.subjectId, task.id));
     expect(await asCreator.alerts(task.id)).toEqual([]);
 
     await heartbeat();

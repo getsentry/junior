@@ -104,7 +104,6 @@ describe("conversation tree state", () => {
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
@@ -428,7 +427,6 @@ describe("conversation tree state", () => {
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);

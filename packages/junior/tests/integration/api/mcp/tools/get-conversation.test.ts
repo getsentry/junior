@@ -95,7 +95,6 @@ describe("getConversation MCP tool", () => {
         ],
       },
       title: "Ship the release?",
-      visibility: "public",
     });
 
     const running = await call("getConversation", {

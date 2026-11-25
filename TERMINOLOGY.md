@@ -211,9 +211,11 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Inbox item**: work for a person, shown in the **Inbox**. Not an
   Item or a Review item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
-  what the item belongs to, `{ kind, id }`: the Conversation that added it,
-  or an Automation. The owner sets the item's visibility, tenant, and Inbox
-  stack. **Subject**: what the item is about, `{ kind, id }`, such as a
+  what the item belongs to, `{ kind, id }`: a Conversation or an Automation.
+  The subject names it, so the item stores no owner. The Destination of the
+  owner sets the item's visibility, and the owner sets its Inbox stack. A
+  plugin's owner table maps each subject id of the plugin to its
+  Conversation. **Subject**: what the item is about, `{ kind, id }`, such as a
   pull request. The kind says what the item asks, such as
   `github:pull_request_review`. **Automation alert**: an Inbox item that an Automation owns. Core
   adds it for the creator when the Automation needs them, and closes it

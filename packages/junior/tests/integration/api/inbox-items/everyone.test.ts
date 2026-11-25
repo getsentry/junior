@@ -67,9 +67,7 @@ async function addAsk(input: {
       ],
       question: "Approve or reject this entry?",
     },
-    tenant: { provider: "slack", providerTenantId: "T123" },
     title: `Ask ${input.key}`,
-    visibility: "public",
   });
   if (!created) throw new Error(`ask ${input.key} was not added`);
   return created.id;

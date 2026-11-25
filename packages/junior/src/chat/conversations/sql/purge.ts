@@ -10,6 +10,10 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import {
+  inboxItemOwnerConversationId,
+  inboxItemVisibility,
+} from "@/chat/inbox-items/owner";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
@@ -160,14 +164,10 @@ export async function selectExpiredRoots(
            or bindings.child_conversation_id = tree.conversation_id
       )
       or exists (
-        select 1 from junior_inbox_items inbox_items
-        where inbox_items.owner_kind = 'conversation'
-          and inbox_items.owner_id = tree.conversation_id
-          and inbox_items.status = 'open'
-          and not exists (
-            select 1 from junior_automation_runs runs
-            where runs.conversation_id = inbox_items.owner_id
-          )
+        select 1 from ${juniorInboxItems}
+        where ${inboxItemOwnerConversationId()} = tree.conversation_id
+          and ${juniorInboxItems.status} = 'open'
+          and not ${inboxItemAddedByAnyAutomation()}
       )
       or exists (
         select 1 from junior_todos todos
@@ -198,16 +198,12 @@ export async function selectExpiredRoots(
             where embeddings.conversation_id = tree.conversation_id
           )
           or exists (
-            select 1 from junior_inbox_items inbox_items
-            where inbox_items.owner_kind = 'conversation'
-              and inbox_items.owner_id = tree.conversation_id
-              and inbox_items.visibility = 'private'
+            select 1 from ${juniorInboxItems}
+            where ${inboxItemOwnerConversationId()} = tree.conversation_id
+              and ${inboxItemVisibility()} = 'private'
               and (
-                inbox_items.status <> 'open'
-                or not exists (
-                  select 1 from junior_automation_runs runs
-                  where runs.conversation_id = inbox_items.owner_id
-                )
+                ${juniorInboxItems.status} <> 'open'
+                or not ${inboxItemAddedByAnyAutomation()}
               )
           )
           or exists (
@@ -440,18 +436,18 @@ export async function purgeConversationTree(
               .delete(juniorConversationEmbeddings)
               .where(inArray(juniorConversationEmbeddings.conversationId, ids));
             // A private Inbox item holds content from its Conversation. A
-            // public item stays, even when its destination later turned
-            // private, because other Conversations can still link to it. An
-            // open item of an Automation also stays, because a later run can
-            // still change it. A later purge deletes it after it closes.
+            // public item stays, because other Conversations can still link
+            // to it. An item is as private as its owner's Destination is
+            // now. An open item of an Automation also stays, because a later
+            // run can still change it. A later purge deletes it after it
+            // closes.
             await executor
               .db()
               .delete(juniorInboxItems)
               .where(
                 and(
-                  eq(juniorInboxItems.ownerKind, "conversation"),
-                  inArray(juniorInboxItems.ownerId, ids),
-                  eq(juniorInboxItems.visibility, "private"),
+                  inArray(inboxItemOwnerConversationId(), ids),
+                  eq(inboxItemVisibility(), "private"),
                   or(
                     ne(juniorInboxItems.status, "open"),
                     not(inboxItemAddedByAnyAutomation()),

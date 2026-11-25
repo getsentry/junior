@@ -1,5 +1,11 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
+  inboxItemOwnerConversationId,
+  inboxItemTenantId,
+  inboxItemTenantProvider,
+  inboxItemVisibility,
+} from "@/chat/inbox-items/owner";
+import {
   and,
   eq,
   exists,
@@ -103,10 +109,7 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
 export function inboxItemOwnedByConversation(
   conversationId: SQL | AnyColumn | string,
 ): SQL {
-  return and(
-    eq(juniorInboxItems.ownerKind, "conversation"),
-    eq(juniorInboxItems.ownerId, conversationId),
-  )!;
+  return eq(inboxItemOwnerConversationId(), conversationId);
 }
 
 const todoOwner = alias(juniorConversations, "todo_owner");
@@ -158,7 +161,7 @@ function ownerConversationOpenTo(userId: string): SQL {
       .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
-          eq(todoOwner.conversationId, juniorInboxItems.ownerId),
+          eq(todoOwner.conversationId, inboxItemOwnerConversationId()),
           or(
             and(
               isNull(todoOwner.parentConversationId),
@@ -242,9 +245,9 @@ export function inboxItemLinkedTo(conversationId: string): SQL {
 function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
   return tenants.map((tenant) =>
     and(
-      eq(juniorInboxItems.visibility, "public"),
-      eq(juniorInboxItems.provider, tenant.provider),
-      eq(juniorInboxItems.providerTenantId, tenant.providerTenantId),
+      eq(inboxItemVisibility(), "public"),
+      eq(inboxItemTenantProvider(), tenant.provider),
+      eq(inboxItemTenantId(), tenant.providerTenantId),
     )!,
   );
 }
@@ -255,18 +258,12 @@ function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
  * such as when its Automation row goes, no longer counts.
  */
 export function inboxItemAddedByAutomation(automationId: string): SQL {
-  return and(
-    eq(juniorInboxItems.ownerKind, "conversation"),
-    sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${juniorInboxItems.ownerId} and ${juniorAutomationRuns.automationId} = ${automationId})`,
-  )!;
+  return sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${inboxItemOwnerConversationId()} and ${juniorAutomationRuns.automationId} = ${automationId})`;
 }
 
 /** SQL: a run of any Automation added the Inbox item. */
 export function inboxItemAddedByAnyAutomation(): SQL {
-  return and(
-    eq(juniorInboxItems.ownerKind, "conversation"),
-    sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${juniorInboxItems.ownerId})`,
-  )!;
+  return sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${inboxItemOwnerConversationId()})`;
 }
 
 /**
@@ -287,7 +284,7 @@ export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
       ...(reader.publicConversationId
         ? [
             and(
-              eq(juniorInboxItems.visibility, "public"),
+              eq(inboxItemVisibility(), "public"),
               eq(juniorInboxItems.kind, "action"),
               inboxItemLinkedTo(reader.publicConversationId),
             )!,

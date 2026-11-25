@@ -114,7 +114,6 @@ describe("Automation lifecycle API", () => {
             fields: [{ id: "note", kind: "text", label: "Note" }],
           },
           title: "Post an empty digest?",
-          visibility: "public",
         });
         // A public reader can also delete it.
         expect(

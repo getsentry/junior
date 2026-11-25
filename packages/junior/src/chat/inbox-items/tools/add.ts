@@ -268,7 +268,7 @@ export function createAddInboxItemTool(
       const subject = questionSubject(
         `ask:${options.toolCallId ?? randomUUID()}`,
       );
-      // An item from a private Conversation is private.
+      // The item is as private as the Conversation that asks it.
       const visibility: InboxItemVisibility = scope.inPrivateConversation
         ? "private"
         : "public";
@@ -326,12 +326,10 @@ export function createAddInboxItemTool(
         kind: input.kind,
         subject,
         title: input.title,
-        visibility,
         ...(request ? { request } : undefined),
         owner: { id: context.conversationId, kind: "conversation" },
         ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
-        ...(scope.tenant ? { tenant: scope.tenant } : undefined),
       });
       if (!item) {
         throw new ToolInputError(

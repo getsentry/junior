@@ -11,11 +11,11 @@
  * change. An assignee who cannot see the
  * Conversation's content gets no item.
  */
+import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
-  type ProviderTenant,
 } from "@/api/conversations/access";
 import { conversationIdsWithParticipantUser } from "@/api/conversations/membership";
 import {
@@ -92,8 +92,7 @@ export async function syncTodoInboxItems(
     .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorInboxItems.ownerKind, "conversation"),
-        eq(juniorInboxItems.ownerId, conversationId),
+        eq(inboxItemOwnerConversationId(), conversationId),
         eq(juniorInboxItems.status, "open"),
         eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
       ),
@@ -136,7 +135,6 @@ export async function syncTodoInboxItems(
     people.length > 0
       ? await readConversationAccessRows(db, [conversationId])
       : [];
-  let tenant: ProviderTenant | undefined;
   const shown: string[] = [];
   /* oxlint-disable no-await-in-loop -- Reads share one transaction; a list has few people. */
   for (const userId of people) {
@@ -152,7 +150,6 @@ export async function syncTodoInboxItems(
       conversationId,
     );
     canSee.set(userId, access?.canViewPrivateContent ?? false);
-    tenant = access?.tenant;
   }
 
   for (const [key, todo] of todoByKey) {
@@ -183,14 +180,12 @@ export async function syncTodoInboxItems(
       kind: "action",
       subject: { id: key, kind: INBOX_SUBJECT_KINDS.todo },
       title: todo.title,
-      visibility: "private",
     };
     if (!item) {
       const inserted = await insertInboxItem(db, {
         ...content,
         nowMs,
         owner: { id: conversationId, kind: "conversation" },
-        ...(tenant ? { tenant } : undefined),
       });
       if (inserted) shown.push(inserted.id);
     } else if (

@@ -43,7 +43,10 @@ import {
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  listGitHubPullRequestOpeners,
+  recordGitHubPullRequestOpenerId,
+} from "../pull-request-requesters/store.js";
 import {
   GITHUB_INBOX_SUBJECTS,
   pullRequestSubject,
@@ -249,6 +252,14 @@ async function addUnlandedItem(args: {
   ).get(ref.number);
   // Only a pull request that a person asked for has a Conversation.
   if (!opener?.conversationId) return;
+  if (!opener.pullRequestId) {
+    await recordGitHubPullRequestOpenerId(args.db, {
+      conversationId: opener.conversationId,
+      number: ref.number,
+      pullRequestId: args.pullRequestId,
+      repositoryFullName: ref.repositoryFullName,
+    });
+  }
   await args.inboxItems.forConversation(opener.conversationId).upsert({
     // The policy asks once per Resume, so each upsert is a new ask.
     askedIdentityIds: [opener.identityId],

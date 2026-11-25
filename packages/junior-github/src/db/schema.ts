@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   integer,
   jsonb,
@@ -5,6 +6,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import * as z from "zod";
 
@@ -123,5 +125,10 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     primaryKey({
       columns: [table.repositoryFullName, table.number, table.identityId],
     }),
+    // The opener's row maps the id of a pull request to the Conversation that
+    // owns its Inbox items, so one id names one Conversation.
+    uniqueIndex("junior_github_pull_request_requesters_opener_id_uidx")
+      .on(table.pullRequestId)
+      .where(sql`${table.conversationId} is not null`),
   ],
 );

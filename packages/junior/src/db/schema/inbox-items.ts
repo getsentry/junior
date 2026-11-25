@@ -20,13 +20,6 @@ import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
 
 /**
- * What an Inbox item belongs to: the Conversation of the agent or plugin
- * that added it, or the Automation of an Automation alert. A new kind adds
- * a value here and to the owner check.
- */
-export type InboxItemOwnerKind = "conversation" | "automation";
-
-/**
  * The words of an Inbox item for search: its title, ranked above its body.
  * The `simple` config keeps each word as typed, so a prefix of it matches.
  */
@@ -47,15 +40,14 @@ export function inboxItemFuzzyTitle(table: { title: AnyPgColumn }): SQL {
  * `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
  * and `dismissed`. `closed_by_user_id` is null when an agent closed it.
- * `owner_kind` and `owner_id` name its owner. The owner kind decides how the
- * item gets its visibility and tenant, and where the Inbox stacks it. The id
- * has no foreign key, because it can name a row of more than one table.
  *
  * `subject_kind` and `subject_id` name what the item is about. The kind
  * says what the item asks. A plugin kind starts with the plugin name, such
  * as `github:pull_request_review`. Junior reads the subject's title, state,
  * and link from the subject when it shows the item, and never copies them
- * into a column here. `inbox-item-fields:check` keeps it that way.
+ * into a column here. `inbox-item-fields:check` keeps it that way. The
+ * subject also names the item's owner, which sets who can see it, so the
+ * item stores no owner (`chat/inbox-items/owner.ts`).
  */
 export const juniorInboxItems = pgTable(
   "junior_inbox_items",
@@ -63,11 +55,6 @@ export const juniorInboxItems = pgTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<"notice" | "action">().notNull(),
     status: text("status").$type<"open" | "done" | "dismissed">().notNull(),
-    /**
-     * `private` when the Conversation that added it is not public. A private
-     * item stays private and links only to that Conversation.
-     */
-    visibility: text("visibility").$type<"public" | "private">().notNull(),
     /**
      * Null for a `question` item: its question holds the title, body,
      * request, and answer (`junior_questions`).
@@ -83,23 +70,11 @@ export const juniorInboxItems = pgTable(
       .default(false),
     subjectKind: text("subject_kind").notNull(),
     subjectId: text("subject_id").notNull(),
-    // The default filled the rows from before owners had kinds.
-    ownerKind: text("owner_kind")
-      .$type<InboxItemOwnerKind>()
-      .notNull()
-      .default("conversation"),
-    ownerId: text("owner_id").notNull(),
     /**
      * Turn of the agent that added the item, or that last added it again with
      * its subject. Null for a plugin item, which has no Turn.
      */
     addedByTurnId: text("added_by_turn_id"),
-    /**
-     * Provider tenant, such as a Slack workspace, of the Conversation that
-     * added the item. A public item is visible only inside it.
-     */
-    provider: text("provider"),
-    providerTenantId: text("provider_tenant_id"),
     closedAt: timestamptz("closed_at"),
     closedByUserId: text("closed_by_user_id").references(() => juniorUsers.id, {
       onDelete: "set null",
@@ -117,32 +92,14 @@ export const juniorInboxItems = pgTable(
       "junior_inbox_items_kind_check",
       sql`(${table.kind} = 'notice' and ${table.request} -> 'question' is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} -> 'question' is not null or (${table.subjectKind} <> 'reply' and ${table.answer} is null)))`,
     ),
-    // Only an Automation owns an Automation alert.
-    check(
-      "junior_inbox_items_owner_check",
-      sql`(${table.ownerKind} = 'automation') = (${table.subjectKind} = 'automation')`,
-    ),
     check(
       "junior_inbox_items_status_check",
       sql`(${table.status} = 'open' and ${table.closedAt} is null) or (${table.status} in ('done', 'dismissed') and ${table.closedAt} is not null)`,
     ),
-    check(
-      "junior_inbox_items_tenant_check",
-      sql`(${table.provider} is null) = (${table.providerTenantId} is null)`,
-    ),
-    check(
-      "junior_inbox_items_visibility_check",
-      sql`${table.visibility} = 'public' or not ${table.assignedToEveryone}`,
-    ),
-    // The subject names one open item in one provider tenant: an add with
-    // the subject of an open item updates that item.
-    uniqueIndex("junior_inbox_items_open_subject_uidx")
-      .on(
-        sql`coalesce(${table.provider}, '')`,
-        sql`coalesce(${table.providerTenantId}, '')`,
-        table.subjectKind,
-        table.subjectId,
-      )
+    // The subject names one open item: an add with the subject of an open
+    // item adds nothing.
+    uniqueIndex("junior_inbox_items_open_subject_key_uidx")
+      .on(table.subjectKind, table.subjectId)
       .where(sql`${table.status} = 'open'`),
     index("junior_inbox_items_status_idx").on(
       table.status,
@@ -155,17 +112,6 @@ export const juniorInboxItems = pgTable(
       table.subjectKind,
       table.status,
     ),
-    // Reads find the items of one owner, such as an Automation's alerts.
-    index("junior_inbox_items_owner_idx").on(table.ownerKind, table.ownerId),
-    // The Conversation status reads the open action items that each
-    // Conversation owns.
-    index("junior_inbox_items_open_action_owner_idx")
-      .on(table.ownerId)
-      .where(sql`${table.status} = 'open' and ${table.kind} = 'action'`),
-    // A feed row reads the viewer's newest answer in its Conversation.
-    index("junior_inbox_items_answered_idx")
-      .on(table.ownerId, table.closedByUserId, table.closedAt)
-      .where(sql`${table.answer} is not null`),
     index("junior_inbox_items_search_idx").using(
       "gin",
       inboxItemSearchDocument(table),

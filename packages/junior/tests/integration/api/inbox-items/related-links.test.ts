@@ -348,7 +348,6 @@ describe("inbox item related links", () => {
       request: REQUEST,
       title: "Checkout p95 rose after payments-v42",
     });
-    const tenant = { provider: "slack", providerTenantId: "T123" };
     const start = Date.now();
     for (let index = 1; index <= 210; index += 1) {
       await insertInboxItem(getDb(), {
@@ -361,9 +360,7 @@ describe("inbox item related links", () => {
         nowMs: start + index,
         request: REQUEST,
         subject: { id: `busy:${index}`, kind: "question" },
-        tenant,
         title: `Busy release ${index}`,
-        visibility: "public",
       });
     }
     const busy = await add(ROLLOUT_ID, {

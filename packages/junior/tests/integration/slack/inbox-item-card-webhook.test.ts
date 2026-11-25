@@ -11,7 +11,6 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
-import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import {
   closeInboxItem,
   getInboxItem,
@@ -44,6 +43,10 @@ import {
   tearDownInboxItemCards,
   updateItem,
 } from "../../fixtures/slack/inbox-item-cards";
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../../fixtures/plugin-inbox-owners";
 
 describe("Slack webhook: Inbox item cards", () => {
   beforeEach(setUpInboxItemCards);
@@ -278,7 +281,13 @@ describe("Slack webhook: Inbox item cards", () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
-          inboxSubjects: [{ kind: "deploy_stopped", label: "Deploys stopped" }],
+          inboxSubjects: [
+            {
+              kind: "deploy_stopped",
+              label: "Deploys stopped",
+              owner: TEST_PLUGIN_INBOX_OWNER,
+            },
+          ],
           manifest: {
             name: "deploys",
             displayName: "Deploys",
@@ -296,7 +305,7 @@ describe("Slack webhook: Inbox item cards", () => {
     const { click, state } = inboxItemCardHarness();
     await slackThread(THREAD, "public");
     await linkSlackUser("ana@example.com", "U123");
-    await createPluginInboxItems({
+    await ownedPluginInboxItems({
       conversationId: THREAD,
       plugin: "deploys",
       show: createInboxItemShow(createSlackAdapterFixture),

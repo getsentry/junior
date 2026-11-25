@@ -548,6 +548,28 @@ agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
 `ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
 `ctx.conversationChanges` as from a plugin route.
 
+A plugin that adds Inbox items with `ctx.inboxItems` registers each subject
+kind in `inboxSubjects`. Each kind sets `owner`: a table of the plugin, the
+column that holds the subject id, and the column that holds the Conversation
+id, in snake_case. Each item belongs to the Conversation in that row, and
+the Destination of that Conversation sets who can see the item. Save the row
+before you add the item. Add a unique index, so that at most one row with a
+Conversation has each subject id.
+
+```ts
+inboxSubjects: [
+  {
+    kind: "deploy_stopped",
+    label: "Deploy stopped",
+    owner: {
+      table: "my_provider_deploys",
+      subjectId: "deploy_id",
+      conversationId: "conversation_id",
+    },
+  },
+],
+```
+
 A plugin that records code changes with `ctx.codeChanges` also sets
 `codeLinks` in its registration. Junior does not store links. It calls
 `codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
@@ -562,7 +584,7 @@ fails, Junior saves no entry. A batch has at most 100 entries.
 await ctx.conversationChanges.apply({
   annotations: [{ conversationId, upsert: annotation }],
   inboxItems: [
-    { conversationId, close: { dedupeKey, reason, status: "done" } },
+    { conversationId, close: { subject, reason, status: "done" } },
   ],
 });
 ```

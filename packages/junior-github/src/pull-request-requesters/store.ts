@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -90,6 +90,8 @@ export interface GitHubPullRequestOpener {
   /** Set only for the person who asked Junior to open it. */
   conversationId?: string;
   identityId: string;
+  /** GitHub's id of the pull request, when the opener's row has it. */
+  pullRequestId?: string;
 }
 
 /**
@@ -120,10 +122,41 @@ export async function listGitHubPullRequestOpeners(
         ...(row.conversationId
           ? { conversationId: row.conversationId }
           : undefined),
+        ...(row.pullRequestId
+          ? { pullRequestId: row.pullRequestId }
+          : undefined),
       });
     }
   }
   return openers;
+}
+
+/**
+ * Save GitHub's id of the pull request on its opener's row, when the row
+ * has none yet, such as a row from before the create saved the id. The row
+ * maps the id to the Conversation that owns the pull request's Inbox items,
+ * so an item needs it before it is added.
+ */
+export async function recordGitHubPullRequestOpenerId(
+  db: GitHubDb,
+  input: {
+    conversationId: string;
+    number: number;
+    pullRequestId: string;
+    repositoryFullName: string;
+  },
+): Promise<void> {
+  await db
+    .update(table)
+    .set({ pullRequestId: input.pullRequestId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
+        eq(table.number, input.number),
+        eq(table.conversationId, input.conversationId),
+        isNull(table.pullRequestId),
+      ),
+    );
 }
 
 /**

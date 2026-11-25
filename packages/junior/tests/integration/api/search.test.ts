@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { githubPlugin } from "@sentry/junior-github";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -87,21 +87,6 @@ async function report(response: Response | Promise<Response>) {
   return searchReportSchema.parse(await awaited.json());
 }
 
-/** Store the Conversation that owns the Inbox items, which a question needs. */
-async function ownerConversation() {
-  await createSqlStore(getSqlExecutor()).recordActivity({
-    actor: {
-      email: "owner@example.com",
-      platform: "slack",
-      slackUserId: "UOWNER",
-      teamId: TEAM_ID,
-    },
-    conversationId: "slack:C123:owner",
-    destination: { channelId: "C123", platform: "slack", teamId: TEAM_ID },
-    visibility: "private",
-  });
-}
-
 async function inboxItem(args: {
   assigneeUserIds?: string[];
   body?: string;
@@ -110,7 +95,16 @@ async function inboxItem(args: {
   visibility?: "private" | "public";
 }) {
   const visibility = args.visibility ?? "private";
-  await ownerConversation();
+  // The item is as private as the channel of the Conversation that asked.
+  const channelId = visibility === "public" ? "CASKPUB" : "CASKPRIV";
+  const conversationId = `slack:${channelId}:1.000001`;
+  await getConversationStore().recordActivity({
+    conversationId,
+    destination: { platform: "slack", teamId: TEAM_ID, channelId },
+    nowMs: args.nowMs,
+    source: "slack",
+    visibility,
+  });
   const item = await insertInboxItem(getDb(), {
     assignedToEveryone: false,
     assigneeUserIds: args.assigneeUserIds ?? [],
@@ -119,12 +113,8 @@ async function inboxItem(args: {
     subject: { id: args.title, kind: "question" },
     kind: "notice",
     nowMs: args.nowMs,
-    owner: { id: "slack:C123:owner", kind: "conversation" },
-    ...(visibility === "public"
-      ? { tenant: { provider: "slack", providerTenantId: TEAM_ID } }
-      : undefined),
+    owner: { id: conversationId, kind: "conversation" },
     title: args.title,
-    visibility,
   });
   if (!item) throw new Error(`Inbox item ${args.title} was not stored`);
   return item;
@@ -652,8 +642,12 @@ describe("search API", () => {
       });
     await change("1001", 946, "Make deploys resumable");
     await change("1002", 947, "Rotate the signing key");
-    const pullRequestItem = (id: string, number: number) =>
-      insertInboxItem(getDb(), {
+    const pullRequestItem = async (id: string, number: number) => {
+      // The opener's row names the Conversation that owns the item.
+      await getDb().execute(
+        sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${number}, 'identity:opener', 'slack:C123:owner', ${id}, now(), now())`,
+      );
+      return insertInboxItem(getDb(), {
         assignedToEveryone: false,
         assigneeUserIds: [viewer.id],
         body: `GitHub asks you to review #${number}.`,
@@ -663,8 +657,8 @@ describe("search API", () => {
         owner: { id: "slack:C123:owner", kind: "conversation" },
         subject: { id, kind: "github:pull_request" },
         title: `Review requested · #${number}`,
-        visibility: "private",
       });
+    };
     const resumable = await pullRequestItem("1001", 946);
     await pullRequestItem("1002", 947);
     const search = signedIn(viewer);

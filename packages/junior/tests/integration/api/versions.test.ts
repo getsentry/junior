@@ -250,7 +250,6 @@ describe("versions API", () => {
         question: "Approve the change?",
       },
       title: "Approve",
-      visibility: "private",
     });
     // An open item is a status input, so the detail moves too. The feed row
     // moves from `working` to `needs_input`, which outranks it.
@@ -481,7 +480,6 @@ describe("versions API", () => {
         question: "Approve the task?",
       },
       title: "Approve the task",
-      visibility: "public",
     });
     const withEveryone = await read();
     const bob = await resolveViewerUser("bob@example.com");

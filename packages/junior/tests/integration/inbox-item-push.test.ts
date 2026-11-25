@@ -28,7 +28,6 @@ import {
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
-import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
@@ -66,6 +65,10 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import { mswServer } from "../msw/server";
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../fixtures/plugin-inbox-owners";
 
 // web-push encrypts with http_ece. The test reads the payload with it.
 const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))(
@@ -349,7 +352,9 @@ describe("inbox item push", () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
-          inboxSubjects: [{ kind: "change", label: "Change" }],
+          inboxSubjects: [
+            { kind: "change", label: "Change", owner: TEST_PLUGIN_INBOX_OWNER },
+          ],
           manifest: {
             description: "Review test plugin",
             displayName: "Reviews",
@@ -368,7 +373,7 @@ describe("inbox item push", () => {
       createSlackActor("T123", "U0ANA", { email: "ana@example.com" }),
     );
     const { conversationId } = await turnTools(ana);
-    const items = createPluginInboxItems({
+    const items = ownedPluginInboxItems({
       conversationId,
       plugin: "reviews",
       show: syncInboxItemPush,

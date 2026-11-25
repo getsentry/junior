@@ -54,7 +54,8 @@ async function addItem(input: {
   // A run of an Automation adds its item from the run's own Conversation.
   let ownerId = input.conversationId;
   if (input.automationId) {
-    ownerId = `slack:CRUN:${input.key}`;
+    // Each run has its own channel, so it keeps its own visibility.
+    ownerId = `slack:CRUN${input.key.replaceAll("-", "").toUpperCase()}:1.000001`;
     await conversation(ownerId, input.visibility);
     await recordAutomationExecution(input.automationId, {
       conversationId: ownerId,
@@ -79,9 +80,7 @@ async function addItem(input: {
           },
         }
       : undefined),
-    tenant: T123,
     title: input.key,
-    visibility: input.visibility,
   });
   if (!item) throw new Error(`no item for ${input.key}`);
   return item.id;
@@ -145,14 +144,6 @@ describe("inbox item access", () => {
         kind: "action",
         visibility: "public",
       }),
-      // An item added before its Conversation became public stays private.
-      privateQuestionInPublic: await addItem({
-        assigneeUserIds: [ana],
-        conversationId: PUBLIC_CONVERSATION,
-        key: "private-question",
-        kind: "action",
-        visibility: "private",
-      }),
       privateAutomationItem: await addItem({
         assigneeUserIds: [carl],
         automationId: "auto-1",
@@ -170,18 +161,13 @@ describe("inbox item access", () => {
       [
         "assigned User",
         { userId: ana },
-        [
-          "privateItem",
-          "privateQuestionInPublic",
-          "publicItem",
-          "publicQuestion",
-        ],
+        ["privateItem", "publicItem", "publicQuestion"],
       ],
       ["other assigned User", { userId: carl }, ["privateAutomationItem"]],
       [
         "public linked Conversation",
         { conversationId: PUBLIC_CONVERSATION },
-        ["privateQuestionInPublic", "publicItem", "publicQuestion"],
+        ["publicItem", "publicQuestion"],
       ],
       [
         "person who views a public Conversation",

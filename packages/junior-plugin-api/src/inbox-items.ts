@@ -29,6 +29,22 @@ export interface PluginInboxSubjectKind {
    * reads the item's link and its search title from the code change.
    */
   codeChange?: boolean;
+  /**
+   * Where the owner Conversation of an item is. Each item belongs to one
+   * Conversation, which decides who can see it. Junior finds it in the row
+   * of `table` whose `subjectId` column holds the item's subject id, and
+   * reads the `conversationId` column of that row. Name a table of this
+   * plugin and its columns in snake_case. At most one row can have the
+   * subject id and a set Conversation: add a unique index for it.
+   */
+  owner: PluginInboxSubjectOwner;
+}
+
+/** The table and columns that map a subject id to its owner Conversation. */
+export interface PluginInboxSubjectOwner {
+  conversationId: string;
+  subjectId: string;
+  table: string;
 }
 
 /**

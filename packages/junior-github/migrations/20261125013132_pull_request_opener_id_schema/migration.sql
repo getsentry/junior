@@ -1,0 +1,4 @@
+-- This migration does not change the database. The migration before it
+-- builds `junior_github_pull_request_requesters_opener_id_uidx` concurrently,
+-- after the one before that clears duplicate ids. This snapshot records the
+-- index, so `drizzle-kit generate` does not write it again.

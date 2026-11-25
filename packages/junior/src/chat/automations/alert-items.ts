@@ -36,7 +36,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomationRuns,
   juniorAutomations,
-  juniorDestinations,
   juniorInboxItems,
 } from "@/db/schema";
 
@@ -209,8 +208,8 @@ export async function syncAutomationAlert(
     // The Automation is the subject, so it has at most one open alert. A
     // newer alert changes that item.
     const owned = and(
-      eq(juniorInboxItems.ownerKind, "automation"),
-      eq(juniorInboxItems.ownerId, automationId),
+      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.automation),
+      eq(juniorInboxItems.subjectId, automationId),
     );
     if (!alert) {
       const stale = await tx
@@ -271,20 +270,11 @@ export async function syncAutomationAlert(
         body: juniorInboxItems.body,
         id: juniorInboxItems.id,
         title: juniorInboxItems.title,
-        visibility: juniorInboxItems.visibility,
       })
       .from(juniorInboxItems)
       .where(and(owned, eq(juniorInboxItems.status, "open")));
-    const [destination] = await tx
-      .select({ visibility: juniorDestinations.visibility })
-      .from(juniorDestinations)
-      .where(
-        and(
-          eq(juniorDestinations.provider, "slack"),
-          eq(juniorDestinations.providerTenantId, row.teamId),
-          eq(juniorDestinations.providerDestinationId, row.channelId),
-        ),
-      );
+    // The Automation's Destination decides who can see its alerts
+    // (`inbox-items/owner.ts`).
     const content: InboxItemContent = {
       assignedToEveryone: false,
       assigneeUserIds: [creatorId],
@@ -303,19 +293,10 @@ export async function syncAutomationAlert(
             ? "Scheduled automation"
             : "Event automation",
         ),
-      // The Automation's Destination decides who can see its alerts.
-      visibility: destination?.visibility === "public" ? "public" : "private",
     };
     if (open) {
-      // A private alert stays private, as a private Conversation's items do
-      // when it becomes public.
-      if (open.visibility === "private") content.visibility = "private";
-      // A rename or a private Destination changes the open alert.
-      if (
-        open.title !== content.title ||
-        open.body !== content.body ||
-        open.visibility !== content.visibility
-      ) {
+      // A rename changes the open alert.
+      if (open.title !== content.title || open.body !== content.body) {
         await updateInboxItemContent(tx, {
           ...content,
           id: open.id,
@@ -328,7 +309,6 @@ export async function syncAutomationAlert(
       ...content,
       nowMs,
       owner: { id: automationId, kind: "automation" },
-      tenant: { provider: "slack", providerTenantId: row.teamId },
     });
   });
 }
@@ -361,15 +341,15 @@ export async function syncAutomationAlerts(
       : [],
   );
   const alerted = await db
-    .selectDistinct({ id: juniorInboxItems.ownerId })
+    .selectDistinct({ id: juniorInboxItems.subjectId })
     .from(juniorInboxItems)
     .innerJoin(
       juniorAutomations,
-      eq(juniorAutomations.id, juniorInboxItems.ownerId),
+      eq(juniorAutomations.id, juniorInboxItems.subjectId),
     )
     .where(
       and(
-        eq(juniorInboxItems.ownerKind, "automation"),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.automation),
         eq(juniorAutomations.kind, "event"),
         // An open alert, or a dismiss that hides alerts until a recovery
         // that a fixed trigger can bring without a run. Only an active
@@ -410,8 +390,11 @@ export async function syncAutomationAlerts(
             .from(juniorInboxItems)
             .where(
               and(
-                eq(juniorInboxItems.ownerKind, "automation"),
-                eq(juniorInboxItems.ownerId, juniorAutomations.id),
+                eq(
+                  juniorInboxItems.subjectKind,
+                  INBOX_SUBJECT_KINDS.automation,
+                ),
+                eq(juniorInboxItems.subjectId, juniorAutomations.id),
               ),
             ),
         ),
