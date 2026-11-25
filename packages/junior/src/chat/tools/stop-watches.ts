@@ -27,11 +27,20 @@ export const stopWatchingResourcesToolDefinition = zodToolDefinition({
     readOnlyHint: false,
   },
   description:
-    "Stop one watch by id. When a person asked for the stop, confirm it in a short reply after this call. Infer terse stop requests from context, and inspect active watches when the target is unclear. The watch can belong to the current conversation or to a child agent below it. Omit id only when the user explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents.",
+    "Stop one watch by id. When a person asked for the stop, confirm it in a short reply after this call. Infer terse stop requests from context, and inspect active watches when the target is unclear. The watch can belong to the current conversation or to a child agent below it.",
   exposure: "deferred",
   source: RESOURCE_WATCH_TOOL_SOURCE,
   inputSchema: z
-    .object({ id: z.string().min(1).nullable().optional() })
+    .object({
+      id: z
+        .string()
+        .min(1)
+        .nullable()
+        .optional()
+        .describe(
+          "Watch id. Omit it, or pass null, only when the person explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents.",
+        ),
+    })
     .strict(),
   outputSchema,
 });
