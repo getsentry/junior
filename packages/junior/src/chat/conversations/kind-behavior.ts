@@ -80,9 +80,9 @@ export type TurnBehavior = {
     subscriptions: boolean;
     userCustomization: boolean;
     /**
-     * The Turn changes a Space for its person, such as the Space's settings.
-     * Only a person's request changes a Space, so only a person's Turn has
-     * it.
+     * The Turn changes a Space for its person, such as the Space's settings
+     * or the Conversations in it. Only a person's request changes a Space,
+     * so only a person's Turn has it.
      */
     spaces: boolean;
     /**
@@ -226,7 +226,7 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 
 // An Automation Conversation lists the tools of the run and of a person who
 // replies, so its tool list stays the same. The run's own Turns keep the
-// Space tool disabled.
+// Space tools disabled.
 const AUTOMATION_TOOLS: TurnBehavior["tools"] = {
   ...AUTOMATION_RUN.tools,
   spaces: PERSON_IN_AUTOMATION.tools.spaces,
