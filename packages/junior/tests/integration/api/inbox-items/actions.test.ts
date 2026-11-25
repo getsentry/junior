@@ -733,7 +733,8 @@ describe("inbox item actions API", () => {
     ).json();
     expect(first.items).toHaveLength(25);
     expect(first.nextCursor).toBeDefined();
-    // Newest first: the two pull requests, then the decisions.
+    // Newest first. The question that cites a pull request has no card of
+    // it: its related links do not decide its card.
     expect(
       first.items
         .slice(0, 3)
@@ -741,7 +742,7 @@ describe("inbox item actions API", () => {
           (listed: { subject: { objectType?: string } }) =>
             listed.subject.objectType,
         ),
-    ).toEqual(["code_change", "code_change", undefined]);
+    ).toEqual([undefined, "code_change", undefined]);
 
     // The counts cover every page.
     // The question that cites a pull request counts as a decision only:

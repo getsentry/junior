@@ -212,7 +212,7 @@ export async function syncInboxItemSlackCards(args: {
             )
           ).flat();
           // The item stores no link: a code change subject reads it from
-          // the code change records, and a question from its related links.
+          // the code change records. A question has none.
           const subjectUrl = (await readSubjectLinks(db, [item])).get(
             subjectKey(item.subject),
           );

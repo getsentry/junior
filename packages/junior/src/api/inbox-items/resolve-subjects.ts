@@ -20,7 +20,7 @@ export interface InboxSubjectView {
  */
 export async function resolveInboxItemSubjects(
   viewer: User,
-  items: readonly Pick<InboxItem, "request" | "subject">[],
+  items: readonly Pick<InboxItem, "subject">[],
 ): Promise<Map<string, InboxSubjectView>> {
   const links = await readSubjectLinks(getDb(), items);
   if (links.size === 0) return new Map();

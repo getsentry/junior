@@ -256,11 +256,11 @@ describe("inbox item related links", () => {
         note: "p95 rose after payments-v42.",
       },
     ]);
-    // The question's first related link is its card.
-    expect(rollout.subject).toMatchObject({
+    // The related links show on the card, but they do not decide it: the
+    // subject is the question, which has no link or card of its own.
+    expect(rollout.subject).toEqual({
       id: added.item.subject.id,
       kind: "question",
-      url: RELEASE_URL,
     });
     expect(rollout.related).toEqual({
       conversationIds: [ROLLBACK_ID],
@@ -316,10 +316,12 @@ describe("inbox item related links", () => {
     const list = await (await api(fixture, ana)("")).json();
     const listed = (id: string) =>
       list.items.find((item: { id: string }) => item.id === id);
-    // The notice's related link is its card, like a question's.
-    expect(listed(merged.item.id)).toMatchObject({
-      kind: "notice",
-      subject: { kind: "question", objectType: "code_change", url: PR_URL },
+    // The notice's related link does not decide its card, as for a
+    // question.
+    expect(listed(merged.item.id)).toMatchObject({ kind: "notice" });
+    expect(listed(merged.item.id).subject).toEqual({
+      id: merged.item.subject.id,
+      kind: "question",
     });
     expect(listed(merged.item.id).request).toBeUndefined();
     // Linking one pull request does not relate the two.

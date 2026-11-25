@@ -139,8 +139,8 @@ describe("inbox item subject migration", () => {
         { id: "ship", subject_id: "ship:946", subject_kind: "question" },
         { id: "shipped", subject_id: "shipped:site", subject_kind: "question" },
       ]);
-      // Its old subject link is now its first evidence link, so its card and
-      // related work still read the pull request.
+      // Its old subject link is now its first evidence link, so its card
+      // still lists the pull request.
       expect(
         await fixture.sql.query(
           `SELECT request->'evidence' AS evidence FROM junior_inbox_items WHERE id = 'ship'`,
@@ -177,7 +177,7 @@ describe("inbox item subject migration", () => {
         },
       ]);
       // A notice gets a request with only its old subject link, so its card
-      // still shows what it is about.
+      // still lists what it is about.
       expect(
         await fixture.sql.query(
           `SELECT request FROM junior_inbox_items WHERE id = 'heads-up'`,

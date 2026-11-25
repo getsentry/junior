@@ -1,7 +1,7 @@
 /**
- * The web links of Inbox item subjects. A question's link is the first
- * of its related links. Another subject whose id is a web URL is its own
- * link. A plugin kind that names a code change (`codeChange`) has
+ * The web links of Inbox item subjects. A question has none: its related
+ * links show on its card, but they do not decide it. A subject whose id
+ * is a web URL is its own link. A plugin kind that names a code change (`codeChange`) has
  * the code change's provider id, so its link comes from the code change
  * records, which follow a renamed or moved repository. The item stores no
  * link.
@@ -13,8 +13,6 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
-  INBOX_SUBJECT_KINDS,
-  questionLinks,
   subjectKindPlugin,
   subjectLink,
   type InboxItemLinkSource,
@@ -56,11 +54,6 @@ export async function readSubjectLinks(
   const changes: Array<{ provider: string; subject: InboxItemSubject }> = [];
   for (const item of items) {
     const { subject } = item;
-    if (subject.kind === INBOX_SUBJECT_KINDS.question) {
-      const [url] = questionLinks(item);
-      if (url) links.set(subjectKey(subject), url);
-      continue;
-    }
     const provider = codeChangeSubjectProvider(subject.kind, plugins);
     if (provider) {
       changes.push({ provider, subject });

@@ -29,7 +29,11 @@ import {
   inboxItemReaderForUserInConversation,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
-import { subjectKindLabel, subjectTodo } from "@/chat/inbox-items/subjects";
+import {
+  questionLinks,
+  subjectKindLabel,
+  subjectTodo,
+} from "@/chat/inbox-items/subjects";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import {
   actOnInboxItem,
@@ -180,17 +184,22 @@ const ERROR_STATUS = {
 // The plugin that owns a link type recognizes the subject, such as a pull
 // request from the GitHub plugin, so core keeps no provider URL rules. The
 // title, state, and ask come from the subject's card, never from the item.
+// A question has no subject link or card. A snooze of it can still wait on
+// what its first related link names, such as a pull request.
 function subjectPayload(
-  subject: InboxItem["subject"],
+  item: Pick<InboxItem, "request" | "subject">,
   views: ReadonlyMap<string, InboxSubjectView>,
   viewer: User,
 ): InboxItemPayload["subject"] {
+  const { subject } = item;
   const view = views.get(subjectKey(subject));
   const url = view?.url;
   const object = view?.object;
   const label = subjectKindLabel(subject.kind, getPlugins(), object, viewer);
   const objectType = url && readLinkObjectType(url);
-  const resource = url && snoozeSubjectResource(getEventCatalog(), url);
+  const snoozeUrl = url ?? questionLinks(item)[0];
+  const resource =
+    snoozeUrl && snoozeSubjectResource(getEventCatalog(), snoozeUrl);
   return {
     id: subject.id,
     kind: subject.kind,
@@ -254,7 +263,7 @@ function inboxItemPayload(
     kind: item.kind,
     owner: item.owner,
     status: item.status,
-    subject: subjectPayload(item.subject, views, viewer),
+    subject: subjectPayload(item, views, viewer),
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
@@ -466,11 +475,10 @@ export function createInboxItemRoutes(services: {
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
       // Pull requests count a code change's own asks. A question that cites
-      // one is a decision, so its related links are not read.
+      // one is a decision: its subject has no link.
       const links = await readSubjectLinks(
         db,
         subjects.map((subject) => ({
-          request: null,
           subject: { id: subject.subjectId, kind: subject.subjectKind },
         })),
       );

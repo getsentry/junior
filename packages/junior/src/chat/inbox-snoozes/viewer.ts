@@ -14,6 +14,7 @@ import {
 } from "@/chat/inbox-items/access";
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
 import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
+import { questionLinks } from "@/chat/inbox-items/subjects";
 import { juniorConversations } from "@/db/schema/conversations";
 import {
   inboxItemRequest,
@@ -85,7 +86,10 @@ interface RowItem {
   /** The viewer can close it (`canActOnInboxItem`). */
   canAct: boolean;
   id: string;
-  /** The web link of the item's subject, such as a pull request. */
+  /**
+   * The web link that a snooze waits on by default: the item's subject,
+   * such as a pull request, or for a question, its first related link.
+   */
   subjectUrl: string | undefined;
 }
 
@@ -122,7 +126,7 @@ async function visibleRowItems(
         {
           canAct: canActOnInboxItem(item, user.id),
           id: item.id,
-          subjectUrl: links.get(subjectKey(item.subject)),
+          subjectUrl: snoozeLink(item, links),
         },
       ];
     }
@@ -155,8 +159,20 @@ async function visibleRowItems(
   return rows.map((row, index) => ({
     canAct: row.canAct,
     id: row.id,
-    subjectUrl: links.get(subjectKey(items[index]!.subject)),
+    subjectUrl: snoozeLink(items[index]!, links),
   }));
+}
+
+/**
+ * Return the link that a snooze of the item waits on by default. A
+ * question's subject has no link, so it waits on what its first related
+ * link names, such as a pull request. That does not decide its card.
+ */
+function snoozeLink(
+  item: Parameters<typeof questionLinks>[0],
+  links: ReadonlyMap<string, string>,
+): string | undefined {
+  return links.get(subjectKey(item.subject)) ?? questionLinks(item)[0];
 }
 
 /**

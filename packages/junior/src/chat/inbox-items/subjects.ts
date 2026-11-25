@@ -48,21 +48,20 @@ export function subjectKindPlugin(kind: string): string | undefined {
   return split > 0 ? kind.slice(0, split) : undefined;
 }
 
-/**
- * An item as its link reads it: its subject, and the request that holds a
- * question's related links.
- */
+/** An item as its link reads it: its subject. */
 export interface InboxItemLinkSource {
-  request?: { related?: ReadonlyArray<{ url?: string }> } | null | undefined;
   subject: InboxItemSubject;
 }
 
 /**
- * Return what an agent's question or notice is about: the http(s) links of
- * its related links, such as a pull request. Its id is no link. Other kinds
+ * Return the http(s) links of a question's related links, such as a pull
+ * request that it is about. They do not decide its card. Other kinds
  * return none.
  */
-export function questionLinks(item: InboxItemLinkSource): string[] {
+export function questionLinks(item: {
+  request?: { related?: ReadonlyArray<{ url?: string }> } | null | undefined;
+  subject: InboxItemSubject;
+}): string[] {
   if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return [];
   const links = (item.request?.related ?? []).flatMap((entry) => {
     const url = entry.url ? webLink(entry.url) : undefined;
