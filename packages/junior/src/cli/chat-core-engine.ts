@@ -27,6 +27,7 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
+import { turnGroupKey } from "@/turn-steps/group-key";
 import type { TurnInputPayload } from "@/turn-steps/prompt";
 
 const LOCAL_ACTOR: TurnInputPayload["actor"] = {
@@ -152,18 +153,20 @@ export async function runCoreEnginePrompt(args: {
       text: args.message,
       actor: LOCAL_ACTOR,
     };
+    const source = {
+      kind: "local",
+      visibility: "private",
+      conversationId: args.conversationId,
+    } as const;
     const { turnId } = await scheduleInput(engineCtx, {
       conversationId: args.conversationId,
       // The local CLI has no per-person id, so it uses the system Identity.
       actorIdentityId: SYSTEM_IDENTITY_ID,
+      groupKey: turnGroupKey(SYSTEM_IDENTITY_ID, source),
       payload,
       idempotencyKey: `local-cli:${randomUUID()}`,
       sentAt: new Date(),
-      source: {
-        kind: "local",
-        visibility: "private",
-        conversationId: args.conversationId,
-      },
+      source,
       // The CLI reads the Conversation history, so that is the answer.
       destination: null,
       delivery: "defer",
