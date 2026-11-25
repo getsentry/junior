@@ -230,8 +230,8 @@ async function runClaimedStep(
   }
 }
 
-// Main's provider backoff: 2 s, 4 s, 8 s. The cap keeps a queued Turn that
-// waits for its retry well inside the sweep's stale window.
+// Main's provider backoff: 2 s, 4 s, 8 s, before jitter. With jitter, the
+// longest wait is 90 s, well inside the sweep's stale window.
 const MODEL_RETRY_BASE_DELAY_MS = 2_000;
 const MODEL_RETRY_MAX_DELAY_MS = 60_000;
 
@@ -249,10 +249,15 @@ function modelRetryDelayMs(
     return undefined;
   }
   const backoffMs = MODEL_RETRY_BASE_DELAY_MS * 2 ** (attempts - 1);
-  return Math.min(
+  const delayMs = Math.min(
     MODEL_RETRY_MAX_DELAY_MS,
     Math.max(backoffMs, failure.retryAfterMs ?? 0),
   );
+  // Turns that fail together in a provider outage would all come back at the
+  // same moment. Jitter spreads them, and only adds, so a retry never comes
+  // before the provider's Retry-After. It applies after the cap, or every
+  // capped retry would land at once.
+  return delayMs * (1 + Math.random() / 2);
 }
 
 /**
