@@ -442,3 +442,32 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   await expect(page.getByText("This Space is unavailable.")).toBeVisible();
 });
+
+test("leaving a private Space from the pane leaves a Conversation in it", async ({
+  dashboard,
+  page,
+}) => {
+  await viewAsParticipant(page);
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Move to Space").click();
+  const picker = page.getByRole("dialog", { name: "Move to Space" });
+  await picker.getByRole("combobox", { name: "Space" }).fill("pricing");
+  await expect(
+    picker.getByRole("option", { name: "Pricing launch" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("link", { name: "Space: Pricing launch" }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("list", { name: "Spaces" })
+    .getByRole("link", { name: "Pricing launch" })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Leave Space" }).click();
+  await expect(page).toHaveURL(/\/inbox$/);
+});
