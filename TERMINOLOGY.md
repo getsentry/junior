@@ -201,12 +201,12 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
-- **Annotation**: saved facts or a link on one Conversation, for an object
-  that it created or changed. A read saves none. An update sends no message.
+- **Annotation**: a pointer from one Conversation to an object that it
+  created, changed, or attached. A read saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
   Annotation types for provider work items, meetings, and other objects.
 - **Message card**: a Message's reference to an Annotation, shown with the
-  latest saved facts. No live provider fetch.
+  object's live card, else its label.
 - **Unfinished work** / **Assigned work**: plugin-owned work on a
   Conversation, open / open or done.
 - **Inbox item**: work for a person, shown in the **Inbox**. Not an

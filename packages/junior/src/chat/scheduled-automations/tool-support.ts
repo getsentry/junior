@@ -1,3 +1,4 @@
+import type { AnnotatedObject } from "@sentry/junior-plugin-api";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import * as z from "zod";
 import type { AutomationDestination } from "@/chat/automations/creator";
@@ -108,6 +109,7 @@ export async function scheduleAutomationToolResult(
   conversationId: string,
   task: ScheduledAutomation,
   isCreator: boolean,
+  action: AnnotatedObject["action"],
 ) {
   return saveAutomationCardResult(
     conversationId,
@@ -124,5 +126,6 @@ export async function scheduleAutomationToolResult(
             }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
           : task.schedule.description,
     },
+    action,
   );
 }

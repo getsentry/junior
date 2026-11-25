@@ -1,5 +1,8 @@
 /** Shared input and result shapes of the Automation tools. */
-import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
+import {
+  ownedObjectAnnotationSchema,
+  type AnnotatedObject,
+} from "@sentry/junior-plugin-api";
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import {
@@ -203,18 +206,21 @@ export function automationToolResult(
   conversationId: string,
   candidate: TaskCandidate,
   catalog: EventCatalog,
+  action: AnnotatedObject["action"],
 ) {
   return candidate.kind === "scheduled"
     ? scheduleAutomationToolResult(
         conversationId,
         candidate.task,
         candidate.ownedByViewer,
+        action,
       )
     : eventAutomationToolResult(
         conversationId,
         candidate.task,
         catalog,
         candidate.ownedByViewer,
+        action,
       );
 }
 

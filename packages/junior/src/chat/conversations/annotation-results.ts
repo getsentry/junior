@@ -1,9 +1,43 @@
 import {
-  objectAnnotationSchema,
+  annotatedObjectSchema,
+  type AnnotatedObject,
   type OwnedObjectAnnotation,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
+import {
+  ANNOTATION_SUBJECT_KINDS,
+  CORE_ANNOTATION_PLUGIN,
+  createPluginAnnotations,
+  upsertPluginAnnotation,
+} from "@/chat/plugins/annotations";
+
+// A plugin names its objects with the subject kinds that it registers for
+// the Inbox, so an Annotation and an Inbox item about one object match.
+function assertSubjectKind(
+  plugin: string,
+  annotation: AnnotatedObject,
+  plugins: readonly PluginRegistration[],
+): void {
+  const kind = annotation.subject?.kind;
+  if (kind === undefined) return;
+  const known =
+    plugin === CORE_ANNOTATION_PLUGIN
+      ? Object.values<string>(ANNOTATION_SUBJECT_KINDS).includes(kind)
+      : plugins.some(
+          (registration) =>
+            registration.manifest.name === plugin &&
+            registration.inboxSubjects?.some(
+              (subject) => subject.kind === kind,
+            ),
+        );
+  if (!known) {
+    throw new Error(
+      `${plugin} returned an object Annotation with subject kind "${kind}", which it does not register in inboxSubjects.`,
+    );
+  }
+}
 
 /** Save object annotations and retain returned facts in the tool result. */
 export async function saveObjectAnnotations(
@@ -11,18 +45,30 @@ export async function saveObjectAnnotations(
   plugin: string,
   value: unknown,
 ): Promise<OwnedObjectAnnotation[]> {
-  const annotations = objectAnnotationSchema.array().parse(value);
+  const annotations = annotatedObjectSchema.array().parse(value);
+  const plugins = getPlugins();
+  for (const annotation of annotations) {
+    assertSubjectKind(plugin, annotation, plugins);
+  }
   await getDb().transaction(async (db) => {
     const store = createPluginAnnotations({ conversationId, plugin, db });
     /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
-    for (const annotation of annotations) {
-      await store.upsert(annotation);
+    for (const { action, ...annotation } of annotations) {
+      await upsertPluginAnnotation(db, {
+        action,
+        annotation,
+        conversationId,
+        plugin,
+      });
       // Replace a legacy link for the same object without changing other annotations.
       await store.remove("resource_link", annotation.key);
     }
     /* oxlint-enable no-await-in-loop */
   });
-  return annotations.map((annotation) => ({ ...annotation, plugin }));
+  return annotations.map(({ action: _action, ...annotation }) => ({
+    ...annotation,
+    plugin,
+  }));
 }
 
 /**

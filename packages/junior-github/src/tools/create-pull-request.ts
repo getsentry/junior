@@ -3,6 +3,7 @@ import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
   objectFactsSchema,
+  type AnnotatedObject,
   type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
@@ -171,6 +172,8 @@ type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
   facts?: ObjectAnnotation["facts"] | undefined;
+  /** GitHub's id of the pull request. Unset in a state saved before it. */
+  id?: string | undefined;
   sourceUpdatedAt?: string | undefined;
   description?: string | undefined;
   number: number;
@@ -576,18 +579,22 @@ async function gitHubPullRequestStructuredResult(
     result,
     ctx.events.canSubscribe,
   );
-  const objectAnnotations = [
-    githubObjectAnnotation({
-      facts: result.facts,
-      sourceUpdatedAt: result.sourceUpdatedAt,
-      description: result.description,
-      repo: input.repo,
-      number: result.number,
-      title: input.title,
-      url: result.url,
-      objectType: "code_change",
-      status: input.draft ? "draft" : "open",
-    }),
+  const objectAnnotations: AnnotatedObject[] = [
+    {
+      action: "created",
+      ...githubObjectAnnotation({
+        facts: result.facts,
+        id: result.id,
+        sourceUpdatedAt: result.sourceUpdatedAt,
+        description: result.description,
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "code_change",
+        status: input.draft ? "draft" : "open",
+      }),
+    },
   ];
   if (!subscriptionConfig || !base.subscribable) {
     return {
@@ -696,6 +703,7 @@ export function createGitHubPullRequestTool(
                   : objectFactsSchema.parse(state.facts),
               sourceUpdatedAt: state.sourceUpdatedAt,
               description: state.description,
+              id: state.pullRequestId,
               number: state.number,
               url: state.url,
             };
@@ -797,7 +805,7 @@ export function createGitHubPullRequestTool(
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
-            result,
+            { ...result, id: pullRequestId },
             subscriptionConfig,
             stack,
           );
