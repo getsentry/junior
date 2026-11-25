@@ -71,8 +71,11 @@ targets:
         # More than one window on iPad, each with its own navigation.
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
+        # iPhone Duo turns content with each pose, so iPhone rotates too.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Every orientation, which iPad multitasking requires.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait

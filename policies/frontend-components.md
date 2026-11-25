@@ -38,9 +38,10 @@ consistent.
 - Use stylesheets only for Tailwind entry files, minimal resets, vendor
   constraints, or selectors utilities cannot express. No semantic CSS class
   APIs for one-off UI.
-- Use the theme type scale (`text-2xs` to `text-4xl`). `text-2xs` is only for
-  compact badges and chart notes; body copy, controls, and metadata use
-  `text-xs` or larger. No arbitrary `text-[Nrem]`.
+- Use the theme type scale (`text-2xs` to `text-4xl`). `text-3xs` is only for
+  a Space tile's two-letter glyph. `text-2xs` is only for compact badges and
+  chart notes; body copy, controls, and metadata use `text-xs` or larger. No
+  arbitrary `text-[Nrem]`.
 - No gradients unless they carry product meaning.
 - JS sizes that must match CSS use the same unit. Text, spacing, and
   breakpoints are in rem, so they grow with the browser font size. Write the

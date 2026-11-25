@@ -247,6 +247,70 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
   ).toHaveAttribute("aria-current", "page");
 });
 
+test("a member edits a Space from its menu or from the pane", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  await page.getByRole("button", { name: "Space menu" }).click();
+  await page.getByRole("menuitem", { name: "Edit Space" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Space" });
+  const name = dialog.getByRole("textbox", { name: "Name" });
+  const save = dialog.getByRole("button", { name: "Save" });
+  await expect(name).toHaveValue("Billing migration");
+  await expect(
+    dialog.getByRole("textbox", { name: "Description" }),
+  ).toHaveValue(
+    "Move invoicing to the new billing provider without double charges.",
+  );
+  // A Space keeps the visibility it was created with.
+  await expect(dialog.getByRole("radiogroup")).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  await name.fill("Billing cutover");
+  await screenshot(page, "space-edit", { lightTheme: true });
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Billing cutover" }),
+  ).toBeVisible();
+  const spaces = page.getByRole("list", { name: "Spaces" });
+  await expect(
+    spaces.getByRole("link", { name: "Billing cutover" }),
+  ).toHaveAttribute("aria-current", "page");
+
+  // A Space's row in the pane has the same menu, and the page stays.
+  await spaces
+    .getByRole("link", { name: "Mobile app" })
+    .click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "Archive Space" }),
+  ).toBeVisible();
+  await screenshot(page, "space-pane-menu", {
+    lightTheme: true,
+    view: "desktop",
+  });
+  await page.getByRole("menuitem", { name: "Edit Space" }).click();
+  await dialog.getByRole("textbox", { name: "Name" }).fill("iOS app");
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(spaces.getByRole("link")).toHaveText([
+    /Billing cutover$/,
+    /iOS app$/,
+    /Pricing launch$/,
+  ]);
+  await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
+
+  // Rows in a renamed Space name it.
+  await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+  await expect(
+    page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("link", { name: "Space: Billing cutover" })
+      .first(),
+  ).toBeVisible();
+});
+
 test("Move to Space moves a top-level Conversation", async ({
   dashboard,
   page,
