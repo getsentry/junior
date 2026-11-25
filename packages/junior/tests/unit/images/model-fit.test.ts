@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import sharp from "sharp";
@@ -22,12 +23,13 @@ async function png(width: number, height: number): Promise<ImageContent> {
 }
 
 // Random pixels do not compress, so the PNG data is large.
-async function noisePng(width: number, height: number): Promise<ImageContent> {
-  const pixels = Buffer.alloc(width * height * 3);
-  for (let index = 0; index < pixels.length; index += 1) {
-    pixels[index] = Math.floor(Math.random() * 256);
-  }
-  const data = await sharp(pixels, { raw: { width, height, channels: 3 } })
+async function noisePng(
+  width: number,
+  height: number,
+  channels: 3 | 4 = 3,
+): Promise<ImageContent> {
+  const pixels = randomBytes(width * height * channels);
+  const data = await sharp(pixels, { raw: { width, height, channels } })
     .png({ compressionLevel: 0 })
     .toBuffer();
   return {
@@ -111,6 +113,19 @@ describe("fitModelImage", () => {
       width: 1600,
       height: 1600,
     });
+  });
+
+  it("scales down a transparent image until its WebP data fits", async () => {
+    const image = await noisePng(1500, 1500, 4);
+
+    const fitted = await fitModelImage(image);
+
+    expect(fitted.image.mimeType).toBe("image/webp");
+    expect(fitted.image.data.length).toBeLessThanOrEqual(5_000_000);
+    expect(fitted.scaled?.from).toEqual([1500, 1500]);
+    const [width, height] = fitted.scaled!.to;
+    expect(width).toBeLessThan(1500);
+    expect(readImageDimensions(fitted.image)).toEqual({ width, height });
   });
 });
 

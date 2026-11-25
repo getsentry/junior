@@ -60,26 +60,33 @@ export async function fitModelImage(
   const from: [number, number] = turned
     ? [size.height, size.width]
     : [size.width, size.height];
-  const to: [number, number] = turned ? [height, width] : [width, height];
+  let to: [number, number] = turned ? [height, width] : [width, height];
   const resized = () =>
     sharp(source).rotate().resize({ width: to[0], height: to[1], fit: "fill" });
   const encoded = encodeLike(image.mimeType, resized());
   let mimeType = encoded.mimeType;
   let data = (await encoded.image.toBuffer()).toString("base64");
-  if (data.length > MAX_IMAGE_BASE64_CHARS) {
-    // JPEG is smallest for photos. WebP keeps transparency.
+  // JPEG is smallest for photos. WebP keeps transparency, but noisy pixels
+  // with alpha can stay too large, so scale down until the data fits. Each
+  // step cuts at least 10% from each side, so a 1x1 image ends the loop.
+  while (data.length > MAX_IMAGE_BASE64_CHARS) {
     mimeType = hasAlpha ? "image/webp" : "image/jpeg";
-    data = (
-      await (
-        hasAlpha
-          ? resized().webp({ quality: 85 })
-          : resized().jpeg({ quality: 85 })
-      ).toBuffer()
-    ).toString("base64");
+    const lossy = hasAlpha
+      ? resized().webp({ quality: 85 })
+      : resized().jpeg({ quality: 85 });
+    // oxlint-disable-next-line no-await-in-loop -- Each size depends on the size of the encode before it.
+    data = (await lossy.toBuffer()).toString("base64");
+    if (data.length <= MAX_IMAGE_BASE64_CHARS) break;
+    const factor = Math.sqrt(MAX_IMAGE_BASE64_CHARS / data.length) * 0.9;
+    to = [
+      Math.max(1, Math.floor(to[0] * factor)),
+      Math.max(1, Math.floor(to[1] * factor)),
+    ];
   }
+  const scaled = to[0] !== from[0] || to[1] !== from[1];
   return {
     image: { type: "image", data, mimeType },
-    ...(scale ? { scaled: { from, to } } : undefined),
+    ...(scaled ? { scaled: { from, to } } : undefined),
   };
 }
 
