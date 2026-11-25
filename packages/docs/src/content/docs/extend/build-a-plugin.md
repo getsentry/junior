@@ -778,6 +778,10 @@ defineJuniorPlugin({
   and does not save it on a Conversation. When your webhooks keep the object
   entry current, set `cacheCards: false`. Junior then reads your entry on
   each card read, after `canView`, so a change shows at once.
+- **Subject ids.** When the viewer's own read names the stable id of an
+  object that older Annotations name by another id, call
+  `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations
+  of your subject kind `kind` from `from` to `to`, and changes nothing else.
 - **Prefetch.** To load a page of links in one provider call, add
   `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
   that the link type claims, before `canView` and `resolve` run for each

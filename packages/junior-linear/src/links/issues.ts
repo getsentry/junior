@@ -11,6 +11,7 @@ import type {
   ObjectLinkContext,
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
+import { LINEAR_SUBJECT_KINDS } from "../inbox-subjects.js";
 import {
   isLinearIssueIdentifier,
   linearIssueAnnotation,
@@ -59,7 +60,30 @@ async function fetchIssue(
   // An identifier is unique only in one workspace. The viewer's login can
   // be in another workspace that has an issue with the same identifier.
   if (!issue || issueWorkspace(issue) !== link.workspace) return null;
-  return issue.identifier === link.identifier ? issue : null;
+  if (issue.identifier !== link.identifier) return null;
+  if (issue.uuid) await rekeyTickets(ctx, issue.identifier, issue.uuid);
+  return issue;
+}
+
+/**
+ * Move Tickets that an older release saved by identifier to Linear's uuid,
+ * from this viewer's own read. The card does not need it, so a failure
+ * only logs.
+ */
+async function rekeyTickets(
+  ctx: ObjectLinkContext,
+  identifier: string,
+  uuid: string,
+): Promise<void> {
+  try {
+    await ctx.replaceSubjectId({
+      kind: LINEAR_SUBJECT_KINDS.issue,
+      from: identifier,
+      to: uuid,
+    });
+  } catch (error) {
+    ctx.log.error("linear.issue_subject.rekey_failed", {}, error);
+  }
 }
 
 /**

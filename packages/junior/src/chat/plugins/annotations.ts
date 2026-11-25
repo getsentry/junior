@@ -89,6 +89,28 @@ function annotationFromRow(row: {
 }
 
 /**
+ * Move the Annotations of one plugin subject from one provider id to
+ * another. Only the subject id changes: the saved card and its update time
+ * stay.
+ */
+export async function replaceAnnotationSubjectId(
+  db: JuniorDatabase,
+  args: { from: string; kind: string; plugin: string; to: string },
+): Promise<void> {
+  const table = juniorConversationAnnotations;
+  await db
+    .update(table)
+    .set({ subjectId: args.to })
+    .where(
+      and(
+        eq(table.plugin, args.plugin),
+        eq(table.subjectKind, pluginSubjectKind(args.plugin, args.kind)),
+        eq(table.subjectId, args.from),
+      ),
+    );
+}
+
+/**
  * Add or replace one annotation of a plugin, and mark the Conversation detail
  * changed in the same statement. Pass a transaction to save it with other
  * changes. `subject` overrides the subject of the annotation, such as for an

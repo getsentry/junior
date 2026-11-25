@@ -1,5 +1,7 @@
 import { linearPlugin } from "../../../../junior-linear/src/index.js";
 import type { User } from "@sentry/junior-plugin-api";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,9 +9,15 @@ import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
-import { closeDb } from "@/chat/db";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { putMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { juniorConversationAnnotations } from "@/db/schema";
 import { defineJuniorPlugins } from "@/plugins";
+import {
+  BASE_MS,
+  seedConversation,
+} from "../../fixtures/conversation-retention";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 
@@ -134,6 +142,45 @@ async function readCards(viewer: User, urls: string[]) {
   };
 }
 
+/**
+ * Save a Ticket card as an older release did: its subject is the
+ * identifier, because that release did not know Linear's uuid.
+ */
+async function seedIdentifierTicket() {
+  const conversationId = `conversation-${randomUUID()}`;
+  await seedConversation(getSqlExecutor(), {
+    conversationId,
+    lastActivityAtMs: BASE_MS,
+  });
+  await createPluginAnnotations({
+    conversationId,
+    db: getDb(),
+    plugin: "linear",
+  }).upsert({
+    kind: "object",
+    objectType: "task",
+    key: "ENG-123",
+    subject: { id: "ENG-123", kind: "issue" },
+    label: "ENG-123",
+    title: "Login redirect",
+    url: "https://linear.app/acme/issue/ENG-123",
+    displayType: "Issue",
+  });
+  return conversationId;
+}
+
+async function savedTicket(conversationId: string) {
+  return await getDb()
+    .select({
+      annotation: juniorConversationAnnotations.annotation,
+      subjectId: juniorConversationAnnotations.subjectId,
+      subjectKind: juniorConversationAnnotations.subjectKind,
+      updatedAt: juniorConversationAnnotations.updatedAt,
+    })
+    .from(juniorConversationAnnotations)
+    .where(eq(juniorConversationAnnotations.conversationId, conversationId));
+}
+
 describe("Linear issue link cards", () => {
   beforeEach(async () => {
     vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
@@ -148,10 +195,12 @@ describe("Linear issue link cards", () => {
     await closeDb();
   });
 
-  it("shows an issue card from one read to a viewer whose Linear login opens the issue", async () => {
+  it("shows an issue card from one read to a viewer whose Linear login opens the issue, and rekeys older Tickets to its uuid", async () => {
     const linear = fakeLinearMcp({ alice: ["ENG-123"] });
     const alice = testViewer("alice@example.com");
     await linear.connect(alice, "alice");
+    const conversationId = await seedIdentifierTicket();
+    const [before] = await savedTicket(conversationId);
 
     const { objects } = await readCards(alice, [ISSUE_URL]);
 
@@ -189,6 +238,11 @@ describe("Linear issue link cards", () => {
     ]);
     expect(bare.map((card) => card.object.key)).toEqual(["ENG-123"]);
     expect(linear.calls).toEqual(["alice get_issue ENG-123"]);
+    // Alice's own read names the uuid, so the older Ticket now has it. The
+    // read changes nothing else in the saved card.
+    expect(await savedTicket(conversationId)).toEqual([
+      { ...before, subjectId: ISSUE_UUID },
+    ]);
   });
 
   it("shows nothing of an issue to a viewer who cannot open it or has not connected Linear", async () => {
@@ -198,6 +252,8 @@ describe("Linear issue link cards", () => {
     const bob = testViewer("bob@example.com");
     await linear.connect(bob, "bob");
     const carol = testViewer("carol@example.com");
+    const conversationId = await seedIdentifierTicket();
+    const before = await savedTicket(conversationId);
 
     for (const viewer of [bob, carol]) {
       const { body, objects } = await readCards(viewer, [ISSUE_URL]);
@@ -205,6 +261,7 @@ describe("Linear issue link cards", () => {
       expect(body).not.toContain("login redirect");
     }
     expect(linear.calls).toEqual(["bob get_issue ENG-123"]);
+    expect(await savedTicket(conversationId)).toEqual(before);
   });
 
   it("shows nothing when the viewer's workspace has another issue with the same identifier", async () => {
