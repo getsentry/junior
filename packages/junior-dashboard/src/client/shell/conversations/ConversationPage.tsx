@@ -127,6 +127,7 @@ import {
   useQuickQuestionThread,
 } from "../../conversations/QuickQuestion";
 import { Transcript } from "../../conversations/TranscriptView";
+import type { ShowTranscriptRow } from "../../conversations/transcriptBottomPinning";
 import type { TranscriptAskReveal } from "../../conversations/ConversationTranscript";
 import {
   readConversationStartPosition,
@@ -169,6 +170,7 @@ export function ConversationPage(props: {
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
+  const showRowRef = useRef<ShowTranscriptRow>(null);
   const replyRef =
     useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -582,7 +584,8 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (memoryJumpSeq === undefined || !transcript || holdShown) return;
     if (openLink({ event: memoryJumpSeq })) return;
-    showMemoryRow(pageRef.current, memoryJumpSeq);
+    const showRow = showRowRef.current;
+    if (showRow) showMemoryRow(pageRef.current, memoryJumpSeq, showRow);
     setMemoryJumpSeq(undefined);
   }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
@@ -900,6 +903,7 @@ export function ConversationPage(props: {
                           : linkedRowSeq
                       }
                       revealSeq={revealSeq}
+                      showRowRef={showRowRef}
                       responding={
                         !detail.error &&
                         !history.newer &&
