@@ -424,6 +424,18 @@ describe("a GitHub issue of a renamed repository", () => {
         url: "https://github.com/getsentry/junior-next/issues/4254",
       },
     ]);
+    const [saved] = await getDb()
+      .select({ annotation: juniorConversationAnnotations.annotation })
+      .from(juniorConversationAnnotations)
+      .where(
+        eq(
+          juniorConversationAnnotations.conversationId,
+          slackParentConversationId,
+        ),
+      );
+    expect(saved?.annotation).toMatchObject({
+      key: "getsentry/junior-next#4254",
+    });
     for (const q of [
       "getsentry/junior-next#4254",
       "https://github.com/getsentry/junior-next/issues/4254",
@@ -440,6 +452,42 @@ describe("a GitHub issue of a renamed repository", () => {
     await runTool(
       "github_updateIssue",
       { issue: 4254, repo: "getsentry/junior-next", state: "closed" },
+      {
+        html_url: "https://github.com/getsentry/junior-next/issues/4254",
+        id: 4_254_000,
+        number: 4254,
+        state: "closed",
+      },
+    );
+
+    expect(await annotationsOf(slackParentConversationId)).toEqual([
+      {
+        action: "created",
+        key: "getsentry/junior-next#4254",
+        subjectId: "4254000",
+        subjectKind: "github:issue",
+        url: "https://github.com/getsentry/junior-next/issues/4254",
+      },
+    ]);
+  });
+
+  it("stays on the new name when a tool changes the issue by its old name", async () => {
+    await createIssue();
+    await sendGitHubWebhook(app, "repository", {
+      action: "renamed",
+      changes: { repository: { name: { from: "junior" } } },
+      repository: {
+        full_name: "getsentry/junior-next",
+        id: 2001,
+        name: "junior-next",
+        owner: { login: "getsentry" },
+      },
+    });
+
+    // GitHub still answers the old name, from the new place.
+    await runTool(
+      "github_updateIssue",
+      { issue: 4254, repo: "getsentry/junior", state: "closed" },
       {
         html_url: "https://github.com/getsentry/junior-next/issues/4254",
         id: 4_254_000,

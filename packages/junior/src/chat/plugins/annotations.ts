@@ -381,6 +381,8 @@ async function moveAnnotationObjects(
       .update(table)
       .set({
         key: sql`case when ${keyMoves} then ${movedKey} else ${table.key} end`,
+        // The saved Annotation names its key too, and lists read it there.
+        annotation: sql`case when ${keyMoves} then jsonb_set(${table.annotation}, '{key}', to_jsonb(${movedKey})) else ${table.annotation} end`,
         url: sql`case when ${urlMatches} then ${to.url}::text || substr(${table.url}, length(${from.url}::text) + 1) else ${table.url} end`,
       })
       .where(and(eq(table.plugin, plugin), or(keyMatches, urlMatches)))

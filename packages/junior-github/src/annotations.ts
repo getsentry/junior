@@ -77,6 +77,18 @@ export function githubRepositoryMove(from: string, to: string) {
   return { from: repositoryPrefix(from), to: repositoryPrefix(to) };
 }
 
+// GitHub answers a renamed repository's old name, and its link names the
+// repository now. So the key follows the link, and a tool call by the old
+// name keeps the Annotation on the new key.
+function currentRepository(url: string, repo: string): string {
+  const parsed = URL.parse(url);
+  const [owner, name] =
+    parsed?.hostname === "github.com"
+      ? parsed.pathname.split("/").filter(Boolean)
+      : [];
+  return owner && name ? `${owner}/${name}` : repo;
+}
+
 /** Build the Annotation that GitHub create and update tools return. */
 export function githubAnnotatedObject(input: {
   repo: string;
@@ -92,7 +104,10 @@ export function githubAnnotatedObject(input: {
 }): SavedObjectAnnotation {
   return {
     kind: "object",
-    key: githubObjectKey(input.repo, input.number),
+    key: githubObjectKey(
+      currentRepository(input.url, input.repo),
+      input.number,
+    ),
     ...(input.id
       ? {
           subject: {

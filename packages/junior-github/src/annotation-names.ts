@@ -137,6 +137,9 @@ export function githubAnnotationNamesTask(
         limit: BATCH,
       });
       const moves = new Map<string, [from: string, to: string]>();
+      // A failed read fails the slice only after the moves it found, since
+      // the objects that named them are no longer listed on a retry.
+      let failure: unknown;
       const objects = batch.flatMap((annotation) => {
         const ref = objectRef(annotation);
         return ref ? [{ key: annotation.key, ref }] : [];
@@ -168,7 +171,10 @@ export function githubAnnotationNamesTask(
             const current = name && repositoryOf(name.url);
             renamed = current && (await renamedTo(stored, current));
           } catch (error) {
-            if (!ctx.lastDelivery) throw error;
+            if (!ctx.lastDelivery) {
+              failure ??= error;
+              return;
+            }
             ctx.log.error("GitHub Annotation object read failed", {}, error);
             return;
           }
@@ -193,6 +199,7 @@ export function githubAnnotationNamesTask(
         // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
         await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
       }
+      if (failure) throw failure;
       const slices = progress.slices + 1;
       const last = batch.at(-1);
       await ctx.state.set(
