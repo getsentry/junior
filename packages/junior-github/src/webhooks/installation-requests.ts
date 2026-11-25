@@ -583,11 +583,6 @@ export interface GitHubPullRequestMergeState {
    * request is open and not a draft.
    */
   changesRequested: boolean;
-  /**
-   * The requester's latest review approves. Read only when the pull request
-   * is open and not a draft.
-   */
-  requesterApproved: boolean;
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
@@ -738,7 +733,6 @@ export async function loadPullRequestMergeState(
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
-    requesterApproved: false,
     draft: pull.isDraft,
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
@@ -796,6 +790,5 @@ export async function loadPullRequestMergeState(
     state.reviewOutcome = "approved";
   }
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
-  state.requesterApproved = requesterReview?.state === "APPROVED";
   return state;
 }

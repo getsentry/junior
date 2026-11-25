@@ -990,7 +990,12 @@ describe("next action item", () => {
   });
 
   const pushedAt = "2026-07-02T12:00:00.000Z";
-  it.each<{ asks: boolean; github: Partial<GitHubState>; name: string }>([
+  it.each<{
+    asks: boolean;
+    github: Partial<GitHubState>;
+    item?: boolean;
+    name: string;
+  }>([
     { asks: true, github: {}, name: "waits on nobody" },
     {
       asks: true,
@@ -1068,9 +1073,26 @@ describe("next action item", () => {
       },
       name: "the requester left only a comment-only review after the last push",
     },
+    {
+      asks: false,
+      github: {
+        reviewRequests: [
+          { at: "2026-07-02T11:00:00.000Z", login: "Requester" },
+        ],
+        reviews: [
+          {
+            state: "COMMENTED",
+            submitted_at: "2026-07-02T13:00:00.000Z",
+            user: { login: "Requester" },
+          },
+        ],
+      },
+      item: true,
+      name: "a comment-only review keeps the requester's ask open",
+    },
   ])(
     "backfill asks the requester's review in limbo: $name",
-    async ({ asks, github }) => {
+    async ({ asks, github, item = asks }) => {
       const fixture = await createGitHubFixture();
       const requests: string[] = [];
       mockGitHub(
@@ -1095,7 +1117,7 @@ describe("next action item", () => {
           requests.filter((request) => request.startsWith("request")),
         ).toEqual(asks ? ["request Requester"] : []);
         expect(h.notices.map(({ notice }) => notice.title)).toEqual(
-          asks ? ["Review requested · #946"] : [],
+          item ? ["Review requested · #946"] : [],
         );
       } finally {
         await fixture.close();

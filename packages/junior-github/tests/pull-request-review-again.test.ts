@@ -613,7 +613,7 @@ describe("review again after a change request", () => {
     },
   );
 
-  it("asks the requester again at once after their comment-only review, but not after a plain comment", async () => {
+  it("keeps the review ask open after the requester's comment-only review, with no new GitHub request", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const requests: string[] = [];
@@ -627,20 +627,25 @@ describe("review again after a change request", () => {
       state: "open",
     };
     mockGitHub(github, requests);
+    const asks = () =>
+      requests.filter((request) => request.startsWith("request"));
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
-      // A plain comment keeps GitHub's request, and Junior acts next.
+      // A plain comment keeps GitHub's request.
       await webhook.handler(
         commented(github, "issue_comment", {
           at: "2026-07-02T11:00:00Z",
           login: "Requester",
         }),
       );
-      expect(requests).not.toContain("request Requester");
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
 
-      // A comment-only review neither approves nor requests changes, but
-      // GitHub drops the request on it.
+      // A comment-only review neither approves nor requests changes. GitHub
+      // drops the request on it, but the ask stays open, so the item stays
+      // and Junior does not ask again on GitHub.
       github.requestedReviewers = [];
       github.reviews = [
         {
@@ -655,13 +660,30 @@ describe("review again after a change request", () => {
           login: "Requester",
         }),
       );
-      expect(
-        requests.filter((request) => request.startsWith("request")),
-      ).toEqual(["request Requester"]);
-      expect(calls.at(-1)).toMatchObject({
-        kind: "upsert",
-        notice: { title: "Review requested · #946" },
+      // GitHub records a reply in a review thread as a comment-only review.
+      await webhook.handler(
+        commented(github, "pull_request_review_comment", {
+          at: "2026-07-02T13:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls).toHaveLength(1);
+
+      // An approval answers the ask, so the item closes.
+      github.reviews.push({
+        state: "APPROVED",
+        submitted_at: "2026-07-02T14:00:00Z",
+        user: { login: "Requester" },
       });
+      await webhook.handler(
+        reviewSubmitted("approved", {
+          at: "2026-07-02T14:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls.slice(1)).toMatchObject([{ kind: "close" }]);
     } finally {
       await fixture.close();
     }
