@@ -10,7 +10,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
-import { objectAnnotationSchema } from "./object-annotations";
+import { annotatedObjectSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import * as z from "zod";
@@ -351,7 +351,7 @@ export const pluginToolOutputSchema = z
      * show with the next reply. Omit for silent updates. Read-only tools
      * (`readOnlyHint: true`) must omit it: core rejects the result.
      */
-    objectAnnotations: z.array(objectAnnotationSchema).optional(),
+    objectAnnotations: z.array(annotatedObjectSchema).optional(),
     /**
      * Reply the tool posted for Junior, such as a pull request comment. Core
      * shows it in the transcript as a Junior reply with the plugin's mark,

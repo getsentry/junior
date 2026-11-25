@@ -1,0 +1,104 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "66414dd3-69b3-4341-aa2e-e40525f1a6ea",
+  "prevIds": ["798b04e0-3f09-46d8-8a21-aefeaa9921f9"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_annotations",
+        "subject_kind"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_annotations.subject_kind",
+        "n|col|public.junior_conversation_annotations.subject_kind",
+        "e|col|public.junior_conversation_annotations.subject_kind"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_annotations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_annotations",
+        "subject_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_annotations.subject_id",
+        "n|col|public.junior_conversation_annotations.subject_id",
+        "e|col|public.junior_conversation_annotations.subject_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_annotations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_annotations",
+        "action"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_annotations.action",
+        "n|col|public.junior_conversation_annotations.action",
+        "e|col|public.junior_conversation_annotations.action"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_annotations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "subject_kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "subject_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "action",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

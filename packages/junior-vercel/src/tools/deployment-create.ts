@@ -88,6 +88,7 @@ export const vercelDeploymentCreateTool = definePluginTool({
           gitSource,
         },
       ),
+      "created",
     );
   },
 });

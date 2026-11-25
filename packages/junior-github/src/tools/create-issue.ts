@@ -178,18 +178,21 @@ async function gitHubIssueToolResult(
   };
   return {
     objectAnnotations: [
-      githubObjectAnnotation({
-        facts: result.facts,
-        description: result.description,
-        sourceUpdatedAt: result.sourceUpdatedAt,
-        repo: input.repo,
-        number: result.number,
-        objectId: result.id === undefined ? undefined : String(result.id),
-        title: input.title,
-        url: result.url,
-        objectType: "task",
-        status: "open",
-      }),
+      {
+        action: "created",
+        ...githubObjectAnnotation({
+          facts: result.facts,
+          description: result.description,
+          sourceUpdatedAt: result.sourceUpdatedAt,
+          repo: input.repo,
+          number: result.number,
+          id: result.id === undefined ? undefined : String(result.id),
+          title: input.title,
+          url: result.url,
+          objectType: "task",
+          status: "open",
+        }),
+      },
     ],
     target: "createIssue",
     ...data,

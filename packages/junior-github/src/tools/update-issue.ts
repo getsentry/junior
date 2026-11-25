@@ -238,19 +238,22 @@ export const gitHubUpdateIssueTool = definePluginTool({
     });
     return {
       objectAnnotations: [
-        githubObjectAnnotation({
-          ...githubObjectFacts("task", parsed),
-          repo: repo.ref,
-          number: providerResult.number,
-          objectId:
-            providerResult.id === undefined
-              ? undefined
-              : String(providerResult.id),
-          title: providerResult.title,
-          url: providerResult.html_url,
-          objectType: "task",
-          status: providerResult.state,
-        }),
+        {
+          action: "changed",
+          ...githubObjectAnnotation({
+            ...githubObjectFacts("task", parsed),
+            repo: repo.ref,
+            number: providerResult.number,
+            id:
+              providerResult.id === undefined
+                ? undefined
+                : String(providerResult.id),
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "task",
+            status: providerResult.state,
+          }),
+        },
       ],
       target: "updateIssue",
       assignees: providerResult.assignees,

@@ -1,5 +1,5 @@
 import type { PluginContext } from "./context";
-import type { ObjectAnnotation } from "./object-annotations";
+import type { AnnotatedObject } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
@@ -146,8 +146,8 @@ export interface PluginHooks {
   afterMcpTool?(
     ctx: AfterMcpToolHookContext,
   ):
-    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
-    | { objectAnnotations: ObjectAnnotation[] }
+    | Promise<{ objectAnnotations: AnnotatedObject[] } | void>
+    | { objectAnnotations: AnnotatedObject[] }
     | void;
   /**
    * Select the grant for one sandbox egress request.

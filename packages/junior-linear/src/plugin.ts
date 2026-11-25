@@ -2,13 +2,17 @@ import {
   defineJuniorPlugin,
   type AfterMcpToolHookContext,
   type PluginRegistration,
-  type ObjectAnnotation,
+  type AnnotatedObject,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,
 } from "./events/issue.js";
+import {
+  LINEAR_SUBJECT_KINDS,
+  linearInboxSubjectKinds,
+} from "./inbox-subjects.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
@@ -107,7 +111,7 @@ function readSavedIssue(result: AfterMcpToolHookContext["result"]) {
 /** Link created and updated Linear issues to the current Junior conversation. */
 async function annotateSavedIssue(
   ctx: AfterMcpToolHookContext,
-): Promise<{ objectAnnotations: ObjectAnnotation[] } | void> {
+): Promise<{ objectAnnotations: AnnotatedObject[] } | void> {
   if (ctx.tool.name !== "save_issue") {
     return;
   }
@@ -126,9 +130,12 @@ async function annotateSavedIssue(
   return {
     objectAnnotations: [
       {
+        // save_issue changes the issue that `id` names, else creates one.
+        action: ctx.tool.arguments["id"] === undefined ? "created" : "changed",
         kind: "object",
         objectType: "task",
         key: identifier,
+        subject: { id: identifier, kind: LINEAR_SUBJECT_KINDS.issue },
         label: identifier,
         title: (issue.title || identifier).slice(0, 512),
         description: issue.description?.slice(0, 4000),
@@ -228,6 +235,7 @@ export function linearPlugin(
         ? { reviewContext: options.reviewContext }
         : undefined),
     },
+    inboxSubjects: linearInboxSubjectKinds,
     hooks: {
       afterMcpTool: annotateSavedIssue,
       routes(ctx) {
