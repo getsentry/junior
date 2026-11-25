@@ -51,8 +51,9 @@ describe("Watches", () => {
   test("when a reviewer approves a Junior PR with a comment, post nothing", async ({
     run,
   }) => {
+    // A setup message that needs no lookups keeps the setup Turn short.
     const conversation = await run(
-      slackMention(`What does ${pullRequest} change?`),
+      slackMention(`Thanks for opening ${pullRequest}. I'll review it later.`),
     );
     await insertGitHubPullRequestWatch({
       conversation,

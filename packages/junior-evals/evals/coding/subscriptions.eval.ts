@@ -283,8 +283,9 @@ describe("Watches", () => {
   test("when a Junior PR merges quietly, the next Turn does not announce it", async ({
     run,
   }) => {
+    // A setup message that needs no lookups keeps the setup Turn short.
     const conversation = await run(
-      slackMention(`What does ${pullRequest} change?`),
+      slackMention(`Thanks for opening ${pullRequest}. I'll review it later.`),
     );
     await insertGitHubPullRequestWatch({
       conversation,
