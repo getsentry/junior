@@ -273,13 +273,25 @@ async function createDocsApp() {
             objectTypes: ["document"],
             canView: async () => true,
             async resolve(ctx, url) {
-              const response = await ctx.egress.fetch({
-                operation: "docs.file.get",
-                provider: "docs",
-                request: new Request(`https://api.docs.test${url.pathname}`),
-              });
-              if (!response.ok) throw new Error(`HTTP ${response.status}`);
-              const file = (await response.json()) as { title: string };
+              // Like Sentry and Google, the plugin keeps its own copy of
+              // what it read.
+              const file = await ctx.cache.getOrLoad(
+                `file:${url.pathname}`,
+                async () => {
+                  const response = await ctx.egress.fetch({
+                    operation: "docs.file.get",
+                    provider: "docs",
+                    request: new Request(
+                      `https://api.docs.test${url.pathname}`,
+                    ),
+                  });
+                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                  return {
+                    ttlMs: 20_000,
+                    value: (await response.json()) as { title: string },
+                  };
+                },
+              );
               return {
                 kind: "object",
                 objectType: "document",
@@ -375,6 +387,12 @@ it("shows the last card with when it was fetched only after its TTL, when the pr
           title: "Roadmap",
         },
       },
+    ]);
+    // The plugin did not save the old body as a fresh copy, so the next
+    // read still shows its age.
+    vi.setSystemTime(start + 5 * 60_000 + 10_000);
+    expect(await readCards(alice, url)).toMatchObject([
+      { object: { fetchedAt: new Date(start).toISOString() } },
     ]);
 
     // A good read again shows a current card.

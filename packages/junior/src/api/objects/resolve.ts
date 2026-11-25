@@ -1,12 +1,14 @@
 import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
+  type CacheEntry,
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
   type ObjectLinkPrefetchOutcome,
   type ObjectType,
   type OwnedObjectAnnotation,
+  type PluginCache,
   type PluginObjectLinkDefinition,
   type PluginRegistration,
   type User,
@@ -112,6 +114,43 @@ function coreLinkTypes(): ObjectLinkType[] {
   ];
 }
 
+/**
+ * Keep a plugin's cache from saving anything after one of its HTTP reads
+ * served a stale body. A saved copy would look fresh, so later cards would
+ * hide their age.
+ */
+function cardReadCache(
+  cache: PluginCache,
+  servedStale: () => boolean,
+): PluginCache {
+  return {
+    get: async (key) => await cache.get(key),
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<CacheEntry<T>>,
+      options?: { refresh?: boolean },
+    ): Promise<T> {
+      return await cache.getOrLoad(
+        key,
+        async () => {
+          const entry = await load();
+          return servedStale() ? { value: entry.value } : entry;
+        },
+        options,
+      );
+    },
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => CacheEntry<T> | undefined,
+    ): Promise<void> {
+      await cache.update<T>(key, (current) =>
+        servedStale() ? undefined : next(current),
+      );
+    },
+    delete: async (key) => await cache.delete(key),
+  };
+}
+
 function objectLinkContext(
   name: string,
   link: PluginObjectLinkDefinition,
@@ -122,15 +161,23 @@ function objectLinkContext(
   const cached = link.httpCache
     ? { staleIfError: link.httpCache.staleIfError ?? true, ...link.httpCache }
     : DEFAULT_HTTP_CACHE;
+  let servedStale = false;
+  const onStale = (storedAtMs: number) => {
+    servedStale = true;
+    read.onStale?.(storedAtMs);
+  };
   // A read that must count a change of access at once asks the provider
   // each time. A 304 still proves that the credential may read it.
   const httpCache = {
     ...(read.now ? { staleIfError: false, ttlMs: 0 } : cached),
-    ...(read.onStale ? { onStale: read.onStale } : undefined),
+    onStale,
   };
   return {
     ...(prefetched ? { prefetchOutcome: prefetched } : undefined),
-    cache: createPluginCache(name, read.onStale),
+    cache: cardReadCache(
+      createPluginCache(name, read.onStale),
+      () => servedStale,
+    ),
     db: getDb(),
     egress: createPluginEgress({
       credentialContext: credentialContextForActor(OBJECT_LINK_SYSTEM_ACTOR),
