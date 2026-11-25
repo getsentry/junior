@@ -49,6 +49,9 @@ const baseUrl = "http://localhost:3000";
 // machine. 8970 keeps the receiver off 8969, where the Local daemon that a
 // plain `pnpm dev` uses can stay up after it exits.
 const sentryLocalPort = "8970";
+// Nitro sends here. The readiness probe uses the same host, so it resolves
+// `localhost` the way the SDK does, to IPv4 or IPv6.
+const sentryLocalUrl = `http://localhost:${sentryLocalPort}`;
 const ports = [3000, Number(sentryLocalPort)];
 const sentryCli = join(repoRoot, "node_modules/sentry/dist/bin.cjs");
 
@@ -266,7 +269,7 @@ async function launch(args) {
     );
   // With `SENTRY_SPOTLIGHT` set, `pnpm dev` sends to the run's receiver and
   // starts no Sentry Local of its own.
-  env["SENTRY_SPOTLIGHT"] = `http://localhost:${sentryLocalPort}/stream`;
+  env["SENTRY_SPOTLIGHT"] = `${sentryLocalUrl}/stream`;
   const log = openSync(join(runDir, "dev.log"), "a");
   const child = spawn("pnpm", ["dev"], {
     cwd: repoRoot,
@@ -321,7 +324,14 @@ async function startTelemetry(runDir) {
   writeFileSync(join(runDir, "telemetry.pid"), String(child.pid));
   child.unref();
   for (let i = 0; i < 30 && alive(child.pid); i++) {
-    if (await portInUse(Number(sentryLocalPort))) return true;
+    try {
+      const health = await fetch(`${sentryLocalUrl}/health`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      if (health.ok) return true;
+    } catch {
+      // Not listening yet.
+    }
     await sleep(500);
   }
   return false;
