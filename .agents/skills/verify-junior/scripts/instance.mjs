@@ -9,8 +9,8 @@
 //       directory on the last line. `--mock` sets
 //       JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true. DIR defaults to
 //       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>. Every error, span,
-//       and log that Nitro sends to Sentry Local goes to
-//       DIR/telemetry.ndjson.
+//       and log that Nitro sends goes to the run's Sentry Local receiver
+//       and DIR/telemetry.ndjson.
 //   node instance.mjs doctor RUN_DIR
 //       Read-only. Exit 0 only when the instance of RUN_DIR is safe to drive.
 //   node instance.mjs crash-worker RUN_DIR [--when FILE]
@@ -44,9 +44,11 @@ const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   encoding: "utf8",
 }).trim();
 const baseUrl = "http://localhost:3000";
-// `pnpm dev` binds 3000 (dashboard and API) and 8969 (Sentry Local UI).
-// Both are fixed, so only one instance can run on a machine.
-const sentryLocalPort = "8969";
+// `pnpm dev` binds 3000 (dashboard and API), and the run's Sentry Local
+// receiver binds 8970. Both are fixed, so only one instance can run on a
+// machine. 8970 keeps the receiver off 8969, where the Local daemon that a
+// plain `pnpm dev` uses can stay up after it exits.
+const sentryLocalPort = "8970";
 const ports = [3000, Number(sentryLocalPort)];
 const sentryCli = join(repoRoot, "node_modules/sentry/dist/bin.cjs");
 
@@ -257,6 +259,14 @@ async function launch(args) {
   env["JUNIOR_ENCRYPTION_KEYS"] ||=
     `k1:${randomBytes(32).toString("base64url")}`;
   if (mock) env["JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"] = "true";
+  if (!(await startTelemetry(runDir)))
+    return failLaunch(
+      runDir,
+      `Sentry Local did not listen on ${sentryLocalPort}; see ${join(runDir, "telemetry.log")}`,
+    );
+  // With `SENTRY_SPOTLIGHT` set, `pnpm dev` sends to the run's receiver and
+  // starts no Sentry Local of its own.
+  env["SENTRY_SPOTLIGHT"] = `http://localhost:${sentryLocalPort}/stream`;
   const log = openSync(join(runDir, "dev.log"), "a");
   const child = spawn("pnpm", ["dev"], {
     cwd: repoRoot,
@@ -276,7 +286,6 @@ async function launch(args) {
         `pnpm dev exited; see ${join(runDir, "dev.log")}`,
       );
     if ((await status("/")) === 200 && (await status("/api/health")) === 200) {
-      startTelemetry(runDir);
       console.log(`ready: ${baseUrl} (mock=${mock})`);
       console.log(runDir);
       return 0;
@@ -289,9 +298,10 @@ async function launch(args) {
   );
 }
 
-// Tail the Sentry Local server of `pnpm dev` as NDJSON. A new consumer gets
-// the events that the server has kept, so a start after ready loses none.
-function startTelemetry(runDir) {
+// Start the run's own Sentry Local receiver, which writes every event that
+// Nitro sends as NDJSON. It starts before `pnpm dev`, so it misses none.
+// Resolves false when the receiver does not listen.
+async function startTelemetry(runDir) {
   const out = openSync(join(runDir, "telemetry.ndjson"), "a");
   const err = openSync(join(runDir, "telemetry.log"), "a");
   const child = spawn(
@@ -310,6 +320,11 @@ function startTelemetry(runDir) {
   );
   writeFileSync(join(runDir, "telemetry.pid"), String(child.pid));
   child.unref();
+  for (let i = 0; i < 30 && alive(child.pid); i++) {
+    if (await portInUse(Number(sentryLocalPort))) return true;
+    await sleep(500);
+  }
+  return false;
 }
 
 // A failed launch stops what it started, so that the ports are free again.
@@ -405,8 +420,11 @@ async function doctor(runDir) {
 }
 
 async function stop(runDir, log = console.log) {
-  const pid = Number(readFileSync(join(runDir, "dev.pid"), "utf8"));
-  if (alive(pid)) {
+  // A launch whose receiver failed did not start `pnpm dev`.
+  const pid = existsSync(join(runDir, "dev.pid"))
+    ? Number(readFileSync(join(runDir, "dev.pid"), "utf8"))
+    : undefined;
+  if (pid && alive(pid)) {
     // `pnpm dev` puts some children in their own process groups, so a group
     // signal misses them. Signal the recorded tree only, never by name.
     const tree = [pid, ...descendants(pid)];
