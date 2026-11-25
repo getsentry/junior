@@ -402,8 +402,11 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
+      // Only members may learn a private Space's name.
       space:
-        row?.spaceId && row.spaceName
+        row?.spaceId &&
+        row.spaceName &&
+        (!access?.privateSpaceId || access.canViewPrivateContent)
           ? { id: row.spaceId, name: row.spaceName }
           : null,
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),

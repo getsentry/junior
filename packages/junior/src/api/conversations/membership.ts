@@ -4,7 +4,9 @@ import {
   exists,
   inArray,
   isNotNull,
+  isNull,
   not,
+  notInArray,
   or,
   type SQL,
 } from "drizzle-orm";
@@ -14,6 +16,8 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 
@@ -64,12 +68,44 @@ export function conversationHasParticipantUser(userId: string): SQL {
 /**
  * True when the viewer may find the outer root conversation by a link to
  * it: its Destination, joined as `juniorDestinations`, is public, or the
- * viewer is a Participant.
+ * viewer is a Participant. A root in a private Space is visible only to the
+ * Space's members, and to all of them.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
+  const db = getDb();
+  const privateSpaces = db
+    .select({ id: juniorSpaces.id })
+    .from(juniorSpaces)
+    .where(eq(juniorSpaces.visibility, "private"));
   return or(
-    eq(juniorDestinations.visibility, "public"),
-    viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+    and(
+      or(
+        isNull(juniorConversations.spaceId),
+        notInArray(juniorConversations.spaceId, privateSpaces),
+      ),
+      or(
+        eq(juniorDestinations.visibility, "public"),
+        viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+      ),
+    ),
+    viewerUserId
+      ? inArray(
+          juniorConversations.spaceId,
+          db
+            .select({ id: juniorSpaceMembers.spaceId })
+            .from(juniorSpaceMembers)
+            .innerJoin(
+              juniorSpaces,
+              eq(juniorSpaces.id, juniorSpaceMembers.spaceId),
+            )
+            .where(
+              and(
+                eq(juniorSpaceMembers.userId, viewerUserId),
+                eq(juniorSpaces.visibility, "private"),
+              ),
+            ),
+        )
+      : undefined,
   )!;
 }
 
