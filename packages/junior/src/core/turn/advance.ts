@@ -28,11 +28,10 @@ import {
   markInputsAttempted,
   type UnreadInput,
 } from "@/core/turn/inbox";
-import { reconcileTurn } from "@/core/turn/schedule";
+import { endFailedTurn, reconcileTurn } from "@/core/turn/schedule";
 import {
   claimTurn,
   commitStep,
-  failTurn,
   holdsLease,
   releaseTurn,
   type ClaimedTurn,
@@ -99,7 +98,7 @@ export async function advanceTurn(
     );
     if (claim.attempts > options.maxAttempts) {
       if (
-        await failTurn({ executor }, claim, "attempts_exhausted", {
+        await endFailedTurn({ executor }, claim, "attempts_exhausted", {
           failureCode: "agent_run_failed",
         })
       ) {
@@ -185,7 +184,12 @@ async function runClaimedStep(
       // the step again, so a failure that repeats is captured twice.
       const failure = captureModelFailure(result.failure);
       if (
-        await failTurn({ executor }, claim, result.failure.message, failure)
+        await endFailedTurn(
+          { executor },
+          claim,
+          result.failure.message,
+          failure,
+        )
       ) {
         await reconcileTurn({ executor, queue }, claim.turnId);
       }
@@ -200,7 +204,7 @@ async function runClaimedStep(
 
 /**
  * Reports a failed model request to Sentry under main's event name, and
- * returns the failure details that `failTurn` stores.
+ * returns the failure details that `endFailedTurn` stores.
  */
 function captureModelFailure(failure: ModelFailure): TurnFailure {
   const eventId = logException(

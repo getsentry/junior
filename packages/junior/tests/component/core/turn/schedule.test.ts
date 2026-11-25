@@ -6,7 +6,11 @@ import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
-import { reconcileTurn, scheduleInput } from "@/core/turn/schedule";
+import {
+  endFailedTurn,
+  reconcileTurn,
+  scheduleInput,
+} from "@/core/turn/schedule";
 import {
   cancelTurn,
   claimTurn,
@@ -455,16 +459,16 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toEqual([{ turnId: turn!.id, committed: true }]);
   });
 
-  it("moves a failed Turn's inputs to a new Turn and publishes it, and a second run moves nothing", async () => {
+  it("moves a failed Turn's unclaimed inputs to a new Turn in the fail commit, and reconcileTurn publishes it", async () => {
     const failed = await schedule("event-1");
     const claimed = await claim(failed.turnId);
     await schedule("event-2");
-    await failTurn(engineCtx, claimed, "overloaded", {
-      failureCode: "model_execution_failed",
-    });
-    publishes = [];
+    const fail = () =>
+      endFailedTurn(engineCtx, claimed, "overloaded", {
+        failureCode: "model_execution_failed",
+      });
 
-    await reconcileTurn(engineCtx, failed.turnId);
+    await expect(fail()).resolves.toBe(true);
 
     const next = (await readTurns()).find((turn) => turn.id !== failed.turnId);
     expect(next).toEqual({
@@ -478,31 +482,35 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       { turnId: next!.id, idempotencyKey: "event-2" },
     ];
     await expect(readInputs()).resolves.toEqual(moved);
+    publishes = [];
+
+    await reconcileTurn(engineCtx, failed.turnId);
     expect(publishes).toEqual([{ turnId: next!.id, committed: true }]);
 
-    await reconcileTurn(engineCtx, failed.turnId);
-
+    // The lease is gone, so a second fail changes nothing.
+    await expect(fail()).resolves.toBe(false);
     await expect(readTurns()).resolves.toHaveLength(2);
     await expect(readInputs()).resolves.toEqual(moved);
-    expect(publishes).toEqual([
-      { turnId: next!.id, committed: true },
-      { turnId: next!.id, committed: true },
-    ]);
   });
 
-  it("moves a failed Turn's inputs to the open Turn when one exists", async () => {
+  it("moves a failed Turn's unclaimed inputs to the open Turn when one exists", async () => {
     const failed = await schedule("event-1");
-    await failTurn(engineCtx, await claim(failed.turnId), "overloaded", {
+    const claimed = await claim(failed.turnId);
+    await schedule("event-2");
+    const open = await scheduleInput(engineCtx, {
+      ...input("event-3"),
+      delivery: "defer",
+    });
+
+    await endFailedTurn(engineCtx, claimed, "overloaded", {
       failureCode: "model_execution_failed",
     });
-    const open = await schedule("event-2");
-
-    await reconcileTurn(engineCtx, failed.turnId);
 
     await expect(readTurns()).resolves.toHaveLength(2);
     await expect(readInputs()).resolves.toEqual([
       { turnId: open.turnId, idempotencyKey: "event-1" },
       { turnId: open.turnId, idempotencyKey: "event-2" },
+      { turnId: open.turnId, idempotencyKey: "event-3" },
     ]);
   });
 

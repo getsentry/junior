@@ -23,14 +23,16 @@ import {
 import { publishTurnStep } from "@/core/turn/queue";
 import {
   createTurn,
+  failTurn,
   findOpenTurn,
   findOpenTurns,
   findTurn,
   type OpenTurn,
   supersedeTurn,
   type Turn,
+  type TurnFailure,
+  type TurnLease,
   TURN_PRIORITY,
-  type TurnRecord,
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
 
@@ -159,7 +161,7 @@ export async function scheduleInput(
   return { turnId: placement.turnId, created: placement.created };
 }
 
-// Not exported, like addInput: only reconcileTurn moves inputs, under the
+// Not exported, like addInput: only endFailedTurn moves inputs, under the
 // Conversation lock. A row keeps its id and idempotency key.
 async function moveInputs(
   { executor }: Pick<EngineContext, "executor">,
@@ -181,7 +183,7 @@ async function moveInputs(
  */
 async function moveLeftovers(
   { executor }: Pick<EngineContext, "executor">,
-  ended: TurnRecord,
+  ended: { turnId: string; conversationId: string },
 ): Promise<void> {
   const leftovers = (await findUnreadInputs({ executor }, ended.turnId)).filter(
     (input) => input.attemptedAt === null,
@@ -213,12 +215,34 @@ async function moveLeftovers(
 }
 
 /**
+ * Ends a running Turn as failed and, in the same commit, moves its inputs
+ * that arrived after its last claim to the next Turn. A crash after the
+ * commit loses no input: the next Turn is queued, so the sweep finds it.
+ * False when the lease is lost, and then nothing changes.
+ */
+export async function endFailedTurn(
+  { executor }: Pick<EngineContext, "executor">,
+  lease: TurnLease & { conversationId: string },
+  endReason: string,
+  failure: TurnFailure,
+): Promise<boolean> {
+  return executor.transaction(() =>
+    withConversationEventLock(executor, lease.conversationId, async () => {
+      if (!(await failTurn({ executor }, lease, endReason, failure))) {
+        return false;
+      }
+      await moveLeftovers({ executor }, lease);
+      return true;
+    }),
+  );
+}
+
+/**
  * Brings delivery and the queue in line with this Turn's stored state. Safe
- * to repeat. It publishes the Turn's delivery message, moves a failed Turn's
- * inputs that arrived after its last claim, then publishes the Conversation's
- * open Turn if it is queued. What it does depends only on the stored state,
- * not on why it runs. Call it outside a transaction: it publishes after its
- * own commit.
+ * to repeat. It publishes the Turn's delivery message, then publishes the
+ * Conversation's open Turn if it is queued. What it does depends only on the
+ * stored state, not on why it runs. Call it outside a transaction, after the
+ * commit that it follows, so a worker that takes a message sees that commit.
  */
 export async function reconcileTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -235,16 +259,7 @@ export async function reconcileTurn(
       turnId,
     },
   );
-  const openTurn = await withConversationEventLock(
-    executor,
-    turn.conversationId,
-    async () => {
-      if (turn.state === "failed") {
-        await moveLeftovers({ executor }, turn);
-      }
-      return findOpenTurn({ executor }, turn.conversationId);
-    },
-  );
+  const openTurn = await findOpenTurn({ executor }, turn.conversationId);
   // A Turn that a step commit continued is the queued open Turn, so this also
   // sends its next step. A running Turn has a worker, so it needs no message.
   if (openTurn?.state === "queued") {

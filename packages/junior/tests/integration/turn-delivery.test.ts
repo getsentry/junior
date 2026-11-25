@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeliveryRetryableError } from "@/core/delivery/deliver";
+import { publishDelivery } from "@/core/delivery/queue";
 import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
@@ -264,6 +265,33 @@ describe("Turn delivery", () => {
     // The queue delivers the same step message again. Its claim misses.
     await harness.runUntilIdle();
     await expect(allSent(engineCtx, conversationId)).resolves.toBe(true);
+
+    expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
+  });
+
+  it("keeps a reply's outbox row when the queue drops its delivery message, and the next delivery sends it", async () => {
+    const { engineCtx, conversationId, destination, queue } = harness;
+    const { turnId } = await sendForReply("Three.");
+    const send = queue.send.bind(queue);
+    // Injected fault: the queue takes the delivery message and loses it.
+    vi.spyOn(queue, "send").mockImplementation((topic, payload, options) =>
+      topic === DELIVERY_TOPIC
+        ? Promise.resolve({})
+        : send(topic, payload, options),
+    );
+
+    await harness.runUntilIdle();
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    expect(harness.sends()).toEqual([]);
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({ turnId, state: "pending" }),
+    ]);
+
+    vi.mocked(queue.send).mockRestore();
+    await publishDelivery(engineCtx, { conversationId, turnId });
+    await harness.runUntilIdle();
 
     expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
   });

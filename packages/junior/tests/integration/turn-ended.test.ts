@@ -12,10 +12,8 @@ import type { EngineContext } from "@/core/engine-context";
 import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
-  modelCalls,
   modelOverloaded,
   replyRule,
   setModelReplies,
@@ -27,7 +25,6 @@ import {
   CONVERSATION_ID,
   LEASE_MS,
   MAX_ATTEMPTS,
-  messageTurnId,
   stepWith,
   sendTool,
   startTurnEngine,
@@ -99,32 +96,6 @@ describe("advanceTurn at the end of a Turn", () => {
     harness = await createTurnHarness({ tools });
     onTestFinished(() => harness.close());
   }
-
-  it("hands on a failed Turn's late input on a redelivered message", async () => {
-    await startHarness();
-    const { conversationId, engineCtx } = harness;
-    const sent = await harness.send({ text: "How many Turns?" });
-    // A crash right after the fail commit: reconcileTurn never ran.
-    await engineCtx.executor
-      .db()
-      .update(juniorTurns)
-      .set({ state: "failed", endedAt: sql`now()` })
-      .where(eq(juniorTurns.id, sent.turnId));
-
-    await harness.runStep();
-
-    await expect(modelCalls()).resolves.toEqual([]);
-    const next = await readOtherTurn(engineCtx, conversationId, sent.turnId);
-    expect(next).toMatchObject({ state: "queued" });
-    await expect(readInputs(engineCtx, conversationId)).resolves.toEqual([
-      expect.objectContaining({ id: sent.inputId, turnId: next!.id }),
-    ]);
-    expect(
-      harness.queue
-        .pending(TURN_STEP_TOPIC)
-        .filter((message) => messageTurnId(message.payload) === next!.id),
-    ).toHaveLength(1);
-  });
 
   it("closes an earlier Turn's pending tool calls without running them, and the model sees the results", async () => {
     const executed: string[] = [];
@@ -229,6 +200,40 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
     await expect(
       fixture.sql.db().select({ id: juniorTurns.id }).from(juniorTurns),
     ).resolves.toHaveLength(2);
+  });
+
+  it("keeps a failed Turn's late input on a queued Turn when the process dies before it publishes", async () => {
+    await engine.addTestInput("How many Turns?");
+    // Injected fault: the model provider is overloaded.
+    const step = stepWith([modelOverloaded()]);
+    let lateId: string | undefined;
+
+    await expect(
+      engine.advance({
+        ...step,
+        client: {
+          complete: async (request, signal) => {
+            lateId = await engine.addTestInput("And how many failed?");
+            // Injected fault: the process dies after the fail commit, before
+            // reconcileTurn publishes anything.
+            vi.spyOn(engine.engineCtx.queue, "send").mockRejectedValue(
+              new Error("The process died"),
+            );
+            return step.client.complete(request, signal);
+          },
+        },
+      }),
+    ).rejects.toThrow("The process died");
+
+    await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
+    const next = await readOtherTurn(engine.engineCtx, CONVERSATION_ID, turnId);
+    expect(next).toMatchObject({ state: "queued" });
+    await expect(
+      readInputs(engine.engineCtx, CONVERSATION_ID),
+    ).resolves.toContainEqual(
+      expect.objectContaining({ id: lateId, turnId: next!.id }),
+    );
+    expect(engine.sentStepMessages(next!.id)).toBe(0);
   });
 
   it("drops the inputs when every try of a step throws, and moves none", async () => {

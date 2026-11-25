@@ -75,6 +75,7 @@ import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
 import {
@@ -488,10 +489,11 @@ function promptEventKey(
 /**
  * Commits a step in one transaction: it appends the prompt's new messages in
  * layout order, which hold the inputs that the step read, then the step's
- * messages keyed by Turn and step, to the Conversation history and releases
- * the lease. A Turn that continues goes back to queued for its next step,
- * which needs a new claim. A Turn that the step completed ends, unless it
- * still has unread inputs: then it continues, so the next step reads them.
+ * messages keyed by Turn and step, to the Conversation history, adds an
+ * outbox row for each new reply and releases the lease. A Turn that
+ * continues goes back to queued for its next step, which needs a new claim.
+ * A Turn that the step completed ends, unless it still has unread inputs:
+ * then it continues, so the next step reads them.
  * Returns what the Turn does next. Undefined when the lease is lost or the
  * step is already committed, and then nothing is written.
  */
@@ -570,6 +572,7 @@ export async function commitStep(
           })),
         ],
       );
+      await recordReplies({ executor }, turn);
       return outcome;
     }),
   );
@@ -603,7 +606,8 @@ async function commitOutcome(
 
 /**
  * Ends a running Turn as failed, with the reason and the failure details.
- * False when the lease is lost.
+ * False when the lease is lost. The engine calls it through `endFailedTurn`,
+ * which also moves the Turn's late inputs.
  */
 export async function failTurn(
   { executor }: Pick<EngineContext, "executor">,

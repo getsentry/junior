@@ -1,18 +1,16 @@
-// Delivery of a Turn's replies to the Destination of its inputs. Each change
-// of a Turn publishes a delivery message (see `reconcileTurn`). Its consumer
-// records every reply of the Turn as an outbox row, then sends the
-// Conversation's pending rows in event order under a lock on the
-// Conversation. Each send commits its own row, so a crash sends at most that
-// one reply again.
-import { randomUUID } from "node:crypto";
+// Delivery of a Turn's replies to the Destination of its inputs. The commit
+// of a step writes an outbox row for each reply (see `recordReplies`), and
+// each change of a Turn publishes a delivery message (see `reconcileTurn`).
+// Its consumer sends the Conversation's pending rows in event order under a
+// lock on the Conversation. Each send commits its own row, so a crash sends
+// at most that one reply again.
 import { and, asc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { logException } from "@/chat/logging";
 import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
-import { findTurnDestination } from "@/core/turn/inbox";
-import { findTurnReplies, replyText } from "@/core/turn/replies";
+import { replyText } from "@/core/turn/replies";
 import { juniorConversationEvents, juniorTurnOutbox } from "@/db/schema";
 
 /** What the host gives core to deliver a Turn's replies. */
@@ -61,16 +59,14 @@ const tryLockResultSchema = z.object({
 });
 
 /**
- * Delivers the replies of a Turn: it records them in the outbox, then sends
- * the Conversation's pending rows in order. A Turn whose inputs have a
- * Destination delivers there.
+ * Sends the Conversation's pending outbox rows in event order, each to the
+ * Destination stored on its row.
  */
 export async function deliverTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   message: DeliveryMessage,
   delivery: Delivery,
 ): Promise<void> {
-  await recordReplies({ executor }, message);
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
     const next = await executor.transaction(() =>
@@ -85,45 +81,6 @@ export async function deliverTurn(
       return;
     }
   }
-}
-
-/**
- * Adds an outbox row for each reply of the Turn that has none, but only while
- * the Turn has a Destination. Rows that already exist still send.
- */
-function recordReplies(
-  { executor }: Pick<EngineContext, "executor">,
-  message: DeliveryMessage,
-): Promise<void> {
-  return executor.transaction(async () => {
-    const db = executor.db();
-    const destination = await findTurnDestination({ executor }, message.turnId);
-    if (!destination) {
-      return;
-    }
-    const replies = await findTurnReplies(
-      { executor },
-      message.conversationId,
-      message.turnId,
-    );
-    if (replies.length > 0) {
-      await db
-        .insert(juniorTurnOutbox)
-        .values(
-          replies.map((row) => ({
-            id: randomUUID(),
-            conversationId: message.conversationId,
-            turnId: message.turnId,
-            eventSeq: row.seq,
-            destination,
-            state: "pending" as const,
-          })),
-        )
-        .onConflictDoNothing({
-          target: [juniorTurnOutbox.conversationId, juniorTurnOutbox.eventSeq],
-        });
-    }
-  });
 }
 
 type NextRow =
