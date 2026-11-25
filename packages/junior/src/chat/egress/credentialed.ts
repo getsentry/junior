@@ -611,6 +611,9 @@ export async function executeCredentialedEgressRequest(input: {
       })
         ? { bodyText: grantSelectionBodyText(body) }
         : undefined),
+      ...(credentialContext.conversationId
+        ? { conversationId: credentialContext.conversationId }
+        : undefined),
       ...(isGitReceivePack(request.method, upstreamUrl)
         ? { gitPush: readGitPush(body) }
         : undefined),

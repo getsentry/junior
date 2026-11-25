@@ -107,6 +107,7 @@ import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
 } from "./egress-policy.js";
+import { recordGitHubGraphqlRateLimit } from "./graphql-budget.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
@@ -596,6 +597,7 @@ export function githubPlugin(
         });
       },
       async onEgressResponse(ctx) {
+        await recordGitHubGraphqlRateLimit(ctx);
         if (ctx.response.status === 403) {
           ctx.log.warn("github.egress.upstream_forbidden", {
             "app.github.accepted_permissions":

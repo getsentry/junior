@@ -263,6 +263,11 @@ export interface PluginEgressRequest {
    * grant classification.
    */
   bodyText?: string;
+  /**
+   * Conversation of a Sandbox request, from its signed credential context.
+   * Use it to limit what one Conversation spends, never to grant access.
+   */
+  conversationId?: string;
   /** Set for every Git `git-receive-pack` POST. */
   gitPush?: PluginGitPush;
   /** Set for every POST to a URL path that ends in `/graphql`. */
@@ -293,7 +298,10 @@ export interface PluginEgressResponse {
 export interface EgressResponseHookContext extends PluginContext {
   grant: PluginGrant;
   permissionDenied(message: string): void;
-  request: Omit<PluginEgressRequest, "bodyText" | "gitPush" | "graphql">;
+  request: Omit<
+    PluginEgressRequest,
+    "bodyText" | "conversationId" | "gitPush" | "graphql"
+  >;
   response: PluginEgressResponse;
 }
 
