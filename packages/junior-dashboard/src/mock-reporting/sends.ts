@@ -9,7 +9,6 @@ import type {
   ConversationDetailReport,
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
-import { mockLeadEvents } from "./lead-transcript";
 
 /** Time before the reply shows, so the working state can be seen. */
 const MOCK_REPLY_DELAY_MS = 2_000;
@@ -32,8 +31,8 @@ type MockCreatedConversation = {
   conversationId: string;
   createdAtMs: number;
   fork?: MockFork;
-  /** A Lead, which lists leave out. */
-  lead?: boolean;
+  /** A Lead's Space and its first events. Lists leave a Lead out. */
+  lead?: { events: ConversationReportEvent[]; spaceId: string };
   title?: string;
   visibility?: "private" | "public";
 };
@@ -87,20 +86,43 @@ export function createMockConversation(args: {
   return conversationId;
 }
 
-/** Find or start the mock Lead of one person. */
-export function createMockLead(actorIdentity: ActorIdentity): string {
-  const conversationId = mockConversationId("lead", actorIdentity.email ?? "");
+function mockLeadId(spaceId: string): string {
+  return mockConversationId("lead", spaceId);
+}
+
+/** Find the mock Lead of a Space, if it was made. */
+export function findMockLead(spaceId: string): string | undefined {
+  const conversationId = mockLeadId(spaceId);
+  return createdConversations.has(conversationId) ? conversationId : undefined;
+}
+
+/**
+ * Find or make the mock Lead of one Space. It is public and has the Space's
+ * name, as in the API.
+ */
+export function createMockLead(args: {
+  actorIdentity: ActorIdentity;
+  events: ConversationReportEvent[];
+  spaceId: string;
+  title: string;
+}): string {
+  const conversationId = mockLeadId(args.spaceId);
   if (!createdConversations.has(conversationId)) {
     createdConversations.set(conversationId, {
-      actorIdentity,
+      actorIdentity: args.actorIdentity,
       conversationId,
       createdAtMs: Date.now(),
-      lead: true,
-      title: "Lead",
-      visibility: "private",
+      lead: { events: args.events, spaceId: args.spaceId },
+      title: args.title,
+      visibility: "public",
     });
   }
   return conversationId;
+}
+
+/** The Space of a mock Lead, or undefined for another Conversation. */
+export function mockLeadSpaceId(conversationId: string): string | undefined {
+  return createdConversations.get(conversationId)?.lead?.spaceId;
 }
 
 /** Fork one mock Conversation at a reply. A retry with the same key finds it. */
@@ -274,7 +296,7 @@ function createdConversation(
     return {
       ...base,
       displayTitle: created.title ?? "New conversation",
-      events: created.lead ? mockLeadEvents(created.actorIdentity) : [],
+      events: created.lead?.events ?? [],
     };
   }
   const { messageId, sourceConversationId } = created.fork;

@@ -25,7 +25,12 @@ const spaceKey = (spaceId: string | undefined) =>
 const spaceMembersKey = (spaceId: string | undefined) =>
   [...spaceKey(spaceId), "members"] as const;
 
-const spaceApiPath = (spaceId: string) =>
+/** The query key of a Space's Lead. */
+export const spaceLeadKey = (spaceId: string | undefined) =>
+  [...spaceKey(spaceId), "lead"] as const;
+
+/** The API path of one Space. */
+export const spaceApiPath = (spaceId: string) =>
   `/api/spaces/${encodeURIComponent(spaceId)}`;
 
 /** Fetch the viewer's Spaces that are not archived, for the pane. */
@@ -100,7 +105,10 @@ export function useCreateSpace() {
   });
 }
 
-/** Join or leave one Space as the viewer. */
+/**
+ * Join or leave one Space as the viewer. A member's read makes the Lead, so
+ * the Lead reads again too.
+ */
 export function useSpaceMembership(spaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -112,6 +120,7 @@ export function useSpaceMembership(spaceId: string) {
       Promise.all([
         storeSpace(queryClient, space),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
+        queryClient.invalidateQueries({ queryKey: spaceLeadKey(spaceId) }),
       ]),
   });
 }

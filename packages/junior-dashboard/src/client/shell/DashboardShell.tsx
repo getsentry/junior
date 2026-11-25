@@ -47,7 +47,11 @@ import {
   AreaSidebar,
   areaListsPages,
 } from "../components/layout/AreaSidebar";
-import { isCodePath, paneRowForPath } from "../components/layout/paneRows";
+import {
+  isCodePath,
+  isOldAutomationsPath,
+  paneRowForPath,
+} from "../components/layout/paneRows";
 import { useNewAutomationAction } from "../pages/automations/newAutomation";
 import { InboxDataProvider, useInboxData } from "../inbox/inboxData";
 import { InboxNav } from "../inbox/InboxNav";
@@ -57,7 +61,9 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "../format";
-import { useLead } from "../lead/Lead";
+import { useSpaceLead } from "../lead/Lead";
+import { useSpaceData } from "../spaces/queries";
+import { isSpacePath, spaceIdFromPath } from "../spaces/spaceRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
@@ -246,7 +252,6 @@ function Shell() {
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
   const workspace =
-    location.pathname === NAV_PAGES.lead.to ||
     location.pathname === NAV_PAGES.inbox.to ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
@@ -254,12 +259,12 @@ function Shell() {
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Home shows the viewer's Lead.
-  const lead = useLead(loggedIn);
-  const leadId = lead.data?.conversationId;
-  const openConversationId =
-    conversationId ??
-    (location.pathname === NAV_PAGES.lead.to ? leadId : undefined);
+  // A Space's page shows its Lead. Its header reads the Space, so that read
+  // starts here beside the Lead's, not after the lazy page loads.
+  const pageSpaceId = spaceIdFromPath(location.pathname);
+  const spaceLead = useSpaceLead(pageSpaceId);
+  useSpaceData(pageSpaceId);
+  const openConversationId = conversationId ?? spaceLead.data?.conversationId;
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.
@@ -343,9 +348,6 @@ function Shell() {
   return (
     <DashboardChromeProvider>
       <PaneNavProvider
-        // Without embedded bootstrap data, the viewer is unknown at first, so
-        // the Lead may still be coming.
-        leadPending={loading || (loggedIn && lead.isPending)}
         navItems={primaryNavItems}
         onOpenChange={setPaneOpen}
         onSearch={openCommandPalette}
@@ -407,6 +409,7 @@ function Shell() {
             workspace ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
+            isSpacePath(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
@@ -416,7 +419,8 @@ function Shell() {
             desktopControls={
               workspace ||
               location.pathname === "/automations" ||
-              isCodePath(location.pathname) ? undefined : (
+              isCodePath(location.pathname) ||
+              isSpacePath(location.pathname) ? undefined : (
                 <PaneCollapsedControls />
               )
             }
@@ -600,25 +604,14 @@ function Shell() {
               />
               <Route
                 element={
-                  loading ? (
-                    <ConversationWorkspaceLoading detail />
-                  ) : !data ? (
-                    <LoadingView
-                      label={query.error?.message ?? "Dashboard unavailable"}
-                    />
-                  ) : !loggedIn ? (
-                    // Without an account there is no Lead.
-                    <Navigate replace to={NAV_PAGES.inbox.to} />
-                  ) : leadId ? (
-                    <ConversationWorkspace
-                      detail={conversationDetail}
-                      leadId={leadId}
-                    />
-                  ) : lead.error ? (
-                    <LoadingView label={lead.error.message} />
-                  ) : (
-                    <ConversationWorkspaceLoading detail />
-                  )
+                  <Navigate
+                    replace
+                    to={
+                      isOldAutomationsPath(location)
+                        ? "/automations"
+                        : `${NAV_PAGES.inbox.to}${location.search}`
+                    }
+                  />
                 }
                 path="/"
               />
@@ -642,7 +635,7 @@ function Shell() {
               <Route
                 element={
                   loading || loggedIn ? (
-                    <SpacePage />
+                    <SpacePage detail={conversationDetail} />
                   ) : (
                     <Navigate replace to="/" />
                   )

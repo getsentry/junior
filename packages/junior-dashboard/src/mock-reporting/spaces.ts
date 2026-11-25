@@ -23,6 +23,7 @@ import {
   readMockConversationDetail,
   setMockConversationArchived,
 } from "./fixtures";
+import { mockLeadSpaceId } from "./sends";
 
 type MockMember = {
   avatarUrl: string | null;
@@ -43,19 +44,21 @@ type MockSpace = {
   viewerMember: boolean;
 };
 
-const AVERY: MockMember = {
+/** A member of every seeded Space but Docs refresh. */
+export const AVERY: MockMember = {
   avatarUrl: null,
   displayName: "Avery Chen",
   email: "avery@sentry.io",
 };
-const RILEY: MockMember = {
+/** A member of Mobile app and Docs refresh. */
+export const RILEY: MockMember = {
   avatarUrl: null,
   displayName: "Riley Park",
   email: "riley@sentry.io",
 };
 
 /** The seeded Spaces. The viewer is a member of the first two. */
-const MOCK_SPACE_IDS = {
+export const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
@@ -151,12 +154,25 @@ export function filterMockConversationsBySpace(
   };
 }
 
-/** Label a detail with the Space of its root. A child is in its root's. */
+/**
+ * Label a detail with the Space of its root. A child is in its root's, and
+ * a Lead is in its own.
+ */
 export function withMockSpace<T extends ConversationDetailReport>(
   detail: T,
 ): T {
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
-  return { ...detail, space: spaceRef(mockConversationSpaces.get(rootId)) };
+  return {
+    ...detail,
+    space: spaceRef(
+      mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
+    ),
+  };
+}
+
+/** Read one mock Space, as the routes see it. */
+export function readMockSpace(spaceId: string): MockSpace | undefined {
+  return mockSpaces.get(spaceId);
 }
 
 /**

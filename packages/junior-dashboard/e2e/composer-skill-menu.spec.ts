@@ -5,6 +5,9 @@ import { waitForReadPosition } from "./harness";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { clickSkillReference, styledSkillReferences } from "./skill-references";
 
+// A Space page, whose composer messages the Space's empty Lead.
+const LEAD_PAGE = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22";
+
 async function routeSkills(page: Page) {
   await page.route("**/api/skills", (route) =>
     route.fulfill({
@@ -46,7 +49,7 @@ test("shows skill details and opens SKILL.md from the composer", async ({
   // Open the menu at the screenshot size, so it lines up with the composer.
   await page.setViewportSize(desktop);
   await routeSkills(page);
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
   const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
@@ -99,7 +102,7 @@ test("describes the skill reference at the caret", async ({
 }) => {
   await page.setViewportSize(desktop);
   await routeSkills(page);
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
   const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
@@ -159,7 +162,7 @@ test("a skill reference in the draft is styled and stays plain text", async ({
 }) => {
   await page.setViewportSize(desktop);
   await routeSkills(page);
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("contenteditable", "true");
   const text = "Run $release-check now, not `$diff-quality` or $missing";
@@ -201,9 +204,8 @@ test("a skill reference in the draft is styled and stays plain text", async ({
       response.request().method() === "POST" &&
       /\/api\/conversations\/[^/]+\/messages$/.test(response.url()),
   );
-  // The Conversation ends at seq 28 when it opens. The sent message comes
-  // after it.
-  const readSaved = waitForReadPosition(page, 28);
+  // The new Lead has no events when it opens. The sent message comes after.
+  const readSaved = waitForReadPosition(page, 0);
   await composer.press("Enter");
   expect((await sent).request().postDataJSON()).toMatchObject({
     message: text,
@@ -225,7 +227,7 @@ test("a caret move before the skill list loads shows the card", async ({
     await loaded;
     await route.fallback();
   });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
   const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
@@ -251,7 +253,7 @@ test.describe("on a touch screen", () => {
   }) => {
     await page.setViewportSize(mobile);
     await routeSkills(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
     const composer = page.getByLabel("Continue this conversation");
     await expect(composer).toHaveAttribute("contenteditable", "true");
     await composer.fill("$");
@@ -347,7 +349,7 @@ test("the pane follows the pointer only after it rests on a row", async ({
 }) => {
   await page.setViewportSize(desktop);
   await routeSkills(page);
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}${LEAD_PAGE}`);
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.pressSequentially("Run $");

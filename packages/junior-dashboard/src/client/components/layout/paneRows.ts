@@ -9,11 +9,10 @@ import {
 import { COMPOSER_PATH } from "../../conversations/conversationRoutes";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import { NAV_PAGES } from "../../navPages";
-import { LEAD_NAV_KEY } from "../../shell/primaryNav";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,
- * Code, Automations, the Lead, or a primary plugin page (its nav item key).
+ * Code, Automations, or a primary plugin page (its nav item key).
  */
 export type PaneRow = InboxView | "automations" | "code" | (string & {});
 
@@ -62,25 +61,11 @@ export function isOldAutomationsPath(location: {
   );
 }
 
-/** True when a path opens the Lead, the Lead nav item's page. */
-export function isLeadPath(
-  pathname: string,
-  navItems: readonly DashboardHeaderNavItem[],
-): boolean {
-  const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
-  return lead !== undefined && pathname === lead.to;
-}
-
 /** Name the part of the destinations that a path is in, if any. */
 export function paneDestinationForPath(
   pathname: string,
 ): "automations" | "inbox" | undefined {
-  // The Lead, at `/`, heads the Inbox's destinations.
-  if (
-    pathname === "/" ||
-    pathname === INBOX_PATH ||
-    under(pathname, "/conversations")
-  )
+  if (pathname === INBOX_PATH || under(pathname, "/conversations"))
     return "inbox";
   if (under(pathname, "/automations")) return "automations";
   return undefined;
@@ -101,8 +86,6 @@ export function paneRowForPath(
   if (isCodePath(pathname)) return "code";
   if (pathname === INBOX_PATH)
     return parseInboxView(new URLSearchParams(location.search).get("view"));
-  // The Lead is home, with its own row.
-  if (isLeadPath(pathname, navItems)) return LEAD_NAV_KEY;
   if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";
   return navItems.find(
@@ -111,15 +94,13 @@ export function paneRowForPath(
 }
 
 /**
- * How the row that owns a path marks it. On a Conversation page, a row
- * other than the Lead's is the list that opened it, not the page: the
- * Conversation's own row, such as its In flight row, marks the page. The
- * composer is no Conversation yet, so its row marks the page.
+ * How the row that owns a path marks it. On a Conversation page, the row is
+ * the list that opened it, not the page: the Conversation's own row, such
+ * as its In flight row, marks the page. The composer is no Conversation
+ * yet, so its row marks the page.
  */
-export function paneRowMark(pathname: string, row: PaneRow): PaneRowMark {
-  return row !== LEAD_NAV_KEY &&
-    pathname !== COMPOSER_PATH &&
-    under(pathname, "/conversations")
+export function paneRowMark(pathname: string): PaneRowMark {
+  return pathname !== COMPOSER_PATH && under(pathname, "/conversations")
     ? "origin"
     : "page";
 }

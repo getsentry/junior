@@ -245,7 +245,7 @@ test.describe("new UI", () => {
         ).toBeVisible();
       },
       // One of them reads the viewer's Spaces for the pane.
-      { requests: 10, serialRounds: 2 },
+      { requests: 9, serialRounds: 2 },
     );
     expect(requests).toBe(1);
 
@@ -290,7 +290,7 @@ test.describe("new UI", () => {
         ).toBeVisible();
       },
       // One of them reads the viewer's Spaces for the pane.
-      { requests: 12, serialRounds: 2 },
+      { requests: 11, serialRounds: 2 },
     );
   });
 
