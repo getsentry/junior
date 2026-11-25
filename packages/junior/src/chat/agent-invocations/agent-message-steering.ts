@@ -1,12 +1,10 @@
 import type { Actor } from "@sentry/junior-plugin-api";
 import {
   contextProvenance,
+  sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import {
-  credentialContextForActor,
-  type CredentialContext,
-} from "@/chat/credentials/context";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { EVENT_MESSAGE_AUTHOR } from "@/chat/events/actor";
 import { eventBatchMessageMeta } from "@/chat/events/notification";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
@@ -18,17 +16,19 @@ import type {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { childAgentInput } from "./child-input";
 import { readChildInputActor } from "./result-actors";
+import { readSteeringSender, type SteeringSender } from "./steering-sender";
 import {
   isTopLevelAgentMessage,
-  readTopLevelMessageActor,
+  readTopLevelMessageSteeringSender,
 } from "./top-level-message";
 
-// The sender Turn's Actor and the provenance that the message keeps, or
-// nothing when the input is not an agent message. A message whose sender is
-// unknown has no Actor and cannot join.
+// The sender Turn's steering facts and the provenance that the message
+// keeps, or nothing when the input is not an agent message. A message whose
+// sender is unknown, or whose sender Turn acts for no person, has no
+// steering facts and cannot join.
 async function readAgentMessage(message: InboundMessage): Promise<
   | {
-      actor: Actor | undefined;
+      sender: SteeringSender | undefined;
       provenance: ConversationMessageProvenance;
     }
   | undefined
@@ -36,7 +36,7 @@ async function readAgentMessage(message: InboundMessage): Promise<
   if (isTopLevelAgentMessage(message)) {
     // Another top-level agent wrote it, so it is data.
     return {
-      actor: readTopLevelMessageActor(message),
+      sender: readTopLevelMessageSteeringSender(message),
       provenance: contextProvenance,
     };
   }
@@ -44,8 +44,12 @@ async function readAgentMessage(message: InboundMessage): Promise<
   if (input?.kind !== "message") return undefined;
   // A child's message is context with the Actor of the child's Turn.
   const actor = await readChildInputActor(message, input);
+  const sender = readSteeringSender(message.input.metadata);
   return {
-    actor,
+    sender:
+      actor && sender && sameActorIdentity(actor, sender.actor)
+        ? sender
+        : undefined,
     provenance: actor
       ? { authority: "context", actor }
       : { authority: "context" },
@@ -80,14 +84,8 @@ export function agentMessageSteeringSource(args: {
         // oxlint-disable-next-line no-await-in-loop -- Stop at the first message that cannot join, so steering keeps message order.
         const agentMessage = await readAgentMessage(message);
         if (!agentMessage) continue;
-        const { actor, provenance } = agentMessage;
-        if (
-          !actor ||
-          !canSteerForSender(turn, {
-            actor,
-            credentialContext: credentialContextForActor(actor),
-          })
-        ) {
+        const { sender, provenance } = agentMessage;
+        if (!sender || !canSteerForSender(turn, sender)) {
           break;
         }
         inputs.push({

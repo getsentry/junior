@@ -10,6 +10,10 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import {
+  credentialContextDigest,
+  credentialContextForActor,
+} from "@/chat/credentials/context";
+import {
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
@@ -299,6 +303,7 @@ describe("Lead", () => {
       const leadRun: AgentRun = {
         actor: webActorFromUser(ana),
         conversationId: lead.conversationId,
+        credentialContext: credentialContextForActor(webActorFromUser(ana)),
         destination: lead.destination!,
         instruction: { text: "Tell the deploy checks to hurry." },
         source,
@@ -322,18 +327,24 @@ describe("Lead", () => {
     await expect(send(boOutside, "call-bo")).rejects.toThrow(
       "is outside this Space",
     );
-    // Each message carries the Actor of the Lead's Turn, so it can steer a
-    // running Turn of that Actor only.
-    const leadMessageActors = async (conversationId: string) =>
+    // Each message carries the Actor of the Lead's Turn and a digest of its
+    // credentials, so it can steer a running Turn of that Actor only. The
+    // credentials themselves never reach the target.
+    const leadMessageMetadata = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId }))?.messages
         .filter((message) => message.source === "event")
-        .map(
-          (message) => (message.input.metadata as { actor?: unknown }).actor,
-        );
-    expect(await leadMessageActors(boInSpace)).toEqual([webActorFromUser(ana)]);
-    expect(await leadMessageActors(anaOutside)).toEqual([
-      webActorFromUser(ana),
-    ]);
+        .map((message) => message.input.metadata);
+    const steeringSender = {
+      actor: webActorFromUser(ana),
+      credentialContextDigest: credentialContextDigest(
+        credentialContextForActor(webActorFromUser(ana)),
+      ),
+    };
+    for (const target of [boInSpace, anaOutside]) {
+      const metadata = await leadMessageMetadata(target);
+      expect(metadata).toEqual([expect.objectContaining({ steeringSender })]);
+      expect(metadata?.[0]).not.toHaveProperty("credentialContext");
+    }
     // A Turn that no member started writes only inside the Space.
     await expect(send(anaOutside, "call-watch", WATCH_SOURCE)).rejects.toThrow(
       "is outside this Space",
@@ -363,6 +374,9 @@ describe("Lead", () => {
             {
               actor: webActorFromUser(person),
               conversationId: lead.conversationId,
+              credentialContext: credentialContextForActor(
+                webActorFromUser(person),
+              ),
               destination: lead.destination!,
               instruction: { text: "Steer the deploy check." },
               source: createWebSource(lead.conversationId, "public"),

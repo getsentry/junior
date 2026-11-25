@@ -40,6 +40,9 @@ child agents add to this is in `./child-agents.md`.
   can read it. Access comes from `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
+- A message from one agent to another joins the target's running Turn at
+  its next safe boundary when both Turns act for the same Actor. Otherwise
+  it waits and runs in its own Turn.
 - Archiving a Conversation stops it and its child agents.
 - The final text of a Turn is the reply. It is part of the update that the
   agent sends, and a root also delivers it to its Location and a Lead to its

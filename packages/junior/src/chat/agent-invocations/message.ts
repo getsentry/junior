@@ -14,6 +14,7 @@ import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import { messageChildAgent } from "./create";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
+import { steeringSenderForRun } from "./steering-sender";
 import { PARENT_AGENT_TARGET } from "./types";
 
 type MessageOptions = {
@@ -36,6 +37,7 @@ export function bindMessageAgent(
   if (!actor) {
     return undefined;
   }
+  const steeringSender = steeringSenderForRun(run);
   return async (
     input: MessageAgentInput,
     call: { signal?: AbortSignal; toolCallId: string },
@@ -56,6 +58,7 @@ export function bindMessageAgent(
         queue,
         sender,
         state: options.state,
+        steeringSender,
         text: input.text,
       });
       return {
@@ -74,6 +77,7 @@ export function bindMessageAgent(
         queue,
         senderConversationId: run.conversationId,
         state: options.state,
+        steeringSender,
         text: input.text,
         to: input.to,
       });

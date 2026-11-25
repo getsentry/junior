@@ -56,6 +56,7 @@ import {
   AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
 import { renderAgentResult, type AgentUpdateStatus } from "./agent-update";
+import type { SteeringSender } from "./steering-sender";
 import type { ChildAgent, ChildAgentSender } from "./types";
 
 // TODO(dcramer): Add a `waiting` agent update from a child when it can pause
@@ -162,8 +163,9 @@ function renderMessageInput(sender: ChildAgentSender, text: string): string {
 /**
  * Append one message from a child agent to its parent mailbox and wake the
  * parent. `sender` names the child, and `actor` is the Actor of the child's
- * Turn. The parent handles the message like a result. Repeat calls with the
- * same `messageKey` are safe.
+ * Turn. The parent handles the message like a result. `steeringSender` lets
+ * a running parent Turn for the same Actor and credentials take it at its
+ * next model call. Repeat calls with the same `messageKey` are safe.
  */
 export async function enqueueAgentMessageToParent(args: {
   actor: Actor;
@@ -172,19 +174,26 @@ export async function enqueueAgentMessageToParent(args: {
   queue: ConversationWorkQueue;
   sender: ChildAgentSender;
   state?: StateAdapter | undefined;
+  steeringSender?: SteeringSender | undefined;
   text: string;
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.childConversationId;
   const inboundMessageId = `agent-invocation:${senderId}:message:${args.messageKey}`;
   const summary = `${childAgentLabel(args.sender)} sent a message.`;
-  const metadata = senderEventMetadata(args.actor, {
-    eventKey: inboundMessageId,
-    eventType: AGENT_MESSAGE_EVENT_TYPE,
-    identifier: senderId,
-    namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-    trustedSummary: summary,
-  });
+  const metadata = {
+    ...senderEventMetadata(args.actor, {
+      eventKey: inboundMessageId,
+      eventType: AGENT_MESSAGE_EVENT_TYPE,
+      identifier: senderId,
+      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      trustedSummary: summary,
+    }),
+    // Only a running Turn's steering drain reads it.
+    ...(args.steeringSender
+      ? { steeringSender: args.steeringSender }
+      : undefined),
+  };
   await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,

@@ -198,7 +198,8 @@ Canonical words for Junior code and docs. One concept, one word.
   child's instruction: a Parent message that starts work or steers a running
   Turn.
   To a parent or a top-level agent it is an Event Inbound message, and it
-  gives no user approval.
+  gives no user approval. It can steer a running Turn that acts for the
+  same Actor as the Turn that sent it.
 - **Agent type**: a `startAgent` preset for a child agent: when to pick it,
   whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog

@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import * as z from "zod";
 import { isUserActor, parseActorUserId, type Actor } from "@/chat/actor";
+import { canonicalJson } from "@/chat/automations/revision";
 import type { LogContext } from "@/chat/log-context";
 
 const exactActorIdSchema = z
@@ -229,4 +231,15 @@ export function parseCredentialContext(
 ): CredentialContext | undefined {
   const result = credentialContextSchema.safeParse(value);
   return result.success ? result.data : undefined;
+}
+
+/**
+ * A one-way digest of a credential context. A message to another
+ * Conversation carries it in place of the context, so the target can check
+ * that its Turn has the same credentials without receiving them.
+ */
+export function credentialContextDigest(context: CredentialContext): string {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalJson(context)))
+    .digest("hex");
 }

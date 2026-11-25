@@ -3,11 +3,10 @@
  * in the same agent tree. A message wakes the target like any other Event.
  * The target runs it as the event system Actor, so the sender's Actor and
  * credentials never reach the target. It joins a running Turn of the target
- * only when that Turn already acts for the sender's Actor.
+ * only when that Turn already acts for the sender's Actor with the same
+ * credentials.
  */
 import type { StateAdapter } from "chat";
-import { actorSchema } from "@sentry/junior-plugin-api";
-import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import {
   canAccessConversation,
@@ -27,6 +26,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
+import { readSteeringSender, type SteeringSender } from "./steering-sender";
 import { PARENT_AGENT_TARGET } from "./types";
 
 const AGENT_MESSAGE_EVENT_NAMESPACE = "junior";
@@ -127,30 +127,21 @@ function topLevelMessageAuthorId(senderConversationId: string): string {
   return `agent-message:${senderConversationId}`;
 }
 
-const senderActorMetadataSchema = z.object({
-  actor: actorSchema,
-  event: z.object({
-    eventType: z.literal(TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE),
-    identifier: z.string().min(1),
-    namespace: z.literal(AGENT_MESSAGE_EVENT_NAMESPACE),
-  }),
-  kind: z.literal("event"),
-});
-
 /**
- * Read the Actor of the Turn that sent a message from another top-level
- * agent. Returns nothing for any other input, also a message from a Turn
- * that no person started.
+ * Read the steering facts of the Turn that sent a message from another
+ * top-level agent. Returns nothing for any other input, also a message from
+ * a Turn that acts for no person.
  */
-export function readTopLevelMessageActor(
+export function readTopLevelMessageSteeringSender(
   message: InboundMessage,
-): Actor | undefined {
-  if (message.source !== "event") return undefined;
-  const parsed = senderActorMetadataSchema.safeParse(message.input.metadata);
-  return parsed.success &&
+): SteeringSender | undefined {
+  const metadata = message.input.metadata;
+  return message.source === "event" &&
+    isTopLevelAgentMessage(message) &&
+    isEventMailboxMetadata(metadata) &&
     message.input.authorId ===
-      topLevelMessageAuthorId(parsed.data.event.identifier)
-    ? parsed.data.actor
+      topLevelMessageAuthorId(metadata.event.identifier)
+    ? readSteeringSender(metadata)
     : undefined;
 }
 
@@ -168,10 +159,10 @@ export function isTopLevelAgentMessage(message: InboundMessage): boolean {
  * Send one message from a top-level agent to another top-level agent and
  * wake the target. The access check runs on each call. A stopped target
  * holds the message, so once the automated-turn limit stops one of two
- * agents, they cannot keep each other running. A message from a Turn that a
- * person started also carries that Turn's Actor, so a running Turn of the
- * target for the same Actor can take it at its next model call. Repeat
- * calls with the same `messageKey` are safe.
+ * agents, they cannot keep each other running. A message from a Turn that
+ * acts for a person also carries that Turn's steering facts, so a running
+ * Turn of the target for the same Actor and credentials can take it at its
+ * next model call. Repeat calls with the same `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
   /** The person whose input started this Turn, if a person started it. */
@@ -181,6 +172,7 @@ export async function enqueueTopLevelAgentMessage(args: {
   queue: ConversationWorkQueue;
   senderConversationId: string;
   state?: StateAdapter | undefined;
+  steeringSender?: SteeringSender | undefined;
   text: string;
   to: string;
 }): Promise<void> {
@@ -199,7 +191,9 @@ export async function enqueueTopLevelAgentMessage(args: {
     },
     // Only a running Turn's steering drain reads it. The queued message
     // still runs as the event system Actor.
-    ...(args.askingActor ? { actor: args.askingActor } : undefined),
+    ...(args.steeringSender
+      ? { steeringSender: args.steeringSender }
+      : undefined),
   };
   await enqueueAutomatedInput({
     message: {

@@ -3,7 +3,10 @@ import type { Actor } from "@sentry/junior-plugin-api";
 import { isUserActor } from "@/chat/actor";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
-import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  credentialContextDigest,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import type { TurnRecord } from "./checkpoint";
 import type { ConversationWorkState, InboundMessage } from "./store";
 
@@ -130,17 +133,24 @@ export function canSteerParentTurn(
 
 /**
  * True when a message that another Turn sent may steer a running Turn: both
- * Turns act for the same Actor with the same credentials.
+ * Turns act for the same Actor with the same credentials. The sender gives
+ * only a digest of its credentials, so they never cross Conversations.
  */
 export function canSteerForSender(
   turn: { actor: Actor; credentialContext: CredentialContext },
-  sender: { actor: Actor; credentialContext: CredentialContext },
+  sender: { actor: Actor; credentialContextDigest: string },
 ): boolean {
-  const owner = (facts: typeof turn): TurnOwner => ({
-    authorId: isUserActor(facts.actor) ? facts.actor.userId : undefined,
-    credentials: facts,
+  if (
+    credentialContextDigest(turn.credentialContext) !==
+    sender.credentialContextDigest
+  ) {
+    return false;
+  }
+  const owner = (actor: Actor): TurnOwner => ({
+    authorId: isUserActor(actor) ? actor.userId : undefined,
+    credentials: { actor, credentialContext: turn.credentialContext },
   });
-  return hasSameOwner(owner(turn), owner(sender));
+  return hasSameOwner(owner(turn.actor), owner(sender.actor));
 }
 
 function selectContiguousTurnBatch(
