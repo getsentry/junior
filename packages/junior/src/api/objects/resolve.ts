@@ -129,6 +129,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     canView: (viewer, url, prefetched) =>
       link.canView(objectLinkContext(name, viewer, prefetched), url),
     filters: link.filters,
+    ...(link.label ? { label: link.label } : undefined),
     objectTypes: link.objectTypes,
     owner: name,
     ...(link.prefetch
@@ -305,6 +306,8 @@ export async function resolveObjectLinks(
         linkType.cacheCards === false
           ? await resolve()
           : await cache.getOrLoad(key, async () => ({
+              // A failed read shows the last good card.
+              staleIfError: true,
               value: await resolve(),
               ttlMs: OBJECT_LINK_TTL_MS,
             }));

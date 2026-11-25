@@ -25,6 +25,8 @@ export interface ObjectLinkType {
     prefetched?: ObjectLinkPrefetchOutcome,
   ): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
+  /** Name the object from its link, for a card that cannot read it. */
+  label?(url: URL): string | undefined;
   /** The object types that `resolve` can return. */
   objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */

@@ -70,6 +70,7 @@ import {
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
+import { readLiveAnnotationsById } from "@/api/objects/live-annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
@@ -773,9 +774,12 @@ export async function readConversationFeedFromSql(
         ),
         tenantByConversation,
       ),
-      listConversationSidebarAnnotations(
-        conversationIds,
+      // The chips show each object as the viewer can read it now.
+      readLiveAnnotationsById(
+        options.viewer,
         visibleAnnotationsByConversation,
+      ).then((live) =>
+        listConversationSidebarAnnotations(conversationIds, live),
       ),
     ]);
   const threadsByRoot = nestFeedThreads(

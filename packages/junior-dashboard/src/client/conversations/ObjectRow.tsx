@@ -13,7 +13,7 @@ import { MessageLink } from "../components/MessageLink";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
-import { useSavedObject } from "./savedObjects";
+import { useObjectPreviews } from "./objectPreviews";
 
 /**
  * Show an object inside a reply as a compact row, like a Thread card: icon,
@@ -26,7 +26,7 @@ export function ObjectRow(props: {
   live?: boolean;
 }) {
   const { card } = props;
-  const previews = useSavedObject(card).previewImages;
+  const previews = useObjectPreviews(card);
   // An automation has its own card with its prompt and schedule, and a
   // chart, a trace, or a dashboard is only worth showing as its picture.
   if (
