@@ -1,7 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -130,7 +130,9 @@ async function issueItem() {
         eq(juniorInboxItems.subjectKind, "github:issue"),
         eq(juniorInboxItems.subjectId, String(ISSUE_ID)),
       ),
-    );
+    )
+    .orderBy(desc(juniorInboxItems.createdAt))
+    .limit(1);
   if (!item) return undefined;
   const people = await getDb()
     .select({ email: juniorUsers.primaryEmail })
@@ -302,6 +304,32 @@ describe("the Inbox item of an issue that Junior created", () => {
 
       await sendGitHubWebhook("issues", issueEvent(body, "closed", ["pat"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
+
+      // Assigned again, Pat and Sam both dismiss at once. The second one
+      // to leave is the last, so the item closes and nobody is left on it.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
+      );
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat", "sam"], {
+          assignee: { login: "sam" },
+        }),
+      );
+      const again = await issueItem();
+      expect(again).toMatchObject({
+        assignees: ["pat@example.com", "sam@example.com"],
+        status: "open",
+      });
+      refuse.clear();
+      expect(
+        await Promise.all([
+          dismissAs("pat@example.com", again!.id),
+          dismissAs("sam@example.com", again!.id),
+        ]),
+      ).toEqual([200, 200]);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

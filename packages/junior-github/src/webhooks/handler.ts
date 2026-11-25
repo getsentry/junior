@@ -332,6 +332,7 @@ export function createGitHubWebhookRoute(args: {
           event: issueItemEvent,
           findLinkedIdentityIds: args.findLinkedIdentityIds,
           inboxItems: args.inboxItems,
+          log: args.log,
         });
       }
       if (pullRequestConversations) {

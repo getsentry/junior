@@ -305,10 +305,11 @@ async function leavePluginItemOnDismiss(
       "The provider did not remove you, so you stay on this item. Try again.",
     );
   }
-  if (isOnlyAssignee(item, user.id)) return undefined;
-  if (!(await leavePluginInboxItem({ item, nowMs, userId: user.id }))) {
+  const outcome = await leavePluginInboxItem({ item, nowMs, userId: user.id });
+  if (outcome === "closed") {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
+  if (outcome === "last") return undefined;
   return await readInboxItemForUser(user, item.id);
 }
 

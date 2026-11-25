@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { getDb } from "@/chat/db";
@@ -67,17 +67,19 @@ export async function dismissPluginInboxItem(args: {
 
 /**
  * Take one User off an open item that others stay on. Junior cancels their
- * snooze and clears their push, as when an upsert drops them. Return false
- * when the item is closed.
+ * snooze and clears their push, as when an upsert drops them. Return `last`
+ * and change nothing when nobody else is on the item, so the caller closes
+ * it, and `closed` when it is closed. The row lock orders two dismisses at
+ * once, so the second one sees that it is the last.
  */
 export async function leavePluginInboxItem(args: {
   item: InboxItem;
   nowMs: number;
   userId: string;
-}): Promise<boolean> {
+}): Promise<"closed" | "last" | "left"> {
   const { item, nowMs, userId } = args;
   const db = getDb();
-  const left = await db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const updated = await tx
       .update(juniorInboxItems)
       .set({ updatedAt: new Date(nowMs) })
@@ -88,7 +90,18 @@ export async function leavePluginInboxItem(args: {
         ),
       )
       .returning({ id: juniorInboxItems.id });
-    if (!updated[0]) return false;
+    if (!updated[0]) return "closed";
+    const [other] = await tx
+      .select({ userId: juniorInboxItemAssignees.userId })
+      .from(juniorInboxItemAssignees)
+      .where(
+        and(
+          eq(juniorInboxItemAssignees.itemId, item.id),
+          ne(juniorInboxItemAssignees.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!other) return "last";
     await tx
       .delete(juniorInboxItemAssignees)
       .where(
@@ -99,10 +112,10 @@ export async function leavePluginInboxItem(args: {
       );
     const owner = ownerConversationId(item);
     await touchConversationDetail(tx, owner ? [owner] : []);
-    return true;
+    return "left";
   });
-  if (left) {
+  if (outcome === "left") {
     await leaveInboxItem(db, { itemId: item.id, nowMs, userIds: [userId] });
   }
-  return left;
+  return outcome;
 }

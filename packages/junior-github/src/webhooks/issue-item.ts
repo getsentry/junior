@@ -6,12 +6,15 @@
  *
  * The item belongs to the Conversation that first saved the issue's card.
  * The issue body footer names the Conversations that wrote it, and only
- * those are read. A person can edit the footer, but core still checks the
- * owner from the stored cards, so an edit cannot move the item.
+ * those are read. Core checks the owner from every stored card, so an edited
+ * footer cannot move the item. When the footer no longer names the owner,
+ * the webhook skips the item and logs it.
  */
-import type {
-  PluginConversationAnnotations,
-  PluginConversationInboxItems,
+import {
+  PluginInboxItemOwnerError,
+  type PluginConversationAnnotations,
+  type PluginConversationInboxItems,
+  type PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
@@ -115,15 +118,30 @@ async function issueOwner(
     )[0]?.conversationId;
 }
 
-/** Show the item of an issue that Junior created, after an `issues` webhook. */
-export async function syncGitHubIssueItem(args: {
+interface SyncArgs {
   annotations: PluginConversationAnnotations;
   event: GitHubIssueItemEvent;
   findLinkedIdentityIds(
     logins: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
   inboxItems: PluginConversationInboxItems;
-}): Promise<void> {
+}
+
+/** Show the item of an issue that Junior created, after an `issues` webhook. */
+export async function syncGitHubIssueItem(
+  args: SyncArgs & { log?: Pick<PluginLogger, "warn"> | undefined },
+): Promise<void> {
+  try {
+    await showIssueItem(args);
+  } catch (error) {
+    if (!(error instanceof PluginInboxItemOwnerError)) throw error;
+    args.log?.warn("GitHub issue footer does not name its item's owner", {
+      "app.github.issue_id": args.event.issueId,
+    });
+  }
+}
+
+async function showIssueItem(args: SyncArgs): Promise<void> {
   const { event } = args;
   // An issue that Junior created before it saved the issue id on its card
   // has no owner, so it gets no item.

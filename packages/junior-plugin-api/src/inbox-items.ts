@@ -147,6 +147,18 @@ export interface PluginInboxItems {
   }): Promise<boolean>;
 }
 
+/**
+ * A plugin changed an open item through a Conversation that does not own it.
+ * A plugin that picks the owner from provider data, such as a GitHub issue
+ * footer, can catch it when that data is stale.
+ */
+export class PluginInboxItemOwnerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PluginInboxItemOwnerError";
+  }
+}
+
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;

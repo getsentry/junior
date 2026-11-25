@@ -1,10 +1,11 @@
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
-import type {
-  PluginInboxItemSubject,
-  PluginInboxItems,
-  PluginReviewNotice,
+import {
+  PluginInboxItemOwnerError,
+  type PluginInboxItemSubject,
+  type PluginInboxItems,
+  type PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
@@ -97,7 +98,7 @@ function pluginItemSubject(plugin: string, subject: PluginInboxItemSubject) {
 /** Throw when the plugin's owner table gives the item another Conversation. */
 function requireOwner(item: InboxItem, conversationId: string): void {
   if (ownerConversationId(item) !== conversationId) {
-    throw new Error(
+    throw new PluginInboxItemOwnerError(
       `Inbox item ${item.id} belongs to another Conversation than ${conversationId}`,
     );
   }
