@@ -46,13 +46,9 @@ child agents add to this is in `./child-agents.md`.
   Space. Final text that was cut off, such as by a length limit or an
   abort, is a failure, not a reply. `messageAgent` sends text to another
   agent at any time. It is not the reply, and it does not end the Turn.
-- `noReply` ends the Turn with no reply. `reportBlocked` ends it as blocked
-  on what the agent that started it can give. Each still sends an update with its note or
-  the missing part.
-- An agent ends a Turn with no reply only when no person asked for
-  something in that Turn, nothing failed, nobody must decide or act, and
-  the receiver gets nothing new. Its note states the outcome in one
-  sentence, because a receiver can read it.
+- A child agent always tells the agent that started it how each Turn
+  ended: its reply, or what it is blocked on. Only a person's Turn or an
+  Automation run can end quietly.
 - Any agent, also a child, asks a person only with an Inbox item, and only
   for approval, access, or a decision that is the person's. The answer goes
   to the agent that asked, as the person's own input, and to no other
