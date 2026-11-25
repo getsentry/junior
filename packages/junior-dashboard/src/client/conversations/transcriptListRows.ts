@@ -1,6 +1,7 @@
 import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
+  routineEventEntryKeys,
 } from "./TranscriptActivityGroup";
 import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
@@ -41,10 +42,10 @@ export type TranscriptListRow =
 export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
- * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, a Thread keeps its own row, search drops rows that
- * do not match, and the "New" marker becomes its own row before the first
- * unread row. The Tasks of a Turn move to its end, so they do not split its
+ * Turn transcript entries into list rows. Runs of collapsible activity,
+ * with routine Watch Events unless `allEvents` is set, become one group row,
+ * a Thread keeps its own row, search drops rows that do not match, and the
+ * "New" marker becomes its own row before the first unread row. The Tasks of a Turn move to its end, so they do not split its
  * activity: under its reply, or in a Tasks row when it has no reply yet. A
  * question that Junior asked moves after them, and shows once: at its last
  * ask, since a later ask with the same dedupe key updates the same item.
@@ -55,6 +56,8 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * group keeps its key while events extend either edge.
  */
 export function transcriptListRows(input: {
+  /** Show every Watch Event as a row, routine ones too. */
+  allEvents?: boolean | undefined;
   entries: readonly RenderedTranscriptEntry[];
   keyPrefix: string;
   knownActivityKeys: Map<string, string>;
@@ -64,8 +67,13 @@ export function transcriptListRows(input: {
 }): TranscriptListRow[] {
   const { entries, search } = input;
   const quietKeys = quietTurnEntryKeys(entries);
+  const routineKeys = input.allEvents
+    ? new Set<string>()
+    : routineEventEntryKeys(entries);
   const collapsible = (entry: RenderedTranscriptEntry) =>
-    isCollapsibleActivityEntry(entry) || quietKeys.has(entry.key);
+    isCollapsibleActivityEntry(entry) ||
+    quietKeys.has(entry.key) ||
+    routineKeys.has(entry.key);
   const matches = (entry: RenderedTranscriptEntry) =>
     search === undefined || entryMatchesSearch(entry, search);
   const claimedActivityKeys = new Set<string>();
@@ -154,11 +162,12 @@ export function transcriptListRows(input: {
       index += 1;
       continue;
     }
-    // A message from a person starts the next Turn.
+    // A message from a person starts the next Turn. So does a routine
+    // Event, which folds into activity but can still start a Turn.
     if (
       entry.kind === "message" &&
       entry.message.role === "user" &&
-      !collapsible(entry)
+      (!collapsible(entry) || routineKeys.has(entry.key))
     ) {
       pushTurnEnd();
     }
@@ -170,6 +179,15 @@ export function transcriptListRows(input: {
         const next = entries[index]!;
         if (!moveOut(next)) {
           if (!collapsible(next)) break;
+          // The Tasks and asks of the Turn before a routine Event go after
+          // that Turn's reply, so the Event starts a new group.
+          if (
+            group.length > 0 &&
+            routineKeys.has(next.key) &&
+            (tasks.length > 0 || asks.length > 0)
+          ) {
+            break;
+          }
           group.push(next);
         }
         index += 1;
