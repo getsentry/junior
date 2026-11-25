@@ -782,6 +782,12 @@ defineJuniorPlugin({
   `ctx.annotations.objectChanged(subject)` with the object's subject. An
   open page that shows the object then reads its card again. Call it only
   when the object changed, such as when your cache entry changed.
+- **Annotations.** When a tool creates or changes an object, return it in
+  `objectAnnotations` of the tool result, with `action`, `kind: "object"`,
+  `key`, `subject`, `objectType`, `title`, and `url`. Junior saves only
+  these fields. Each card reads the object live through your link type.
+  Add `label(url)` to the link type to give the short label, such as
+  `owner/repo#12`. The label shows when the card cannot load.
 - **Subject ids.** When the viewer's own read names the stable id of an
   object that older Annotations name by another id, call
   `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations

@@ -134,6 +134,8 @@ export const linearIssueLinks: PluginObjectLinkDefinition = {
     { host: "linear.app", pathPattern: "/*/issue/*/*" },
   ],
   canView: canViewLinearIssue,
+  // The identifier, such as `ENG-123`, when the card cannot load.
+  label: (url) => issueLink(url)?.identifier,
   objectTypes: ["task"],
   resolve: resolveLinearIssue,
 };

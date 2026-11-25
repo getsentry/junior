@@ -5,7 +5,7 @@
  */
 import {
   encodeObjectImageRef,
-  type ConversationAnnotation,
+  type LiveAnnotation,
 } from "@sentry/junior-plugin-api";
 import type * as z from "zod";
 import type { objectPreviewImageSchema } from "@/api/schema/object-preview-image";
@@ -24,7 +24,7 @@ type ObjectPreviewImage = z.output<typeof objectPreviewImageSchema>;
  * annotations.
  */
 export function objectPreviewImages(
-  annotation: ConversationAnnotation,
+  annotation: LiveAnnotation,
 ): ObjectPreviewImage[] | undefined {
   if (annotation.kind !== "object") return undefined;
   const urls =

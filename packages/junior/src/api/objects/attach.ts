@@ -93,9 +93,7 @@ export async function attachObjectLink(
     annotation: {
       kind: "resource_link",
       key: object.key,
-      // The bare link is the label. The title would show to readers who
-      // cannot open the object.
-      label: link.slice(0, 256),
+      // No title: it would show to readers who cannot open the object.
       objectType: object.objectType,
       url: link,
     },

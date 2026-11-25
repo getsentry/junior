@@ -40,6 +40,8 @@ describe("searchConversations", () => {
   });
 
   it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
+    // GitHub makes the label of the link. Search reads no state.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const conversationId = "slack:CARCHIVE:1700000000.100000";
     await getConversationStore().recordActivity({
       conversationId,
@@ -66,8 +68,6 @@ describe("searchConversations", () => {
     }).upsert({
       kind: "resource_link",
       key: "getsentry/junior#1805",
-      label: "getsentry/junior#1805",
-      status: "open",
       url: "https://github.com/getsentry/junior/pull/1805",
     });
     setDashboardConversationLinkOptions({
@@ -99,7 +99,6 @@ describe("searchConversations", () => {
           links: [
             {
               label: "getsentry/junior#1805",
-              status: "open",
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
@@ -302,9 +301,7 @@ describe("searchConversations", () => {
     }).upsert({
       kind: "object",
       key: "getsentry/uploads#12",
-      label: "getsentry/uploads#12",
       objectType: "code_change",
-      status: "open",
       subject: { id: "1200", kind: "pull_request" },
       title: "Retry uploads",
       url: "https://github.com/getsentry/uploads/pull/12",
@@ -362,9 +359,7 @@ describe("searchConversations", () => {
       }).upsert({
         kind: "object",
         key,
-        label: key,
         objectType: "code_change",
-        status: "open",
         subject,
         title: "Add events",
         url: "https://github.com/getsentry/junior-old/pull/691",

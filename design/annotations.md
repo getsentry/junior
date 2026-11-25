@@ -28,10 +28,3 @@ on the Conversation row, as a Message card, and in search.
 - An Annotation never gives access to the object.
 - A card that Junior posted in Slack keeps the facts that it had then. Its
   details read the object live.
-
-## Gaps
-
-- An Annotation keeps a copy of the title, the state, and other facts, and
-  webhooks change that copy.
-- A GitHub Annotation names its object by the repository name. After a
-  rename, search and updates do not find it.

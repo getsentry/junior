@@ -9,7 +9,7 @@ import {
   LINEAR_ISSUE_MATCH_FIELDS,
 } from "./events/issue.js";
 import { linearInboxSubjectKinds } from "./inbox-subjects.js";
-import { linearIssueAnnotation, readLinearIssue } from "./issue-card.js";
+import { linearSavedIssue, readLinearIssue } from "./issue-card.js";
 import { linearIssueLinks } from "./links/issues.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
@@ -61,7 +61,7 @@ async function annotateSavedIssue(
       {
         // save_issue changes the issue that `id` names, else creates one.
         action: ctx.tool.arguments["id"] === undefined ? "created" : "changed",
-        ...linearIssueAnnotation(result.data),
+        ...linearSavedIssue(result.data),
       },
     ],
   };

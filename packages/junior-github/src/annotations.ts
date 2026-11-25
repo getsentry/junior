@@ -1,13 +1,13 @@
 import type {
-  ConversationAnnotation,
+  AnnotationPrefix,
   ConversationSidebarAnnotation,
+  LiveAnnotation,
   ObjectAnnotation,
+  SavedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 
-function githubObjectType(
-  annotation: ConversationAnnotation,
-): "task" | "code_change" {
+function githubObjectType(annotation: LiveAnnotation): "task" | "code_change" {
   if (
     annotation.objectType === "task" ||
     annotation.objectType === "code_change"
@@ -21,9 +21,7 @@ function githubObjectType(
     : "task";
 }
 
-function repositoryName(
-  annotation: ConversationAnnotation,
-): string | undefined {
+function repositoryName(annotation: LiveAnnotation): string | undefined {
   try {
     const [, , repo] = new URL(annotation.url ?? "").pathname.split("/");
     return repo || undefined;
@@ -34,7 +32,7 @@ function repositoryName(
 
 /** Return GitHub annotations for a conversation row, newest first. */
 export function githubSidebarAnnotations(
-  annotations: ConversationAnnotation[],
+  annotations: LiveAnnotation[],
 ): ConversationSidebarAnnotation[] {
   return annotations
     .flatMap((annotation) => {
@@ -42,11 +40,11 @@ export function githubSidebarAnnotations(
       if (!label) return [];
       const sidebar: ConversationSidebarAnnotation = {
         objectType: githubObjectType(annotation),
-        status: annotation.status,
         key: annotation.key,
         label,
       };
       if (annotation.kind === "object") {
+        if (annotation.status) sidebar.status = annotation.status;
         sidebar.title = annotation.title;
         if (annotation.facts?.type === "code_change") {
           const image = annotation.facts.previewImageUrls?.[0];
@@ -60,13 +58,39 @@ export function githubSidebarAnnotations(
     .map(({ annotation }) => annotation);
 }
 
-/** Return the Annotation key of a GitHub issue or pull request. */
-export function githubObjectKey(repo: string, number: number): string {
-  return `${repo.toLowerCase()}#${number}`;
+// The start of the Annotation key and the link of each issue and pull
+// request of one repository.
+function repositoryPrefix(repo: string): AnnotationPrefix {
+  return { key: `${repo.toLowerCase()}#`, url: `https://github.com/${repo}/` };
 }
 
-/** Build the annotation returned by GitHub create and update tools. */
-export function githubObjectAnnotation(input: {
+/** Return the Annotation key of a GitHub issue or pull request. */
+export function githubObjectKey(repo: string, number: number): string {
+  return `${repositoryPrefix(repo).key}${number}`;
+}
+
+/**
+ * Return the move of the Annotations of each issue and pull request of a
+ * repository that GitHub renamed or transferred, by its full names.
+ */
+export function githubRepositoryMove(from: string, to: string) {
+  return { from: repositoryPrefix(from), to: repositoryPrefix(to) };
+}
+
+// GitHub answers a renamed repository's old name, and its link names the
+// repository now. So the key follows the link, and a tool call by the old
+// name keeps the Annotation on the new key.
+function currentRepository(url: string, repo: string): string {
+  const parsed = URL.parse(url);
+  const [owner, name] =
+    parsed?.hostname === "github.com"
+      ? parsed.pathname.split("/").filter(Boolean)
+      : [];
+  return owner && name ? `${owner}/${name}` : repo;
+}
+
+/** Build the Annotation that GitHub create and update tools return. */
+export function githubAnnotatedObject(input: {
   repo: string;
   number: number;
   /**
@@ -74,6 +98,39 @@ export function githubObjectAnnotation(input: {
    * rename keeps. It names the object with the kind of its Inbox items.
    */
   id?: string | undefined;
+  title: string;
+  url: string;
+  objectType: "task" | "code_change";
+}): SavedObjectAnnotation {
+  return {
+    kind: "object",
+    key: githubObjectKey(
+      currentRepository(input.url, input.repo),
+      input.number,
+    ),
+    ...(input.id
+      ? {
+          subject: {
+            id: input.id,
+            kind:
+              input.objectType === "code_change"
+                ? GITHUB_INBOX_SUBJECTS.pullRequest
+                : GITHUB_INBOX_SUBJECTS.issue,
+          },
+        }
+      : undefined),
+    title: input.title.slice(0, 512),
+    url: input.url,
+    objectType: input.objectType,
+  };
+}
+
+/** Build the live card of a GitHub issue or pull request. */
+export function githubObjectCard(input: {
+  repo: string;
+  number: number;
+  /** GitHub's id of the object (`databaseId`), as in `githubAnnotatedObject`. */
+  id?: number | undefined;
   title: string;
   url: string;
   objectType: "task" | "code_change";
@@ -88,7 +145,7 @@ export function githubObjectAnnotation(input: {
     ...(input.id
       ? {
           subject: {
-            id: input.id,
+            id: String(input.id),
             kind:
               input.objectType === "code_change"
                 ? GITHUB_INBOX_SUBJECTS.pullRequest

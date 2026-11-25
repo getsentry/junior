@@ -41,14 +41,19 @@ import { createModelStream } from "../fixtures/model-stream";
 import { mswServer } from "../msw/server";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
-const annotation: ObjectAnnotation = {
-  kind: "object",
-  objectType: "code_change",
+// What the tool saves. The card reads the rest from the link type.
+const annotation = {
+  kind: "object" as const,
+  objectType: "code_change" as const,
   key: "repo#1",
-  label: "repo#1",
   title: "Fix the parser",
-  description: `Fix **parsing**. ${"More context. ".repeat(50)}`,
   url: "https://example.com/pull/1",
+};
+
+const card: ObjectAnnotation = {
+  ...annotation,
+  label: "repo#1",
+  description: `Fix **parsing**. ${"More context. ".repeat(50)}`,
   status: "open",
   sourceUpdatedAt: "2026-09-25T12:00:00Z",
   facts: {
@@ -74,7 +79,6 @@ const readResult = () => ({
       ...annotation,
       action: "changed" as const,
       key: "repo#2",
-      label: "repo#2",
     },
   ],
 });
@@ -83,6 +87,8 @@ afterEach(closeConversationFixture);
 
 it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
   const saveInputs: unknown[] = [];
+  // What the provider shows now. Undefined means the provider is down.
+  let liveStatus: string | undefined = "draft";
   const previous = setPlugins([
     defineJuniorPlugin({
       manifest: {
@@ -91,6 +97,19 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         description: "Object test tools",
       },
       inboxSubjects: [{ kind: "change", label: "Change", owner: "annotation" }],
+      objectLinks: [
+        {
+          cacheCards: false,
+          objectTypes: ["code_change"],
+          filters: [{ host: "example.com", pathPattern: "/pull/*" }],
+          canView: async () => true,
+          label: (url) => `repo#${url.pathname.split("/").at(-1)}`,
+          resolve: async () => {
+            if (!liveStatus) throw new Error("Provider is down");
+            return { ...card, status: liveStatus };
+          },
+        },
+      ],
       hooks: {
         tools: () => ({
           save: definePluginTool({
@@ -123,7 +142,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
                       status === "open"
                         ? ("created" as const)
                         : ("changed" as const),
-                    status: status ?? "open",
                     subject: { id: "1", kind: "change" },
                   },
                 ],
@@ -201,7 +219,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       (event) =>
         event.data.type === "message" && event.data.role === "assistant",
     );
-    const cards = [{ ...annotation, plugin: "objects", status: "draft" }];
+    const cards = [{ ...card, plugin: "objects", status: "draft" }];
     const refs = [{ kind: "object", plugin: "objects", key: annotation.key }];
     if (!message || message.data.type !== "message")
       throw new Error("Expected an assistant Message");
@@ -227,9 +245,10 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       expect(result["details"]).not.toHaveProperty("objectAnnotations");
     }
 
-    await expect(
-      listConversationAnnotations(getDb(), conversationId),
-    ).resolves.toMatchObject(cards);
+    // The Annotation stores no state: the card reads it live.
+    const stored = await listConversationAnnotations(getDb(), conversationId);
+    expect(stored).toMatchObject([{ ...annotation, plugin: "objects" }]);
+    expect(JSON.stringify(stored)).not.toMatch(/draft|status|label|facts/);
     // The row names the object by its subject. A later change keeps
     // `created`, because the Conversation still created the object.
     await expect(
@@ -281,7 +300,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
                 key: "description",
                 label: "Description",
                 type: "string",
-                value: `${annotation.description!.slice(0, 499).trimEnd()}…`,
+                value: `${card.description!.slice(0, 499).trimEnd()}…`,
                 long: true,
                 format: "markdown",
               },
@@ -293,14 +312,14 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
 
     const mixedCards = [
       {
-        ...annotation,
+        ...card,
         plugin: "objects",
         status: "closed",
         facts: undefined,
         description: "One\nTwo\nThree\nFour\nFive\nSix\nSeven",
       },
       {
-        ...annotation,
+        ...card,
         plugin: "objects",
         key: "issue-1",
         description: undefined,
@@ -309,7 +328,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         facts: { type: "task" as const, assignees: ["Sam"], priority: "High" },
       },
       {
-        ...annotation,
+        ...card,
         plugin: "objects",
         key: "deploy-1",
         description: "  ",
@@ -326,7 +345,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         },
       },
       {
-        ...annotation,
+        ...card,
         plugin: "objects",
         key: "event-1",
         label: "Oct 12",
@@ -340,7 +359,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         },
       },
       {
-        ...annotation,
+        ...card,
         plugin: "junior",
         key: "daily",
         objectType: "automation" as const,
@@ -480,11 +499,8 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       basePath: "/ops",
     });
 
-    await createPluginAnnotations({
-      conversationId,
-      plugin: "objects",
-      db: getDb(),
-    }).upsert({ ...annotation, status: "merged" });
+    // The provider merged the object. No Annotation write follows it.
+    liveStatus = "merged";
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
     const saved = await getConversationEventStore().loadHistory(conversationId);
     expect(
@@ -498,12 +514,36 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       viewer: testViewer(harness.actor.email),
     });
     expect(detail?.annotations).toMatchObject([
-      { plugin: "objects", key: annotation.key, status: "merged" },
+      {
+        plugin: "objects",
+        key: annotation.key,
+        status: "merged",
+        description: card.description,
+      },
     ]);
     const reported = detail?.events.find((event) => event.seq === message.seq);
     if (reported?.data.type !== "message")
       throw new Error("Expected a reported Message");
     expect(reported.data.cards).toEqual(refs);
+    // With the provider down, the page shows only the plugin's label and
+    // the link: the title is for readers who can open the object.
+    liveStatus = undefined;
+    const down = await readConversationDetail(conversationId, {
+      viewer: testViewer(harness.actor.email),
+    });
+    expect(down?.annotations).toEqual([
+      {
+        kind: "resource_link",
+        key: annotation.key,
+        label: "repo#1",
+        objectType: "code_change",
+        plugin: "objects",
+        url: annotation.url,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    ]);
+    liveStatus = "merged";
 
     harness.setModelStream(
       createModelStream([{ type: "text", text: "The object has merged." }]),
@@ -562,7 +602,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
   }
 });
 
-it("reads each delivered card once with the access of the person who started the Conversation, and keeps the saved facts when it cannot read it", async () => {
+it("reads each delivered card once with the access of the person who started the Conversation, and posts only the title, label, and link when it cannot read it", async () => {
   stubGitHubApp();
   let githubUp = false;
   mswServer.use(
@@ -595,10 +635,7 @@ it("reads each delivered card once with the access of the person who started the
       kind: "object" as const,
       objectType: "code_change" as const,
       key: "getsentry/junior#38",
-      // A posted card never shows the stored label. GitHub makes it.
-      label: "Saved label",
       title: "Draft: retry uploads",
-      status: "open",
       url: `${GITHUB_REPO}/pull/38`,
     };
     await createPluginAnnotations({
@@ -629,7 +666,8 @@ it("reads each delivered card once with the access of the person who started the
       },
     ]);
 
-    // GitHub is down, so the card posts what Junior saved.
+    // GitHub is down, so the card posts the title, GitHub's label, and the
+    // link that Junior saved.
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
       { ...saved, label: "getsentry/junior#38", plugin: "github" },
     ]);
@@ -646,7 +684,7 @@ it("reads each delivered card once with the access of the person who started the
     // Delivery stores nothing: the Annotation keeps what the tool saved.
     await expect(
       listConversationAnnotations(getDb(), conversationId),
-    ).resolves.toMatchObject([{ status: "open", title: saved.title }]);
+    ).resolves.toMatchObject([{ title: saved.title }]);
   } finally {
     vi.unstubAllEnvs();
   }

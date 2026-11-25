@@ -80,80 +80,31 @@ export function automationResultFields(
 }
 
 /**
- * Return the status and warning that the card and the Slack details of an
- * Automation show. The status is the saved status, except that an active
- * Automation whose trigger cannot work shows as unavailable. Only a block or
- * a trigger problem gives a warning, like Needs attention in `collection.ts`.
+ * Save the Annotation of an Automation that a tool changed, and return the
+ * tool result. The card reads the Automation live.
  */
-export function automationCardStatus(automation: {
-  status: string;
-  statusReason?: string | null | undefined;
-  triggerProblems?: readonly string[] | undefined;
-}): { status: string; warning: string | undefined } {
-  const problems = automation.triggerProblems ?? [];
-  const warning = [
-    automation.status === "blocked"
-      ? (automation.statusReason ?? "This automation is blocked.")
-      : undefined,
-    problems.length > 0
-      ? ["Trigger unavailable.", ...problems].join(" ")
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  return {
-    status:
-      automation.status === "active" && problems.length > 0
-        ? "unavailable"
-        : automation.status,
-    warning: warning || undefined,
-  };
-}
-
-/** Save the card of an Automation that a tool changed, and return the tool result. */
 export async function saveAutomationCardResult<
-  T extends {
-    id: string;
-    title: string | null;
-    url: string | null;
-    status: string;
-    status_reason: string | null;
-  },
+  T extends { id: string; title: string | null; url: string | null },
 >(
   conversationId: string,
   automation: T,
-  card: {
-    task: AutomationTask;
-    fallbackTitle: string;
-    trigger: string;
-    triggerProblems?: readonly string[] | undefined;
-  },
+  card: { task: AutomationTask; fallbackTitle: string },
   action: AnnotatedObject["action"],
 ) {
-  const description = automationTaskDescription(card.task);
   const title =
-    automation.title ?? fallbackShortTitle(description, card.fallbackTitle);
-  const { status, warning } = automationCardStatus({
-    status: automation.status,
-    statusReason: automation.status_reason,
-    triggerProblems: card.triggerProblems,
-  });
+    automation.title ??
+    fallbackShortTitle(
+      automationTaskDescription(card.task),
+      card.fallbackTitle,
+    );
   const annotation: AnnotatedObject = {
     action,
     kind: "object",
     objectType: "automation",
-    label: title,
     key: automation.id,
     subject: { id: automation.id, kind: ANNOTATION_SUBJECT_KINDS.automation },
     title,
     url: automation.url,
-    description,
-    status,
-    trigger: card.trigger,
-    // Only the card notes completion. Slack details show it as the status.
-    warning:
-      warning ??
-      (status === "completed" ? "This automation has completed." : undefined),
   };
   return {
     automation,

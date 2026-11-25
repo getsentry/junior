@@ -7,6 +7,7 @@
 import type {
   ObjectAnnotation,
   PluginMcpContent,
+  SavedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { LINEAR_SUBJECT_KINDS } from "./inbox-subjects.js";
@@ -92,8 +93,8 @@ export function readLinearIssue(result: {
   return issueResultSchema.safeParse(undefined);
 }
 
-/** Build the task card of one Linear issue. */
-export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
+/** Return what Junior saves for one Linear issue: its subject, title, and link. */
+export function linearSavedIssue(issue: LinearIssue): SavedObjectAnnotation {
   const identifier = issue.identifier;
   return {
     kind: "object",
@@ -101,10 +102,18 @@ export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
     key: identifier,
     // A result without the uuid keeps the identifier, as older cards do.
     subject: { id: issue.uuid ?? identifier, kind: LINEAR_SUBJECT_KINDS.issue },
-    label: identifier,
     title: (issue.title || identifier).slice(0, 512),
-    description: issue.description?.slice(0, 4000),
     url: issue.url,
+  };
+}
+
+/** Build the live task card of one Linear issue. */
+export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
+  const identifier = issue.identifier;
+  return {
+    ...linearSavedIssue(issue),
+    label: identifier,
+    description: issue.description?.slice(0, 4000),
     status: issue.status,
     displayType: "Issue",
     sourceUpdatedAt: issue.updatedAt ?? undefined,

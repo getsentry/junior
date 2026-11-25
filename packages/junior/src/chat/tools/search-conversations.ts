@@ -69,7 +69,6 @@ const conversationMatchSchema = z
         z
           .object({
             label: z.string(),
-            status: z.string().optional(),
             url: z.string(),
           })
           .strict(),

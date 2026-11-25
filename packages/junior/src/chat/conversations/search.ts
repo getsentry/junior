@@ -29,6 +29,7 @@ import {
   embedConversationQuery,
 } from "@/chat/conversations/embedding";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
+import { loadAnnotationLabeler } from "@/chat/conversations/annotation-labels";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
   hasMatchingAnnotation,
@@ -58,7 +59,6 @@ const MIN_VECTOR_SIMILARITY = 0.4;
 /** One linked resource of a search result. */
 export interface ConversationSearchLink {
   label: string;
-  status?: string;
   url: string;
 }
 
@@ -354,20 +354,11 @@ export async function searchConversations(
     db,
     rows.map((row) => row.conversationId),
   );
+  const label = await loadAnnotationLabeler();
   return rows.map((row) => {
     const links = (annotations.get(row.conversationId) ?? [])
-      .flatMap((annotation) =>
-        annotation.url
-          ? [
-              {
-                label: annotation.label,
-                ...(annotation.status
-                  ? { status: annotation.status }
-                  : undefined),
-                url: annotation.url,
-              },
-            ]
-          : [],
+      .flatMap(({ url, ...annotation }) =>
+        url ? [{ label: label({ ...annotation, url }), url }] : [],
       )
       .slice(0, MAX_LINKS);
     return {

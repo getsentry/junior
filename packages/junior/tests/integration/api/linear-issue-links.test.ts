@@ -171,10 +171,8 @@ async function seedIdentifierTicket(
     objectType: "task",
     key: identifier,
     subject: { id: identifier, kind: "issue" },
-    label: identifier,
     title: "Login redirect",
     url,
-    displayType: "Issue",
   });
   return conversationId;
 }

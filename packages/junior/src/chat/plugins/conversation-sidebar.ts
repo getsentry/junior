@@ -1,8 +1,8 @@
 import { createPluginCache } from "@/chat/plugins/cache";
 import {
   conversationSidebarAnnotationSchema,
-  type ConversationAnnotation,
   type ConversationSidebarAnnotation,
+  type LiveAnnotation,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
@@ -13,7 +13,7 @@ import { mapBounded } from "@/chat/fan-out";
 /** Show native objects by default and let plugins select compact sidebar labels. */
 export async function listConversationSidebarAnnotations(
   conversationIds: string[],
-  annotationsByConversation: Map<string, ConversationAnnotation[]>,
+  annotationsByConversation: Map<string, LiveAnnotation[]>,
 ): Promise<Record<string, ConversationSidebarAnnotation[]>> {
   const candidates = new Set(conversationIds);
   const selected: Record<string, ConversationSidebarAnnotation[]> = {};
@@ -39,7 +39,9 @@ export async function listConversationSidebarAnnotations(
             annotation.facts?.type === "deployment"
               ? ("deployment" as const)
               : annotation.objectType,
-          status: annotation.status,
+          ...(annotation.kind === "object" && annotation.status
+            ? { status: annotation.status }
+            : undefined),
         },
       ];
     });
