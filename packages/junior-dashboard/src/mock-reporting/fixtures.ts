@@ -1514,6 +1514,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
           "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
           "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+          "Canary agents are tracked in https://linear.app/acme/issue/ENG-123/grow-the-gocd-agent-pool",
           "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
           "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
           "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
@@ -1531,8 +1532,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "",
           // Alone on their lines: the video shows only its thumbnail, the
           // Slack message, the chart, the trace, the event, the release, the
-          // dashboard, the monitor, and the alert show a card, and the
-          // repeated pull request shows no second card.
+          // dashboard, the monitor, the alert, and the Linear issue show a
+          // card, and the repeated pull request shows no second card.
           "https://www.youtube.com/watch?v=MockLaunchDemo",
           "",
           "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1550,6 +1551,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "https://acme.sentry.io/monitors/4021/",
           "",
           "https://acme.sentry.io/monitors/alerts/6363564/",
+          "",
+          "https://linear.app/acme/issue/ENG-123/grow-the-gocd-agent-pool",
           "",
           "https://github.com/getsentry/payments/pull/91",
         ].join("\n"),

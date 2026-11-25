@@ -766,6 +766,12 @@ defineJuniorPlugin({
   gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
   can open the object. Junior calls `canView` before each card read and
   again on each Attach.
+  For an MCP plugin, `ctx.viewerMcp` calls a provider tool with only the
+  viewer's own stored MCP login. List each tool that it may call in
+  `mcp.viewer-tools` (`viewerTools` in TypeScript). Without the list, it
+  can call no tool. Each tool must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools` when the plugin sets `allowed-tools`. The provider
+  must mark the tool read-only.
 - **Resolver.** Return the card, or `undefined` for a missing object. To
   share one provider read with `canView`, read through `ctx.cache` with a
   short TTL. Junior caches the card for one minute for each viewer and URL,
@@ -782,6 +788,12 @@ defineJuniorPlugin({
   these fields. Each card reads the object live through your link type.
   Add `label(url)` to the link type to give the short label, such as
   `owner/repo#12`. The label shows when the card cannot load.
+- **Subject ids.** When the viewer's own read names the stable id of an
+  object that older Annotations name by another id, call
+  `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations
+  of your subject kind `kind` from `from` to `to`, and changes nothing else.
+  When `from` is unique only in one workspace, set `urlPrefix` to the
+  workspace's address: only Annotations whose url starts with it move.
 - **Prefetch.** To load a page of links in one provider call, add
   `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
   that the link type claims, before `canView` and `resolve` run for each
