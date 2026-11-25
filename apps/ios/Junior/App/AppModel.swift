@@ -96,8 +96,11 @@ final class AppModel {
     self.server = server
     self.client = Self.client(for: server, store: store)
     self.dashboard = Self.dashboard(for: server, store: sessionStore)
-    // An app that signed in before the dashboard session existed signs in again.
-    self.signedIn = store.load()?.server == server && sessionStore.load()?.server == server
+    // An app with no live dashboard session, such as one that signed in before
+    // the session existed, signs in again.
+    let session = sessionStore.load()
+    self.signedIn =
+      store.load()?.server == server && session?.server == server && session.map { $0.expiresAt > Date() } == true
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
     self.changelogBadge = BundledChangelog.hasUnseen()

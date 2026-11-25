@@ -60,5 +60,11 @@ extension MCPClientTests {
     await #expect(throws: JuniorAPIError.signedOut) { try await client.get("/api/me", as: Me.self) }
     #expect(store.load() == nil)
     #expect(await client.isSignedIn == false)
+    // A session past its expiry is forgotten without a request.
+    await client.signIn(SessionCredentials(server: server, token: "jr_ses_t1", expiresAt: .distantPast))
+    let requests = StubServer.requests.count
+    await #expect(throws: JuniorAPIError.signedOut) { try await client.get("/api/me", as: Me.self) }
+    #expect(store.load() == nil)
+    #expect(StubServer.requests.count == requests)
   }
 }

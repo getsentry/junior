@@ -55,7 +55,12 @@ public actor DashboardClient {
   }
 
   private func fetch(_ path: String, query: [URLQueryItem]) async throws -> Data {
-    guard let credentials, credentials.expiresAt > Date() else { throw JuniorAPIError.signedOut }
+    guard let credentials else { throw JuniorAPIError.signedOut }
+    guard credentials.expiresAt > Date() else {
+      Log.oauth.notice("Signed out: the dashboard session expired")
+      signOut()
+      throw JuniorAPIError.signedOut
+    }
     var components = URLComponents(url: server.page(path)!, resolvingAgainstBaseURL: false)!
     if !query.isEmpty { components.queryItems = query }
     var request = URLRequest(url: components.url!)
