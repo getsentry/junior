@@ -128,7 +128,11 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
     {},
     {
       ...context,
-      turnTools: turnBehavior({ kind: "lead", personInput: true }).tools,
+      turnTools: turnBehavior({
+        kind: "lead",
+        hasParent: false,
+        personInput: true,
+      }).tools,
     },
   ) as Record<string, AnyToolDefinition>;
   return {
