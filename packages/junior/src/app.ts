@@ -149,10 +149,8 @@ import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
 import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
-  handleIosSignInPage,
   handleIosSignInToken,
   handleIosSignOut,
-  IOS_SIGN_IN_PATH,
   IOS_SIGN_IN_PUBLIC_PATHS,
   IOS_SIGN_IN_TOKEN_PATH,
   IOS_SIGN_OUT_PATH,
@@ -694,17 +692,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     method: ["GET", "POST"],
     path: MCP_CONSENT_PATH,
   };
-  const iosSignInRoute: AuthenticatedRoute = {
-    handler: (request, user) =>
-      handleIosSignInPage({
-        agentName: botConfig.userName,
-        request,
-        state: getMcpState(),
-        user,
-      }),
-    method: ["GET", "POST"],
-    path: IOS_SIGN_IN_PATH,
-  };
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -719,7 +706,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
           },
-          ...(mcpEnabled ? [mcpConsentRoute, iosSignInRoute] : []),
+          ...(mcpEnabled ? [mcpConsentRoute] : []),
         ]
       : [];
   try {

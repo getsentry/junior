@@ -1,18 +1,17 @@
 /**
- * Own the iOS app's sign-in to the dashboard API.
+ * Own the iOS app's session for the dashboard API.
  *
- * The app opens `IOS_SIGN_IN_PATH` in its browser sheet with a PKCE
- * challenge. After Google sign-in, the person confirms, and Junior redirects
- * to the app with a one-time code. The app trades the code and its verifier
- * at `IOS_SIGN_IN_TOKEN_PATH` for a stored session token, which it sends as
- * `Authorization: Bearer` on `/api/*`. This is not the MCP grant: MCP stays
- * a separate consent.
+ * The app signs in once, through MCP OAuth. Its authorization request also
+ * carries a `session_code_challenge`, and the consent redirect carries a
+ * one-time session code next to the MCP code. The app trades that code and
+ * its verifier at `IOS_SIGN_IN_TOKEN_PATH` for a stored session token, which
+ * it sends as `Authorization: Bearer` on `/api/*`. The session and the MCP
+ * grant stay separate credentials: neither one works where the other does.
  */
 import type { StateAdapter } from "chat";
 import { createHash, randomBytes } from "node:crypto";
 import * as z from "zod";
 import type { User } from "@sentry/junior-plugin-api";
-import { requestHasSameOrigin } from "@/api/html";
 import { PKCE_CODE_CHALLENGE_PATTERN, pkceVerifierMatches } from "@/api/pkce";
 import {
   bearerSignInSessionToken,
@@ -20,21 +19,16 @@ import {
   IOS_SESSION_LIFETIME_MS,
   revokeSignInSession,
 } from "@/chat/sign-in/sessions";
-import { renderIosSignInBlockedPage, renderIosSignInPage } from "./page";
 
-export const IOS_SIGN_IN_PATH = "/api/ios/sign-in";
 export const IOS_SIGN_IN_TOKEN_PATH = "/api/ios/sign-in/token";
 export const IOS_SIGN_OUT_PATH = "/api/ios/sign-out";
-/** Public iOS routes. They mount before the dashboard, which needs a session. */
+/** iOS session routes. They mount before the dashboard, which needs a session. */
 export const IOS_SIGN_IN_PUBLIC_PATHS = [
   IOS_SIGN_IN_TOKEN_PATH,
   IOS_SIGN_OUT_PATH,
 ];
 
-// Only the app can open its `junior-ios` scheme from its browser sheet.
-const IOS_REDIRECT_URI = "junior-ios://session/callback";
 const CODE_TTL_MS = 60 * 1000;
-const STATE_MAX_LENGTH = 1_000;
 const NO_STORE = { "cache-control": "no-store", pragma: "no-cache" };
 
 type IosSignInState = Pick<StateAdapter, "get" | "set" | "setIfNotExists">;
@@ -52,67 +46,26 @@ function codeKey(code: string): string {
   return `junior:ios-sign-in:v1:code:${hash}`;
 }
 
-function readParams(values: {
-  get(name: string): unknown;
-}): { codeChallenge: string; state: string } | undefined {
-  const codeChallenge = values.get("code_challenge");
-  const state = values.get("state");
-  if (
-    typeof codeChallenge !== "string" ||
-    !PKCE_CODE_CHALLENGE_PATTERN.test(codeChallenge) ||
-    typeof state !== "string" ||
-    !state ||
-    state.length > STATE_MAX_LENGTH
-  ) {
-    return undefined;
-  }
-  return { codeChallenge, state };
-}
-
 /**
- * Show or complete the iOS sign-in for one dashboard-authenticated user. GET
- * asks the person to confirm. A same-origin POST issues the code, so another
- * site cannot send a signed-in browser through this page on its own.
+ * Issue a one-time session code for the user who approved the iOS app's MCP
+ * consent. The consent redirect carries it to the app with the MCP code.
  */
-export async function handleIosSignInPage(args: {
-  agentName: string;
-  request: Request;
+export async function issueIosSessionCode(args: {
+  codeChallenge: string;
   state: IosSignInState;
   user: User;
-}): Promise<Response> {
-  if (args.request.method === "GET") {
-    const params = readParams(new URL(args.request.url).searchParams);
-    if (!params) return renderIosSignInBlockedPage();
-    return renderIosSignInPage({
-      agentName: args.agentName,
-      email: args.user.email,
-      ...params,
-    });
-  }
-
-  // A body that is not a form is a blocked request.
-  const form = requestHasSameOrigin(args.request)
-    ? await args.request.formData().catch(() => undefined)
-    : undefined;
-  const params = form && readParams(form);
-  if (!params) return renderIosSignInBlockedPage();
+}): Promise<string> {
   const code = randomBytes(32).toString("base64url");
   await args.state.set(
     codeKey(code),
     codeRecordSchema.parse({
-      codeChallenge: params.codeChallenge,
+      codeChallenge: args.codeChallenge,
       email: args.user.email,
       name: args.user.displayName,
     }),
     CODE_TTL_MS,
   );
-  const redirect = new URL(IOS_REDIRECT_URI);
-  redirect.searchParams.set("code", code);
-  redirect.searchParams.set("state", params.state);
-  return new Response(null, {
-    status: 303,
-    headers: { ...NO_STORE, location: redirect.toString() },
-  });
+  return code;
 }
 
 function tokenError(description: string, status = 400): Response {

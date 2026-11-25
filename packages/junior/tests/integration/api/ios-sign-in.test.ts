@@ -1,39 +1,24 @@
 import type { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { createApp } from "@/app";
+import { JUNIOR_IOS_CLIENT } from "@/api/mcp/oauth/client-metadata";
 import { authenticateSignInSession } from "@/chat/sign-in/sessions";
 import {
+  approveMcpConsent,
   createPkce,
   MCP_TEST_ALLOWED_DOMAINS,
   MCP_TEST_ORIGIN,
+  MCP_TEST_REDIRECT_URI,
   MCP_TEST_VIEWER,
+  mcpAuthorizeUrl,
   mockMcpDashboardConfig,
-  viewerCookie,
+  openMcpConsentPage,
 } from "../../fixtures/mcp-http";
+import { MCP_CLIENT_ID } from "../../msw/handlers/mcp-client-metadata";
 
 mockMcpDashboardConfig();
 
-const SIGN_IN_URL = `${MCP_TEST_ORIGIN}/api/ios/sign-in`;
-
-/** Confirm the sign-in page as the viewer and return the app redirect. */
-async function confirm(
-  app: Hono,
-  challenge: string,
-  origin = MCP_TEST_ORIGIN,
-): Promise<Response> {
-  return await app.request(SIGN_IN_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      cookie: viewerCookie(MCP_TEST_VIEWER),
-      origin,
-    },
-    body: new URLSearchParams({
-      code_challenge: challenge,
-      state: "app-state",
-    }),
-  });
-}
+const [IOS_REDIRECT_URI = ""] = JUNIOR_IOS_CLIENT.redirectUris;
 
 async function exchange(
   app: Hono,
@@ -48,36 +33,40 @@ async function exchange(
 }
 
 describe("iOS sign-in", () => {
-  it("trades a confirmed code and its verifier for a 30-day session token", async () => {
+  it("gives the app an MCP code and a 30-day session code from one consent", async () => {
     const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
-    const pkce = createPkce();
+    const mcp = createPkce();
+    const session = createPkce();
 
-    const page = await app.request(
-      `${SIGN_IN_URL}?code_challenge=${pkce.challenge}&state=app-state`,
-      { headers: { cookie: viewerCookie(MCP_TEST_VIEWER) } },
+    const authorize = await app.request(
+      mcpAuthorizeUrl({
+        client_id: JUNIOR_IOS_CLIENT.clientId,
+        code_challenge: mcp.challenge,
+        redirect_uri: IOS_REDIRECT_URI,
+        session_code_challenge: session.challenge,
+        state: "app-state",
+      }),
     );
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain(MCP_TEST_VIEWER);
-    expect(page.headers.get("content-security-policy")).toContain(
-      "form-action 'self' junior-ios:",
+    const consentUrl = authorize.headers.get("location") ?? "";
+    const page = await openMcpConsentPage(app, consentUrl, MCP_TEST_VIEWER);
+    expect(page.html).toContain("Use the dashboard API as you for 30 days");
+    const callback = new URL(
+      (
+        await approveMcpConsent(app, {
+          consentUrl,
+          csrf: page.csrf ?? "",
+          email: MCP_TEST_VIEWER,
+          referrerPolicy: page.referrerPolicy,
+        })
+      ).headers.get("location") ?? "",
     );
+    expect(callback.searchParams.get("code")).toBeTruthy();
+    expect(callback.searchParams.get("state")).toBe("app-state");
+    const code = callback.searchParams.get("session_code") ?? "";
 
-    // Another site cannot send a signed-in browser through the page.
-    expect(
-      (await confirm(app, pkce.challenge, "https://evil.test")).status,
-    ).toBe(400);
-
-    const redirect = new URL(
-      (await confirm(app, pkce.challenge)).headers.get("location") ?? "",
-    );
-    expect(`${redirect.protocol}//${redirect.host}${redirect.pathname}`).toBe(
-      "junior-ios://session/callback",
-    );
-    expect(redirect.searchParams.get("state")).toBe("app-state");
-    const code = redirect.searchParams.get("code") ?? "";
-
-    expect((await exchange(app, code, createPkce().verifier)).status).toBe(400);
-    const issued = await exchange(app, code, pkce.verifier);
+    // The session code takes its own verifier, not the MCP one.
+    expect((await exchange(app, code, mcp.verifier)).status).toBe(400);
+    const issued = await exchange(app, code, session.verifier);
     expect(issued.headers.get("cache-control")).toBe("no-store");
     const body = (await issued.json()) as { expires_at: string; token: string };
     expect(body.token).toMatch(/^jr_ses_/);
@@ -89,7 +78,7 @@ describe("iOS sign-in", () => {
     });
 
     // Each code works once.
-    expect((await exchange(app, code, pkce.verifier)).status).toBe(400);
+    expect((await exchange(app, code, session.verifier)).status).toBe(400);
 
     const signedOut = await app.request(`${MCP_TEST_ORIGIN}/api/ios/sign-out`, {
       method: "POST",
@@ -97,5 +86,19 @@ describe("iOS sign-in", () => {
     });
     expect(signedOut.status).toBe(204);
     expect(await authenticateSignInSession(body.token)).toBeUndefined();
+  });
+
+  it("asks only Junior's iOS app for a session", async () => {
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const authorize = await app.request(
+      mcpAuthorizeUrl({
+        client_id: MCP_CLIENT_ID,
+        code_challenge: createPkce().challenge,
+        redirect_uri: MCP_TEST_REDIRECT_URI,
+        session_code_challenge: createPkce().challenge,
+      }),
+    );
+    const location = new URL(authorize.headers.get("location") ?? "");
+    expect(location.searchParams.get("error")).toBe("invalid_request");
   });
 });

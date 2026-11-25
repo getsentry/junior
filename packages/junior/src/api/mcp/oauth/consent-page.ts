@@ -8,6 +8,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { escapeHtml, requestHasSameOrigin } from "@/api/html";
+import { issueIosSessionCode } from "@/api/ios-sign-in/routes";
 import {
   authorizationRedirect,
   bindMcpConsent,
@@ -59,10 +60,13 @@ function consentPage(args: {
         `<li>${escapeHtml(MCP_SCOPE_DESCRIPTIONS[scope])}<code>${escapeHtml(scope)}</code></li>`,
     )
     .join("");
+  const sessionItem = args.authorization.sessionCodeChallenge
+    ? "<li>Use the dashboard API as you for 30 days</li>"
+    : "";
   return renderMcpPage({
     bodyHtml: `    <p>The app is published at <strong>${escapeHtml(clientHost)}</strong>.</p>
     <h2>In ${escapeHtml(args.agentName)}, it can:</h2>
-    <ul class="list">${scopeItems}</ul>
+    <ul class="list">${scopeItems}${sessionItem}</ul>
     <p class="warning" role="note">Only continue if you started this connection.</p>
     <form method="post" class="actions">
       <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}">
@@ -159,9 +163,16 @@ export async function handleMcpConsentPage(args: {
     scope: authorization.scope,
     state: args.state,
   });
+  const sessionCode =
+    authorization.sessionCodeChallenge &&
+    (await issueIosSessionCode({
+      codeChallenge: authorization.sessionCodeChallenge,
+      state: args.state,
+      user: args.user,
+    }));
   return authorizationRedirect({
     issuer,
-    params: { code },
+    params: sessionCode ? { code, session_code: sessionCode } : { code },
     redirectUri: authorization.redirectUri,
     state: authorization.state,
   });
