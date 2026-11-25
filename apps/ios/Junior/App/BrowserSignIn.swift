@@ -2,20 +2,29 @@ import AuthenticationServices
 import JuniorKit
 import UIKit
 
-/// Sign in to Junior's MCP server in the system browser sheet. Junior knows
-/// this app's client, and redirects to the app's `junior-ios` URL scheme; the
-/// sheet gives that redirect back only to this app.
+/// Sign in to Junior's MCP server in the system browser sheet. The same
+/// consent gives the dashboard API session. Junior knows this app, and
+/// redirects to the app's `junior-ios` URL scheme; the sheet gives that
+/// redirect back only to this app.
 @MainActor
 final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
   private static let callbackScheme = "junior-ios"
   private var session: ASWebAuthenticationSession?
 
-  func run(_ oauth: OAuthClient) async throws -> OAuthCredentials {
-    let signIn = try await oauth.begin(redirectURI: "\(Self.callbackScheme)://oauth/callback")
+  func run(_ oauth: OAuthClient, session: SessionSignInClient) async throws -> (OAuthCredentials, SessionCredentials) {
+    let signIn = try await oauth.begin(redirectURI: "\(Self.callbackScheme)://oauth/callback", withSession: true)
+    let callback = try await open(signIn.authorizeURL)
+    let credentials = try await oauth.finish(signIn, callback: callback)
+    let dashboardSession = try await session.finish(signIn, callback: callback)
+    return (credentials, dashboardSession)
+  }
+
+  /// Open `url` in the sheet and return the `junior-ios` URL it ends on.
+  private func open(_ url: URL) async throws -> URL {
     defer { session = nil }
-    let callback: URL = try await withCheckedThrowingContinuation { continuation in
+    return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeOnce(continuation)
-      let session = ASWebAuthenticationSession(url: signIn.authorizeURL, callbackURLScheme: Self.callbackScheme) {
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: Self.callbackScheme) {
         url, error in
         if let url {
           once.resume(returning: url)
@@ -28,7 +37,6 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
       self.session = session
       if !session.start() { once.resume(throwing: JuniorAPIError.signIn("The browser did not open.")) }
     }
-    return try await oauth.finish(signIn, callback: callback)
   }
 
   nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

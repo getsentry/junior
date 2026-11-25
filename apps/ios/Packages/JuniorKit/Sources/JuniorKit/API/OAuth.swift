@@ -40,6 +40,8 @@ public struct OAuthSignIn: Sendable {
   public let redirectURI: String
   let state: String
   let verifier: String
+  /// PKCE verifier for the dashboard session code, when the sign-in asked for one.
+  let sessionVerifier: String?
   let issuer: String
   let tokenEndpoint: URL
 }
@@ -64,8 +66,10 @@ public struct OAuthClient: Sendable {
     var token_endpoint: URL
   }
 
-  /// Start a sign-in that returns to `redirectURI` (a loopback URL).
-  public func begin(redirectURI: String) async throws -> OAuthSignIn {
+  /// Start a sign-in that returns to `redirectURI`. With `withSession`, the
+  /// consent also returns a dashboard session code; only this app's client
+  /// may ask for one.
+  public func begin(redirectURI: String, withSession: Bool = false) async throws -> OAuthSignIn {
     let metadataURL = server.page("/.well-known/oauth-authorization-server")!
     let (data, response) = try await load(URLRequest(url: metadataURL))
     guard response.statusCode == 200, let metadata = try? JSONDecoder().decode(Metadata.self, from: data) else {
@@ -85,9 +89,14 @@ public struct OAuthClient: Sendable {
       URLQueryItem(name: "code_challenge_method", value: "S256"),
       URLQueryItem(name: "resource", value: server.mcpURL.absoluteString),
     ]
+    let sessionVerifier = withSession ? randomToken(bytes: 32) : nil
+    if let sessionVerifier {
+      components.queryItems?.append(
+        URLQueryItem(name: "session_code_challenge", value: codeChallenge(sessionVerifier)))
+    }
     return OAuthSignIn(
       authorizeURL: components.url!, redirectURI: redirectURI, state: state, verifier: verifier,
-      issuer: metadata.issuer, tokenEndpoint: metadata.token_endpoint)
+      sessionVerifier: sessionVerifier, issuer: metadata.issuer, tokenEndpoint: metadata.token_endpoint)
   }
 
   /// Finish a sign-in with the URL that the browser returned to.
@@ -173,7 +182,7 @@ func codeChallenge(_ verifier: String) -> String {
   base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
 }
 
-private func randomToken(bytes count: Int) -> String {
+func randomToken(bytes count: Int) -> String {
   var generator = SystemRandomNumberGenerator()
   return base64URL(Data((0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) }))
 }
@@ -183,7 +192,7 @@ private func base64URL(_ data: Data) -> String {
     .replacingOccurrences(of: "=", with: "")
 }
 
-private func formEncode(_ value: String) -> String {
+func formEncode(_ value: String) -> String {
   value.addingPercentEncoding(
     withAllowedCharacters: CharacterSet(
       charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) ?? value

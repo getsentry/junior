@@ -1,6 +1,7 @@
 // Serves the built dashboard with its mock reporting data, so the iOS app can
 // run against real API shapes without Slack, a database, or a sign-in. It
-// also serves a mock of the MCP server at `/api/mcp` and its OAuth endpoints.
+// also serves a mock of the MCP server at `/api/mcp` and its OAuth endpoints,
+// and the iOS app's session codes.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
@@ -217,7 +218,21 @@ function handleAuthorize(request) {
     scope: scopes.join(" "),
     used: false,
   });
-  return authorizationRedirect(redirectUri, { code }, state);
+  // The iOS app also asks for a dashboard session code.
+  const sessionChallenge = params.get("session_code_challenge");
+  if (
+    sessionChallenge !== null &&
+    !CODE_CHALLENGE_PATTERN.test(sessionChallenge)
+  ) {
+    return fail("invalid_request", "The session code challenge is not valid.");
+  }
+  return authorizationRedirect(
+    redirectUri,
+    sessionChallenge
+      ? { code, session_code: issueSessionCode(sessionChallenge) }
+      : { code },
+    state,
+  );
 }
 
 function tokenError(error, description, status = 400) {
@@ -689,30 +704,70 @@ async function handleMcp(request) {
   return await handleMcpRpc(request, scopes);
 }
 
-/** Answer an MCP or OAuth path, or return undefined for the dashboard. */
+// Session codes that the mock consent issued for `session_code_challenge`.
+const sessionCodes = new Map();
+
+function issueSessionCode(challenge) {
+  const code = randomBytes(32).toString("base64url");
+  sessionCodes.set(code, { challenge, expiresAtMs: Date.now() + CODE_TTL_MS });
+  return code;
+}
+
+async function handleIosSignInToken(request) {
+  const form = new URLSearchParams(await request.text());
+  const record = sessionCodes.get(form.get("code") ?? "");
+  sessionCodes.delete(form.get("code") ?? "");
+  const verifier = form.get("code_verifier") ?? "";
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  if (
+    !record ||
+    record.expiresAtMs <= Date.now() ||
+    record.challenge !== challenge
+  ) {
+    return Response.json(
+      { error: "invalid_grant", error_description: "The code is not valid." },
+      { status: 400, headers: { "cache-control": "no-store" } },
+    );
+  }
+  // The mock dashboard accepts every request, so any token works.
+  return Response.json(
+    {
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      token: `jr_ses_${randomBytes(32).toString("base64url")}`,
+    },
+    { headers: { "cache-control": "no-store" } },
+  );
+}
+
+// The paths that the mock answers itself, and their methods. The built
+// dashboard app answers every other path.
+const MOCK_ROUTES = {
+  [RESOURCE_METADATA_PATH]: {
+    methods: ["GET"],
+    handle: () => Response.json(protectedResourceMetadata()),
+  },
+  [AUTHORIZATION_SERVER_METADATA_PATH]: {
+    methods: ["GET"],
+    handle: () => Response.json(authorizationServerMetadata()),
+  },
+  [AUTHORIZE_PATH]: { methods: ["GET"], handle: handleAuthorize },
+  [TOKEN_PATH]: { methods: ["POST"], handle: handleToken },
+  [MCP_PATH]: { methods: ["GET", "POST", "DELETE"], handle: handleMcp },
+  "/api/ios/sign-in/token": { methods: ["POST"], handle: handleIosSignInToken },
+  "/api/ios/sign-out": {
+    methods: ["POST"],
+    handle: () => new Response(null, { status: 204 }),
+  },
+};
+
+/** Answer an MCP, OAuth, or iOS session path, or return undefined for the dashboard. */
 function routeMcp(request) {
   const { pathname } = new URL(request.url);
-  const notFound = () => new Response("404 Not Found", { status: 404 });
-  switch (pathname) {
-    case RESOURCE_METADATA_PATH:
-      return request.method === "GET"
-        ? Response.json(protectedResourceMetadata())
-        : notFound();
-    case AUTHORIZATION_SERVER_METADATA_PATH:
-      return request.method === "GET"
-        ? Response.json(authorizationServerMetadata())
-        : notFound();
-    case AUTHORIZE_PATH:
-      return request.method === "GET" ? handleAuthorize(request) : notFound();
-    case TOKEN_PATH:
-      return request.method === "POST" ? handleToken(request) : notFound();
-    case MCP_PATH:
-      return ["GET", "POST", "DELETE"].includes(request.method)
-        ? handleMcp(request)
-        : notFound();
-    default:
-      return undefined;
-  }
+  if (!Object.hasOwn(MOCK_ROUTES, pathname)) return undefined;
+  const route = MOCK_ROUTES[pathname];
+  return route.methods.includes(request.method)
+    ? route.handle(request)
+    : new Response("404 Not Found", { status: 404 });
 }
 
 createServer((req, res) => {

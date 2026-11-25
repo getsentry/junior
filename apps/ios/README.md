@@ -3,7 +3,7 @@
 A native SwiftUI client for Junior, laid out like the dashboard (the `classic`
 shell): Conversations, the Inbox, Automations, and the drawer, in dark and light
 themes. On a phone it has the mobile layout; on an iPad, each list shows beside
-the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
+the open item. It uses the MCP server (`/api/mcp`) and the dashboard API.
 
 ## Layout
 
@@ -19,8 +19,8 @@ the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
 `sendMessage`, …); their result types mirror the tool schemas in
 `packages/junior/src/api/mcp`. What MCP lacks (answering an Inbox item,
-changing an Automation, the event log) opens the dashboard in the in-app
-browser.
+changing an Automation, the event log) uses the dashboard API through
+`DashboardClient`, or opens the dashboard in the in-app browser.
 
 ## Run it
 
@@ -100,6 +100,8 @@ days). Every Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
 hosted Client ID Metadata Document. The redirect goes to
 `junior-ios://oauth/callback`, which only this client may use. A server that
 runs an older Junior rejects the app's client ID.
+The same consent also returns a code that `SessionSignInClient` trades for a
+30-day dashboard API session, a separate credential from the MCP grant.
 
 ## Design sources
 
