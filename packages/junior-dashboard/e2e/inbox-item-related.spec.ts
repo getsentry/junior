@@ -8,19 +8,23 @@ import { expect, test } from "./test";
 const QUESTION_CONVERSATION_ID = "internal:question-qa";
 
 async function expectRelated(question: Locator) {
-  const links = question.getByRole("region", { name: "Links" });
-  await expect(
-    links.getByRole("link", { name: "Canary error rate" }),
-  ).toHaveAttribute("href", /release=payments-v42/);
-  await expect(links).toContainText("Flat for 30 minutes.");
+  // One list: the question's links first, then the related items and
+  // Conversations.
   const related = question.getByRole("region", { name: "Related" });
+  await expect(question.getByRole("region", { name: "Links" })).toHaveCount(0);
+  await expect(
+    related.getByRole("link", { name: "Canary error rate" }),
+  ).toHaveAttribute("href", /release=payments-v42/);
+  await expect(related).toContainText("Flat for 30 minutes.");
   await expect(
     related.getByRole("link", { name: "Hold the payments-v42 deploy" }),
   ).toBeVisible();
-  // The linked Conversation shows its title.
+  // The question links a Conversation that is also related, so it shows
+  // once, with the question's note.
   await expect(
     related.getByRole("link", { name: "Checkout latency triage" }),
-  ).toBeVisible();
+  ).toHaveCount(1);
+  await expect(related).toContainText("Where p95 is tracked.");
   return related;
 }
 
@@ -58,6 +62,8 @@ test("an Inbox question row shows its related links and items", async ({
   const related = await expectRelated(
     page.getByRole("region", { name: "Approve the payments-v42 rollout" }),
   );
+  // The list shows two rows until the reader asks for the rest.
+  await related.getByRole("button", { name: "Show 1 more" }).click();
   // The Inbox has the item's row, so the link expands it in place and then
   // leaves the URL.
   const link = related.getByRole("link", {

@@ -167,6 +167,13 @@ export function seeds(nowMs: number): MockItemSeed[] {
             note: "Did not move in us-east-1.",
             url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
           },
+          // The question also links its own Conversation, so the card
+          // shows it once.
+          {
+            conversationId: "slack:CQA123:1770000000.000100",
+            label: "Checkout latency triage",
+            note: "Where p95 is tracked.",
+          },
         ],
         fields: [
           {

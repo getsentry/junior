@@ -9,15 +9,18 @@ import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { inboxRowPath, inboxItemSubjectHref } from "./inboxItemFormat";
 
-/** A list shows this many entries until the reader asks for the rest. */
-const COLLAPSED_ENTRIES = 3;
+/**
+ * The list shows this many entries until the reader asks for the rest: two
+ * full rows of its two columns.
+ */
+const COLLAPSED_ENTRIES = 4;
 
 const iconClass =
   "mr-1.5 inline size-3.5 shrink-0 align-[-0.125em] text-dashboard-text-faint";
 
 type Entry = { key: string; node: ReactNode };
 
-function EntryList(props: { entries: Entry[]; label: string }) {
+function EntryList(props: { entries: Entry[] }) {
   const [expanded, setExpanded] = useState(false);
   const headingId = useId();
   if (props.entries.length === 0) return null;
@@ -28,15 +31,15 @@ function EntryList(props: { entries: Entry[]; label: string }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="grid min-w-0 content-start gap-1"
+      className="grid min-w-0 content-start gap-1 text-sm"
     >
       <h4
         className="m-0 text-xs font-medium text-dashboard-text-muted"
         id={headingId}
       >
-        {props.label}
+        Related
       </h4>
-      <ul className="m-0 grid list-none gap-1 p-0">
+      <ul className="m-0 grid list-none gap-x-3 gap-y-1 p-0 sm:grid-cols-2">
         {shown.map((entry) => (
           <li className="min-w-0 break-words" key={entry.key}>
             {entry.node}
@@ -76,19 +79,22 @@ function Note(props: { text: string | undefined }) {
 }
 
 /**
- * Show what is related to a question, beside its answer choices: the links
- * that the agent added, then the other open items and Conversations on the
- * same subject or linked work. The reader can check them before answering.
+ * Show what is related to a question, beside its answer choices, in one
+ * list: the links that the agent added, then the other open items and
+ * Conversations on the same subject or linked work. Each target shows once,
+ * with its first entry. The reader can check them before answering.
  */
 export function InboxItemRelated(props: { item: InboxItemPayload }) {
   const { item } = props;
   const links = item.request?.related ?? [];
   const relatedConversationIds = item.related?.conversationIds ?? [];
   const titles = useLinkedConversationTitles(relatedConversationIds);
-  const linkEntries: Entry[] = links.map((entry, index) => {
+  const linkEntries: Entry[] = links.map((entry) => {
     const href = entry.url ? inboxItemSubjectHref(entry.url) : undefined;
     return {
-      key: `${index}`,
+      key: entry.conversationId
+        ? `conversation:${entry.conversationId}`
+        : `url:${entry.url ?? entry.label}`,
       node: (
         <>
           {entry.conversationId ? (
@@ -131,13 +137,11 @@ export function InboxItemRelated(props: { item: InboxItemPayload }) {
       ),
     })),
   ];
-  if (linkEntries.length === 0 && relatedEntries.length === 0) {
-    return null;
-  }
-  return (
-    <div className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
-      <EntryList entries={linkEntries} label="Links" />
-      <EntryList entries={relatedEntries} label="Related" />
-    </div>
-  );
+  const seen = new Set<string>();
+  const entries = [...linkEntries, ...relatedEntries].filter((entry) => {
+    if (seen.has(entry.key)) return false;
+    seen.add(entry.key);
+    return true;
+  });
+  return <EntryList entries={entries} />;
 }
