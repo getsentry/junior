@@ -21,13 +21,13 @@ rule, and it does not add a surface or tenant check to public access.
 
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
-- The root Conversation decides visibility. Child Conversations,
-  events, Messages, Conversation metadata, Annotations, artifacts, and plugin records use
-  the values of their root. Missing or unknown visibility is private. A
-  direct message is private. When the root or its Destination is missing,
-  rows 2, 4, and 5 do not match, and row 6 denies.
-- A root in a Space stores the Space's visibility on its Location. A root
-  in a private Space has its own Location, and it stays in the Space.
+- **Visibility**: `public` or `private`, stored on every Conversation row.
+  A root takes the first known visibility of its Destination or Space, and
+  each child copies its root's. Only an explicit change, such as a move into
+  a private Space, changes it for the whole tree (`setConversationVisibility`);
+  a Slack channel that becomes private does not. Queries check it with
+  `isPublicConversation`. Missing visibility and direct messages are
+  private. A missing root fails rows 2, 4, and 5, and row 6 denies.
 
 ## Rule between Conversations
 
@@ -87,9 +87,9 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. A participant of a private Conversation may read
-and act on it there (`canViewPrivateContent`, `isParticipant`). This rule
-never lets one Conversation read another.
+is not a Conversation. Anyone may read a public Conversation. Only its
+Participants may read and act on a private one (`canViewPrivateContent`,
+`isParticipant`). This rule never lets one Conversation read another.
 
 In a private Space, membership decides instead. Every member may read each
 of its Conversations and join one by posting. A person who is not a member

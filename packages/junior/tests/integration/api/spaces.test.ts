@@ -488,6 +488,7 @@ describe("Spaces API", () => {
     // Data stays in the Space: Conversations in it read each other, and a
     // Conversation outside it reads none of them.
     expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
+    expect(await detail(ana, oneOff)).toMatchObject({ visibility: "private" });
     expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
     const outside = await startConversation(ana, "payroll-outside");
     expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);

@@ -19,6 +19,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationKind,
   ConversationSource,
@@ -115,6 +116,14 @@ export const juniorConversations = pgTable(
     // The Space of a root, or null for a one-off. Only a root stores it, so
     // a child reads the Space of its root and can never disagree with it.
     spaceId: text("space_id").references(() => juniorSpaces.id),
+    // Who may read the Conversation (policies/conversation-access.md).
+    // Public: anyone. Private: only its root's Participants. Every row of a
+    // tree has the same value: a child copies its root's when it is created,
+    // and `setConversationVisibility` changes the whole tree at once. A root
+    // takes the first known visibility of its Destination or Space. Null
+    // reads as private: no known visibility yet, or a writer of an older
+    // deploy left it null.
+    visibility: text("visibility").$type<ConversationPrivacy>(),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     /**
      * Set while the Conversation is stopped. Its Watch Events are then saved
@@ -149,6 +158,10 @@ export const juniorConversations = pgTable(
     check(
       "junior_conversations_space_root_check",
       sql`${table.spaceId} is null or ${table.parentConversationId} is null`,
+    ),
+    check(
+      "junior_conversations_visibility_check",
+      sql`${table.visibility} is null or ${table.visibility} in ('public', 'private')`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
