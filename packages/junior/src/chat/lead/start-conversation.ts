@@ -1,15 +1,17 @@
 /**
- * Start one Conversation from a Lead. The new Conversation is a public web
- * root of the Lead's person and runs as that person, like any root. The
- * Lead's task is its first Message. The start is not reviewed. Action
- * review judges the new root's own tool calls, as it does a child agent's.
+ * Start one Conversation from a Space's Lead. The new Conversation is a
+ * public web root in the Lead's Space. It runs as the member who asked, like
+ * any root, and the Lead's task is its first Message. The start is not
+ * reviewed. Action review judges the new root's own tool calls, as it does a
+ * child agent's.
  */
+import type { User } from "@sentry/junior-plugin-api";
 import {
   appendAndEnqueueWebMessage,
   createConversationId,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { readLeadUser } from "@/chat/lead/conversation";
+import { readLeadSpaceId } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /**
@@ -19,23 +21,26 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 export async function startLeadConversation(args: {
   leadConversationId: string;
   messageKey: string;
+  /** The member whose request the task passes on. */
+  person: Pick<User, "displayName" | "email" | "id">;
   queue: ConversationWorkQueue;
   task: string;
   title: string;
 }): Promise<{ conversationId: string }> {
-  const user = await readLeadUser(args.leadConversationId);
-  if (!user) throw new Error("Only a Lead can start a Conversation");
+  const spaceId = await readLeadSpaceId(args.leadConversationId);
+  if (!spaceId) throw new Error("Only a Space's Lead can start a Conversation");
   const idempotencyKey = `lead:${args.leadConversationId}:${args.messageKey}`;
   const conversationId = createConversationId({
-    actorEmail: user.email,
+    actorEmail: args.person.email,
     idempotencyKey,
   });
   await appendAndEnqueueWebMessage(
     {
-      actor: webActorFromUser(user),
+      actor: webActorFromUser(args.person),
       conversationId,
       idempotencyKey,
       message: args.task,
+      rootSpaceId: spaceId,
       rootTitle: args.title,
       rootVisibility: "public",
     },

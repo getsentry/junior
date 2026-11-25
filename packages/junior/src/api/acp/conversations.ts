@@ -15,7 +15,8 @@ import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import { spaceTakesMessagesFrom } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversation } from "@/chat/task-execution/store";
 import { hasRunnableConversationWork } from "@/chat/task-execution/state";
@@ -36,7 +37,8 @@ type PromptResult =
       turnId: string;
     }
   | { status: "active" }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  | { status: "space_closed" };
 
 type TurnTerminal =
   | { outcome: "cancelled" | "completed"; status: "completed" }
@@ -173,6 +175,17 @@ export function createAcpConversations(
     async prompt({ conversationId, idempotencyKey, text, user }) {
       if (!(await hasConversationAccess(conversationId, user))) {
         return { status: "not_found" };
+      }
+      const conversation = await (
+        options.conversationStore ?? getConversationStore()
+      ).get({
+        conversationId,
+      });
+      if (
+        conversation &&
+        !(await spaceTakesMessagesFrom(conversation, user.id))
+      ) {
+        return { status: "space_closed" };
       }
       const currentCursor = await latestEventCursor(
         options.eventStore,

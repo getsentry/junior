@@ -315,6 +315,14 @@ export function canMoveToSpace(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation";
 }
 
+/**
+ * Return whether only members of the Conversation's Space can send it a
+ * Message. A Space's Lead talks only to its members.
+ */
+export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
+  return kind === "lead";
+}
+
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation" || kind === "lead";

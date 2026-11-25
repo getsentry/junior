@@ -34,7 +34,7 @@ const AGENT_TYPE_DEFINITIONS: Record<
 > = {
   explore: {
     whenToUse:
-      "investigation across many files or sources; returns the conclusion with evidence.",
+      "investigation across code, docs, logs, telemetry, or the web; returns the conclusion.",
     instructions:
       "You are an explore agent. Investigate, and do not change anything outside your sandbox unless the task asks for it. Back your answer with exact evidence, such as paths, lines, links, and ids.",
   },
