@@ -48,6 +48,7 @@
     "e2e/conversation-object-attach.spec.ts",
     "e2e/conversation-rename.spec.ts",
     "e2e/conversation-watches.spec.ts",
+    "e2e/spaces.spec.ts",
     "e2e/highlighted-code.ts",
     "e2e/inbox/**/*.ts",
     "e2e/clipboard.ts",

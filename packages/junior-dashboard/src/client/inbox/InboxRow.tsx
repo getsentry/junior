@@ -96,6 +96,7 @@ import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
@@ -563,6 +564,7 @@ function InboxRowBody(
     comfortable &&
     (images || work.length > 0 || files.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
+  const space = conversation?.space;
   const cast =
     comfortable && conversation ? (
       // The Threads list below counts the Threads, so the cast doesn't.
@@ -717,10 +719,13 @@ function InboxRowBody(
             ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
-            {cast || hasChips ? (
+            {space || cast || hasChips ? (
               // No wrap: the pills and the linked work fit to one shared
               // line, and wrapping would let each one's fit move the other.
               <span className="col-span-2 flex min-w-0 items-center gap-2">
+                {space ? (
+                  <SpaceChip className="shrink-0" space={space} />
+                ) : null}
                 {cast}
                 {pills.length > 0 ? (
                   // One line of pills: those that do not fit become +N.

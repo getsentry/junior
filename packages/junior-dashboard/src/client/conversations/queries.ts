@@ -220,6 +220,8 @@ export function useCreateConversation() {
       idempotencyKey: string;
       message: string;
       files?: File[] | undefined;
+      /** Start the Conversation in this Space. */
+      spaceId?: string;
       visibility?: "private" | "public";
     }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
