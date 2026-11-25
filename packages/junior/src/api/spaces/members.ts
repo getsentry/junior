@@ -1,12 +1,29 @@
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
+import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { readCachedUserByEmail } from "@/chat/identities/user-cache";
 import { joinSpace, leaveSpace, listSpaceMembers } from "@/chat/spaces/store";
-import { jsonResponse } from "../http";
+import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
-import { spaceMemberListSchema } from "../schema/space-member";
+import { spaceSchema } from "../schema/space";
+import {
+  addSpaceMemberBodySchema,
+  spaceMemberListSchema,
+} from "../schema/space-member";
+import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
-import { requireSpace, spaceParamsValidator, spaceResponse } from "./access";
+import {
+  requireMemberSpace,
+  requireSpace,
+  spaceParamsValidator,
+  spaceReport,
+  spaceResponse,
+} from "./access";
 
-/** Create the routes that list a Space's members, and join or leave it. */
+/**
+ * Create the routes that list a Space's members, add a member, and join or
+ * leave it.
+ */
 export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
@@ -24,6 +41,26 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
           joinedAt: member.joinedAt.toISOString(),
         })),
       });
+    },
+  );
+
+  // A person cannot find a private Space to join it, so a member adds them.
+  app.post(
+    "/:spaceId/members",
+    requireViewer,
+    spaceParamsValidator,
+    validateRequest("json", addSpaceMemberBodySchema, "Invalid request body."),
+    async (context) => {
+      const viewerUserId = context.get("viewer").id;
+      const { spaceId } = context.req.valid("param");
+      await requireMemberSpace(viewerUserId, spaceId);
+      const email = normalizeIdentityEmail(context.req.valid("json").email);
+      const person = email
+        ? await readCachedUserByEmail(getDb(), email)
+        : undefined;
+      if (!person) throwApiError(404, "No person has that email.");
+      await joinSpace(spaceId, person.user.id);
+      return await spaceResponse(viewerUserId, spaceId);
     },
   );
 
@@ -49,8 +86,24 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
-      await requireSpace(viewerUserId, spaceId);
+      const space = await requireSpace(viewerUserId, spaceId);
+      // Nobody could read or restore a private Space with no members.
+      if (
+        space.visibility === "private" &&
+        space.viewerIsMember &&
+        space.memberCount === 1
+      ) {
+        throwApiError(409, "The last member can't leave a private Space.");
+      }
       await leaveSpace(spaceId, viewerUserId);
+      // A private Space is no longer readable by the person who left it.
+      if (space.visibility === "private") {
+        return jsonResponse(spaceSchema, {
+          ...spaceReport(space),
+          memberCount: space.memberCount - 1,
+          viewerIsMember: false,
+        });
+      }
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

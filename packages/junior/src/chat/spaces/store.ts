@@ -1,6 +1,7 @@
 /**
- * Spaces and their members (`design/spaces.md`). Every Space is public, so
- * any signed-in person can read one. Only members change it.
+ * Spaces and their members (`design/spaces.md`). Any signed-in person can
+ * read a public Space. Only members read a private Space, and only members
+ * change a Space.
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -11,6 +12,7 @@ import {
   exists,
   isNotNull,
   isNull,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -23,12 +25,15 @@ import {
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
+import type { SpaceVisibility } from "@/db/schema/spaces";
+import { setSpaceLocationsVisibility } from "./conversations";
 
 /** One Space, as one viewer sees it. */
 export interface Space {
   id: string;
   name: string;
   description: string | null;
+  visibility: SpaceVisibility;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -80,6 +85,7 @@ async function selectSpaces(
       id: juniorSpaces.id,
       name: juniorSpaces.name,
       description: juniorSpaces.description,
+      visibility: juniorSpaces.visibility,
       createdAt: juniorSpaces.createdAt,
       updatedAt: juniorSpaces.updatedAt,
       archivedAt: juniorSpaces.archivedAt,
@@ -89,7 +95,16 @@ async function selectSpaces(
       )}`.mapWith(Boolean),
     })
     .from(juniorSpaces)
-    .where(where)
+    // A private Space is readable only by its members.
+    .where(
+      and(
+        where,
+        or(
+          eq(juniorSpaces.visibility, "public"),
+          exists(viewerMembership(viewerUserId)),
+        ),
+      ),
+    )
     .orderBy(asc(juniorSpaces.name), asc(juniorSpaces.id));
   return rows;
 }
@@ -129,6 +144,7 @@ export async function createSpace(args: {
   creatorUserId: string;
   name: string;
   description: string | null;
+  visibility: SpaceVisibility;
 }): Promise<Space> {
   const executor = getSqlExecutor();
   const id = randomUUID();
@@ -139,6 +155,7 @@ export async function createSpace(args: {
       id,
       name: args.name,
       description: args.description,
+      visibility: args.visibility,
       createdByUserId: args.creatorUserId,
       createdAt: now,
       updatedAt: now,
@@ -152,29 +169,51 @@ export async function createSpace(args: {
   return space;
 }
 
-/** Change the name or description of a Space. */
+/**
+ * Change the name, description, or visibility of a Space. A new visibility
+ * also goes to the Location of every root in the Space. Returns false, and
+ * changes nothing, when the Space cannot be private because a root in it
+ * shares its Location, such as a Slack channel.
+ */
 export async function updateSpace(
   spaceId: string,
   changes: {
     name?: string | undefined;
     description?: string | null | undefined;
+    visibility?: SpaceVisibility | undefined;
   },
-): Promise<void> {
-  const { name } = changes;
-  await getDb().transaction(async (tx) => {
-    await tx
+): Promise<boolean> {
+  const { name, visibility } = changes;
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // A move into the Space locks this row too, so no root with a shared
+    // Location joins while the visibility changes.
+    await db
+      .select({ id: juniorSpaces.id })
+      .from(juniorSpaces)
+      .where(eq(juniorSpaces.id, spaceId))
+      .for("update");
+    if (
+      visibility !== undefined &&
+      !(await setSpaceLocationsVisibility(db, spaceId, visibility))
+    ) {
+      return false;
+    }
+    await db
       .update(juniorSpaces)
       .set({
         ...(name !== undefined ? { name } : undefined),
         ...(changes.description !== undefined
           ? { description: changes.description }
           : undefined),
+        ...(visibility !== undefined ? { visibility } : undefined),
         updatedAt: new Date(),
       })
       .where(eq(juniorSpaces.id, spaceId));
-    if (name === undefined) return;
+    if (name === undefined) return true;
     // A Space and its Lead share one name.
-    await tx
+    await db
       .update(juniorConversations)
       .set({ title: name, detailVersion: nextDetailVersion })
       .where(
@@ -183,6 +222,7 @@ export async function updateSpace(
           eq(juniorConversations.spaceId, spaceId),
         ),
       );
+    return true;
   });
 }
 

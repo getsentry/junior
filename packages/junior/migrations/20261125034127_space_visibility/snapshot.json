@@ -1,0 +1,47 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "266d2b3f-7c4d-4093-8c20-4d86ea4ed786",
+  "prevIds": [
+    "42dc62ef-f8b2-4459-80d3-2434be56b092"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_spaces",
+        "visibility"
+      ],
+      "writes": [
+        "s|col|public.junior_spaces.visibility",
+        "n|col|public.junior_spaces.visibility",
+        "e|col|public.junior_spaces.visibility"
+      ],
+      "reads": [
+        "n|tbl|public.junior_spaces",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'public'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

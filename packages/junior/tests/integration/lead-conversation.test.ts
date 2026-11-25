@@ -79,6 +79,7 @@ async function spaceLead(member: User, name = "Deploys") {
   const space = await createSpace({
     creatorUserId: member.id,
     description: null,
+    visibility: "public",
     name,
   });
   return { lead: await getSpaceLead({ member, space }), space };
@@ -115,6 +116,7 @@ describe("Lead", () => {
     const space = await createSpace({
       creatorUserId: ana.id,
       description: null,
+      visibility: "public",
       name: "Billing migration",
     });
 
