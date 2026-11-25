@@ -9,6 +9,7 @@ import {
 } from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
+  PluginCredentialActor,
   PluginGitPush,
   PluginGraphqlRequest,
   PluginGrant,
@@ -187,6 +188,8 @@ function assertLeaseTransformsOwnedByProvider(
  * use that default for one request.
  */
 export async function selectSandboxEgressGrant(input: {
+  /** Actor of the credential context, whose stored tokens a plugin may use. */
+  actor: PluginCredentialActor;
   bodyText?: string | undefined;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
@@ -222,6 +225,8 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
+    actor: input.actor,
+    userTokenStore: createUserTokenStore(),
     ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }

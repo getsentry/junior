@@ -783,7 +783,7 @@ async function selectGitHubGrant(
     return grantForAccess(
       graphqlAccess,
       "github.graphql-read",
-      "installation-read",
+      await sandboxReadGrantName(ctx),
     );
   }
 
@@ -793,5 +793,30 @@ async function selectGitHubGrant(
       "This GitHub write request is not supported. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
-  return grantForAccess(access, "github.api-read", "installation-read");
+  return grantForAccess(
+    access,
+    "github.api-read",
+    method === "GET" || method === "HEAD"
+      ? await sandboxReadGrantName(ctx)
+      : "installation-read",
+  );
+}
+
+/**
+ * A Sandbox read uses the Actor's linked GitHub account when they have one,
+ * so its cost comes from their rate limit, not the App's. A person with no
+ * linked account, and a system Actor such as an Automation run, read with
+ * the App. Host tool requests name an egress operation and stay on the App.
+ *
+ * A user grant never falls back to the App: a failed refresh asks the person
+ * to connect again, and a request that GitHub refuses fails as theirs.
+ */
+async function sandboxReadGrantName(
+  ctx: EgressHookContext,
+): Promise<"installation-read" | "user-read"> {
+  const { operation, withoutCredential } = ctx.request;
+  if (operation || withoutCredential || !ctx.actorHasStoredTokens) {
+    return "installation-read";
+  }
+  return (await ctx.actorHasStoredTokens()) ? "user-read" : "installation-read";
 }

@@ -106,6 +106,8 @@ function parseCredentialResult(
 }
 
 export interface EgressGrantInput {
+  /** Actor of the credential context. A person can have stored tokens. */
+  actor?: PluginCredentialActor;
   bodyText?: string;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
@@ -113,6 +115,7 @@ export interface EgressGrantInput {
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  userTokenStore?: UserTokenStore;
   withoutCredential?: true;
 }
 
@@ -125,8 +128,17 @@ export async function selectPluginGrant(
   if (!plugin || !hook) {
     return undefined;
   }
+  const { actor, userTokenStore } = input;
+  const actorUserId = actor && "type" in actor ? actor.userId : undefined;
   const result = await hook({
     ...basePluginContext(plugin),
+    ...(actorUserId && userTokenStore
+      ? {
+          actorHasStoredTokens: async () =>
+            (await userTokenStore.get(actorUserId, plugin.manifest.name)) !==
+            undefined,
+        }
+      : undefined),
     request: {
       ...(input.bodyText !== undefined
         ? { bodyText: input.bodyText }
