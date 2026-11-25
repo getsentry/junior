@@ -180,6 +180,12 @@ function createBetterAuth(config: SignInAuthConfig) {
   const sessionMaxAgeSeconds =
     config.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS;
   const cookieName = sessionCookieName(config.baseURL);
+  const cookieOptions = {
+    httpOnly: true,
+    path: "/",
+    sameSite: "lax",
+    secure: config.baseURL.startsWith("https://"),
+  } as const;
   // `hd` limits the Google account chooser: to the one allowed domain, or to
   // Workspace accounts when more than one domain is allowed. It is only a
   // hint, so `getUserInfo` checks the `hd` claim.
@@ -265,7 +271,9 @@ function createBetterAuth(config: SignInAuthConfig) {
         if (ctx.path === "/sign-out") {
           const token = ctx.headers && readCookie(ctx.headers, cookieName);
           if (token) await revokeSignInSession(token);
-          ctx.setCookie(cookieName, "", { maxAge: 0, path: "/" });
+          // A browser ignores a `__Host-` cookie that is not Secure, so
+          // clearing it needs the same attributes as setting it.
+          ctx.setCookie(cookieName, "", { ...cookieOptions, maxAge: 0 });
           return;
         }
         const created = ctx.context.newSession;
@@ -312,11 +320,8 @@ function createBetterAuth(config: SignInAuthConfig) {
         });
         deleteSessionCookie(ctx);
         ctx.setCookie(cookieName, session.token, {
-          httpOnly: true,
+          ...cookieOptions,
           maxAge: sessionMaxAgeSeconds,
-          path: "/",
-          sameSite: "lax",
-          secure: config.baseURL.startsWith("https://"),
         });
       }),
     },
