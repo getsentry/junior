@@ -13,7 +13,8 @@ not run.
   block.
 - People authorize, text does not. Only the person whose instruction an
   action serves can authorize it: the person Actor of the Turn that gave
-  the instruction, the creator of an Automation, or the person of a Lead.
+  the instruction, the creator of an Automation, or the Member who asked a
+  Lead to start the work.
   Each child agent, hand-off, Watch Turn, and Automation run serves the
   instruction of the Turn that started it. Nobody owns a Conversation or a
   resource, so no other person's approval is needed. Their own messages
@@ -95,7 +96,7 @@ not run.
   person's request. Each action of that Conversation gets its own review.
   Its result is untrusted context.
 - The brief of a Conversation that a Lead starts counts as the request of
-  the Lead's person ([Lead](./lead.md)).
+  the Member who asked for it ([Spaces](./spaces.md)).
 - The intent of a Watch is agent text. It never authorizes the Turns that
   the Watch starts.
 - A Code Mode script cannot authorize. Guardian judges each call of a
