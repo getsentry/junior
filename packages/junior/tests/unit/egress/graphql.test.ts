@@ -292,6 +292,19 @@ describe("readGraphqlRequest", () => {
     },
   );
 
+  it("reads a true argument from a fragment that runs after a spread that @skip drops", async () => {
+    const result = await read({
+      query:
+        "query { ...Dry @skip(if: true) ...Dry } fragment Dry on Query { rateLimit(dryRun: true) { cost } }",
+    });
+    if (result.kind !== "operation") throw new Error(result.kind);
+    expect(result.operation.fields).toContainEqual({
+      arguments: ["dryRun"],
+      name: "rateLimit",
+      trueArguments: ["dryRun"],
+    });
+  });
+
   it("reads subscriptions", async () => {
     expect(
       await read({ query: "subscription { events { id } }" }),

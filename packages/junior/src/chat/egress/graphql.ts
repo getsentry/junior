@@ -142,7 +142,7 @@ async function readOperation(
       operation.selectionSet,
       fragments,
       values,
-      new Set(),
+      { dropped: new Set(), runs: new Set() },
       fields,
       true,
     ) ||
@@ -165,14 +165,16 @@ async function readOperation(
 }
 
 /**
- * Add each distinct field at any depth. Each fragment is read once. `runs` is
- * false below a selection that `@skip` or `@include` can drop.
+ * Add each distinct field at any depth. `runs` is false below a selection that
+ * `@skip` or `@include` can drop. Each fragment is read at most once where it
+ * runs and once where it can be dropped, so a spread that runs still reports
+ * the `true` arguments of a fragment that an earlier spread can drop.
  */
 function collectFields(
   selectionSet: SelectionSetNode,
   fragments: Fragments,
   values: VariableValues,
-  seen: Set<string>,
+  seen: { dropped: Set<string>; runs: Set<string> },
   fields: Map<string, PluginGraphqlField>,
   runs: boolean,
 ): boolean {
@@ -216,7 +218,11 @@ function collectFields(
       }
       continue;
     }
-    const inner = fragmentSelectionSet(selection, fragments, seen);
+    const inner = fragmentSelectionSet(
+      selection,
+      fragments,
+      selectionRuns ? seen.runs : seen.dropped,
+    );
     if (inner === false) {
       return false;
     }
