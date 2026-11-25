@@ -43,7 +43,10 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
-import { createVersionsRoutes } from "./api/versions/routes";
+import { validateRequest } from "./api/validation";
+import { readVersions } from "./api/versions";
+import { requireViewer } from "./api/viewer";
+import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
 import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
@@ -115,7 +118,17 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
-  app.route("/api/versions", createVersionsRoutes());
+  app.get(
+    "/api/versions",
+    requireViewer,
+    validateRequest("query", versionsQuerySchema, "Invalid query parameters."),
+    async (context) =>
+      jsonResponse(
+        versionsSchema,
+        await readVersions(context.get("viewer"), context.req.valid("query")),
+        { headers: { "cache-control": "private, no-store" } },
+      ),
+  );
 
   for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
 
