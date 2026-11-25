@@ -90,8 +90,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
-- **Invite**: a person subscribes someone they mention to a Conversation's
-  feed, with the composer's mention card. In a public Conversation, a
+- **Invite**: a person subscribes someone to a Conversation's feed, with
+  the people picker of its Participants. In a public Conversation, a
   dashboard or Slack Message that mentions them also does it, and access
   stays the same, because anyone can already read it and join by posting.
   In a private Conversation, only a Participant may Invite, and it gives

@@ -29,6 +29,7 @@ import {
   type SetSpanAttributes,
 } from "@/chat/logging";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -63,6 +64,7 @@ import {
   writeAgentHistory,
 } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createContextImageFitter } from "@/chat/images/model-fit";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -629,11 +631,14 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const configurationValues = await resolveConversationConfiguration({
-      configuration: policy.configuration,
-      conversationId,
-      locationConfiguration: policy.locationConfiguration,
-    });
+    const [configurationValues, spaceId] = await Promise.all([
+      resolveConversationConfiguration({
+        configuration: policy.configuration,
+        conversationId,
+        locationConfiguration: policy.locationConfiguration,
+      }),
+      readConversationSpaceId(conversationId),
+    ]);
 
     // Match the history source the agent will actually receive so crash retries
     // do not let an unstripped running record suppress fresh turn context.
@@ -758,6 +763,7 @@ async function executeAgentRunInPrivacyContext(
       configurationValues,
       connectedMcpProviders,
       conversationPrivacy,
+      spaceId,
       durability,
       authorization,
       generatedFiles,
@@ -1184,6 +1190,7 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       // One AI Gateway session per Conversation, not a prompt fingerprint.
       sessionId: conversationId,
+      transformContext: createContextImageFitter(),
       streamFn: withAgentRequest(
         createTracedStreamFn({
           conversationPrivacy,

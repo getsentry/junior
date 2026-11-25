@@ -132,9 +132,7 @@ test("loads a Space page within its request budget", async ({
   await expectRequestBudget(
     page,
     async () => {
-      await page.goto(`${dashboard.baseURL}${BILLING}`, {
-        waitUntil: "networkidle",
-      });
+      await page.goto(`${dashboard.baseURL}${BILLING}`);
       await expect(
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();

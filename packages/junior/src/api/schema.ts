@@ -409,6 +409,18 @@ export {
 } from "./schema/space-member";
 export type { SpaceMemberListReport } from "./schema/space-member";
 export {
+  USER_SEARCH_DEFAULT_LIMIT,
+  USER_SEARCH_MAX_LIMIT,
+  userSearchQuerySchema,
+  userSearchReportSchema,
+  userSearchResultSchema,
+} from "./schema/user-search";
+export type {
+  UserSearchQuery,
+  UserSearchReport,
+  UserSearchResult,
+} from "./schema/user-search";
+export {
   spaceConfigEntrySchema,
   spaceConfigurationSchema,
 } from "./schema/space-configuration";
@@ -548,10 +560,5 @@ export type {
   SearchSource,
   SearchTodo,
 } from "./schema/search";
-export {
-  VERSIONS_CONVERSATION_LIMIT,
-  VERSIONS_STREAM_HEADER,
-  VERSIONS_STREAM_KEEPALIVE_EVENT,
-  versionsSchema,
-} from "./schema/versions";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

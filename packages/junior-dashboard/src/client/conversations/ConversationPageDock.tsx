@@ -36,16 +36,9 @@ export function ConversationPageDock(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
-  // The API says who may Invite. An archived one is in no feed. The API
-  // checks again.
-  const data = detail.data;
   const composerConversation = useMemo(
-    () => ({
-      conversationId: props.conversationId,
-      invite:
-        Boolean(data?.canInvite) && data?.kind !== "task" && !data?.archivedAt,
-    }),
-    [props.conversationId, data?.canInvite, data?.kind, data?.archivedAt],
+    () => ({ conversationId: props.conversationId }),
+    [props.conversationId],
   );
 
   if (!detail.data) return null;

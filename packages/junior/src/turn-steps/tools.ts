@@ -107,9 +107,6 @@ export async function turnTools(
     traceContext: { conversationId: turn.conversationId },
     conversationId: turn.conversationId,
     credentialEgress: credentialContextForActor(actor),
-    actor,
-    configurationValues: {},
-    getActiveSkill: () => null,
     prepareSandbox: () => {},
     onSandboxRefChanged: () => {},
     persistSandboxRef: (sandboxRef) =>

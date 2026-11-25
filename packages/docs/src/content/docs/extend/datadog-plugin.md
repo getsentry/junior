@@ -35,7 +35,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-datadog"]);
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
 ### Conversation defaults
 
@@ -44,7 +44,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default Datadog environment filter when a request does not name one.
 
-- **Define:** `jr-rpc config set datadog.env <environment>`
+- **Define:** ask Junior to set `datadog.env`
 - **Install-wide default:** `configDefaults["datadog.env"]`
 - **Required:** No
 - **Environment override:** None
@@ -56,7 +56,7 @@ Default Datadog environment filter when a request does not name one.
 
 Default Datadog service filter when a request does not name one.
 
-- **Define:** `jr-rpc config set datadog.service <service>`
+- **Define:** ask Junior to set `datadog.service`
 - **Install-wide default:** `configDefaults["datadog.service"]`
 - **Required:** No
 - **Environment override:** None

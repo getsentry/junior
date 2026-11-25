@@ -45,17 +45,12 @@ Grouping:
   the rest when its open row is past the first four.
 - An open row says each fact once. The row's head names the kind, the
   number, the title, and the sub-thread. The open card and the subject's
-  preview do not say them again. A question's card has no subject preview
-  ([Inbox](./inbox.md)).
+  preview do not say them again.
 - A code change row leads with the change's title. Its state comes first
   as one short word, such as "Review". The type and the scope from the
   title's Conventional Commits prefix come after the title as one muted
   tag, such as "fix/slack", with a red "breaking" for a breaking change.
-  All of it is one line of text, so a wrapped title starts at the left
-  edge. The plugin that owns the change parses the title. A title with no
-  known type shows as it is, with no tag. The number and the size go to
-  the second line.
-- A click on a code change row opens it, as on other rows.
+  A title with no known type shows as it is, with no tag.
 - An open row's actions are Dismiss, Snooze, Conversation, then the main
   action, last. On a code change row, the main action opens the change on
   its provider. Conversation opens the row's Conversation in the
@@ -110,8 +105,13 @@ Snooze:
 
 ## Gaps
 
-- A stack shows only the root's title. The Conversation row's kind pills,
-  Brief, and activity do not show for a root with more than one item.
+- A stack shows only the root's title. The kind pills, summary, and
+  activity of the Conversation row do not show for a root with more than
+  one item. This breaks "a stack is a light grouping, not a new kind of
+  row".
 - When a Snooze fails, the row comes back with an error toast that offers
   no Retry. This breaks "when it fails, only that row comes back, and a
   toast offers Retry".
+- On a phone, a question row and a "To do for you" row show the names of
+  Dismiss and Snooze. This breaks "on a phone, Dismiss and Snooze show only
+  their icons".

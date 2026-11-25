@@ -18,15 +18,10 @@ excluded_rules = [
   "prefer-bigint-over-int",
   "prefer-bigint-over-smallint",
   "identifier-too-long",
-  "ban-drop-column",
-  "ban-drop-constraint",
-  "ban-drop-function",
-  "ban-drop-not-null",
-  "ban-drop-table",
-  "renaming-column",
-  "renaming-object",
-  "renaming-table",
 ]
+# The ban-drop-* and renaming-* rules stay on. A drop or rename must name
+# the release that stopped using the object; see DROP_RULES in
+# scripts/check-migration-locks.mjs.
 # Shipped migrations already ran.
 excluded_paths = [
   "packages/junior-github/migrations/20260811221145_shallow_millenium_guard/migration.sql",

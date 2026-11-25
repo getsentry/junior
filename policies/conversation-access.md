@@ -67,8 +67,8 @@ Check the rows in this order. The first match decides.
   inside its Space.
 - `startConversation` makes a root in the Space from its Lead, with the
   Space's visibility. It runs as the person who asked, and the Lead's task
-  is its first message. The start is not reviewed. Action review judges the
-  new root's own tool calls, the same way it judges a child agent's.
+  is its first message. Action review judges its task, then the new root's
+  own tool calls, the same way it judges a child agent's.
 
 ## Rules for every surface
 

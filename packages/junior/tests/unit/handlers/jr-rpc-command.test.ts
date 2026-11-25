@@ -3,15 +3,6 @@ import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-comma
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type { ConfigEntry } from "@/chat/configuration/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import type { Skill } from "@/chat/skills";
-
-const activeSkill: Skill = {
-  name: "github",
-  description: "Issue helper",
-  skillPath: "/tmp/github",
-  body: "instructions",
-  pluginProvider: "github",
-};
 
 function makeLocationConfiguration() {
   const entries = new Map<string, ConfigEntry>();
@@ -41,9 +32,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("does not handle non jr-rpc commands", async () => {
-    const result = await maybeExecuteJrRpcCustomCommand("echo hi", {
-      activeSkill,
-    });
+    const result = await maybeExecuteJrRpcCustomCommand("echo hi", {});
     expect(result).toEqual({ handled: false });
   });
 
@@ -51,7 +40,7 @@ describe("jr-rpc custom command", () => {
     const chained = expectHandled(
       await maybeExecuteJrRpcCustomCommand(
         "cd /vercel/sandbox && jr-rpc config get github.repo",
-        { activeSkill },
+        {},
       ),
     );
     expect(chained.result.exit_code).toBe(2);
@@ -59,7 +48,7 @@ describe("jr-rpc custom command", () => {
 
     const mention = await maybeExecuteJrRpcCustomCommand(
       "grep -rn jr-rpc src",
-      { activeSkill },
+      {},
     );
     expect(mention).toEqual({ handled: false });
   });
@@ -67,10 +56,7 @@ describe("jr-rpc custom command", () => {
   it("requires conversation context for config commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",
-      {
-        activeSkill,
-        actorId: "U123",
-      },
+      {},
     );
 
     const handled = expectHandled(result);
@@ -80,40 +66,39 @@ describe("jr-rpc custom command", () => {
     );
   });
 
-  it("sets and gets configuration values", async () => {
+  it("gets configuration values", async () => {
     const configuration = makeLocationConfiguration();
-    const onConfigurationValueChanged = vi.fn();
-
-    const setResult = await maybeExecuteJrRpcCustomCommand(
-      "jr-rpc config set github.repo getsentry/junior",
-      {
-        activeSkill,
-        locationConfiguration: configuration,
-        actorId: "U123",
-        onConfigurationValueChanged,
-      },
-    );
-    expect(expectHandled(setResult).result.exit_code).toBe(0);
-    expect(onConfigurationValueChanged).toHaveBeenCalledWith(
-      "github.repo",
-      "getsentry/junior",
-    );
+    await configuration.set({ key: "github.repo", value: "getsentry/junior" });
 
     const getResult = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",
-      {
-        activeSkill,
-        locationConfiguration: configuration,
-        actorId: "U123",
-      },
+      { locationConfiguration: configuration },
     );
     const handled = expectHandled(getResult);
     expect(handled.result.exit_code).toBe(0);
     expect(JSON.parse(handled.result.stdout)).toMatchObject({
       ok: true,
       key: "github.repo",
+      scope: "location",
       value: "getsentry/junior",
     });
+  });
+
+  it("points set and unset to the setConfiguration tool", async () => {
+    const configuration = makeLocationConfiguration();
+    for (const command of [
+      "jr-rpc config set github.repo getsentry/junior",
+      "jr-rpc config unset github.repo",
+    ]) {
+      const handled = expectHandled(
+        await maybeExecuteJrRpcCustomCommand(command, {
+          locationConfiguration: configuration,
+        }),
+      );
+      expect(handled.result.exit_code).toBe(2);
+      expect(handled.result.stderr).toContain("setConfiguration");
+    }
+    expect(await configuration.list()).toEqual([]);
   });
 
   it("supports config list with a prefix filter", async () => {
@@ -133,11 +118,7 @@ describe("jr-rpc custom command", () => {
 
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config list --prefix github.",
-      {
-        activeSkill,
-        locationConfiguration: configuration,
-        actorId: "U123",
-      },
+      { locationConfiguration: configuration },
     );
     const handled = expectHandled(result);
     expect(handled.result.exit_code).toBe(0);
@@ -168,9 +149,7 @@ describe("jr-rpc custom command", () => {
     try {
       const result = await maybeExecuteJrRpcCustomCommand(
         "jr-rpc plugins list",
-        {
-          activeSkill,
-        },
+        {},
       );
       const handled = expectHandled(result);
       expect(handled.result.exit_code).toBe(0);
@@ -186,114 +165,6 @@ describe("jr-rpc custom command", () => {
           },
         ]),
       );
-    } finally {
-      pluginCatalogRuntime.setConfig(previousConfig);
-    }
-  });
-
-  it("unsets configuration values", async () => {
-    const configuration = makeLocationConfiguration();
-    const onConfigurationValueChanged = vi.fn();
-
-    await configuration.set({
-      key: "github.repo",
-      value: "getsentry/junior",
-      updatedBy: "U123",
-      source: "test",
-    });
-
-    const result = await maybeExecuteJrRpcCustomCommand(
-      "jr-rpc config unset github.repo",
-      {
-        activeSkill,
-        locationConfiguration: configuration,
-        actorId: "U123",
-        onConfigurationValueChanged,
-      },
-    );
-    const handled = expectHandled(result);
-    expect(handled.result.exit_code).toBe(0);
-    expect(JSON.parse(handled.result.stdout)).toMatchObject({
-      ok: true,
-      key: "github.repo",
-      deleted: true,
-    });
-    expect(onConfigurationValueChanged).toHaveBeenCalledWith(
-      "github.repo",
-      undefined,
-    );
-  });
-
-  it("warns when setting an unrecognized config key", async () => {
-    const previousConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "cloudflare",
-            displayName: "Cloudflare",
-            description: "Cloudflare plugin",
-            configKeys: [
-              "cloudflare.account.id",
-              "cloudflare.zone.id",
-              "cloudflare.worker.name",
-            ],
-          },
-        },
-      ],
-    });
-    try {
-      const configuration = makeLocationConfiguration();
-      const result = await maybeExecuteJrRpcCustomCommand(
-        "jr-rpc config set cloudflare.worker-id sentry-mcp",
-        {
-          activeSkill,
-          locationConfiguration: configuration,
-          actorId: "U123",
-        },
-      );
-      const handled = expectHandled(result);
-      // Still succeeds
-      expect(handled.result.exit_code).toBe(0);
-      // But warns about the unrecognized key with suggestions
-      expect(handled.result.stderr).toContain(
-        '"cloudflare.worker-id" is not a recognized config key',
-      );
-      expect(handled.result.stderr).toContain("cloudflare.worker.name");
-    } finally {
-      pluginCatalogRuntime.setConfig(previousConfig);
-    }
-  });
-
-  it("does not warn when setting a recognized config key", async () => {
-    const previousConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "cloudflare",
-            displayName: "Cloudflare",
-            description: "Cloudflare plugin",
-            configKeys: [
-              "cloudflare.account.id",
-              "cloudflare.zone.id",
-              "cloudflare.worker.name",
-            ],
-          },
-        },
-      ],
-    });
-    try {
-      const configuration = makeLocationConfiguration();
-      const result = await maybeExecuteJrRpcCustomCommand(
-        "jr-rpc config set cloudflare.worker.name sentry-mcp",
-        {
-          activeSkill,
-          locationConfiguration: configuration,
-          actorId: "U123",
-        },
-      );
-      const handled = expectHandled(result);
-      expect(handled.result.exit_code).toBe(0);
-      expect(handled.result.stderr).toBe("");
     } finally {
       pluginCatalogRuntime.setConfig(previousConfig);
     }

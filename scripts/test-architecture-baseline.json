@@ -228,7 +228,7 @@
     "packages/junior-dashboard/e2e/inbox/conversation-threads.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/conversations-event-log.spec.ts": 6,
     "packages/junior-dashboard/e2e/inbox/conversations-mobile.spec.ts": 40,
-    "packages/junior-dashboard/e2e/inbox/conversations-read-position.spec.ts": 7,
+    "packages/junior-dashboard/e2e/inbox/conversations-read-position.spec.ts": 5,
     "packages/junior-dashboard/e2e/inbox/conversations.spec.ts": 12,
     "packages/junior-dashboard/e2e/inbox/inbox-cards.spec.ts": 10,
     "packages/junior-dashboard/e2e/inbox/inbox-motion.spec.ts": 2,
@@ -269,7 +269,7 @@
   "dashboard-spec-selector": {
     "packages/junior-dashboard/e2e/admin.spec.ts": 2,
     "packages/junior-dashboard/e2e/composer-references.spec.ts": 9,
-    "packages/junior-dashboard/e2e/composer-typeahead.spec.ts": 9,
+    "packages/junior-dashboard/e2e/composer-typeahead.spec.ts": 4,
     "packages/junior-dashboard/e2e/conversation-attachments.spec.ts": 2,
     "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts": 2,
     "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 18,
@@ -313,16 +313,12 @@
   },
   "dashboard-spec-timing": {
     "packages/junior-dashboard/e2e/conversation-queue.spec.ts": 1,
-    "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversation-send.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversations-event-log.spec.ts": 3,
-    "packages/junior-dashboard/e2e/inbox/conversations-read-position.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/conversations.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/inbox-navigation.spec.ts": 3,
     "packages/junior-dashboard/e2e/inbox/inbox-optimistic.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/inbox-paging.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/inbox-rows.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/inbox.spec.ts": 3,
+    "packages/junior-dashboard/e2e/inbox/inbox.spec.ts": 2,
     "packages/junior-dashboard/e2e/versions-poll.spec.ts": 4
   }
 }
