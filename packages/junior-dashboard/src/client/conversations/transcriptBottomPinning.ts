@@ -582,6 +582,11 @@ export function usePinnedTranscriptBottom(input: {
       const bounds = viewportBounds(root);
       const rect = row.getBoundingClientRect();
       const viewportHeight = bounds.bottom - bounds.top;
+      // Hold the place on the shown row, not the first row in view.
+      const holdShownRow = () => {
+        scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
+        holdsShownRowRef.current = scrollAnchorRef.current !== null;
+      };
       // A row taller than the viewport shows from its start, not its middle.
       const offset =
         rect.top -
@@ -589,7 +594,10 @@ export function usePinnedTranscriptBottom(input: {
         (rect.height > viewportHeight
           ? TALL_ROW_TOP_GAP_PX
           : (viewportHeight - rect.height) / 2);
-      if (Math.abs(offset) < 1) return true;
+      if (Math.abs(offset) < 1) {
+        holdShownRow();
+        return true;
+      }
       const before = scrollSnapshot(root);
       const scrollTop = Math.max(0, before.scrollTop + offset);
       // The reader goes to the row, so the latest must not pull them back.
@@ -611,9 +619,7 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       previousScrollTopRef.current = snapshot.scrollTop;
       restoredScrollTopRef.current = snapshot.scrollTop;
-      // Hold the place on the shown row, not the first row in view.
-      scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
-      holdsShownRowRef.current = scrollAnchorRef.current !== null;
+      holdShownRow();
       return true;
     },
     [leaveBottom, stopFollowing],
