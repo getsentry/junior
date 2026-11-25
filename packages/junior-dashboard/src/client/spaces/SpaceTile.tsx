@@ -54,33 +54,29 @@ export function SpaceTile(props: {
   size: keyof typeof TILE_SIZES;
   space: SpaceRefReport & { visibility?: SpaceVisibilityReport };
 }) {
-  const isPrivate = props.space.visibility === "private";
-  const tile = (
+  return (
     <span
-      aria-hidden="true"
       className={cn(
-        "grid shrink-0 place-items-center font-sans font-semibold leading-none select-none",
+        "relative grid shrink-0 place-items-center font-sans font-semibold leading-none select-none",
         TILE_SIZES[props.size],
         tileColor(props.space.id),
-        !isPrivate && props.className,
+        props.className,
       )}
     >
-      {props.space.name.trim().charAt(0).toUpperCase()}
-    </span>
-  );
-  if (!isPrivate) return tile;
-  return (
-    <span className={cn("relative grid shrink-0", props.className)}>
-      {tile}
-      <LockKeyhole
-        aria-label="Private Space"
-        className={cn(
-          "absolute -right-1 -bottom-1 rounded-full bg-dashboard-bg text-dashboard-text-muted",
-          LOCK_SIZES[props.size],
-        )}
-        role="img"
-        strokeWidth={2.5}
-      />
+      <span aria-hidden="true">
+        {props.space.name.trim().charAt(0).toUpperCase()}
+      </span>
+      {props.space.visibility === "private" ? (
+        <LockKeyhole
+          aria-label="Private Space"
+          className={cn(
+            "absolute -right-1 -bottom-1 rounded-full bg-dashboard-bg text-dashboard-text-muted",
+            LOCK_SIZES[props.size],
+          )}
+          role="img"
+          strokeWidth={2.5}
+        />
+      ) : null}
     </span>
   );
 }

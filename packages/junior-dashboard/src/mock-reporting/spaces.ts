@@ -151,8 +151,6 @@ const SEEDED_CONVERSATION_SPACES = [
   ["internal:history-6", MOCK_SPACE_IDS.billing],
   ["internal:history-8", MOCK_SPACE_IDS.ios],
   ["internal:history-4", MOCK_SPACE_IDS.docs],
-  // A Slack root, so Docs refresh cannot be made private.
-  ["slack:CQA999:1770010800.000400", MOCK_SPACE_IDS.docs],
 ] as const;
 
 // Only a public Conversation can join a Space, so the seeded ones are public.
@@ -409,15 +407,6 @@ function findSpace(param: Record<string, string>): MockSpace | Response {
   );
 }
 
-/** Whether a root in the Space shares a Slack conversation. */
-function holdsSlackRoot(space: MockSpace): boolean {
-  return [...mockConversationSpaces].some(
-    ([conversationId, spaceId]) =>
-      spaceId === space.id &&
-      readMockConversationDetail(conversationId, 1)?.surface === "slack",
-  );
-}
-
 /**
  * Create the mock `/api/spaces` routes. A private Space is missing to a
  * person who is not a member.
@@ -483,14 +472,13 @@ export function createMockSpaceRoutes(): Hono<{
     const body = updateSpaceBodySchema.safeParse(await c.req.json());
     if (!body.success) return errorResponse("Invalid request body.", 400);
     const { description, name, visibility } = body.data;
-    if (visibility === "private" && holdsSlackRoot(space))
+    if (visibility !== undefined)
       return errorResponse(
-        "A Space with a Slack conversation can't be private.",
-        409,
+        "A Space's visibility is set when it is created. Create a new Space for a different audience.",
+        400,
       );
     if (name !== undefined) space.name = name;
     if (description !== undefined) space.description = description;
-    if (visibility !== undefined) space.visibility = visibility;
     return jsonResponse(spaceSchema, view(space));
   });
   // A person cannot find a private Space to join it, so a member adds them.

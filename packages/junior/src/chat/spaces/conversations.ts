@@ -2,7 +2,7 @@
  * Conversations in a Space (`design/spaces.md`). Only a root stores its
  * Space. A child is in the Space of its root, so the two never disagree.
  */
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
@@ -16,7 +16,6 @@ import {
   juniorDestinations,
   juniorSpaces,
 } from "@/db/schema";
-import type { SpaceVisibility } from "@/db/schema/spaces";
 
 /** The id and name that label a Conversation's Space. */
 export interface SpaceRef {
@@ -44,8 +43,6 @@ export async function readSpaceRefs(
 export type SpaceMoveRefusal =
   /** No root has the id. */
   | "not_found"
-  /** Another move changed the root's Space at the same time. */
-  | "moved"
   /** The root is in a private Space, and its data stays with the members. */
   | "leaves_private"
   /**
@@ -66,36 +63,8 @@ export async function setConversationSpace(
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
-    const rootWhere = and(
-      eq(juniorConversations.conversationId, conversationId),
-      isNull(juniorConversations.parentConversationId),
-    );
-    const [current] = await db
-      .select({ spaceId: juniorConversations.spaceId })
-      .from(juniorConversations)
-      .where(rootWhere)
-      .limit(1);
-    if (!current) return "not_found";
-    // Lock the source and target Spaces in id order, so a Space that is
-    // made private during the move cannot lose or gain a root. Spaces lock
-    // before the root, as when a Space changes its visibility, so the two
-    // never deadlock.
-    const spaceIds = [current.spaceId, spaceId].filter(
-      (id): id is string => id !== null,
-    );
-    const spaces =
-      spaceIds.length > 0
-        ? await db
-            .select({
-              id: juniorSpaces.id,
-              visibility: juniorSpaces.visibility,
-            })
-            .from(juniorSpaces)
-            .where(inArray(juniorSpaces.id, spaceIds))
-            .orderBy(asc(juniorSpaces.id))
-            .for("update")
-        : [];
-    // Lock the root, so its Space does not change during the move.
+    // Lock the root, so two moves of it run one after the other. A Space
+    // keeps its visibility, so the Spaces need no lock.
     const [root] = await db
       .select({
         locationId: juniorConversations.destinationId,
@@ -107,12 +76,28 @@ export async function setConversationSpace(
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
       )
-      .where(rootWhere)
+      .where(
+        and(
+          eq(juniorConversations.conversationId, conversationId),
+          isNull(juniorConversations.parentConversationId),
+        ),
+      )
       .limit(1)
       .for("update", { of: juniorConversations });
     if (!root) return "not_found";
-    // Another move changed the root's Space before its lock.
-    if (root.spaceId !== current.spaceId) return "moved";
+    const spaceIds = [root.spaceId, spaceId].filter(
+      (id): id is string => id !== null,
+    );
+    const spaces =
+      spaceIds.length > 0
+        ? await db
+            .select({
+              id: juniorSpaces.id,
+              visibility: juniorSpaces.visibility,
+            })
+            .from(juniorSpaces)
+            .where(inArray(juniorSpaces.id, spaceIds))
+        : [];
     const source = spaces.find((space) => space.id === root.spaceId);
     if (source?.visibility === "private") return "leaves_private";
     const target = spaces.find((space) => space.id === spaceId);
@@ -131,56 +116,6 @@ export async function setConversationSpace(
       .where(eq(juniorConversations.conversationId, conversationId));
     return undefined;
   });
-}
-
-/**
- * Give every root in a Space the Space's visibility on its own Location. A
- * child shares its root's Location row, so it follows its root. Returns
- * false, and changes nothing, when the Space is private and a root shares
- * its Location, such as a Slack channel, with people who are not members.
- */
-export async function setSpaceLocationsVisibility(
-  db: JuniorDatabase,
-  spaceId: string,
-  visibility: SpaceVisibility,
-): Promise<boolean> {
-  const roots = await db
-    .select({
-      locationId: juniorConversations.destinationId,
-      provider: juniorDestinations.provider,
-    })
-    .from(juniorConversations)
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .where(
-      and(
-        eq(juniorConversations.spaceId, spaceId),
-        isNull(juniorConversations.parentConversationId),
-      ),
-    );
-  if (
-    visibility === "private" &&
-    roots.some((root) => root.provider !== null && root.provider !== "local")
-  ) {
-    return false;
-  }
-  // A web root has its own Location row, so this changes no other
-  // Conversation's visibility.
-  const locationIds = roots.flatMap((root) =>
-    root.provider === "local" && root.locationId ? [root.locationId] : [],
-  );
-  if (locationIds.length === 0) return true;
-  await db
-    .update(juniorDestinations)
-    .set({ visibility, updatedAt: new Date() })
-    .where(inArray(juniorDestinations.id, locationIds));
-  await db
-    .update(juniorConversations)
-    .set({ detailVersion: nextDetailVersion })
-    .where(inSpaceTrees(db, spaceId));
-  return true;
 }
 
 /**

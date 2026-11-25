@@ -43,6 +43,7 @@ export const updateSpaceBodySchema = z
   .object({
     name: spaceNameSchema.optional(),
     description: spaceDescriptionSchema.optional(),
+    // Accepted only so the route can say why it refuses the change.
     visibility: spaceVisibilitySchema.optional(),
   })
   .strict()
@@ -51,7 +52,7 @@ export const updateSpaceBodySchema = z
       body.name !== undefined ||
       body.description !== undefined ||
       body.visibility !== undefined,
-    "Change the name, the description, or the visibility.",
+    "Change the name or the description.",
   );
 
 export const archiveSpaceBodySchema = z

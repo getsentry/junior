@@ -63,13 +63,17 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
-      if (!(await updateSpace(spaceId, context.req.valid("json")))) {
+      const { visibility, ...changes } = context.req.valid("json");
+      // A Space keeps the visibility it was created with. A different
+      // audience needs a new Space.
+      if (visibility !== undefined) {
         throwApiError(
-          409,
-          "A Space with a Slack conversation can't be private.",
+          400,
+          "A Space's visibility is set when it is created. Create a new Space for a different audience.",
         );
       }
+      await requireMemberSpace(viewerUserId, spaceId);
+      await updateSpace(spaceId, changes);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

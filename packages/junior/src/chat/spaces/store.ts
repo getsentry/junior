@@ -26,7 +26,6 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import type { SpaceVisibility } from "@/db/schema/spaces";
-import { setSpaceLocationsVisibility } from "./conversations";
 
 /** One Space, as one viewer sees it. */
 export interface Space {
@@ -170,50 +169,31 @@ export async function createSpace(args: {
 }
 
 /**
- * Change the name, description, or visibility of a Space. A new visibility
- * also goes to the Location of every root in the Space. Returns false, and
- * changes nothing, when the Space cannot be private because a root in it
- * shares its Location, such as a Slack channel.
+ * Change the name or description of a Space. Its visibility is set when it
+ * is created and never changes.
  */
 export async function updateSpace(
   spaceId: string,
   changes: {
     name?: string | undefined;
     description?: string | null | undefined;
-    visibility?: SpaceVisibility | undefined;
   },
-): Promise<boolean> {
-  const { name, visibility } = changes;
-  const executor = getSqlExecutor();
-  return await executor.transaction(async () => {
-    const db = executor.db();
-    // A move into the Space locks this row too, so no root with a shared
-    // Location joins while the visibility changes.
-    await db
-      .select({ id: juniorSpaces.id })
-      .from(juniorSpaces)
-      .where(eq(juniorSpaces.id, spaceId))
-      .for("update");
-    if (
-      visibility !== undefined &&
-      !(await setSpaceLocationsVisibility(db, spaceId, visibility))
-    ) {
-      return false;
-    }
-    await db
+): Promise<void> {
+  const { name } = changes;
+  await getDb().transaction(async (tx) => {
+    await tx
       .update(juniorSpaces)
       .set({
         ...(name !== undefined ? { name } : undefined),
         ...(changes.description !== undefined
           ? { description: changes.description }
           : undefined),
-        ...(visibility !== undefined ? { visibility } : undefined),
         updatedAt: new Date(),
       })
       .where(eq(juniorSpaces.id, spaceId));
-    if (name === undefined) return true;
+    if (name === undefined) return;
     // A Space and its Lead share one name.
-    await db
+    await tx
       .update(juniorConversations)
       .set({ title: name, detailVersion: nextDetailVersion })
       .where(
@@ -222,7 +202,6 @@ export async function updateSpace(
           eq(juniorConversations.spaceId, spaceId),
         ),
       );
-    return true;
   });
 }
 
@@ -238,20 +217,19 @@ export async function joinSpace(
 }
 
 /**
- * Remove one person from a Space, and return its visibility at the time.
- * Returns "last_member", and changes nothing, when they are the last member
- * of a private Space: nobody could read or restore a private Space with no
- * members.
+ * Remove one person from a Space. Returns "last_member", and changes
+ * nothing, when they are the last member of a private Space: nobody could
+ * read or restore a private Space with no members.
  */
 export async function leaveSpace(
   spaceId: string,
   userId: string,
-): Promise<SpaceVisibility | "last_member" | undefined> {
+): Promise<"last_member" | undefined> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
-    // Two members who leave at once, or a leave and a change to private,
-    // take turns on this lock, so one of them sees the other's change.
+    // Two members who leave at once take turns on this lock, so the second
+    // sees that the first left.
     const [space] = await db
       .select({ visibility: juniorSpaces.visibility })
       .from(juniorSpaces)
@@ -272,7 +250,7 @@ export async function leaveSpace(
       }
     }
     await db.delete(juniorSpaceMembers).where(member);
-    return space?.visibility;
+    return undefined;
   });
 }
 

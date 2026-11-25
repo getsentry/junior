@@ -424,14 +424,11 @@ describe("Spaces API", () => {
     expect(await canReadConversation(getDb(), inSpace, outside)).toBe(true);
     expect((await moveTo(ana, oneOff, null)).status).toBe(409);
 
-    // A public Space shows its Conversations to everyone again.
-    const opened = await send(ana, "PATCH", `/${space.id}`, {
-      visibility: "public",
-    });
-    expect(spaceSchema.parse(await opened.json()).visibility).toBe("public");
-    expect(await detailSpace(cy, inSpace)).toEqual(spaceRef);
-    expect(await canReadConversation(getDb(), outside, inSpace)).toBe(true);
-    await send(ana, "PATCH", `/${space.id}`, { visibility: "private" });
+    // A Space keeps the visibility it was created with.
+    expect(
+      (await send(ana, "PATCH", `/${space.id}`, { visibility: "public" }))
+        .status,
+    ).toBe(400);
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
     // A participant who leaves no longer finds its Conversations.
@@ -465,9 +462,8 @@ describe("Spaces API", () => {
     ]);
   });
 
-  it("keeps a Space with a Slack Conversation public", async () => {
+  it("keeps a Slack Conversation out of a private Space", async () => {
     const ana = apiFor("spaces-slack-ana@example.com");
-    const space = await createSpace(ana, "Support rotation");
     const conversationId = "slack:CSPACES:1700000000.000100";
     await getConversationStore().recordActivity({
       conversationId,
@@ -477,10 +473,6 @@ describe("Spaces API", () => {
       visibility: "public",
     });
     await getDb()
-      .update(juniorConversations)
-      .set({ spaceId: space.id })
-      .where(eq(juniorConversations.conversationId, conversationId));
-    await getDb()
       .insert(juniorConversationParticipants)
       .values({
         lastMessageAt: new Date(1_000),
@@ -488,12 +480,14 @@ describe("Spaces API", () => {
         userId: (await signedInViewer("spaces-slack-ana@example.com")).id,
       });
 
-    expect(
-      (await send(ana, "PATCH", `/${space.id}`, { visibility: "private" }))
-        .status,
-    ).toBe(409);
-    const hidden = await createSpace(ana, "Support escalations");
-    await send(ana, "PATCH", `/${hidden.id}`, { visibility: "private" });
+    const hidden = spaceSchema.parse(
+      await (
+        await send(ana, "POST", "", {
+          name: "Support escalations",
+          visibility: "private",
+        })
+      ).json(),
+    );
     expect((await moveTo(ana, conversationId, hidden.id)).status).toBe(409);
   });
 

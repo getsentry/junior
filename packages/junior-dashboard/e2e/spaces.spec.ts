@@ -333,45 +333,6 @@ test("creating a private Space shows its lock, and its last member cannot leave"
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
 });
 
-test("a member makes a Space private and public again", async ({
-  dashboard,
-  page,
-}) => {
-  await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const pane = page.getByRole("list", { name: "Spaces" });
-  const billing = pane.getByRole("link", { name: "Billing migration" });
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Make private" }).click();
-  await expect(
-    billing.getByRole("img", { name: "Private Space" }),
-  ).toBeVisible();
-
-  // Making it public asks first, because everyone can then read it.
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Make public" }).click();
-  const confirm = page.getByRole("alertdialog");
-  await expect(confirm).toContainText(
-    "Everyone in the organization can then read",
-  );
-  await confirm.getByRole("button", { name: "Make public" }).click();
-  await expect(billing.getByRole("img", { name: "Private Space" })).toHaveCount(
-    0,
-  );
-});
-
-test("a Space with a Slack conversation cannot be made private", async ({
-  dashboard,
-  page,
-}) => {
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
-  await page.getByRole("button", { name: "Join" }).click();
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Make private" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "A Space with a Slack conversation can't be private.",
-  );
-});
-
 test("a member adds a person to a private Space by email", async ({
   dashboard,
   page,

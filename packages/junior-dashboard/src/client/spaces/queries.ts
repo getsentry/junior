@@ -148,23 +148,6 @@ export function useSpaceMembership(spaceId: string) {
   });
 }
 
-/**
- * Make one Space private or public. The API also changes the visibility of
- * its Conversations, so the feeds refresh too.
- */
-export function useSpaceVisibility(spaceId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (visibility: SpaceVisibilityReport) =>
-      patch(spaceSchema, spaceApiPath(spaceId), { visibility }),
-    onSuccess: (space) =>
-      Promise.all([
-        storeSpace(queryClient, space),
-        invalidateConversationFeeds(queryClient),
-      ]),
-  });
-}
-
 /** Add one person to a Space by their email. */
 export function useAddSpaceMember(spaceId: string) {
   const queryClient = useQueryClient();
