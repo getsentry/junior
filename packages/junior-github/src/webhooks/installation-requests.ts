@@ -548,6 +548,11 @@ export interface GitHubPullRequestMergeState {
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
   /**
+   * GitHub still requests a review from a person or a team. A team that
+   * the App cannot read has no login, so `requestedReviewers` misses it.
+   */
+  reviewPending: boolean;
+  /**
    * Logins of the people whose latest submitted review was not dismissed,
    * including a comment-only review. Read only when the pull request is open
    * and not a draft.
@@ -669,6 +674,7 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    reviewPending: pull.reviewRequests.nodes.length > 0,
     reviewedBy: [],
     state:
       pull.state === "MERGED"

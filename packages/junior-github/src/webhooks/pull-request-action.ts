@@ -4,13 +4,16 @@
  *
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, auto-merge is off, GitHub's merge state is `clean`,
- * and no reviewer still requests changes. GitHub gives `blocked` until a
- * required review approves, so a pull request with no approval is "merge"
- * only where GitHub requires no review, and its item asks the requester to
- * review it first. Otherwise it is "review" while GitHub asks the requester
- * for a review. When the requester still requests changes and comments or
- * reviews after GitHub last asked them, the action ends, even while GitHub
- * still asks them, because Junior acts next.
+ * no reviewer still requests changes, and GitHub requests no review. GitHub
+ * gives `blocked` until a required review approves, so a pull request with
+ * no approval is "merge" only where GitHub requires no review, and its item
+ * asks the requester to review it first. A pending review request comes
+ * before the merge even there. Otherwise it is "review" while GitHub asks
+ * the requester for a review. A request for only someone else gives no
+ * action, because the pull request waits on them. When the requester still
+ * requests changes and comments or reviews after GitHub last asked them,
+ * the action ends, even while GitHub still asks them, because Junior acts
+ * next.
  *
  * After a change request, only an explicit signal asks the requester again:
  * Junior marks every comment of it addressed or declined, and the required
@@ -255,8 +258,9 @@ function nextAction(
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
-  // With auto-merge on, GitHub merges it, so no person needs to.
-  const canMerge = !state.draft && !state.autoMerge;
+  // With auto-merge on, GitHub merges it, so no person needs to. A pending
+  // review request comes first, even where GitHub requires no review.
+  const canMerge = !state.draft && !state.autoMerge && !state.reviewPending;
   if (
     canMerge &&
     state.mergeableState === "clean" &&

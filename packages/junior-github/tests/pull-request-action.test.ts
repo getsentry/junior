@@ -213,9 +213,28 @@ describe("next action item", () => {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
 
-      // The repo requires no review, so GitHub says that it can merge.
-      await webhook.handler(checkSuiteCompleted());
+      // The repo requires no review, so GitHub says that it can merge. A
+      // pending review request still comes first. A request for someone
+      // else or for a team waits on them, so no item asks the requester.
+      github.requestedReviewers = ["someone-else"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      github.requestedReviewers = [];
+      github.requestedTeams = ["reviewers"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toEqual([]);
+
+      // A request for the requester asks for their review.
+      github.requestedTeams = [];
+      github.requestedReviewers = ["requester"];
+      await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+
+      // With no request left, the same item asks to review and merge.
+      github.requestedReviewers = [];
+      await webhook.handler(pullRequestAction("review_request_removed"));
+      expect(calls.slice(1)).toMatchObject([
         {
           kind: "upsert",
           notice: {
@@ -232,7 +251,7 @@ describe("next action item", () => {
       await webhook.handler(
         reviewSubmitted("approved", { login: "requester" }),
       );
-      expect(calls).toHaveLength(1);
+      expect(calls).toHaveLength(2);
 
       // A change request by any reviewer ends the merge.
       github.reviews.push({
@@ -352,11 +371,20 @@ describe("next action item", () => {
       await webhook.handler(pullRequestAction("reopened"));
       expect(calls.at(-1)).toEqual(review);
 
-      // Someone else approves, and GitHub can merge it. The requester merges
-      // or reviews, not both, so the same item now asks for the merge.
+      // Someone else approves, and GitHub can merge it. GitHub still asks
+      // the requester, so the item still asks for the review.
       github.mergeableStates = ["clean"];
       github.reviews = [{ state: "APPROVED", user: { login: "someone-else" } }];
       await webhook.handler(reviewSubmitted("approved"));
+      expect(calls).toHaveLength(3);
+
+      // The requester's review ends the request. The requester merges or
+      // reviews, not both, so the same item now asks for the merge.
+      github.requestedReviewers = [];
+      github.reviews.push({ state: "COMMENTED", user: { login: "requester" } });
+      await webhook.handler(
+        reviewSubmitted("commented", { login: "requester" }),
+      );
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
         notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },

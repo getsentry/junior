@@ -186,6 +186,8 @@ export interface GitHubState {
   holdNextPullRead?: Promise<void> | undefined;
   merged: boolean;
   requestedReviewers?: string[];
+  /** Teams whose review GitHub still requests. */
+  requestedTeams?: string[];
   /** The review requests on the pull request's timeline. */
   reviewRequests?: Array<{ at: string; login: string }>;
   reviews: Array<{
@@ -505,9 +507,14 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 isDraft: github.draft,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
                 reviewRequests: {
-                  nodes: (github.requestedReviewers ?? []).map((login) => ({
-                    requestedReviewer: { __typename: "User", login },
-                  })),
+                  nodes: [
+                    ...(github.requestedReviewers ?? []).map((login) => ({
+                      requestedReviewer: { __typename: "User", login },
+                    })),
+                    ...(github.requestedTeams ?? []).map(() => ({
+                      requestedReviewer: { __typename: "Team" },
+                    })),
+                  ],
                 },
                 reviews: reviewsPage(github, github.reviews.length),
                 state: github.merged ? "MERGED" : github.state.toUpperCase(),
