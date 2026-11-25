@@ -115,14 +115,12 @@ import {
   instructionForInputs,
   turnRequestText,
 } from "@/chat/agent/prompt";
-import type {
-  AgentInstructionInput,
-  AgentSteeringMessage,
-} from "@/chat/agent/types";
+import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
-import { createParentSteeringDrain } from "@/chat/agent-invocations/parent-steering";
-import { createTeamSteeringDrain } from "@/chat/agent-invocations/team-steering";
+import { createSteeringDrain } from "@/chat/task-execution/steering";
+import { webSteeringSource } from "@/chat/task-execution/web-steering";
+import { parentSteeringSource } from "@/chat/agent-invocations/parent-steering";
+import { teamSteeringSource } from "@/chat/agent-invocations/team-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   type eventBatchMessageMeta,
@@ -621,47 +619,43 @@ export function createConversationTurnWorker(
             actor,
             credentialSubject,
           );
-          const steeringDrains = [
-            ...(webActor
-              ? [
-                  createWebSteeringDrain({
-                    actor: webActor,
-                    author,
-                    context,
-                    conversation,
-                    turnId,
-                  }),
-                ]
-              : []),
-            // A Turn that its parent started also reads that parent's later
-            // messages. A person's Turn in a Thread does not.
-            ...(fromParent
-              ? [
-                  createParentSteeringDrain({
-                    actor,
-                    author,
-                    context,
-                    conversation,
-                    credentialContext,
-                    turnId,
-                  }),
-                ]
-              : []),
-            // A Turn of a root in a Space also reads the later messages that
-            // the Space's Lead sends for the Turn's Actor.
-            ...(storedConversation?.spaceId
-              ? [
-                  createTeamSteeringDrain({
-                    actor,
-                    context,
-                    conversation,
-                    credentialContext,
-                    spaceId: storedConversation.spaceId,
-                    turnId,
-                  }),
-                ]
-              : []),
-          ];
+          const drainSteeringMessages = createSteeringDrain({
+            context,
+            conversation,
+            sources: [
+              ...(webActor
+                ? [webSteeringSource({ actor: webActor, author })]
+                : []),
+              // A Turn that its parent started also reads that parent's
+              // later messages. A person's Turn in a Thread does not.
+              ...(fromParent
+                ? [
+                    parentSteeringSource({
+                      actor,
+                      author,
+                      credentialContext,
+                      turnInputIds: new Set(
+                        context.attempt.messages.map(
+                          (message) => message.inboundMessageId,
+                        ),
+                      ),
+                    }),
+                  ]
+                : []),
+              // A Turn of a root in a Space also reads the later messages
+              // that the Space's Lead sends for the Turn's Actor.
+              ...(storedConversation?.spaceId
+                ? [
+                    teamSteeringSource({
+                      actor,
+                      credentialContext,
+                      spaceId: storedConversation.spaceId,
+                    }),
+                  ]
+                : []),
+            ],
+            turnId,
+          });
           const childTurn = await childAgentTurnOptions({
             actor,
             conversationId: context.conversationId,
@@ -730,17 +724,8 @@ export function createConversationTurnWorker(
               },
               delivery: deliverAssistantMessage,
               durability: {
-                ...(steeringDrains.length > 0
-                  ? {
-                      drainSteeringMessages: async (accept) => {
-                        const accepted: AgentSteeringMessage[] = [];
-                        for (const drain of steeringDrains) {
-                          // oxlint-disable-next-line no-await-in-loop -- Each drain commits its messages to the Turn in turn.
-                          accepted.push(...(await drain(accept)));
-                        }
-                        return accepted;
-                      },
-                    }
+                ...(drainSteeringMessages
+                  ? { drainSteeringMessages }
                   : undefined),
                 onInputCommitted: acknowledge,
                 shouldYield: context.shouldYield,
