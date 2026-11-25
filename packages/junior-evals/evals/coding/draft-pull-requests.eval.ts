@@ -44,10 +44,16 @@ function draftChecksPassedWebhook(number: DraftNumber) {
   });
 }
 
-/** Add the Watch that Junior adds after it opens a draft to a thread. */
+/**
+ * Add the Watch that Junior adds after it opens a draft to a thread. The setup
+ * message needs no lookups, so the setup Turn stays short and the case tests
+ * only the Event delivery.
+ */
 async function startDraftThread(run: RunAgent, number: DraftNumber) {
   const draft = `getsentry/junior#${number}`;
-  const conversation = await run(slackMention(`What does ${draft} change?`));
+  const conversation = await run(
+    slackMention(`Thanks for opening ${draft}. I'll review it later.`),
+  );
   await insertGitHubPullRequestWatch({
     conversation,
     draft: true,
