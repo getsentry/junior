@@ -1,0 +1,1 @@
+ALTER TABLE "junior_code_changes" ADD COLUMN "requester_identity_ids" text[] DEFAULT ARRAY[]::text[] NOT NULL;

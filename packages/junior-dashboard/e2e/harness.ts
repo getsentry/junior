@@ -330,6 +330,12 @@ export async function startDashboardE2eServer(
         res.end(error instanceof Error ? error.stack : String(error));
       });
   });
+  // Keep idle connections open. route.fetch shares this worker's event loop
+  // and reuses a keep-alive connection. When it sends on one just as the
+  // idle timeout fires, the server closes it before it reads the request, and
+  // route.fetch fails with ECONNRESET. The versions poll waits 5 s between
+  // requests, so on a loaded machine it can land on the 6 s close.
+  server.keepAliveTimeout = 0;
 
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", () => {

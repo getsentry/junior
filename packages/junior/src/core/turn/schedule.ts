@@ -60,33 +60,29 @@ async function addInput(
 export type MailboxDelivery = "interrupt" | "defer";
 
 /**
- * Junior's rule for which Turn takes an input that is not a duplicate. Core
- * owns it, so every Source schedules the same way. An input joins a Turn only
- * from that Turn's Actor and Source. An interrupt joins the Turn that has
- * started, and an interrupt from anyone else supersedes that Turn. Any input
+ * The rule for which Turn takes an input that is not a duplicate. Core owns
+ * it, so every Source schedules the same way, and the host decides who may
+ * share a Turn through the group key. An input joins a Turn only when its
+ * group key matches. An interrupt joins the Turn that has started, and an
+ * interrupt with another group key supersedes that Turn. Any input
  * joins the last Turn in line while no step of it has started. Otherwise the
  * input waits in a new Turn at the end of the line, so A1 B1 A2 makes A2 wait
  * for B1. It runs under the Conversation lock, so `openTurns` cannot change
  * before the write.
  */
 function assignTurn(
-  input: Pick<TurnInput, "actorIdentityId"> & {
-    sourceKind: string;
-    delivery: MailboxDelivery;
-  },
+  input: Pick<TurnInput, "groupKey"> & { delivery: MailboxDelivery },
   openTurns: OpenTurn[],
 ): { join: Turn } | { create: { priority: number }; supersede?: Turn } {
-  const sameSender = (turn: OpenTurn) =>
-    turn.actorIdentityId === input.actorIdentityId &&
-    turn.sourceKind === input.sourceKind;
+  const sameGroup = (turn: OpenTurn) => turn.groupKey === input.groupKey;
   const started = openTurns.find((turn) => turn.started);
   if (input.delivery === "interrupt" && started) {
-    return sameSender(started)
+    return sameGroup(started)
       ? { join: started }
       : { create: { priority: TURN_PRIORITY.supersede }, supersede: started };
   }
   const last = openTurns.at(-1);
-  if (last && !last.started && sameSender(last)) {
+  if (last && !last.started && sameGroup(last)) {
     return { join: last };
   }
   return { create: { priority: TURN_PRIORITY.normal } };
@@ -108,10 +104,7 @@ async function placeInput(
     };
   }
   const openTurns = await findOpenTurns({ executor }, input.conversationId);
-  const choice = assignTurn(
-    { ...input, sourceKind: input.source.kind, delivery },
-    openTurns,
-  );
+  const choice = assignTurn({ ...input, delivery }, openTurns);
   if ("join" in choice) {
     const { turnId } = choice.join;
     await addInput({ executor }, { ...input, turnId });
@@ -124,7 +117,6 @@ async function placeInput(
     { executor },
     {
       conversationId: input.conversationId,
-      actorIdentityId: input.actorIdentityId,
       priority: choice.create.priority,
     },
   );
@@ -178,7 +170,7 @@ async function moveInputs(
 /**
  * Moves the unread inputs of a failed Turn that arrived after its last claim
  * to the Turn that `assignTurn` picks for a deferred input. They share the
- * failed Turn's Actor and Source, so they move together. The failed Turn
+ * failed Turn's group key, so they move together. The failed Turn
  * keeps, and so drops, the inputs that an attempt claimed it with.
  */
 async function moveLeftovers(
@@ -203,7 +195,6 @@ async function moveLeftovers(
           { executor },
           {
             conversationId: ended.conversationId,
-            actorIdentityId: first.actorIdentityId,
             priority: choice.create.priority,
           },
         );

@@ -26,6 +26,7 @@ import {
 } from "@/db/schema";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { deliveryConsumer } from "@/turn-steps/delivery";
+import { turnGroupKey } from "@/turn-steps/group-key";
 import type { TurnInputPayload } from "@/turn-steps/prompt";
 import { emulatedModelClient } from "./ai-emulator";
 import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
@@ -172,13 +173,15 @@ export async function createTurnHarness({
       actor: input.actor ?? ACTOR,
     };
     const idempotencyKey = `slack-event:${randomUUID()}`;
+    const source = input.source ?? slackSource;
     const { turnId } = await scheduleInput(engineCtx, {
       conversationId,
       actorIdentityId,
+      groupKey: turnGroupKey(actorIdentityId, source),
       payload,
       idempotencyKey,
       sentAt: new Date(),
-      source: input.source ?? slackSource,
+      source,
       destination:
         input.destination === undefined ? slackDestination : input.destination,
       delivery: "interrupt",

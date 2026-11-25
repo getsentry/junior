@@ -24,6 +24,7 @@ import {
   juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
+import { turnGroupKey } from "@/turn-steps/group-key";
 import {
   buildJuniorSqlConversation,
   createJuniorSqlFixture,
@@ -43,6 +44,17 @@ const WEB_SOURCE = {
   conversationId: CONVERSATION_ID,
 } as const;
 const CONTINUE = { outcome: "continue" as const, messages: [] };
+
+type ScheduledInput = Parameters<typeof scheduleInput>[1];
+
+// Builds the group key the way the host does, so these cases cover Junior's
+// rule: one Actor and one Source kind per Turn.
+function keyed(input: Omit<ScheduledInput, "groupKey">): ScheduledInput {
+  return {
+    ...input,
+    groupKey: turnGroupKey(input.actorIdentityId, input.source),
+  };
+}
 const LEASE_MS = 60_000;
 
 const stepMessageSchema = z.looseObject({ turnId: z.string() });
@@ -121,7 +133,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     return turns.length === 1 && inputs.length > 0;
   }
 
-  function input(idempotencyKey: string): Parameters<typeof scheduleInput>[1] {
+  function input(idempotencyKey: string): Omit<ScheduledInput, "groupKey"> {
     return {
       conversationId: CONVERSATION_ID,
       actorIdentityId: "identity:actor",
@@ -135,7 +147,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   }
 
   function schedule(idempotencyKey: string) {
-    return scheduleInput(engineCtx, input(idempotencyKey));
+    return scheduleInput(engineCtx, keyed(input(idempotencyKey)));
   }
 
   async function claim(turnId: string) {
@@ -149,7 +161,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         id: juniorTurns.id,
         state: juniorTurns.state,
         priority: juniorTurns.priority,
-        actorIdentityId: juniorTurns.actorIdentityId,
       })
       .from(juniorTurns);
   }
@@ -168,10 +179,13 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   }
 
   function interruptFrom(actorIdentityId: string, idempotencyKey: string) {
-    return scheduleInput(engineCtx, {
-      ...input(idempotencyKey),
-      actorIdentityId,
-    });
+    return scheduleInput(
+      engineCtx,
+      keyed({
+        ...input(idempotencyKey),
+        actorIdentityId,
+      }),
+    );
   }
 
   async function readInputs() {
@@ -194,7 +208,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         id: scheduled.turnId,
         state: "queued",
         priority: 1,
-        actorIdentityId: "identity:actor",
       },
     ]);
     await expect(readInputs()).resolves.toEqual([
@@ -240,12 +253,18 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await claim(first.turnId);
     publishes = [];
 
-    const deferred = await scheduleInput(engineCtx, {
-      ...input("event-2"),
-      delivery: "defer",
-    });
+    const deferred = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-2"),
+        delivery: "defer",
+      }),
+    );
     await expect(
-      scheduleInput(engineCtx, { ...input("event-3"), delivery: "defer" }),
+      scheduleInput(
+        engineCtx,
+        keyed({ ...input("event-3"), delivery: "defer" }),
+      ),
     ).resolves.toEqual({ turnId: deferred.turnId, created: false });
 
     expect(deferred).toEqual({ turnId: expect.any(String), created: true });
@@ -255,26 +274,47 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("queues an input from another Actor or Source in its own Turn, so A1 B1 A2 makes A2 wait", async () => {
     const a1 = await schedule("event-1");
-    const b1 = await scheduleInput(engineCtx, {
-      ...input("event-2"),
-      actorIdentityId: "identity:other",
-    });
+    const b1 = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-2"),
+        actorIdentityId: "identity:other",
+      }),
+    );
     const a2 = await schedule("event-3");
-    const web = await scheduleInput(engineCtx, {
-      ...input("event-4"),
-      source: WEB_SOURCE,
-    });
+    const web = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-4"),
+        source: WEB_SOURCE,
+      }),
+    );
 
     expect(new Set([a1, b1, a2, web].map((turn) => turn.turnId)).size).toBe(4);
     expect(publishes).toEqual([{ turnId: a1.turnId, committed: true }]);
   });
 
+  it("keeps inputs with different group keys in separate Turns, even from one Actor and Source", async () => {
+    const first = await schedule("event-1");
+
+    const other = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      groupKey: "host:other-group",
+    });
+
+    expect(other).toEqual({ turnId: expect.any(String), created: true });
+    expect(other.turnId).not.toBe(first.turnId);
+  });
+
   it("claims only the next Turn, and publishes the next one when a Turn ends", async () => {
     const first = await schedule("event-1");
-    const second = await scheduleInput(engineCtx, {
-      ...input("event-2"),
-      actorIdentityId: "identity:other",
-    });
+    const second = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-2"),
+        actorIdentityId: "identity:other",
+      }),
+    );
 
     await expect(claimTurn(engineCtx, second.turnId)).resolves.toBeUndefined();
     const running = await claim(first.turnId);
@@ -297,11 +337,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const running = await claim(alice.turnId);
     publishes = [];
 
-    const deferred = await scheduleInput(engineCtx, {
-      ...input("event-2"),
-      actorIdentityId: "identity:other",
-      delivery: "defer",
-    });
+    const deferred = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-2"),
+        actorIdentityId: "identity:other",
+        delivery: "defer",
+      }),
+    );
     const bob = await interruptFrom("identity:other", "event-3");
 
     expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
@@ -403,9 +446,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(claimed).toMatchObject({ turnId: turn.turnId });
   });
 
-  it("refuses an input row whose Source differs from its Turn's other inputs", async () => {
+  it("refuses an input row whose group key differs from its Turn's other inputs", async () => {
     const local = await schedule("event-1");
-    await scheduleInput(engineCtx, { ...input("event-2"), source: WEB_SOURCE });
+    await scheduleInput(
+      engineCtx,
+      keyed({ ...input("event-2"), source: WEB_SOURCE }),
+    );
 
     await expect(
       fixture.sql
@@ -414,7 +460,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         .set({ turnId: local.turnId })
         .where(eq(juniorTurnInbox.idempotencyKey, "event-2")),
     ).rejects.toMatchObject({
-      cause: { constraint: "junior_turn_inbox_one_source" },
+      cause: { constraint: "junior_turn_inbox_one_group" },
     });
   });
 
@@ -475,7 +521,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       id: expect.any(String),
       state: "queued",
       priority: 1,
-      actorIdentityId: "identity:actor",
     });
     const moved = [
       { turnId: next!.id, idempotencyKey: "event-1" },
@@ -497,10 +542,13 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const failed = await schedule("event-1");
     const claimed = await claim(failed.turnId);
     await schedule("event-2");
-    const open = await scheduleInput(engineCtx, {
-      ...input("event-3"),
-      delivery: "defer",
-    });
+    const open = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-3"),
+        delivery: "defer",
+      }),
+    );
 
     await endFailedTurn(engineCtx, claimed, "overloaded", {
       failureCode: "model_execution_failed",
@@ -549,11 +597,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   it("stops the running Turn and the Turn queued behind it, so no Turn starts", async () => {
     const running = await schedule("event-1");
     await claim(running.turnId);
-    const queued = await scheduleInput(engineCtx, {
-      ...input("event-2"),
-      actorIdentityId: "identity:other",
-      delivery: "defer",
-    });
+    const queued = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-2"),
+        actorIdentityId: "identity:other",
+        delivery: "defer",
+      }),
+    );
     publishes = [];
 
     const stopped = await stopTurns(engineCtx, CONVERSATION_ID);

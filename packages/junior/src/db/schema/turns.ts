@@ -14,7 +14,6 @@ import type {
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
 import { juniorConversations } from "./conversations";
-import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 
 /** The state of a Turn. */
@@ -36,9 +35,6 @@ export const juniorTurns = pgTable(
   {
     id: uuid("id").primaryKey(),
     conversationId: text("conversation_id").notNull(),
-    actorIdentityId: text("actor_identity_id")
-      .notNull()
-      .references(() => juniorIdentities.id),
     state: text("state").$type<TurnState>().notNull(),
     // Lower runs first. The scheduler sets it; core only sorts by it.
     priority: integer("priority").notNull(),

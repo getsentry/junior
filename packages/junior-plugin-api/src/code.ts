@@ -76,6 +76,15 @@ export interface PluginCodeChanges {
     providerId: string;
   }): Promise<void>;
   /**
+   * Credit people as requesters of an existing code change: the person Work
+   * owners of the Turns that opened or changed it. They add to the stored
+   * ones, and a person's code changes include the ones that credit them.
+   */
+  associateRequesters(input: {
+    identityIds: string[];
+    providerId: string;
+  }): Promise<void>;
+  /**
    * List the code changes of this plugin that match every part of the
    * filter, oldest update first, in one read.
    */
