@@ -7,6 +7,7 @@
  * consistent.
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { botConfig } from "@/chat/config";
 import { configValueSchema } from "@/chat/configuration/types";
@@ -533,11 +534,12 @@ async function resumeSlackTurnInContext(
       failureCode = "delivery_failed";
       const cards = await loadPendingMessageCards(conversationId);
       const deliveryState = await getDeliveryConversation();
-      // Plugin reply formatting reads Location defaults, as the Run did.
-      const configuration = {
-        ...savedRun.environment?.configuration,
-        ...(await savedRun.environment?.locationConfiguration?.resolveValues()),
-      };
+      // Plugin reply formatting reads the configuration that the Run did.
+      const configuration = await resolveConversationConfiguration({
+        configuration: savedRun.environment?.configuration,
+        conversationId,
+        locationConfiguration: savedRun.environment?.locationConfiguration,
+      });
       const replyTeamId =
         savedRun.destination.platform === "slack"
           ? savedRun.destination.teamId

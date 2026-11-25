@@ -397,6 +397,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
+        "setSpaceConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",

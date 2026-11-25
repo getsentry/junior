@@ -1,3 +1,4 @@
+import type { Identity } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -8,12 +9,15 @@ import {
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
+  spaceConfigurationSchema,
   spaceMemberListSchema,
   spaceSchema,
   versionsSchema,
 } from "@/api/schema";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
+import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
 import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { closeConversationFixture } from "../../fixtures/conversation";
@@ -334,6 +338,101 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+  });
+
+  it("lets members ask Junior to set the configuration that a Space's Conversations use", async () => {
+    const ana = apiFor("spaces-config-ana@example.com");
+    const bo = apiFor("spaces-config-bo@example.com");
+    const space = await createSpace(ana, "Configured");
+    const inSpace = await startConversation(ana, "configured-work", {
+      spaceId: space.id,
+    });
+    const thread = await startThread(inSpace, "local:spaces-config-thread");
+    const outside = await startConversation(ana, "unconfigured-work");
+    const setting = async (
+      email: string,
+      conversationId: string,
+      input: { key: string; value: string | null },
+    ) => {
+      const user = await signedInViewer(email);
+      return await createSetSpaceConfigurationTool({
+        conversationId,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${user.id}` } as Identity,
+          user,
+        }),
+      }).execute?.(input, {});
+    };
+    const read = async (app: Hono<JuniorApiEnv>) =>
+      spaceConfigurationSchema.parse(
+        await (await send(app, "GET", `/${space.id}/configuration`)).json(),
+      ).entries;
+
+    expect(await read(bo)).toEqual([]);
+    await expect(
+      setting("spaces-config-bo@example.com", inSpace, {
+        key: "github.repo",
+        value: "a/b",
+      }),
+    ).rejects.toThrow("not a member of Configured");
+    await expect(
+      setting("spaces-config-ana@example.com", inSpace, {
+        key: "github.token",
+        value: "a",
+      }),
+    ).rejects.toThrow("secret-related");
+    await expect(
+      setting("spaces-config-ana@example.com", outside, {
+        key: "github.repo",
+        value: "a/b",
+      }),
+    ).rejects.toThrow("in no Space");
+
+    // A Thread changes the Space of its root.
+    expect(
+      await setting("spaces-config-ana@example.com", thread, {
+        key: "github.repo",
+        value: "getsentry/junior",
+      }),
+    ).toMatchObject({
+      space: { id: space.id, name: "Configured" },
+      entries: [{ key: "github.repo", value: "getsentry/junior" }],
+    });
+    // Anyone who reads the Space reads its configuration.
+    expect(await read(bo)).toMatchObject([
+      { key: "github.repo", value: "getsentry/junior" },
+    ]);
+
+    // A Conversation in the Space resolves the Space's value over the
+    // values below it, and keeps the keys that the Space does not set.
+    expect(
+      await resolveConversationConfiguration({
+        configuration: { "github.repo": "a/run", "sentry.org": "run-org" },
+        conversationId: inSpace,
+      }),
+    ).toMatchObject({
+      "github.repo": "getsentry/junior",
+      "sentry.org": "run-org",
+    });
+    expect(
+      await resolveConversationConfiguration({ conversationId: thread }),
+    ).toMatchObject({ "github.repo": "getsentry/junior" });
+    // An older root with no root id resolves its Space's values too.
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: null })
+      .where(eq(juniorConversations.conversationId, inSpace));
+    expect(
+      await resolveConversationConfiguration({ conversationId: inSpace }),
+    ).toMatchObject({ "github.repo": "getsentry/junior" });
+
+    expect(
+      await setting("spaces-config-ana@example.com", inSpace, {
+        key: "github.repo",
+        value: null,
+      }),
+    ).toMatchObject({ entries: [] });
+    expect(await read(bo)).toEqual([]);
   });
 
   it("stops and archives every Conversation when a Space is archived", async () => {
