@@ -1,10 +1,16 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
+import { createJuniorApi } from "@/api";
+import type { JuniorApiEnv } from "@/api/route";
 import {
+  acceptedConversationMessageSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
+  spaceListSchema,
 } from "@/api/schema";
+import { createSpace } from "@/chat/spaces/store";
+import { Hono } from "hono";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationSubtree } from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
@@ -21,10 +27,14 @@ import {
   expectSqlBudget,
   explainNodes,
 } from "../../../fixtures/sql-budget";
-import { closeConversationFixture } from "../../../fixtures/conversation";
+import {
+  closeConversationFixture,
+  webTestActor,
+} from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
   SLACK_DESTINATION,
+  failingAgentRunner,
   REQUEST,
   ACTION_ITEM,
   detailPath,
@@ -511,5 +521,94 @@ describe("conversation tree state", () => {
     ]);
     await addItem("agent:tree-budget-d", ACTION_ITEM);
     await expectBudget({ treeState: "needs_you", watching: true });
+  });
+
+  it("rolls up a Space's Conversations into its Space list row", async () => {
+    const fixture = await createStatusFixture(failingAgentRunner);
+    const viewer = await resolveViewerUser(webTestActor.email);
+    const space = await createSpace({
+      creatorUserId: viewer!.id,
+      description: null,
+      name: "Release",
+      visibility: "public",
+    });
+    // Bob is a member who did not start the work.
+    const bob = await resolveViewerUser("bob@example.com");
+    const bobApp = new Hono<JuniorApiEnv>();
+    bobApp.use("*", async (context, next) => {
+      context.set("viewer", bob!);
+      await next();
+    });
+    bobApp.route(
+      "/",
+      createJuniorApi({ conversationWorkQueue: fixture.queue }),
+    );
+    const joined = await bobApp.request(
+      `http://localhost/api/spaces/${space.id}/members/me`,
+      { method: "PUT" },
+    );
+    expect(joined.status).toBe(200);
+    const spaceRow = async (request: (path: string) => Promise<Response>) => {
+      const response = await request("/api/spaces");
+      expect(response.status).toBe(200);
+      const row = spaceListSchema
+        .parse(await response.json())
+        .spaces.find((listed) => listed.id === space.id);
+      return {
+        latestTurnFailed: row?.latestTurnFailed,
+        treeState: row?.treeState,
+      };
+    };
+    const asViewer = () => spaceRow((path) => fixture.request(path));
+    const asBob = () =>
+      spaceRow(async (path) => await bobApp.request(`http://localhost${path}`));
+    const idle = { latestTurnFailed: false, treeState: "done" };
+    await expect(asViewer()).resolves.toEqual(idle);
+
+    const started = await fixture.request("/api/conversations", {
+      body: JSON.stringify({
+        idempotencyKey: "space-roll-up",
+        message: "Check the release.",
+        spaceId: space.id,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(started.status).toBe(200);
+    const { conversationId } = acceptedConversationMessageSchema.parse(
+      await started.json(),
+    );
+    await fixture.start("space-roll-up-one-off");
+    await expect(asViewer()).resolves.toEqual({
+      latestTurnFailed: false,
+      treeState: "working",
+    });
+
+    await fixture.drain();
+    // The failed Turn waits on its starter, so it needs the viewer. Bob
+    // sees that it failed.
+    await expect(asViewer()).resolves.toEqual({
+      latestTurnFailed: true,
+      treeState: "needs_you",
+    });
+    await expect(asBob()).resolves.toEqual({
+      latestTurnFailed: true,
+      treeState: "done",
+    });
+
+    const [row] = await getDb()
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, conversationId));
+    await setConversationArchive({
+      applyToChildren: false,
+      archived: true,
+      conversationId,
+      lastSeenAt: row!.lastActivityAt.toISOString(),
+    });
+    // An archived Conversation counts for nothing, and the one-off, which
+    // failed too, counts for no Space.
+    await expect(asViewer()).resolves.toEqual(idle);
+    await expect(asBob()).resolves.toEqual(idle);
   });
 });

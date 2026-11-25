@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 
 /** The longest Space name, so a form can stop at it. */
 export const SPACE_NAME_MAX_CHARS = 80;
@@ -79,6 +80,15 @@ export const spaceSchema = z
     archivedAt: z.iso.datetime().nullable(),
     memberCount: z.number().int().nonnegative(),
     viewerIsMember: z.boolean(),
+    /**
+     * The tree states of the Space's Conversations that are not archived,
+     * rolled up for the viewer: the first that applies. List rows only.
+     */
+    treeState: conversationTreeStateSchema.optional(),
+    /**
+     * The latest Turn of one of those Conversations failed. List rows only.
+     */
+    latestTurnFailed: z.boolean().optional(),
   })
   .strict();
 

@@ -111,7 +111,9 @@ import { gitHooksPathOverrideRedirect } from "./hooks-path-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
+  isGitHubGraphqlUrl,
 } from "./egress-policy.js";
+import { recordGitHubGraphqlSpend } from "./graphql-budget.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
@@ -607,6 +609,9 @@ export function githubPlugin(
         });
       },
       async onEgressResponse(ctx) {
+        if (isGitHubGraphqlUrl(new URL(ctx.request.url))) {
+          await recordGitHubGraphqlSpend(ctx);
+        }
         if (ctx.response.status === 403) {
           ctx.log.warn("github.egress.upstream_forbidden", {
             "app.github.accepted_permissions":

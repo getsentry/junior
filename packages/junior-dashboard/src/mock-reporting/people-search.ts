@@ -154,7 +154,7 @@ function inviteMockPerson(
   slackUserId: string,
 ): ConversationInviteResponse | "conversation" | "person" {
   const detail = readMockConversationDetail(conversationId);
-  if (detail?.visibility !== "public") return "conversation";
+  if (!detail?.canInvite) return "conversation";
   const person = MOCK_MENTIONABLE_PEOPLE.find(
     (candidate) => candidate.slackUserId === slackUserId,
   );

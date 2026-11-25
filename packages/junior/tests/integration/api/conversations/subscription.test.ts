@@ -5,6 +5,7 @@ import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
@@ -75,6 +76,8 @@ async function person(name: string, teamId = "T1") {
   return {
     identityId: identityId!,
     viewer,
+    /** Call the Conversations API as this person. */
+    api,
     async feed(query = "") {
       const response = await api(query);
       expect(response.status).toBe(200);
@@ -380,7 +383,7 @@ describe("conversation subscription", () => {
     await cleo.post("joining in");
   });
 
-  it("Invite on a private conversation is refused and shares nothing", async () => {
+  it("Invite on a Slack-backed private conversation is refused and shares nothing", async () => {
     const { ana } = await sharedThread(undefined, "private");
     const cleo = await person("cleo");
 
@@ -406,5 +409,161 @@ describe("conversation subscription", () => {
 
     expect((await ana.invite(slackUserId("cleo"))).status).toBe(409);
     expect(await cleo.feed("?status=archived")).toEqual([]);
+  });
+});
+
+/** Ana starts a private dashboard Conversation and is its only Participant. */
+async function privateDashboardConversation() {
+  const ana = await person("ana");
+  const response = await ana.api("", {
+    body: JSON.stringify({
+      idempotencyKey: "private-start",
+      message: "Private plan",
+      title: "Private plan",
+      visibility: "private",
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
+  const { conversationId } = (await response.json()) as {
+    conversationId: string;
+  };
+  const path = `/${encodeURIComponent(conversationId)}`;
+  const as = (someone: Person) => ({
+    invite: (name: string) =>
+      someone.api(`${path}/invites`, {
+        body: JSON.stringify({ slackUserId: slackUserId(name) }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    leave: () => someone.api(`${path}/leave`, { method: "POST" }),
+    open: async () => {
+      const response = await someone.api(path);
+      expect(response.status).toBe(200);
+      return conversationDetailReportSchema.parse(await response.json());
+    },
+    /** The version token that this person's detail polls compare. */
+    version: async () =>
+      (await someone.api(path)).headers.get(CONVERSATION_VERSION_HEADER),
+    /** Whether this person can read the Conversation's private content. */
+    reads: async () => {
+      const detail = await as(someone).open();
+      return detail.eventHistory.status !== "redacted";
+    },
+  });
+  return { ana, as, conversationId };
+}
+
+describe("private conversation membership", () => {
+  afterEach(async () => {
+    await closeDb();
+  });
+
+  it("any Participant can Invite a person, which shares it", async () => {
+    const { ana, as } = await privateDashboardConversation();
+    const ben = await person("ben");
+    const cleo = await person("cleo");
+    expect(await as(ben).reads()).toBe(false);
+    expect(await as(ana).open()).toMatchObject({
+      canInvite: true,
+      leaveEndsAccess: true,
+    });
+
+    // Someone outside cannot add themselves or anyone else.
+    expect((await as(ben).invite("cleo")).status).toBe(404);
+
+    const before = await as(ana).version();
+    expect(await (await as(ana).invite("ben")).json()).toEqual({
+      added: true,
+    });
+    expect(await as(ben).reads()).toBe(true);
+    // Ana's open page polls the version, and the Participants changed.
+    expect(await as(ana).version()).not.toBe(before);
+    expect(await (await as(ben).invite("cleo")).json()).toEqual({
+      added: true,
+    });
+    expect(await as(cleo).reads()).toBe(true);
+  });
+
+  it("a Participant leaves on their own and loses access", async () => {
+    const { ana, as } = await privateDashboardConversation();
+    const ben = await person("ben");
+    await as(ana).invite("ben");
+
+    // Nobody can remove another person: leave acts only on the caller.
+    expect((await as(ben).leave()).status).toBe(200);
+    expect(await as(ben).reads()).toBe(false);
+    expect((await as(ben).leave()).status).toBe(404);
+    expect(await as(ana).reads()).toBe(true);
+  });
+
+  it("the person who started it stays out after they leave", async () => {
+    const { ana, as, conversationId } = await privateDashboardConversation();
+    const ben = await person("ben");
+    await as(ana).invite("ben");
+    expect((await as(ana).leave()).status).toBe(200);
+
+    // A later Turn writes the root again.
+    await getConversationStore().recordActivity({ conversationId });
+    expect(await as(ana).reads()).toBe(false);
+    expect(await as(ben).reads()).toBe(true);
+  });
+
+  it("the last subscriber leaving archives it for everyone", async () => {
+    const { ana, as, conversationId } = await privateDashboardConversation();
+    const ben = await person("ben");
+    await as(ana).invite("ben");
+    const benPath = `/${encodeURIComponent(conversationId)}/subscription`;
+    expect(
+      (
+        await ben.api(benPath, {
+          body: JSON.stringify({ subscribed: false }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        })
+      ).status,
+    ).toBe(200);
+
+    const left = await as(ana).leave();
+    expect(left.status).toBe(200);
+    expect(
+      ((await left.json()) as { archivedAt: string | null }).archivedAt,
+    ).not.toBeNull();
+    expect(await ben.feed("?status=archived")).toEqual([conversationId]);
+  });
+
+  it("a mention in a private Message adds nobody: only Invite shares it", async () => {
+    const { ana, as, conversationId } = await privateDashboardConversation();
+    const ben = await person("ben");
+    const response = await ana.api(
+      `/${encodeURIComponent(conversationId)}/messages`,
+      {
+        body: JSON.stringify({
+          idempotencyKey: "private-mention",
+          message: `<@${slackUserId("ben")}> look`,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await as(ben).reads()).toBe(false);
+  });
+
+  it("Leave on a public conversation only takes it out of your feed", async () => {
+    const { ana, ben } = await sharedThread();
+    expect(await ana.open()).not.toHaveProperty("leaveEndsAccess");
+    const left = await ana.api(`/${CONVERSATION_ID}/leave`, {
+      method: "POST",
+    });
+    expect(left.status).toBe(200);
+
+    // It stays public, so Ana can still find it and join again.
+    expect(await ana.feed()).toEqual([]);
+    expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ana.feed("?q=shared")).toEqual([CONVERSATION_ID]);
+    await ana.setSubscribed(true);
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
   });
 });

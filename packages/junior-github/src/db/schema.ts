@@ -19,10 +19,15 @@ export type GitHubPullRequestState = z.output<
 >;
 
 /**
- * What waits on the requester of a Junior pull request: merge it, or review
- * it. They take one, not both.
+ * What waits on the requester of a Junior pull request: merge it, review
+ * it, review a draft and mark it ready, or mark a draft that they approved
+ * ready. They take one at a time.
  */
-export type GitHubPullRequestAction = "merge" | "review";
+export type GitHubPullRequestAction =
+  | "mark_ready"
+  | "merge"
+  | "review"
+  | "review_draft";
 
 export const githubPullRequestCommitCompositionSchema = z.enum([
   "junior_only",

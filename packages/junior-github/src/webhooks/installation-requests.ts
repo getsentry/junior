@@ -540,6 +540,12 @@ export interface GitHubPullRequestMergeState {
   changesRequested: boolean;
   draft: boolean;
   /**
+   * The requester's latest review that approves or requests changes
+   * approves it. Read for drafts too, from the last 100 reviews, because the
+   * requester marks an approved draft ready.
+   */
+  requesterApproved: boolean;
+  /**
    * GitHub's merge state, such as `clean` or `blocked`. `clean` means that
    * the required reviews and every check and status passed, and there are
    * no conflicts. Undefined when GitHub has not computed it yet.
@@ -668,6 +674,7 @@ export async function loadPullRequestMergeState(
     changesRequested: false,
     draft: pull.isDraft,
     ...(mergeableState ? { mergeableState } : undefined),
+    requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
       request.requestedReviewer?.__typename === "User" &&
       request.requestedReviewer.login
@@ -685,8 +692,6 @@ export async function loadPullRequestMergeState(
     title: pull.title,
     url: pull.url,
   };
-  if (!open) return state;
-
   // GitHub lists reviews oldest first, so a later one replaces an earlier.
   const latest = new Map<string, Review>();
   for (const review of reviews) {
@@ -698,6 +703,11 @@ export async function loadPullRequestMergeState(
       latest.set(review.author.login.toLowerCase(), review);
     }
   }
+  const login = requesterLogin?.toLowerCase();
+  const requesterReview = login ? latest.get(login) : undefined;
+  state.requesterApproved = requesterReview?.state === "APPROVED";
+  if (!open) return state;
+
   // A dismissed review counts only when it is the person's latest review.
   // GitHub keeps their earlier reviews, such as a comment before it.
   const latestSubmitted = new Map<string, string>();
@@ -717,8 +727,6 @@ export async function loadPullRequestMergeState(
       state.reviewOutcome = "approved";
     }
   }
-  const login = requesterLogin?.toLowerCase();
-  const requesterReview = login ? latest.get(login) : undefined;
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
   return state;
 }

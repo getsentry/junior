@@ -15,6 +15,7 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
 import { useSpaceActions } from "./SpaceActions";
 import { spacePath } from "./spaceRoutes";
+import { SpaceStateIcon, spaceDisplayState } from "./SpaceStateIcon";
 import { SpaceTile } from "./SpaceTile";
 
 // The dialog opens only after a click, so it loads with the first open
@@ -56,6 +57,7 @@ function SpaceNavRow(props: {
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {space.name}
           </span>
+          <SpaceStateIcon state={spaceDisplayState(space)} />
         </Link>
       </ContextMenuTrigger>
       <ContextMenuContent>{actions.rows}</ContextMenuContent>
@@ -66,10 +68,15 @@ function SpaceNavRow(props: {
 
 /**
  * The pane's Spaces: each Space that the viewer is a member of, one click
- * away, and a way to create one. A Space's context menu edits, archives, or
- * leaves it.
+ * away, with the state of its Conversations, and a way to create one. A
+ * Space's context menu edits, archives, or leaves it.
  */
-export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
+export function SpacesNav(props: {
+  /** The Space of the open Conversation, which marks its row. */
+  conversationSpaceId?: string;
+  phone?: boolean;
+  signedIn: boolean;
+}) {
   const { pathname } = useLocation();
   const spaces = useMemberSpacesData(props.signedIn);
   const [creating, setCreating] = useState(false);
@@ -92,7 +99,10 @@ export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
         <ul aria-label="Spaces" className="m-0 grid gap-0.5 p-0">
           {spaces.data.spaces.map((space) => (
             <SpaceNavRow
-              current={pathname === spacePath(space.id)}
+              current={
+                pathname === spacePath(space.id) ||
+                space.id === props.conversationSpaceId
+              }
               key={space.id}
               phone={props.phone}
               space={space}

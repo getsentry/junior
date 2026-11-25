@@ -4,6 +4,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ViewImageToolDeps } from "@/chat/tool-support/types";
 import { readSandboxImage } from "@/chat/sandbox/image-files";
+import { fitModelImage } from "@/chat/images/model-fit";
 
 const MAX_VIEW_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -51,13 +52,23 @@ export function createViewImageTool(
         MAX_VIEW_IMAGE_BYTES,
       );
 
+      const fitted = await fitModelImage({
+        type: "image",
+        data: image.data.toString("base64"),
+        mimeType: image.mimeType,
+      });
+      const { scaled } = fitted;
       return {
         content: [
-          {
-            type: "image" as const,
-            data: image.data.toString("base64"),
-            mimeType: image.mimeType,
-          },
+          ...(scaled
+            ? [
+                {
+                  type: "text" as const,
+                  text: `Scaled from ${scaled.from.join("x")} to ${scaled.to.join("x")} px to fit model image limits. Pixel coordinates refer to the scaled image.`,
+                },
+              ]
+            : []),
+          fitted.image,
         ],
       };
     },

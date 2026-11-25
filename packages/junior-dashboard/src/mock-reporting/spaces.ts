@@ -26,6 +26,7 @@ import { errorResponse } from "./errors";
 import {
   NOW_MS,
   readMockConversationDetail,
+  readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
 import { mockLeadSpaceId } from "./sends";
@@ -326,6 +327,36 @@ export function addMockConversationSpaceRoute(
   });
 }
 
+const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
+
+/**
+ * Roll up the state of a Space's active feed rows, as the API's Space list
+ * does. A mock row with no tree state reads one from its own status.
+ */
+function spaceState(
+  spaceId: string,
+): Pick<SpaceReport, "latestTurnFailed" | "treeState"> {
+  const rows = readMockConversationFeed().conversations.filter(
+    (row) =>
+      !row.archivedAt &&
+      mockConversationSpaces.get(row.conversationId) === spaceId,
+  );
+  const states = rows.map(
+    (row) =>
+      row.treeState ??
+      (row.status === "needs_input"
+        ? "needs_you"
+        : row.turnActive || row.status === "working"
+          ? "working"
+          : "done"),
+  );
+  return {
+    latestTurnFailed: rows.some((row) => row.latestTurnFailed),
+    treeState:
+      TREE_STATE_ORDER.find((state) => states.includes(state)) ?? "done",
+  };
+}
+
 function view(space: MockSpace): SpaceReport {
   return {
     archivedAt: space.archivedAt,
@@ -430,7 +461,12 @@ export function createMockSpaceRoutes(): Hono<{
           Boolean(space.archivedAt) === query.data.archived,
       )
       .sort((left, right) => left.name.localeCompare(right.name));
-    return jsonResponse(spaceListSchema, { spaces: spaces.map(view) });
+    return jsonResponse(spaceListSchema, {
+      spaces: spaces.map((space) => ({
+        ...view(space),
+        ...spaceState(space.id),
+      })),
+    });
   });
   app.post("/", async (c) => {
     const body = createSpaceBodySchema.safeParse(await c.req.json());
