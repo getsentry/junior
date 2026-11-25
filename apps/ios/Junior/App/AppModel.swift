@@ -48,7 +48,11 @@ final class AppModel {
     didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
   }
 
+  /// The server's release and deployed commit, such as "0.314.0 · 4f2c9a1",
+  /// and when the app last read them. They refresh on the tick, so a
+  /// redeploy shows without a relaunch.
   var serverVersion: String?
+  var serverVersionCheckedAt: Date?
   var inboxCount = 0
   var shellError: JuniorAPIError?
 
@@ -201,12 +205,17 @@ final class AppModel {
     signedIn = false
     inboxCount = 0
     serverVersion = nil
+    serverVersionCheckedAt = nil
   }
 
   func refreshShell() async {
     guard signedIn else { return }
     do {
-      serverVersion = try await client.serverInfo().version
+      // The demo has no dashboard API, and no version to show.
+      if !server.isDemo {
+        serverVersion = try await get("/api/config", as: ServerConfig.self).versionLabel
+        serverVersionCheckedAt = clock.now
+      }
       shellError = nil
     } catch JuniorAPIError.signedOut {
       signedIn = false
@@ -223,8 +232,9 @@ final class AppModel {
     }
   }
 
-  /// Reload lists every 15s (60s after 5 minutes without input) while the
-  /// app is in front. The public API has no change feed to poll.
+  /// Reload lists and the server version every 15s (60s after 5 minutes
+  /// without input) while the app is in front. The public API has no change
+  /// feed to poll.
   func startTicking() {
     ticking?.cancel()
     ticking = Task { [weak self] in
@@ -234,7 +244,7 @@ final class AppModel {
         guard let self, !Task.isCancelled, self.signedIn else { continue }
         self.conversationsVersion += 1
         self.inboxItemsVersion += 1
-        await self.refreshInboxCount()
+        await self.refreshShell()
       }
     }
   }

@@ -57,6 +57,8 @@ export const dashboardConfigSchema = z
     authRequired: z.boolean(),
     authPath: z.string(),
     basePath: z.string(),
+    /** Git commit of this deploy, so two deploys of one release differ. */
+    commit: z.string().min(1).optional(),
     sentryConversationLinks: z.boolean(),
     version: z.string().min(1),
   })

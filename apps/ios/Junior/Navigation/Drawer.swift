@@ -71,6 +71,7 @@ struct Drawer: View {
       ServerFooter(
         host: app.server.isDemo ? "Demo" : app.server.baseURL.host() ?? app.server.baseURL.absoluteString,
         version: app.serverVersion,
+        checked: app.serverVersionCheckedAt.map(app.clock.clockTime),
         changelogBadge: app.changelogBadge
       ) {
         BundledChangelog.markSeen()
@@ -167,6 +168,7 @@ struct ThemeRow: View {
 private struct ServerFooter: View {
   let host: String
   let version: String?
+  let checked: String?
   let changelogBadge: Bool
   let openChangelog: () -> Void
 
@@ -176,6 +178,9 @@ private struct ServerFooter: View {
         Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
         if let version {
           Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+        }
+        if let checked {
+          Text("checked \(checked)").type(.xs).foregroundStyle(Tokens.textMuted)
         }
         Text("iOS app \(AppBuild.current.label)").type(.xs).foregroundStyle(Tokens.textMuted)
       }

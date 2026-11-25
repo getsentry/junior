@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { JUNIOR_VERSION } from "@/version";
+import { getDeployedCommit, JUNIOR_VERSION } from "@/version";
 
 export const JUNIOR_HEARTBEAT_ROUTE = "/api/internal/heartbeat";
 export const JUNIOR_HEARTBEAT_CRON_SCHEDULE = "* * * * *";
@@ -40,9 +40,7 @@ export function getDeploymentServiceVersion(): string | undefined {
     return configuredRelease;
   }
 
-  const deploymentRevision = toOptionalTrimmed(
-    process.env["VERCEL_GIT_COMMIT_SHA"],
-  );
+  const deploymentRevision = getDeployedCommit();
   return deploymentRevision
     ? `${JUNIOR_VERSION}+${deploymentRevision}`
     : undefined;

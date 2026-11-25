@@ -69,6 +69,7 @@ describe("dashboard routes", () => {
 
   afterEach(() => {
     vi.doUnmock("#junior/config");
+    vi.unstubAllEnvs();
     resetDashboardEnv();
   });
 
@@ -665,6 +666,7 @@ describe("dashboard routes", () => {
   });
 
   it("returns safe dashboard config signals", async () => {
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "4f2c9a1e0b7d");
     process.env["SENTRY_DSN"] = "https://public@example.ingest.sentry.io/1";
     process.env["SENTRY_ORG_SLUG"] = "sentry";
     const app = dashboard({
@@ -685,6 +687,8 @@ describe("dashboard routes", () => {
       authRequired: true,
       authPath: "/api/auth",
       basePath: "/",
+      // The app shows the deployed commit next to the release.
+      commit: "4f2c9a1e0b7d",
       sentryConversationLinks: true,
       version: expect.stringMatching(/\S+/),
     });
