@@ -100,7 +100,6 @@ const context: ToolRuntimeContext = {
   spawnAgent: unavailable,
   turnTools: turnBehavior({
     kind: "root",
-    hasParent: false,
     personInput: true,
   }).tools,
 };

@@ -49,11 +49,7 @@ async function createPreviewAs(
       },
       resolveActorIdentity,
       source: createLocalSource(CONVERSATION_ID),
-      turnTools: turnBehavior({
-        kind: "root",
-        hasParent: false,
-        personInput: true,
-      }).tools,
+      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
       workspace: {
         createPreview: async () => url,
         readFileToBuffer: unused,

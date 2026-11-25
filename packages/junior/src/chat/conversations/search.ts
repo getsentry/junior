@@ -5,7 +5,6 @@
  * returned, so no result leaks private data into the requester. See
  * `policies/conversation-access.md`.
  */
-import { viewedKind } from "@/chat/conversations/kind-behavior";
 import {
   and,
   desc,
@@ -300,7 +299,6 @@ export async function searchConversations(
       excerpt: excerpt.as("excerpt"),
       kind: conversations.kind,
       lastActivityAt: conversations.lastActivityAt,
-      parentConversationId: conversations.parentConversationId,
       providerDestinationId: juniorDestinations.providerDestinationId,
       rootConversationId: roots.conversationId,
       status: conversations.executionStatus,
@@ -354,14 +352,7 @@ export async function searchConversations(
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       conversationId: row.conversationId,
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
-      ...(row.kind
-        ? {
-            kind: viewedKind({
-              kind: row.kind,
-              parentConversationId: row.parentConversationId ?? undefined,
-            }),
-          }
-        : undefined),
+      ...(row.kind ? { kind: row.kind } : undefined),
       links,
       ...(row.providerDestinationId
         ? { providerDestinationId: row.providerDestinationId }

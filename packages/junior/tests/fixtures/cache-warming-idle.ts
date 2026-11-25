@@ -76,11 +76,8 @@ export function turnOf(
         : "root";
   return {
     userActor,
-    idleNeedsPendingWork: turnBehavior({
-      kind,
-      hasParent: kind === "task",
-      personInput: userActor,
-    }).idleNeedsPendingWork,
+    idleNeedsPendingWork: turnBehavior({ kind, personInput: userActor })
+      .idleNeedsPendingWork,
   };
 }
 

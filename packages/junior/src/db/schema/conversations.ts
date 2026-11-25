@@ -144,8 +144,7 @@ export const juniorConversations = pgTable(
     ),
     check(
       "junior_conversations_kind_parent_check",
-      // A root can have a parent: a Thread is a root with a parent.
-      sql`${table.kind} is null or ${table.kind} = 'root' or ((${table.kind} in ('automation', 'lead')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     check(
       "junior_conversations_space_root_check",

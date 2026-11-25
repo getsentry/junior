@@ -64,7 +64,6 @@ export function context(
     userText: "Create a task for review feedback.",
     turnTools: turnBehavior({
       kind: "root",
-      hasParent: false,
       personInput: true,
     }).tools,
   } as ToolRuntimeContext;

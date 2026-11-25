@@ -1,6 +1,5 @@
 import type { StoredSlackActor } from "@/chat/actor";
 import type { ConversationReportStatus } from "../schema/conversation";
-import { viewedKind } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { juniorConversations } from "@/db/schema";
 import type { ConversationAccess } from "./access";
@@ -95,10 +94,7 @@ export function summaryFromRow(
   const conversation = {
     conversationId: row.conversationId,
     createdAtMs: row.createdAt.getTime(),
-    kind: viewedKind({
-      kind: conversationKindFromRow(row),
-      parentConversationId: row.parentConversationId ?? undefined,
-    }),
+    kind: conversationKindFromRow(row),
     lastActivityAtMs: row.lastActivityAt.getTime(),
     updatedAtMs: row.updatedAt.getTime(),
     execution: {

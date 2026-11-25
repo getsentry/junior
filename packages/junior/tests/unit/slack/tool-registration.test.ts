@@ -16,7 +16,6 @@ import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 const noopSandbox = {} as any;
@@ -361,7 +360,6 @@ describe("Slack tool registration", () => {
         parentConversationId: "slack:C12345:1700000000.000",
         turnTools: turnBehavior({
           kind: "task",
-          hasParent: true,
           personInput: false,
         }).tools,
       },

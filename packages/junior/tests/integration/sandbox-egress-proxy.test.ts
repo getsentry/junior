@@ -26,7 +26,6 @@ import { mswServer } from "../msw/server";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 

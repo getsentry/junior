@@ -21,7 +21,6 @@ import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 

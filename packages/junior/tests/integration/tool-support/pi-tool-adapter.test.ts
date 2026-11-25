@@ -44,7 +44,6 @@ function runtimeContext() {
     source: LOCAL_SOURCE,
     turnTools: turnBehavior({
       kind: "root",
-      hasParent: false,
       personInput: true,
     }).tools,
     workspace: {} as any,

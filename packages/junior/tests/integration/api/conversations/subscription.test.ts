@@ -23,7 +23,6 @@ import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conver
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 

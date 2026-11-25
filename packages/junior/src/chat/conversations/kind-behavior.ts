@@ -281,25 +281,18 @@ const LEAD: TurnBehavior = {
   },
 };
 
-/**
- * Return the behavior of one Turn. A `root` or `thread` Conversation with a
- * parent behaves as a Thread, so stored `thread` rows and roots with a parent
- * behave the same.
- */
+/** Return the behavior of one Turn. */
 export function turnBehavior(args: {
   kind: ConversationKind;
-  hasParent: boolean;
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
     case "root":
-    case "thread":
-      if (args.hasParent) {
-        return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
-      }
       return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
+    case "thread":
+      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
       if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
@@ -362,36 +355,9 @@ export function isTopLevel(
   return !conversation.parentConversationId;
 }
 
-/**
- * Return whether a Conversation of this kind can have, or must lack, a
- * parent. A `root` can have one: a Thread is a root with a parent.
- */
-export function kindMatchesParent(
-  kind: ConversationKind,
-  hasParent: boolean,
-): boolean {
-  switch (kind) {
-    case "root":
-      return true;
-    case "thread":
-    case "task":
-      return hasParent;
-    case "automation":
-    case "lead":
-      return !hasParent;
-  }
-}
-
-/**
- * Return the kind that people and API clients see. A root with a parent is
- * a Thread.
- */
-export function viewedKind(
-  conversation: Pick<Conversation, "kind" | "parentConversationId">,
-): ConversationKind {
-  return conversation.parentConversationId && conversation.kind !== "task"
-    ? "thread"
-    : conversation.kind;
+/** Return whether a Conversation of this kind has no parent. */
+export function isTopLevelKind(kind: ConversationKind): boolean {
+  return kind === "root" || kind === "automation" || kind === "lead";
 }
 
 /**

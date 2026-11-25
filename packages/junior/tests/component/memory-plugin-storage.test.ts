@@ -34,7 +34,6 @@ import {
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 

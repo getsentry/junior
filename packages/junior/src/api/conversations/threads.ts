@@ -1,4 +1,4 @@
-import { and, asc, desc, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
@@ -30,7 +30,7 @@ function findThreadPlacement(
       return placement ?? ancestor.conversationId;
     }
     if (ancestor.archivedAt) return undefined;
-    if (ancestor.kind !== "task") placement ??= ancestor.conversationId;
+    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
   return undefined;
 }
@@ -53,9 +53,7 @@ export async function readFeedThreadRecords(
     .where(
       and(
         inArray(juniorConversations.rootConversationId, rootIds),
-        // A Thread is any child that is not a task.
-        ne(juniorConversations.kind, "task"),
-        isNotNull(juniorConversations.parentConversationId),
+        eq(juniorConversations.kind, "thread"),
         isNull(juniorConversations.archivedAt),
       ),
     )

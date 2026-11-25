@@ -137,11 +137,7 @@ async function prepare() {
       },
       resolveActorIdentity: async () => await readActorIdentity(run.actor!),
       source: { kind: "parent_message" },
-      turnTools: turnBehavior({
-        kind: "task",
-        hasParent: true,
-        personInput: false,
-      }).tools,
+      turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
       workspace: {} as any,
     })["github_createPullRequest"]!.execute!(
       {

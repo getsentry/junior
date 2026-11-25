@@ -28,7 +28,7 @@ import {
 } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { juniorDestinations } from "@/db/schema";
 import {
   slackDestination,
   slackInvocationInput,
@@ -221,33 +221,6 @@ describe("Thread input", () => {
       expect(
         (parentWork?.messages ?? []).map((message) => message.input.text),
       ).toEqual([expect.stringMatching(/^<agent-result [^>]*status="done"/)]);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  // A Thread will be stored as a root with a parent. Behavior comes from the
-  // parent, so that row runs like a stored `thread` row.
-  it("runs a person's Turn in a root with a parent as a Thread", async () => {
-    const harness = await createHarness();
-    try {
-      const threadId = await startFinishedThread(harness);
-      await getDb()
-        .update(juniorConversations)
-        .set({ kind: "root" })
-        .where(eq(juniorConversations.conversationId, threadId));
-
-      await expect(
-        sendPersonMessage(harness, threadId, "person-1"),
-      ).resolves.toMatchObject({ status: "accepted" });
-      await harness.process(threadId);
-
-      expect(harness.runs.at(-1)).toMatchObject({
-        actor: webTestActor,
-        destination: slackDestination,
-        source: { kind: "web" },
-        surface: "api",
-      });
     } finally {
       await harness.close();
     }

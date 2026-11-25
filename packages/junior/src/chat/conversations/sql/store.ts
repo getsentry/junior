@@ -57,7 +57,7 @@ import {
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import { kindMatchesParent } from "@/chat/conversations/kind-behavior";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -745,10 +745,7 @@ export class SqlStore implements ConversationStore {
   }): Promise<void> {
     const { conversation } = args;
     if (
-      !kindMatchesParent(
-        conversation.kind,
-        Boolean(conversation.parentConversationId),
-      )
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
     ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,

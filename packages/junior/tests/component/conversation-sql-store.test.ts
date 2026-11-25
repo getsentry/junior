@@ -218,8 +218,8 @@ describe("conversation SQL store", () => {
           .insert(juniorConversations)
           .values({
             ...row,
-            conversationId: "agent:kind-automation-child",
-            kind: "automation",
+            conversationId: "agent:kind-root-child",
+            kind: "root",
             parentConversationId: "kind-root",
           }),
       ).rejects.toMatchObject({

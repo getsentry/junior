@@ -148,7 +148,7 @@ export function acceptsWebMessages(
     "conversationId" | "destination" | "kind" | "parentConversationId"
   >,
 ): boolean {
-  if (!isTopLevel(conversation)) return conversation.kind !== "task";
+  if (!isTopLevel(conversation)) return conversation.kind === "thread";
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (

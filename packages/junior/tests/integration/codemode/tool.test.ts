@@ -16,7 +16,6 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const ROOT_TURN_TOOLS = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 

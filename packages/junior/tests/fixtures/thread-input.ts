@@ -48,10 +48,8 @@ export async function createHarness() {
     run: async (run) => {
       assertRunConsistency(
         run,
-        Boolean(
-          (await conversationStore.get({ conversationId: run.conversationId }))
-            ?.parentConversationId,
-        ),
+        (await conversationStore.get({ conversationId: run.conversationId }))
+          ?.kind,
       );
       runs.push(run);
       otherOpenTurns.push(

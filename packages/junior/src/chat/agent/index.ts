@@ -302,7 +302,6 @@ export async function executeAgentRun(
           run.dispatch?.declaresResult
             ? "automation"
             : (conversation?.kind ?? "root"),
-          Boolean(conversation?.parentConversationId),
           conversationPrivacy,
           runLogContext,
           streamFn,
@@ -336,7 +335,6 @@ function reportFailedRun(
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
   conversationKind: ConversationKind,
-  hasParent: boolean,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: AgentRequestStreamFn | undefined,
@@ -346,7 +344,6 @@ async function executeAgentRunInPrivacyContext(
   const turnId = run.turnId;
   const behavior = turnBehavior({
     kind: conversationKind,
-    hasParent,
     personInput: isPersonInput(run.source.kind),
   });
   const input = {
@@ -419,7 +416,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run, hasParent);
+  assertRunConsistency(run, conversationKind);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;

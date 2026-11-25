@@ -21,7 +21,6 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
-  hasParent: false,
   personInput: true,
 }).tools;
 
