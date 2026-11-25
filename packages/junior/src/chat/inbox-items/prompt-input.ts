@@ -22,7 +22,7 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
 import { getInboxItem, type InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 

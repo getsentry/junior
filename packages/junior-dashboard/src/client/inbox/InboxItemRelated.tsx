@@ -76,16 +76,16 @@ function Note(props: { text: string | undefined }) {
 }
 
 /**
- * Show what a question rests on, beside its answer choices: the evidence
- * that the agent cited, and the other open items and Conversations on the
- * same subject or linked work. The reader can check both before answering.
+ * Show what is related to a question, beside its answer choices: the links
+ * that the agent added, then the other open items and Conversations on the
+ * same subject or linked work. The reader can check them before answering.
  */
-export function InboxItemEvidence(props: { item: InboxItemPayload }) {
+export function InboxItemRelated(props: { item: InboxItemPayload }) {
   const { item } = props;
-  const evidence = item.request?.evidence ?? [];
+  const links = item.request?.related ?? [];
   const relatedConversationIds = item.related?.conversationIds ?? [];
   const titles = useLinkedConversationTitles(relatedConversationIds);
-  const evidenceEntries: Entry[] = evidence.map((entry, index) => {
+  const linkEntries: Entry[] = links.map((entry, index) => {
     const href = entry.url ? inboxItemSubjectHref(entry.url) : undefined;
     return {
       key: `${index}`,
@@ -131,12 +131,12 @@ export function InboxItemEvidence(props: { item: InboxItemPayload }) {
       ),
     })),
   ];
-  if (evidenceEntries.length === 0 && relatedEntries.length === 0) {
+  if (linkEntries.length === 0 && relatedEntries.length === 0) {
     return null;
   }
   return (
     <div className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
-      <EntryList entries={evidenceEntries} label="Evidence" />
+      <EntryList entries={linkEntries} label="Links" />
       <EntryList entries={relatedEntries} label="Related" />
     </div>
   );

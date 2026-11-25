@@ -21,7 +21,7 @@ import {
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,
 // so these ids keep the name from before Review items became Inbox items.

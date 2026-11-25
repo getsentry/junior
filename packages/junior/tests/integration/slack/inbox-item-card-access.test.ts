@@ -37,12 +37,11 @@ describe("Slack webhook: who answers an Inbox item card", () => {
       title: "Rotate the deploy key",
       body: "The deploy key expires on Friday.",
       assignees: ["ana@example.com"],
-      dedupe_key: "deploy-key",
     });
 
     const posts = slackApiOutbox.messages();
     expect(posts.map((post) => post.params["channel"])).toEqual(["C123"]);
-    // A notice cites no evidence, so its title links nowhere.
+    // A notice with no related links has a title that links nowhere.
     expect(blocksOf(posts[0])[0]?.text).toContain("**Rotate the deploy key**");
     // A notice has nothing to answer, so its only control is Dismiss.
     expect(

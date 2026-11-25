@@ -24,8 +24,8 @@ export interface InboxItemSubject {
 /**
  * The core subject kinds:
  * - `question`: an item that an agent adds, a question or a notice. The id
- *   is the agent's key, or a new id for an item without a key, so it names
- *   only that item. What a question is about comes from its evidence.
+ *   is the question (`junior_questions`), so it names only that item. What
+ *   a question is about comes from its related links.
  * - `automation`: an Automation alert. The id is the Automation.
  * - `reply`: a reply notice. The id is the Conversation.
  * - `todo`: a To-do for a person. The id is `<conversationId>:<todoId>`.
@@ -49,22 +49,22 @@ export function subjectKindPlugin(kind: string): string | undefined {
 }
 
 /**
- * An item as its link reads it: its subject, and the request whose
- * evidence holds a question's links.
+ * An item as its link reads it: its subject, and the request that holds a
+ * question's related links.
  */
 export interface InboxItemLinkSource {
-  request?: { evidence?: ReadonlyArray<{ url?: string }> } | null | undefined;
+  request?: { related?: ReadonlyArray<{ url?: string }> } | null | undefined;
   subject: InboxItemSubject;
 }
 
 /**
  * Return what an agent's question or notice is about: the http(s) links of
- * its evidence, such as a pull request. Its key is no link. Other kinds
+ * its related links, such as a pull request. Its id is no link. Other kinds
  * return none.
  */
 export function questionLinks(item: InboxItemLinkSource): string[] {
   if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return [];
-  const links = (item.request?.evidence ?? []).flatMap((entry) => {
+  const links = (item.request?.related ?? []).flatMap((entry) => {
     const url = entry.url ? webLink(entry.url) : undefined;
     return url ? [url] : [];
   });

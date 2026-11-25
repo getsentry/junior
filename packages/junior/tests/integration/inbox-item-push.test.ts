@@ -230,7 +230,6 @@ const ASK = {
   title: "Approve the deploy?",
   body: "**Deploy** of `api` waits for you.",
   assignees: ["ana@example.com"],
-  dedupe_key: "deploy:api",
   request: {
     question: "Approve the deploy?",
     fields: [
@@ -300,12 +299,14 @@ describe("inbox item push", () => {
     ]);
 
     // A change of the same ask does not push again.
-    await execute(tools.add, { ...ASK, body: "The deploy still waits." });
+    await execute(tools.update, {
+      id: added.item.id,
+      body: "The deploy still waits.",
+    });
     // Everyone items and notices show only in the Inbox.
     const everyone = await execute(tools.add, {
       ...ASK,
       assignees: ["everyone"],
-      dedupe_key: "deploy:web",
     });
     // Ana takes it, so she is its assignee now, but needs no push for it.
     await actOnInboxItem({
@@ -319,7 +320,6 @@ describe("inbox item push", () => {
       title: "The deploy finished",
       body: "Nothing to do.",
       assignees: ["ana@example.com"],
-      dedupe_key: "deploy:done",
     });
     expect(pushes).toHaveLength(1);
 
@@ -338,7 +338,7 @@ describe("inbox item push", () => {
       .set({ status: "sent" })
       .where(eq(juniorInboxItemDeliveries.itemId, added.item.id));
     await syncInboxItemPush(added.item.id);
-    const next = await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
+    const next = await execute(tools.add, ASK);
     expect(pushes[1]).toMatchObject({
       close: [added.item.id],
       tag: next.item.id,
@@ -523,7 +523,6 @@ describe("inbox item push", () => {
     });
     await execute((await turnTools(ana)).add, {
       ...ASK,
-      dedupe_key: "deploy:db",
     });
     expect(pushes[3]?.["close"]).toBeUndefined();
   });
@@ -575,7 +574,6 @@ describe("inbox item push", () => {
     // She is active in Slack, so Slack's own notification reached her.
     const active = await execute(tools.add, {
       ...ASK,
-      dedupe_key: "deploy:web",
     });
     queueSlackApiResponse("users.getPresence", {
       body: usersGetPresenceOk("active"),
@@ -589,7 +587,6 @@ describe("inbox item push", () => {
     // She dismisses the card before the wait ends, so nothing pushes.
     const dismissed = await execute(tools.add, {
       ...ASK,
-      dedupe_key: "deploy:db",
     });
     await actOnInboxItem({
       action: "dismiss",
@@ -605,18 +602,17 @@ describe("inbox item push", () => {
     // She is unassigned while her push waits, so the wait ends with no
     // push. Assigned again, she gets it at the next heartbeat.
     await person("bob@example.com");
-    const reassigned = await execute(tools.add, {
-      ...ASK,
-      dedupe_key: "deploy:queue",
-    });
-    await execute(tools.add, {
-      ...ASK,
+    const reassigned = await execute(tools.add, ASK);
+    await execute(tools.update, {
+      id: reassigned.item.id,
       assignees: ["bob@example.com"],
-      dedupe_key: "deploy:queue",
     });
     await later(5 * 60_000);
     expect(pushes).toHaveLength(1);
-    await execute(tools.add, { ...ASK, dedupe_key: "deploy:queue" });
+    await execute(tools.update, {
+      id: reassigned.item.id,
+      assignees: ["ana@example.com"],
+    });
     await later(60_000);
     expect(pushes).toEqual([
       expect.objectContaining({ tag: away.item.id }),
@@ -642,7 +638,6 @@ describe("inbox item push", () => {
     const attached = await execute(first.add, {
       ...ASK,
       conversation_ids: [second.conversationId],
-      dedupe_key: "deploy:web",
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
@@ -864,7 +859,7 @@ describe("inbox item push", () => {
     expect((await asAna.act(next.item.id, { action: "dismiss" })).status).toBe(
       200,
     );
-    await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
+    await execute(tools.add, ASK);
     expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
   });
 });

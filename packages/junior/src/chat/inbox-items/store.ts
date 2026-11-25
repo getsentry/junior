@@ -35,6 +35,7 @@ import {
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
+  juniorQuestions,
   juniorUsers,
 } from "@/db/schema";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
@@ -50,7 +51,13 @@ import {
   type InboxItemReader,
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
-import type { InboxItemNoticeRequest, InboxItemRequest } from "./evidence";
+import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
+import {
+  inboxItemBody,
+  inboxItemRequest,
+  inboxItemTitle,
+  itemQuestion,
+} from "./question-content";
 import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
 
 export type { InboxItemSubject } from "./subjects";
@@ -159,12 +166,14 @@ export interface InboxItemContent {
 }
 
 /**
- * One stored item, with the Automation whose run owns it. The run of the
- * owner Conversation names that Automation, so the item stores no copy.
+ * One stored item, with the Automation whose run owns it, and the question
+ * of a question item. The run of the owner Conversation names that
+ * Automation, so the item stores no copy.
  */
 interface ItemRow {
   addedByAutomationId: string | null;
   item: typeof juniorInboxItems.$inferSelect;
+  question: typeof juniorQuestions.$inferSelect | null;
 }
 
 /** The join that reads the Automation of an item's owner run. */
@@ -173,15 +182,20 @@ const ownerRun = and(
   eq(juniorAutomationRuns.conversationId, juniorInboxItems.ownerId),
 );
 
-/** Select item rows with the Automation of their owner run. */
+/**
+ * Select item rows with the Automation of their owner run and the question
+ * of a question item.
+ */
 function selectItemRows(db: JuniorDatabase) {
   return db
     .select({
       addedByAutomationId: juniorAutomationRuns.automationId,
       item: juniorInboxItems,
+      question: juniorQuestions,
     })
     .from(juniorInboxItems)
-    .leftJoin(juniorAutomationRuns, ownerRun);
+    .leftJoin(juniorAutomationRuns, ownerRun)
+    .leftJoin(juniorQuestions, itemQuestion);
 }
 
 const userPhotos = alias(juniorIdentities, "inbox_item_user_photos");
@@ -253,7 +267,9 @@ async function hydrate(
     ...rows.flatMap((row) => (row.closedByUserId ? [row.closedByUserId] : [])),
   ]);
   return rows.map((row, index) => {
-    const addedByAutomationId = itemRows[index]!.addedByAutomationId;
+    const { addedByAutomationId, question } = itemRows[index]!;
+    // A question item's content is its question's.
+    const content = question ?? row;
     const closedBy = row.closedByUserId
       ? users.get(row.closedByUserId)
       : undefined;
@@ -263,7 +279,7 @@ async function hydrate(
         .filter((assignee) => assignee.itemId === row.id)
         .flatMap((assignee) => users.get(assignee.userId) ?? [])
         .sort((a, b) => a.email.localeCompare(b.email)),
-      body: row.body,
+      body: content.body ?? "",
       conversationIds: conversationRows
         .filter((link) => link.itemId === row.id)
         .map((link) => link.conversationId)
@@ -274,16 +290,16 @@ async function hydrate(
       owner: { id: row.ownerId, kind: row.ownerKind },
       status: row.status,
       subject: { id: row.subjectId, kind: row.subjectKind },
-      title: row.title,
+      title: content.title ?? "",
       updatedAt: row.updatedAt,
       visibility: row.visibility,
-      ...(row.answer ? { answer: row.answer } : undefined),
+      ...(content.answer ? { answer: content.answer } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(addedByAutomationId ? { addedByAutomationId } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
-      ...(row.request ? { request: row.request } : undefined),
+      ...(content.request ? { request: content.request } : undefined),
       ...(row.provider && row.providerTenantId
         ? {
             tenant: {
@@ -296,16 +312,30 @@ async function hydrate(
   });
 }
 
+function isQuestion(subject: InboxItemSubject): boolean {
+  return subject.kind === INBOX_SUBJECT_KINDS.question;
+}
+
+// A question item stores no content: its question holds it.
 function contentColumns(content: InboxItemContent) {
+  const own = !isQuestion(content.subject);
   return {
     assignedToEveryone: content.assignedToEveryone,
-    body: content.body,
+    body: own ? content.body : null,
     kind: content.kind,
-    request: content.request ?? null,
+    request: own ? (content.request ?? null) : null,
     subjectId: content.subject.id,
     subjectKind: content.subject.kind,
-    title: content.title,
+    title: own ? content.title : null,
     visibility: content.visibility,
+  };
+}
+
+function questionColumns(content: InboxItemContent) {
+  return {
+    body: content.body,
+    request: content.request ?? null,
+    title: content.title,
   };
 }
 
@@ -425,6 +455,25 @@ export async function insertInboxItem(
 ): Promise<InboxItem | undefined> {
   const now = new Date(input.nowMs);
   const id = await db.transaction(async (tx) => {
+    if (isQuestion(input.subject)) {
+      if (input.owner.kind !== "conversation") {
+        throw new Error("Only a Conversation asks a question");
+      }
+      // A concurrent add of the same question adds it first.
+      const asked = await tx
+        .insert(juniorQuestions)
+        .values({
+          ...questionColumns(input),
+          conversationId: input.owner.id,
+          createdAt: now,
+          id: input.subject.id,
+          turnId: input.addedByTurnId ?? null,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: juniorQuestions.id });
+      if (!asked[0]) return undefined;
+    }
     const inserted = await tx
       .insert(juniorInboxItems)
       .values({
@@ -490,6 +539,18 @@ export async function updateInboxItemContent(
       )
       .returning({ ...ownerColumns, id: juniorInboxItems.id });
     if (!updated[0]) return false;
+    if (isQuestion(input.subject)) {
+      await tx
+        .update(juniorQuestions)
+        .set({
+          ...questionColumns(input),
+          updatedAt: new Date(input.nowMs),
+          ...(input.addedByTurnId
+            ? { turnId: input.addedByTurnId }
+            : undefined),
+        })
+        .where(eq(juniorQuestions.id, input.subject.id));
+    }
     await replaceLinks(tx, updated[0].id, input);
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
@@ -513,26 +574,43 @@ export async function closeInboxItem(
   },
 ): Promise<boolean> {
   const now = new Date(input.nowMs);
-  const updated = await db
-    .update(juniorInboxItems)
-    .set({
-      answer: input.answer ?? null,
-      closeReason: input.reason ?? null,
-      closedAt: now,
-      closedByUserId: input.closedByUserId ?? null,
-      status: input.status,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(juniorInboxItems.id, input.id),
-        eq(juniorInboxItems.status, "open"),
-      ),
-    )
-    .returning(ownerColumns);
+  const updated = await db.transaction(async (tx) => {
+    const closed = await tx
+      .update(juniorInboxItems)
+      .set({
+        // A question item's answer goes to its question.
+        answer: input.answer
+          ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
+          : null,
+        closeReason: input.reason ?? null,
+        closedAt: now,
+        closedByUserId: input.closedByUserId ?? null,
+        status: input.status,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(juniorInboxItems.id, input.id),
+          eq(juniorInboxItems.status, "open"),
+        ),
+      )
+      .returning({
+        ...ownerColumns,
+        subjectId: juniorInboxItems.subjectId,
+        subjectKind: juniorInboxItems.subjectKind,
+      });
+    const item = closed[0];
+    if (input.answer && item?.subjectKind === INBOX_SUBJECT_KINDS.question) {
+      await tx
+        .update(juniorQuestions)
+        .set({ answer: input.answer, updatedAt: now })
+        .where(eq(juniorQuestions.id, item.subjectId));
+    }
+    await touchConversationDetail(tx, ownerConversationIds(closed));
+    return closed;
+  });
   if (updated.length === 0) return false;
   await clearInboxItemDeliveries(db, [input.id], input.nowMs);
-  await touchConversationDetail(db, ownerConversationIds(updated));
   return true;
 }
 
@@ -776,10 +854,7 @@ function searchConditions(
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
-      or(
-        ilike(juniorInboxItems.title, pattern),
-        ilike(juniorInboxItems.body, pattern),
-      )!,
+      or(ilike(inboxItemTitle, pattern), ilike(inboxItemBody, pattern))!,
     );
   }
   return conditions;
@@ -820,7 +895,7 @@ export async function countInboxItemsNeedingUserBySubject(
           Number,
         ),
       decisions:
-        sql<number>`count(*) filter (where ${juniorInboxItems.request} -> 'question' is not null)`.mapWith(
+        sql<number>`count(*) filter (where ${inboxItemRequest} -> 'question' is not null)`.mapWith(
           Number,
         ),
       subjectId: juniorInboxItems.subjectId,
@@ -832,6 +907,7 @@ export async function countInboxItemsNeedingUserBySubject(
       total: count(),
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(inboxItemNeedsUserNow(userId))
     .groupBy(juniorInboxItems.subjectKind, juniorInboxItems.subjectId);
 }
@@ -875,6 +951,7 @@ export async function searchInboxItems(
       addedByAutomationId: juniorAutomationRuns.automationId,
       item: juniorInboxItems,
       ownerRootConversationId: juniorConversations.rootConversationId,
+      question: juniorQuestions,
     })
     .from(juniorInboxItems)
     .leftJoin(
@@ -882,6 +959,7 @@ export async function searchInboxItems(
       inboxItemOwnedByConversation(juniorConversations.conversationId),
     )
     .leftJoin(juniorAutomationRuns, ownerRun)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorInboxItems.status, "open")),

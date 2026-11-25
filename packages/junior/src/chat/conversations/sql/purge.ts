@@ -1,10 +1,22 @@
-import { and, asc, eq, inArray, isNull, ne, not, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  not,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import { deleteTodos } from "@/chat/todos/store";
 import { inboxItemAddedByAnyAutomation } from "@/chat/inbox-items/access";
+import { itemQuestion } from "@/chat/inbox-items/question-content";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import {
   juniorConversationEvents,
@@ -13,6 +25,7 @@ import {
   juniorDestinations,
   juniorAgentBindings,
   juniorInboxItems,
+  juniorQuestions,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
@@ -421,6 +434,22 @@ export async function purgeConversationTree(
                   or(
                     ne(juniorInboxItems.status, "open"),
                     not(inboxItemAddedByAnyAutomation()),
+                  ),
+                ),
+              );
+            // A question holds the content of its item, so it goes with it.
+            await executor
+              .db()
+              .delete(juniorQuestions)
+              .where(
+                and(
+                  inArray(juniorQuestions.conversationId, ids),
+                  notExists(
+                    executor
+                      .db()
+                      .select({ id: juniorInboxItems.id })
+                      .from(juniorInboxItems)
+                      .where(itemQuestion),
                   ),
                 ),
               );

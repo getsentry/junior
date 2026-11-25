@@ -1,6 +1,6 @@
 /**
  * The web links of Inbox item subjects. A question's link is the first
- * link of its evidence. Another subject whose id is a web URL is its own
+ * of its related links. Another subject whose id is a web URL is its own
  * link. A plugin kind that names a code change (`codeChange`) has
  * the code change's provider id, so its link comes from the code change
  * records, which follow a renamed or moved repository. The item stores no

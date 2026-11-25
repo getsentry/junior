@@ -2,7 +2,7 @@ import type { InboxItem } from "@/chat/inbox-items/store";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { resolveMentions } from "../mentions";
 import type { ActorIdentity } from "../schema/conversation";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * Resolve the people that each Inbox item's title, body, and question

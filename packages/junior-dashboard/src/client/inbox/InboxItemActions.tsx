@@ -11,7 +11,7 @@ import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
-import { InboxItemEvidence } from "./InboxItemEvidence";
+import { InboxItemRelated } from "./InboxItemRelated";
 import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -202,7 +202,7 @@ export function InboxItemActions(props: {
             </div>
           </section>
           {props.context}
-          <InboxItemEvidence item={item} />
+          <InboxItemRelated item={item} />
           <UserInputForm
             draft={draft}
             onUnsentChange={setUnsent}

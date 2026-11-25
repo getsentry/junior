@@ -3,8 +3,13 @@ import { and, eq, inArray, like, lte, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorInboxItemConversations, juniorInboxItems } from "@/db/schema";
+import {
+  juniorInboxItemConversations,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 import { inboxItemVisibleTo, type InboxItemReader } from "./access";
+import { inboxItemTitle, itemQuestion } from "./question-content";
 import { ownerConversationId, type InboxItem } from "./store";
 import { subjectKindPlugin } from "./subjects";
 
@@ -50,12 +55,12 @@ function newestInGroup(group: AnyPgColumn) {
 const candidateColumns = {
   createdAt: juniorInboxItems.createdAt,
   id: juniorInboxItems.id,
-  title: juniorInboxItems.title,
+  title: inboxItemTitle.as("title"),
 };
 
 /**
  * The outside object that a plugin item is about, which related work
- * matches: its subject id, such as a pull request. A question's evidence
+ * matches: its subject id, such as a pull request. A question's related
  * links show on its card, but they relate it to no other item. Other core
  * kinds relate to nothing by object.
  */
@@ -87,6 +92,7 @@ export async function readRelatedReviewWork(
       rank: newestInGroup(juniorInboxItems.subjectId).as("object_rank"),
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         openVisible(reader),
@@ -109,6 +115,7 @@ export async function readRelatedReviewWork(
       juniorInboxItems,
       eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
     )
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         inArray(juniorInboxItemConversations.conversationId, linkIds),

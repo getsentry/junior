@@ -72,7 +72,7 @@ import {
   resolveInboxItemSubjects,
   type InboxSubjectView,
 } from "./resolve-subjects";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -464,7 +464,7 @@ export function createInboxItemRoutes(services: {
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
       // Pull requests count a code change's own asks. A question that cites
-      // one is a decision, so its evidence is not read.
+      // one is a decision, so its related links are not read.
       const links = await readSubjectLinks(
         db,
         subjects.map((subject) => ({

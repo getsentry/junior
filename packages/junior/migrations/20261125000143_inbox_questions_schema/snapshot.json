@@ -1,0 +1,407 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e9774788-9b7a-4fba-a7ac-beba0fd9ee30",
+  "prevIds": ["a0694ee7-a7bb-4440-8283-3cb5add2ee08"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_questions"],
+      "writes": [
+        "s|tbl|public.junior_questions",
+        "n|tbl|public.junior_questions",
+        "e|tbl|public.junior_questions",
+        "n|rel|public.junior_questions",
+        "n|type|public.junior_questions",
+        "n|rel|public.junior_questions_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_inbox_items", "title"],
+      "writes": ["s|colprop|public.junior_inbox_items.title.notNull"],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.title"
+      ],
+      "sqlHash": "833d74c3bcd16cec"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_inbox_items", "body"],
+      "writes": ["s|colprop|public.junior_inbox_items.body.notNull"],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.body"
+      ],
+      "sqlHash": "568abfd4e22e842a"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_conversation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_conversation_idx",
+        "n|idx|public.junior_questions_conversation_idx",
+        "e|idx|public.junior_questions_conversation_idx",
+        "n|rel|public.junior_questions_conversation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_questions",
+        "n|sch|public",
+        "n|col|public.junior_questions.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_search_idx",
+        "n|idx|public.junior_questions_search_idx",
+        "e|idx|public.junior_questions_search_idx",
+        "n|rel|public.junior_questions_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_questions", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_title_trgm_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_title_trgm_idx",
+        "n|idx|public.junior_questions_title_trgm_idx",
+        "e|idx|public.junior_questions_title_trgm_idx",
+        "n|rel|public.junior_questions_title_trgm_idx"
+      ],
+      "reads": ["n|tbl|public.junior_questions", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_questions"],
+      "writes": [
+        "s|fk|public.junior_questions.junior_questions_HSrO9i8pUj0G_fkey",
+        "n|fk|public.junior_questions.junior_questions_HSrO9i8pUj0G_fkey",
+        "e|fk|public.junior_questions.junior_questions_HSrO9i8pUj0G_fkey",
+        "n|con|public.junior_questions.junior_questions_HSrO9i8pUj0G_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_questions",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_questions.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.kind",
+        "n|col|public.junior_inbox_items.request",
+        "n|col|public.junior_inbox_items.answer",
+        "n|col|public.junior_inbox_items.subject_kind",
+        "e|col|public.junior_inbox_items.kind",
+        "e|col|public.junior_inbox_items.request",
+        "e|col|public.junior_inbox_items.answer",
+        "e|col|public.junior_inbox_items.subject_kind"
+      ],
+      "sqlHash": "e3747a4d3b5f2f77"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_questions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "turn_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "body",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "request",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "answer",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_conversation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "(setweight(to_tsvector('simple', \"title\"), 'A') || setweight(to_tsvector('simple', \"body\"), 'B'))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_title_trgm_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lower(\"title\") gin_trgm_ops",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_HSrO9i8pUj0G_fkey",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"title\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"body\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_kind_check\"]",
+      "set": {
+        "value": "(\"kind\" = 'notice' and \"request\" -> 'question' is null and \"answer\" is null) or (\"kind\" = 'action' and (\"request\" -> 'question' is not null or (\"subject_kind\" <> 'reply' and \"answer\" is null)))"
+      }
+    }
+  ]
+}

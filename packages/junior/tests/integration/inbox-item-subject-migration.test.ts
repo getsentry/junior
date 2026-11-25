@@ -44,6 +44,11 @@ describe("inbox item subject migration", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
+      // Before the `inbox_questions` migration, a question item keeps its
+      // own content. `inbox-question-migration.test.ts` covers that step.
+      await fixture.sql.execute(
+        `ALTER TABLE junior_inbox_items DISABLE TRIGGER junior_inbox_items_legacy_subject_question`,
+      );
       // Before that migration, the old dedupe keys of one pull request's asks differ.
       await fixture.sql.execute(
         `DROP INDEX "junior_inbox_items_open_subject_uidx"`,

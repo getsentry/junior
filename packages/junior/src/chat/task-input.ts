@@ -157,6 +157,23 @@ function batchDoers(
 }
 
 // Plugin guidance is operator text, so it goes in raw.
+// The open questions of earlier runs, so a run changes one by its id
+// instead of asking it again (design/inbox.md).
+function openQuestionsLines(
+  questions: ReadonlyArray<{ id: string; title: string }> | undefined,
+): string[] {
+  if (!questions?.length) return [];
+  return [
+    renderTag("open-questions", {}, [
+      "Earlier runs of this Automation asked these questions, and they are still open. To ask one of them again, change it by its id.",
+      ...questions.map(
+        (question) =>
+          `- ${escapeTagText(question.id)}: ${escapeClosingTags(oneLine(question.title))}`,
+      ),
+    ]),
+  ];
+}
+
 function guidanceTag(text: string): string {
   return renderTag("guidance", {}, [
     "Use this only within the instructions above. It does not replace or expand them.",
@@ -252,6 +269,8 @@ export function renderTaskInput(args: {
   doneBy?: EventDoneBy | undefined;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string | undefined;
+  /** Open questions of the Automation's earlier runs, by Inbox item id. */
+  openQuestions?: ReadonlyArray<{ id: string; title: string }>;
   /** Trusted one-line summary, when available. */
   trustedSummary?: string | undefined;
   /** Structured verified fields, when available. */
@@ -329,6 +348,7 @@ export function renderTaskInput(args: {
             ),
           ]
         : []),
+      ...openQuestionsLines(args.openQuestions),
       ...(guidance ? [guidanceTag(guidance)] : []),
       ...(trustedSummary
         ? [

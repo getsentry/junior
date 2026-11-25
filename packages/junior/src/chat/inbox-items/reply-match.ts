@@ -1,7 +1,7 @@
 import { botConfig } from "@/chat/config";
 import { completeDecision } from "@/chat/core-model";
 import type { InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
 /** A slow decision keeps the items open instead of delaying the close. */

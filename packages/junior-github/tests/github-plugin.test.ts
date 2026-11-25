@@ -1074,7 +1074,7 @@ describe("github plugin", () => {
       // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
-        '"github-issue-implement:getsentry/junior#660"',
+        '"Start a Thread to implement getsentry/junior#660?"',
       ),
       number: 660,
       subscribable: {

@@ -4,7 +4,9 @@ import {
   juniorConversations,
   juniorInboxItemConversations,
   juniorInboxItems,
+  juniorQuestions,
 } from "@/db/schema";
+import { inboxItemTitle, itemQuestion } from "./question-content";
 import { INBOX_SUBJECT_KINDS, subjectKindPlugin } from "./subjects";
 import { inboxItemNeedsUserNow } from "./store";
 
@@ -44,7 +46,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
     createdAt: juniorInboxItems.createdAt,
     itemId: juniorInboxItems.id,
     subjectKind: juniorInboxItems.subjectKind,
-    title: juniorInboxItems.title,
+    title: inboxItemTitle.as("title"),
   };
   return db
     .select({ conversationId: waitingRootId, ...columns })
@@ -53,6 +55,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
       juniorInboxItems,
       eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
     )
+    .leftJoin(juniorQuestions, itemQuestion)
     .leftJoin(
       juniorConversations,
       eq(
@@ -65,6 +68,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
       db
         .select({ conversationId: waitingTodoRootId, ...columns })
         .from(juniorInboxItems)
+        .leftJoin(juniorQuestions, itemQuestion)
         .leftJoin(
           juniorConversations,
           eq(juniorConversations.conversationId, juniorInboxItems.ownerId),

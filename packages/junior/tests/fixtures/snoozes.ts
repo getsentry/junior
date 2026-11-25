@@ -172,8 +172,8 @@ export async function addPullRequestItem(
         },
       ],
       question: title,
-      // A question about a pull request cites it as evidence.
-      evidence: [{ label: "Pull request", url }],
+      // A question about a pull request links it.
+      related: [{ label: "Pull request", url }],
     },
     subject: { id: `review:${url}:${title}`, kind: "question" },
     tenant: { provider: "slack", providerTenantId: "T123" },

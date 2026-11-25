@@ -3,7 +3,7 @@ import {
   objectTypeSchema,
   ownedObjectAnnotationSchema,
 } from "@sentry/junior-plugin-api";
-import { inboxItemRequestSchema } from "@/chat/inbox-items/evidence";
+import { inboxItemRequestSchema } from "@/chat/inbox-items/request";
 import { actorIdentitySchema } from "./conversation";
 import {
   inboxSnoozeResourceSchema,

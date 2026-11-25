@@ -15,7 +15,12 @@ import {
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
 import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
 import { juniorConversations } from "@/db/schema/conversations";
+import {
+  inboxItemRequest,
+  itemQuestion,
+} from "@/chat/inbox-items/question-content";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
+import { juniorQuestions } from "@/db/schema/questions";
 import {
   inboxItemInRow,
   inboxItemSnoozedBy,
@@ -129,11 +134,12 @@ async function visibleRowItems(
     .select({
       canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
       id: juniorInboxItems.id,
-      request: juniorInboxItems.request,
+      request: inboxItemRequest,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         eq(juniorInboxItems.status, "open"),

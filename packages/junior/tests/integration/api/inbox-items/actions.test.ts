@@ -146,7 +146,6 @@ describe("inbox item actions API", () => {
       title: "Review acme entry",
       body: "The acme entry changed its license.",
       assignees: ["ana@example.com"],
-      dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
     });
     // Created later, so it is the newest item.
@@ -156,7 +155,6 @@ describe("inbox item actions API", () => {
       title: "Review globex entry",
       body: "The globex entry changed its license.",
       assignees: ["ana@example.com"],
-      dedupe_key: "fair-source:entry:globex",
       request: REQUEST,
     });
 
@@ -294,7 +292,6 @@ describe("inbox item actions API", () => {
       body: "The acme entry changed its license.",
       assignees: ["ana@example.com", "ben@example.com"],
       conversation_ids: ["slack:CPUB:1.000002"],
-      dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
     });
     // A notice does not need Ana, so it does not count.
@@ -304,7 +301,6 @@ describe("inbox item actions API", () => {
       body: "Read it when you have time.",
       assignees: ["ana@example.com"],
       conversation_ids: ["slack:CPUB:1.000003"],
-      dedupe_key: "report:weekly",
     });
 
     const anaCount = await (
@@ -695,11 +691,11 @@ describe("inbox item actions API", () => {
               }
             : input.kind === "prQuestion"
               ? {
-                  // A question about a pull request cites it as evidence.
+                  // A question about a pull request links it.
                   kind: "action",
                   request: {
                     ...REQUEST,
-                    evidence: [{ label: "The pull request", url: pr.id }],
+                    related: [{ label: "The pull request", url: pr.id }],
                   },
                   subject: { id: `bundles:${index}`, kind: "question" },
                 }
@@ -769,7 +765,6 @@ describe("inbox item actions API", () => {
       title: "Pull request needs review",
       body: "It waits on a reviewer.",
       assignees: ["everyone"],
-      dedupe_key: "pr:7",
       request: REQUEST,
     });
 
@@ -794,7 +789,6 @@ describe("inbox item actions API", () => {
       title: "Another pull request needs review",
       body: "It waits on a reviewer too.",
       assignees: ["everyone"],
-      dedupe_key: "pr:8",
     });
 
     // The list pages the open items, oldest first. A cursor reads the next

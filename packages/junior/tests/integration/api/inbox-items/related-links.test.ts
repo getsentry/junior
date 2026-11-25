@@ -26,7 +26,7 @@ const PRIVATE_ID = "slack:DPRIV:1.000005";
 const OTHER_TENANT_ID = "slack:CEXT:1.000006";
 const BUSY_ID = "slack:CPUB:1.000007";
 const SMOKE_ID = "slack:CPUB:1.000008";
-// A question is about the links of its evidence, such as a release page.
+// A question is about its related links, such as a release page.
 const RELEASE_URL = "https://sentry.example.com/releases/payments-v42";
 const PR_URL = "https://github.com/getsentry/junior/pull/4164";
 
@@ -102,12 +102,12 @@ function api(fixture: ConversationFixture, viewer: User) {
     app.request(`http://localhost/api/inbox-items${path}`);
 }
 
-describe("inbox item evidence", () => {
+describe("inbox item related links", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("shows a question's evidence and the open work it links", async () => {
+  it("shows a question's related links and the open work it links", async () => {
     const fixture = await createConversationFixture();
     for (const id of [
       ROLLOUT_ID,
@@ -122,7 +122,7 @@ describe("inbox item evidence", () => {
     await slackConversation(OTHER_TENANT_ID, "CEXT", "public", "T999");
     const ana = await user("ana@example.com");
     await user("ben@example.com");
-    const evidence = [
+    const links = [
       { label: "Release", url: RELEASE_URL },
       {
         label: "Canary error rate",
@@ -139,20 +139,19 @@ describe("inbox item evidence", () => {
       assignees: ["ana@example.com"],
       body: "The canary is clean.",
       conversation_ids: [ROLLBACK_ID],
-      dedupe_key: "rollout:payments-v42",
       kind: "action",
-      request: { ...REQUEST, evidence },
+      request: { ...REQUEST, related: links },
       title: "Approve the payments-v42 rollout",
     };
 
-    // Each entry names one source, and a cited Conversation passes the
+    // Each entry names one link, and a related Conversation passes the
     // link check, so a private one cannot reach a public item.
     await expect(
       add(ROLLOUT_ID, {
         ...ask,
         request: {
           ...REQUEST,
-          evidence: [
+          related: [
             {
               label: "Both",
               url: RELEASE_URL,
@@ -167,7 +166,7 @@ describe("inbox item evidence", () => {
         ...ask,
         request: {
           ...REQUEST,
-          evidence: [{ label: "DM", conversation_id: PRIVATE_ID }],
+          related: [{ label: "DM", conversation_id: PRIVATE_ID }],
         },
       }),
     ).rejects.toThrow(`Conversation ${PRIVATE_ID} is not found.`);
@@ -176,16 +175,17 @@ describe("inbox item evidence", () => {
         ...ask,
         request: {
           ...REQUEST,
-          evidence: [{ label: "Script", url: "javascript:alert(1)" }],
+          related: [{ label: "Script", url: "javascript:alert(1)" }],
         },
       }),
     ).rejects.toThrow("Use an http(s) URL.");
 
     const added = await add(ROLLOUT_ID, ask);
-    expect(added.item.request.evidence).toEqual(evidence);
-    // Other work in the cited Conversation, in the linked Conversation, and
-    // a question that cites the same release. Only the linked Conversation's
-    // work is related: evidence relates a question to no other item.
+    expect(added.item.request.related).toEqual(links);
+    // Other work in the related Conversation, in the linked Conversation,
+    // and a question that links the same release. Only the linked
+    // Conversation's work is related: a related link relates a question to
+    // no other item.
     await add(LATENCY_ID, {
       assignees: ["ana@example.com"],
       body: "p95 went from 210 ms to 890 ms after payments-v42.",
@@ -204,7 +204,7 @@ describe("inbox item evidence", () => {
       kind: "action",
       request: {
         ...REQUEST,
-        evidence: [{ label: "payments-v42", url: RELEASE_URL }],
+        related: [{ label: "payments-v42", url: RELEASE_URL }],
       },
       title: "Run the payments-v42 smoke tests?",
     });
@@ -214,7 +214,7 @@ describe("inbox item evidence", () => {
       kind: "action",
       request: {
         ...REQUEST,
-        evidence: [
+        related: [
           {
             label: "billing-v7",
             url: "https://sentry.example.com/releases/billing-v7",
@@ -230,7 +230,7 @@ describe("inbox item evidence", () => {
       kind: "action",
       request: {
         ...REQUEST,
-        evidence: [{ label: "payments-v42", url: RELEASE_URL }],
+        related: [{ label: "payments-v42", url: RELEASE_URL }],
       },
       title: "Release notes elsewhere",
     });
@@ -247,18 +247,18 @@ describe("inbox item evidence", () => {
     const rollout = list.items.find(
       (item: { id: string }) => item.id === added.item.id,
     );
-    expect(rollout.request.evidence).toEqual([
-      evidence[0],
-      evidence[1],
+    expect(rollout.request.related).toEqual([
+      links[0],
+      links[1],
       {
         conversationId: LATENCY_ID,
         label: "Checkout latency",
         note: "p95 rose after payments-v42.",
       },
     ]);
-    // The question's first evidence link is its card.
+    // The question's first related link is its card.
     expect(rollout.subject).toMatchObject({
-      id: "rollout:payments-v42",
+      id: added.item.subject.id,
       kind: "question",
       url: RELEASE_URL,
     });
@@ -270,7 +270,7 @@ describe("inbox item evidence", () => {
     const single = await (await api(fixture, ana)(`/${added.item.id}`)).json();
     expect(single.related).toEqual(rollout.related);
 
-    // A change that does not name the evidence keeps it.
+    // A change that does not name the related links keeps them.
     const update = createUpdateInboxItemTool(context(ROLLOUT_ID), services);
     const changed = await (update as any).execute(
       (update as any).prepareArguments({
@@ -279,16 +279,16 @@ describe("inbox item evidence", () => {
       }),
       {},
     );
-    expect(changed.item.request.evidence).toEqual(evidence);
+    expect(changed.item.request.related).toEqual(links);
   });
 
-  it("links an agent notice to the pull request that it cites", async () => {
+  it("links an agent notice to its pull request", async () => {
     // The GitHub plugin's link types read pull request links.
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const fixture = await createConversationFixture();
     await slackConversation(ROLLOUT_ID, "CPUB", "public");
     const ana = await user("ana@example.com");
-    const cites = [{ label: "The pull request", url: PR_URL }];
+    const links = [{ label: "The pull request", url: PR_URL }];
     const notice = {
       assignees: ["ana@example.com"],
       body: "It merged after the canary passed.",
@@ -296,36 +296,36 @@ describe("inbox item evidence", () => {
       title: "The payments-v42 pull request merged",
     };
 
-    // A notice asks nothing, so its request holds only evidence.
+    // A notice asks nothing, so its request holds only related links.
     await expect(
-      add(ROLLOUT_ID, { ...notice, request: { ...REQUEST, evidence: cites } }),
+      add(ROLLOUT_ID, { ...notice, request: { ...REQUEST, related: links } }),
     ).rejects.toThrow("A notice asks nothing");
     const merged = await add(ROLLOUT_ID, {
       ...notice,
-      request: { evidence: cites },
+      request: { related: links },
     });
-    expect(merged.item.request).toEqual({ evidence: cites });
+    expect(merged.item.request).toEqual({ related: links });
     const rollout = await add(ROLLOUT_ID, {
       assignees: ["ana@example.com"],
       body: "The pull request merged.",
       kind: "action",
-      request: { ...REQUEST, evidence: cites },
+      request: { ...REQUEST, related: links },
       title: "Roll out payments-v42?",
     });
 
     const list = await (await api(fixture, ana)("")).json();
     const listed = (id: string) =>
       list.items.find((item: { id: string }) => item.id === id);
-    // The notice's evidence link is its card, like a question's.
+    // The notice's related link is its card, like a question's.
     expect(listed(merged.item.id)).toMatchObject({
       kind: "notice",
       subject: { kind: "question", objectType: "code_change", url: PR_URL },
     });
     expect(listed(merged.item.id).request).toBeUndefined();
-    // Citing one pull request does not relate the two.
+    // Linking one pull request does not relate the two.
     expect(listed(rollout.item.id).related).toBeUndefined();
     expect(listed(merged.item.id).related).toBeUndefined();
-    // Only the question is a decision. A question that cites a pull
+    // Only the question is a decision. A question that links a pull
     // request is not a pull request's own ask.
     expect(await (await api(fixture, ana)("/count")).json()).toMatchObject({
       decisions: 1,

@@ -3,12 +3,20 @@ import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias, union, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { juniorCodeChanges, juniorInboxItems } from "@/db/schema";
+import {
+  juniorCodeChanges,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 import { codeChangeSearchDocument } from "@/db/schema/code";
 import {
   inboxItemFuzzyTitle,
   inboxItemSearchDocument,
 } from "@/db/schema/inbox-items";
+import {
+  questionFuzzyTitle,
+  questionSearchDocument,
+} from "@/db/schema/questions";
 import { rankSearchMatches, scoredSearchMatches } from "@/search/match-ranking";
 import {
   fuzzyMatch,
@@ -24,12 +32,13 @@ import {
   inboxItemVisibleTo,
 } from "./access";
 import { codeChangeSubjectProvider } from "./subject-links";
+import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 /** An Inbox item that matches a search. */
 export type InboxItemSearchMatch = Pick<
   typeof juniorInboxItems.$inferSelect,
-  "id" | "status" | "title"
->;
+  "id" | "status"
+> & { title: string };
 
 // The subject kinds whose objects are code changes. Each one searches its
 // objects through the code change index, so a pull request title finds its
@@ -55,13 +64,26 @@ function subjectCodeChange(
   )!;
 }
 
+// The question of a question item.
+function subjectQuestion(
+  item: { subjectId: AnyPgColumn; subjectKind: AnyPgColumn },
+  question: { id: AnyPgColumn },
+): SQL {
+  return and(
+    eq(item.subjectKind, INBOX_SUBJECT_KINDS.question),
+    eq(question.id, item.subjectId),
+  )!;
+}
+
 /**
  * Find the items of the viewer's own Inbox, open and closed, as the Inbox
  * shows them. A word of the title or body starts with each word of the
- * query, or the title is close to the query despite a typo. An item whose
- * subject is a code change also matches on the code change's title. Open
- * items come first, each group best match first. Reads the GIN indexes
- * `junior_inbox_items_search_idx`, `junior_inbox_items_title_trgm_idx`, and
+ * query, or the title is close to the query despite a typo. A question
+ * item matches on its question's title and body. An item whose subject is
+ * a code change also matches on the code change's title. Open items come
+ * first, each group best match first. Reads the GIN indexes
+ * `junior_inbox_items_search_idx`, `junior_inbox_items_title_trgm_idx`,
+ * `junior_questions_search_idx`, `junior_questions_title_trgm_idx`, and
  * `junior_code_changes_search_idx`.
  */
 export async function searchInboxItemsForUser(
@@ -90,6 +112,21 @@ export async function searchInboxItemsForUser(
     )
     .orderBy(desc(items.updatedAt), desc(items.id))
     .limit(SEARCH_RANK_WINDOW);
+  const questionMatches = db
+    .select({ id: items.id })
+    .from(juniorQuestions)
+    .innerJoin(items, subjectQuestion(items, juniorQuestions))
+    .where(
+      and(
+        or(
+          prefixMatch(questionSearchDocument(juniorQuestions), query),
+          fuzzyMatch(questionFuzzyTitle(juniorQuestions), query),
+        ),
+        visible,
+      ),
+    )
+    .orderBy(desc(items.updatedAt), desc(items.id))
+    .limit(SEARCH_RANK_WINDOW);
   const kinds = codeChangeSubjectKinds();
   const subjectMatches = db
     .select({ id: items.id })
@@ -105,13 +142,17 @@ export async function searchInboxItemsForUser(
     .orderBy(desc(items.updatedAt), desc(items.id))
     .limit(SEARCH_RANK_WINDOW);
   const candidates = (
-    kinds.length ? union(ownMatches, subjectMatches) : ownMatches
+    kinds.length
+      ? union(ownMatches, questionMatches, subjectMatches)
+      : union(ownMatches, questionMatches)
   ).as("inbox_item_candidates");
   const item = alias(juniorInboxItems, "inbox_item");
+  const question = alias(juniorQuestions, "inbox_item_question");
   const change = alias(juniorCodeChanges, "inbox_item_change");
-  const document = inboxItemSearchDocument(item);
+  // A question item has no text of its own, so its question's text counts.
+  const document = sql`coalesce(${questionSearchDocument(question)}, ${inboxItemSearchDocument(item)})`;
   const changeDocument = codeChangeSearchDocument(change);
-  const title = inboxItemFuzzyTitle(item);
+  const title = sql`coalesce(${questionFuzzyTitle(question)}, ${inboxItemFuzzyTitle(item)})`;
   const rows = await db
     .select({
       changeLexical: prefixRank(changeDocument, query),
@@ -122,11 +163,12 @@ export async function searchInboxItemsForUser(
       lexical: prefixRank(document, query),
       lexicalMatched: prefixMatch(document, query),
       status: item.status,
-      title: item.title,
+      title: sql<string>`coalesce(${question.title}, ${item.title}, '')`,
       updatedAt: item.updatedAt,
     })
     .from(candidates)
     .innerJoin(item, eq(item.id, candidates.id))
+    .leftJoin(question, subjectQuestion(item, question))
     .leftJoin(
       change,
       and(

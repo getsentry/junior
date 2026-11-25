@@ -32,7 +32,7 @@ import {
   takeInboxItem,
   type InboxItem,
 } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only

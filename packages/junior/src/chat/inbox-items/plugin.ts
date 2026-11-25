@@ -12,7 +12,7 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowInboxItem } from "./changes";
-import { inboxItemRequestSchema, type InboxItemRequest } from "./evidence";
+import { inboxItemRequestSchema, type InboxItemRequest } from "./request";
 import {
   closeInboxItem,
   getOpenInboxItemBySubject,
@@ -24,7 +24,7 @@ import {
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
 import { pluginSubjectKind, subjectKindLabel } from "./subjects";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its

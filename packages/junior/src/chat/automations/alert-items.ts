@@ -19,7 +19,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   inboxItemRequestSchema,
   type InboxItemRequest,
-} from "@/chat/inbox-items/evidence";
+} from "@/chat/inbox-items/request";
 import { USER_INPUT_LIMITS } from "@/chat/inbox-items/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";

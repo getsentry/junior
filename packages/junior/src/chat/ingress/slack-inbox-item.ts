@@ -54,7 +54,7 @@ import {
   type SlackInteractionInputFacts,
 } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /** What an Inbox item interaction handler needs from Slack ingress. */
 export interface SlackInboxItemServices {

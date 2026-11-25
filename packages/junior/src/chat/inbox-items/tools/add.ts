@@ -6,8 +6,6 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
   questionSubject,
-  canAgentChangeInboxItem,
-  canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
   requireInboxItemLinks,
@@ -20,17 +18,13 @@ import {
   type ResolvedAssignees,
 } from "@/chat/inbox-items/assignees";
 import type {
-  InboxItemEvidence,
+  InboxItemRelatedLink,
   InboxItemNoticeRequest,
   InboxItemRequest,
-} from "@/chat/inbox-items/evidence";
+} from "@/chat/inbox-items/request";
 import {
-  getOpenInboxItemBySubject,
   insertInboxItem,
-  ownerConversationId,
-  updateInboxItemContent,
   type InboxItem,
-  type InboxItemContent,
   type InboxItemVisibility,
 } from "@/chat/inbox-items/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -51,16 +45,14 @@ import {
   bodySchema,
   conversationIdsSchema,
   itemResult,
-  ownerLinks,
-  readableItem,
   inboxItemDelivery,
   titleSchema,
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
-const evidenceSchema = z
+const relatedSchema = z
   .array(
     z
       .object({
@@ -78,7 +70,7 @@ const evidenceSchema = z
           .nullable()
           .optional()
           .describe(
-            "Link to the source, such as a chart, a log search, or the pull request that the item is about. The card and related work read these links.",
+            "A link, such as a chart, a log search, or the pull request that the item is about. The card shows these links.",
           ),
         conversation_id: z
           .string()
@@ -87,15 +79,13 @@ const evidenceSchema = z
           .max(500)
           .nullable()
           .optional()
-          .describe(
-            "A Conversation that holds the evidence. Set this or `url`.",
-          ),
+          .describe("A related Conversation. Set this or `url`."),
         label: z
           .string()
           .trim()
           .min(1)
           .max(120)
-          .describe("Short name of the source, such as `Checkout p95 chart`."),
+          .describe("Short name of the link, such as `Checkout p95 chart`."),
         note: z
           .string()
           .trim()
@@ -104,7 +94,7 @@ const evidenceSchema = z
           .regex(/^[^\r\n]*$/, "Use one line.")
           .nullable()
           .optional()
-          .describe("One line: what this source shows."),
+          .describe("One line: what this link shows."),
       })
       .strict(),
   )
@@ -142,7 +132,7 @@ const questionRequestSchema = z.object({
 
 /**
  * Return the question of an action. An action needs one. A notice asks
- * nothing, so its `request` may hold only evidence.
+ * nothing, so its `request` may hold only related links.
  */
 function questionInput(
   kind: InboxItem["kind"],
@@ -151,7 +141,7 @@ function questionInput(
   if (kind === "notice") {
     if (request?.question || request?.fields) {
       throw new ToolInputError(
-        "A notice asks nothing, so its `request` holds only `evidence`. To ask, use kind `action`.",
+        "A notice asks nothing, so its `request` holds only `related`. To ask, use kind `action`.",
       );
     }
     return undefined;
@@ -161,7 +151,7 @@ function questionInput(
       "An action item needs a `request` with a `question` and `fields`.",
     );
   }
-  const { evidence: _evidence, ...question } = request;
+  const { related: _related, ...question } = request;
   return parseToolInput(questionRequestSchema, { request: question }).request;
 }
 
@@ -176,11 +166,11 @@ const requestInputSchema = z.object({
     .describe(
       "What to ask, in display order. Use one `choice` field for a simple decision. Required for an action. Not allowed for a notice.",
     ),
-  evidence: evidenceSchema
+  related: relatedSchema
     .nullable()
     .optional()
     .describe(
-      "Sources for the facts in the item, and what it is about, such as a pull request. With a suggested answer, cite what supports it and what argues against it. Each entry has a `url` or a `conversation_id`.",
+      "Links related to the item: what it is about, such as a pull request, and the sources for its facts. With a suggested answer, link what supports it and what argues against it. Each entry has a `url` or a `conversation_id`.",
     ),
 });
 
@@ -207,21 +197,11 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .describe(
           "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
         ),
-      dedupe_key: z
-        .string()
-        .trim()
-        .min(1)
-        .max(200)
-        .nullable()
-        .optional()
-        .describe(
-          "Stable key for this item, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question. Results show it as the `subject` id.",
-        ),
       request: requestInputSchema
         .nullable()
         .optional()
         .describe(
-          "Required for an action item. A notice may have one with only `evidence`. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
+          "Required for an action item. A notice may have one with only `related`. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
         ),
       conversation_ids: conversationIdsSchema
         .nullable()
@@ -235,17 +215,17 @@ export const addInboxItemToolDefinition = zodToolDefinition({
 });
 
 /**
- * Normalize the evidence input: each entry names exactly one source, null
+ * Normalize the related links: each entry names exactly one link, null
  * fields mean omitted, and a link is stored as `URL.href`, so it matches
- * the same link that another item cites.
+ * the link of the work that it names.
  */
-function evidenceInput(
-  evidence: z.output<typeof evidenceSchema> | null | undefined,
-): InboxItemEvidence[] {
-  return (evidence ?? []).map((entry) => {
+function relatedInput(
+  related: z.output<typeof relatedSchema> | null | undefined,
+): InboxItemRelatedLink[] {
+  return (related ?? []).map((entry) => {
     if (Boolean(entry.url) === Boolean(entry.conversation_id)) {
       throw new ToolInputError(
-        "Each `evidence` entry needs a `url` or a `conversation_id`, not both.",
+        "Each `related` entry needs a `url` or a `conversation_id`, not both.",
       );
     }
     return {
@@ -260,18 +240,18 @@ function evidenceInput(
 }
 
 /**
- * Store the question with its normalized evidence, if it cites any. A
- * notice stores only its evidence.
+ * Store the question with its normalized related links, if it has any. A
+ * notice stores only its related links.
  */
 function requestInput(
   question: UserInputRequest | undefined,
-  evidence: InboxItemEvidence[],
+  related: InboxItemRelatedLink[],
 ): InboxItemRequest | InboxItemNoticeRequest | undefined {
-  if (!question) return evidence.length > 0 ? { evidence } : undefined;
-  return { ...question, ...(evidence.length > 0 ? { evidence } : undefined) };
+  if (!question) return related.length > 0 ? { related } : undefined;
+  return { ...question, ...(related.length > 0 ? { related } : undefined) };
 }
 
-/** Create the tool that adds an Inbox item or updates the open one. */
+/** Create the tool that adds an Inbox item that asks a new question. */
 export function createAddInboxItemTool(
   context: InboxItemToolContext,
   services: InboxItemToolServices,
@@ -280,73 +260,45 @@ export function createAddInboxItemTool(
     ...addInboxItemToolDefinition,
     execute: async (input, options) => {
       const question = questionInput(input.kind, input.request);
-      const evidence = evidenceInput(input.request?.evidence);
+      const related = relatedInput(input.request?.related);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
-      // The key names the item, else a new id. A retry of the same tool call
-      // keeps the same id, so it updates the item that the first attempt
-      // added. What a question is about is in its evidence.
+      // Each call asks a new question. A retry of the same tool call keeps
+      // the same question id, so it cannot add a second item.
       const subject = questionSubject(
-        input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`,
+        `ask:${options.toolCallId ?? randomUUID()}`,
       );
-      const existing = await getOpenInboxItemBySubject(
-        db,
-        subject,
-        scope.tenant,
-      );
-      if (
-        existing &&
-        (!canReadInboxItem(existing, scope.reader) ||
-          !canAgentChangeInboxItem(existing, scope))
-      ) {
-        throw new ToolInputError(
-          "Another open item uses this `dedupe_key`. Use a different key.",
-        );
-      }
-      // An item from a private Conversation is private. It stays private.
-      const visibility: InboxItemVisibility =
-        scope.inPrivateConversation || existing?.visibility === "private"
-          ? "private"
-          : "public";
+      // An item from a private Conversation is private.
+      const visibility: InboxItemVisibility = scope.inPrivateConversation
+        ? "private"
+        : "public";
       const conversationIds = [
-        ...new Set([
-          context.conversationId,
-          ...(existing?.conversationIds ?? []),
-          ...(input.conversation_ids ?? []),
-        ]),
+        ...new Set([context.conversationId, ...(input.conversation_ids ?? [])]),
       ];
-      // A cited Conversation passes the same check as a link, so evidence
-      // cannot show a Conversation that the item's readers may not see.
+      // A related Conversation passes the same check as a linked one, so
+      // the card cannot show a Conversation that the item's readers may not see.
       await requireInboxItemLinks({
-        allowedIds: new Set([
-          context.conversationId,
-          ...(existing?.conversationIds ?? []),
-        ]),
+        allowedIds: new Set([context.conversationId]),
         conversationIds: [
           ...new Set([
             ...conversationIds,
-            ...evidence.flatMap((entry) =>
+            ...related.flatMap((entry) =>
               entry.conversationId ? [entry.conversationId] : [],
             ),
           ]),
         ],
         scope,
-        tenant: existing ? existing.tenant : scope.tenant,
+        tenant: scope.tenant,
         visibility,
       });
       const assignees = input.assignees
         ? await resolveAssignees(
             db,
             input.assignees,
-            existing ? existing.tenant : scope.tenant,
+            scope.tenant,
             services.findMentionedUserId,
           )
-        : existing
-          ? {
-              everyone: existing.assignedToEveryone,
-              userIds: existing.assignees.map((assignee) => assignee.userId),
-            }
-          : await defaultAssignees(scope, context.conversationId);
+        : await defaultAssignees(scope, context.conversationId);
       // Only an assignee gets the item in their Inbox count. A Turn
       // without a person has nobody to show it to, so it needs an assignee.
       if (
@@ -360,15 +312,13 @@ export function createAddInboxItemTool(
       }
       await requireInboxItemAssignees({
         assignees,
-        automationId: existing
-          ? existing.addedByAutomationId
-          : scope.reader.automationId,
-        conversationIds: [context.conversationId, ...ownerLinks(existing)],
+        automationId: scope.reader.automationId,
+        conversationIds: [context.conversationId],
         scope,
         visibility,
       });
-      const request = requestInput(question, evidence);
-      const content: InboxItemContent = {
+      const request = requestInput(question, related);
+      const item = await insertInboxItem(db, {
         assignedToEveryone: assignees.everyone,
         assigneeUserIds: assignees.userIds,
         body: input.body,
@@ -378,38 +328,6 @@ export function createAddInboxItemTool(
         title: input.title,
         visibility,
         ...(request ? { request } : undefined),
-      };
-      // Write only the item that the checks above read, so a concurrent add
-      // cannot make this call change another item.
-      if (existing) {
-        const updated = await updateInboxItemContent(db, {
-          ...content,
-          id: existing.id,
-          nowMs: Date.now(),
-          // The latest add in the Conversation that added the item has the
-          // most context. A Turn of another Conversation would not match
-          // the owner, so it keeps the stored Turn.
-          ...(context.turnId &&
-          ownerConversationId(existing) === context.conversationId
-            ? { addedByTurnId: context.turnId }
-            : undefined),
-        });
-        if (!updated) {
-          throw new ToolInputError(
-            `Inbox item ${existing.id} closed. Add the item again.`,
-          );
-        }
-        const item = await readableItem(existing.id, scope);
-        await deliverInboxItemChange({
-          delivery: inboxItemDelivery(services),
-          item,
-          nowMs: Date.now(),
-        });
-        await publishWaiting(services, item);
-        return { created: false, item: itemResult(item) };
-      }
-      const item = await insertInboxItem(db, {
-        ...content,
         owner: { id: context.conversationId, kind: "conversation" },
         ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
@@ -417,7 +335,7 @@ export function createAddInboxItemTool(
       });
       if (!item) {
         throw new ToolInputError(
-          "Another open item started to use this `dedupe_key`. Add the item again.",
+          "This tool call already added its item. To change it, update it by its id.",
         );
       }
       await deliverInboxItemChange({
@@ -425,25 +343,22 @@ export function createAddInboxItemTool(
         item,
         nowMs: Date.now(),
       });
-      await publishWaiting(services, item);
-      return { created: true, item: itemResult(item) };
+      await publishWaiting(services, context.conversationId, item);
+      return { item: itemResult(item) };
     },
   });
 }
 
 /**
- * Report that the item's owner Conversation waits on a person when the item
- * is an action, also when an update makes a notice an action. An update can
- * come from another Conversation, so the owner, not the caller, reports it.
- * The Event key is the item, so a later update of the same action does not
- * report it again.
+ * Report that the Conversation that asked waits on a person when the item
+ * is an action. The Event key is the item, so it reports each item once.
  */
 async function publishWaiting(
   services: InboxItemToolServices,
-  item: Pick<InboxItem, "body" | "id" | "kind" | "owner" | "request">,
+  conversationId: string,
+  item: Pick<InboxItem, "body" | "id" | "kind" | "request">,
 ): Promise<void> {
-  const conversationId = ownerConversationId(item);
-  if (item.kind !== "action" || !conversationId) return;
+  if (item.kind !== "action") return;
   await publishAgentUpdate(
     conversationId,
     { type: "waiting", inboxItemId: item.id },

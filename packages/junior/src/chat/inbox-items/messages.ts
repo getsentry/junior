@@ -27,7 +27,7 @@ import { juniorConversations } from "@/db/schema";
 import type { InboxItemChangeRecord } from "./change-record";
 import { isPluginInboxItem } from "./access";
 import type { InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/evidence";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /** One change to an Inbox item that linked Conversations learn about. */
 export type InboxItemChange =

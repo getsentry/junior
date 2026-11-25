@@ -16,7 +16,7 @@ import {
 import type {
   InboxItemNoticeRequest,
   InboxItemRequest,
-} from "@/chat/inbox-items/evidence";
+} from "@/chat/inbox-items/request";
 import {
   getInboxItem,
   ownerConversationId,
@@ -128,16 +128,16 @@ export function itemResult(item: InboxItem) {
   };
 }
 
-/** Show the stored question with the tool's snake_case evidence keys. */
+/** Show the stored question with the tool's snake_case related link keys. */
 function requestResult({
-  evidence,
+  related,
   ...question
 }: InboxItemRequest | InboxItemNoticeRequest) {
   return {
     ...question,
-    ...(evidence
+    ...(related
       ? {
-          evidence: evidence.map(({ conversationId, ...entry }) => ({
+          related: related.map(({ conversationId, ...entry }) => ({
             ...entry,
             ...(conversationId
               ? { conversation_id: conversationId }

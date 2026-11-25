@@ -154,9 +154,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
         question: "Roll out payments-v42 to every region?",
-        // The cited evidence supports the suggested answer. The related
+        // The related links support the suggested answer. The related
         // items on the same release disagree with it.
-        evidence: [
+        related: [
           {
             label: "Canary error rate",
             note: "Flat for 30 minutes.",

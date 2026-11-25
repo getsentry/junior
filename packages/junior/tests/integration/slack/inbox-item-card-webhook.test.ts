@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
@@ -17,7 +18,7 @@ import {
   INBOX_ITEM_REPLIED_REASON,
 } from "@/chat/inbox-items/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { juniorInboxItems } from "@/db/schema";
+import { juniorInboxItems, juniorQuestions } from "@/db/schema";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { mswServer } from "../../msw/server";
@@ -40,6 +41,7 @@ import {
   setUpInboxItemCards,
   slackThread,
   tearDownInboxItemCards,
+  updateItem,
 } from "../../fixtures/slack/inbox-item-cards";
 
 describe("Slack webhook: Inbox item cards", () => {
@@ -58,7 +60,6 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["everyone"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
       conversation_ids: [OTHER_THREAD],
     });
@@ -82,21 +83,20 @@ describe("Slack webhook: Inbox item cards", () => {
       ["junior_review_item:answer", undefined],
     ]);
 
-    // The agent changes the choices. A click on the old card cannot pick a
-    // choice that the item no longer offers.
+    // The choices change. A click on the old card cannot pick a choice that
+    // the item no longer offers.
     const shipIt = buttonValue(posts[0], "junior_review_item:choice:0");
-    const changeChoices = (options: Array<{ label: string }>) =>
-      addItem(ana, {
-        kind: "action",
-        title: "Ship release 1.2.3",
-        body: "The release checks passed.",
-        assignees: ["everyone"],
-        dedupe_key: "release:1.2.3",
-        request: {
-          ...SHIP_REQUEST,
-          fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
-        },
-      });
+    const changeChoices = async (options: Array<{ label: string }>) => {
+      await getDb()
+        .update(juniorQuestions)
+        .set({
+          request: {
+            ...SHIP_REQUEST,
+            fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
+          } as any,
+        })
+        .where(eq(juniorQuestions.id, item.subject.id));
+    };
     await changeChoices([{ label: "Hold" }, { label: "Wait" }]);
     await click({
       actionId: "junior_review_item:choice:0",
@@ -240,7 +240,6 @@ describe("Slack webhook: Inbox item cards", () => {
         title: "Ship release 1.2.3",
         body: "The release checks passed.",
         assignees: ["ana@example.com"],
-        dedupe_key: "release:1.2.3",
         request: SHIP_REQUEST,
       },
       run,
@@ -363,13 +362,15 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
     };
     // The child adds the item first, and the parent links it later. The
     // thread keeps one card.
-    await addItem(ana, input, child);
-    const { item } = await addItem(ana, input);
+    const added = await addItem(ana, input, child);
+    const { item } = await updateItem(ana, {
+      id: added.item.id,
+      conversation_ids: [child, THREAD],
+    });
     expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
     const cards = slackApiOutbox.messages();
     expect(cards).toHaveLength(1);
@@ -411,15 +412,14 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
     };
-    await addItem(ana, input, child);
-    await addItem(ana, input);
+    const { item } = await addItem(ana, input, child);
+    await updateItem(ana, { id: item.id, conversation_ids: [child, THREAD] });
     expect(slackApiOutbox.messages()).toHaveLength(0);
 
     await resumeConversationDelivery(THREAD);
-    await addItem(ana, input);
+    await updateItem(ana, { id: item.id, body: "The checks passed again." });
     expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
@@ -468,7 +468,6 @@ describe("Slack webhook: Inbox item cards", () => {
         title: "Ship release 1.2.3",
         body: "The release checks passed.",
         assignees: ["everyone"],
-        dedupe_key: "release:1.2.3",
         request: SHIP_REQUEST,
       });
 
@@ -509,7 +508,6 @@ describe("Slack webhook: Inbox item cards", () => {
         title: "Review the release notes",
         body: "The notes need a look.",
         assignees: ["ana@example.com"],
-        dedupe_key: "release-notes",
         request: {
           question: "What should change?",
           fields: [{ id: "notes", kind: "text", label: "Notes" }],
@@ -600,7 +598,6 @@ describe("Slack webhook: Inbox item cards", () => {
         kind: "action",
         title: "Ship release 1.2.4",
         body: "The release checks passed.",
-        dedupe_key: "release:1.2.4",
         request: SHIP_REQUEST,
       },
       {},
