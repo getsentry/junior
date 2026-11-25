@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { waitForOutlineRead } from "../harness";
+import { waitForOutlineRead, waitForRequestsToEnd } from "../harness";
 import { expect, test } from "../test";
 
 test.describe("new UI", () => {
@@ -347,7 +347,7 @@ test.describe("new UI", () => {
     await expect
       .poll(() => [...requested].sort((a, b) => a - b))
       .toEqual([7, 8, 9]);
-    await page.waitForLoadState("networkidle");
+    await waitForRequestsToEnd(page);
     expect(details).toEqual([]);
     // It is one row that scrolls sideways.
     expect(
@@ -367,7 +367,7 @@ test.describe("new UI", () => {
       element.scrollLeft = element.scrollWidth;
     });
     await expect(strip.locator("a[data-image-tile]")).toHaveCount(12);
-    await page.waitForLoadState("networkidle");
+    await waitForRequestsToEnd(page);
     // The detail, then one events page per older batch, each cursor once.
     expect(details).toHaveLength(1);
     expect(eventPages).toHaveLength(2);
@@ -378,7 +378,7 @@ test.describe("new UI", () => {
     await strip.evaluate((element) => {
       element.scrollLeft = 0;
     });
-    await page.waitForLoadState("networkidle");
+    await waitForRequestsToEnd(page);
     expect(requested.has(6)).toBe(false);
     await strip.evaluate((element) => {
       element.scrollLeft = element.scrollWidth;

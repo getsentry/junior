@@ -7,7 +7,6 @@ const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 test("previews text attachments in a drawer", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
   );
   // The server sends text files as downloads. The dashboard reads and
   // renders them itself.
@@ -50,7 +49,6 @@ test("previews text attachments in a drawer", async ({ page, dashboard }) => {
 test("downloads a large Slack file on request", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
   );
   // Junior has not stored this large Slack file yet, so it shows as a file
   // row with no preview, not a video.
@@ -99,7 +97,6 @@ test("previews conversation images and pages through them", async ({
   await page.setViewportSize(mobile);
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
   );
   await expect(
     page.getByRole("heading", {

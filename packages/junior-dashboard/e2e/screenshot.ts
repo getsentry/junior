@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
 } from "@playwright/test";
+import { waitForRequestsToEnd } from "./harness";
 
 /** Default desktop browser size for route shots. */
 export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
@@ -205,18 +206,13 @@ async function boxOf(target: Locator) {
 async function settle(page: Page) {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   const remaining = () => Math.max(deadline - Date.now(), 1);
-  const pending = new Set<Request>();
   let started: Request[] = [];
   const onStart = (request: Request) => {
-    pending.add(request);
     started.push(request);
   };
-  const onEnd = (request: Request) => pending.delete(request);
   const urls = (requests: Iterable<Request>) =>
     [...requests].map((request) => request.url()).join(", ") || "unknown";
   page.on("request", onStart);
-  page.on("requestfinished", onEnd);
-  page.on("requestfailed", onEnd);
   try {
     // A commit can start a fetch, such as a list that loads when it first
     // shows. Wait again for what that fetch renders.
@@ -227,20 +223,12 @@ async function settle(page: Page) {
         );
       }
       started = [];
-      await page
-        .waitForLoadState("networkidle", { timeout: remaining() })
-        .catch(() => {
-          throw new Error(
-            `Requests were still in flight after ${SETTLE_TIMEOUT_MS}ms: ${urls(pending)}`,
-          );
-        });
+      await waitForRequestsToEnd(page, remaining());
       await loadAssets(page, remaining());
       await waitForQuiet(page, remaining());
     } while (started.length > 0);
   } finally {
     page.off("request", onStart);
-    page.off("requestfinished", onEnd);
-    page.off("requestfailed", onEnd);
   }
 }
 
