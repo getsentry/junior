@@ -1,20 +1,22 @@
 /**
- * Give old GitHub Annotations the id of their object.
+ * Give old GitHub Annotations the id of their object, and the current name
+ * of their repository.
  *
  * Old rows name an issue or a pull request only by its repository name and
  * number, or by a link that a person attached. After a rename, search and
  * later updates do not find them. A heartbeat starts one bounded slice at a
- * time. Each slice reads a batch of these objects from GitHub, after the
- * cursor in plugin state, and saves each object's id and current link.
- * When GitHub names the object's repository with a new name, the
- * Annotations of the whole repository move to it.
+ * time, after the cursor in plugin state. The job first reads each object
+ * whose Annotations have its id once, so a rename from before this release
+ * moves them. Then it reads each object whose Annotations have no id, and
+ * saves its id and current link. When GitHub names an object's repository
+ * with a new name, the Annotations of the whole repository move to it.
  */
 import pLimit from "p-limit";
 import type {
   PluginStartedTaskDefinition,
   PluginState,
   PluginTaskStarter,
-  UnnamedAnnotation,
+  ListedAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubRepositoryMove } from "./annotations.js";
@@ -31,13 +33,16 @@ export const GITHUB_ANNOTATION_NAMES_TASK = "nameAnnotationObjects";
 const BATCH = 50;
 
 /**
- * The job's progress in plugin state: the key after which the next slice
- * reads, and the number of slices that ran, which names the next slice.
+ * The job's progress in plugin state: the pass, the key after which the
+ * next slice reads in it, and the number of slices that ran, which names
+ * the next slice. The `named` pass reads the objects that have their id,
+ * then the `unnamed` pass reads the others.
  */
 const PROGRESS_KEY = "annotation-names:progress";
 const progressSchema = z.object({
   after: z.string().optional(),
   done: z.boolean().optional(),
+  pass: z.enum(["named", "unnamed"]).default("named"),
   slices: z.number().int().nonnegative(),
 });
 type Progress = z.output<typeof progressSchema>;
@@ -81,7 +86,7 @@ function linkRef(url: string): GitHubObjectRef | undefined {
 }
 
 // The object of an Annotation, from its link, else from its key.
-function objectRef(annotation: UnnamedAnnotation): GitHubObjectRef | undefined {
+function objectRef(annotation: ListedAnnotation): GitHubObjectRef | undefined {
   const link = annotation.url ? linkRef(annotation.url) : undefined;
   if (link) return link;
   const key = OBJECT_KEY.exec(annotation.key);
@@ -118,11 +123,11 @@ export async function startGitHubAnnotationNames(args: {
 }
 
 /**
- * Save the id and the current link of each object in one batch. GitHub
- * does not find an object that is gone or that the App cannot read, so its
- * Annotations stay as they are, and the cursor moves past them. A failed
- * read fails the slice, so a later delivery reads it again. The last
- * delivery leaves that object as it is.
+ * Read at most one batch of objects, in the current pass and then in the
+ * next one. GitHub does not find an object that is gone or that the App
+ * cannot read, so its Annotations stay as they are, and the cursor moves
+ * past them. A failed read fails the slice, so a later delivery reads it
+ * again. The last delivery leaves that object as it is.
  */
 export function githubAnnotationNamesTask(
   loadNames: () => Promise<GitHubObjectNameReader>,
@@ -130,92 +135,116 @@ export function githubAnnotationNamesTask(
   return {
     payload: payloadSchema,
     async run(ctx) {
-      const progress = await readProgress(ctx.state);
-      if (progress.done) return;
-      const batch = await ctx.annotations.listUnnamed({
-        after: progress.after,
-        limit: BATCH,
-      });
-      const moves = new Map<string, [from: string, to: string]>();
+      const start = await readProgress(ctx.state);
+      if (start.done) return;
+      let progress = start;
+      let budget = BATCH;
+      let reader: GitHubObjectNameReader | undefined;
+      const renames = new Map<string, Promise<string | undefined>>();
+      // A repository that GitHub renamed answers by its old name too, and
+      // an issue that moved to another repository answers by its old link.
+      // So only the repository's own read tells a rename.
+      const renamedTo = async (
+        names: GitHubObjectNameReader,
+        stored: string,
+        current: string,
+      ) => {
+        if (stored.toLowerCase() === current.toLowerCase()) return undefined;
+        const key = stored.toLowerCase();
+        let read = renames.get(key);
+        if (!read) {
+          read = names.readRepositoryName(stored);
+          renames.set(key, read);
+        }
+        return (await read)?.toLowerCase() === current.toLowerCase()
+          ? current
+          : undefined;
+      };
       // A failed read fails the slice only after the moves it found, since
       // the objects that named them are no longer listed on a retry.
       let failure: unknown;
-      const objects = batch.flatMap((annotation) => {
-        const ref = objectRef(annotation);
-        return ref ? [{ key: annotation.key, ref }] : [];
-      });
-      if (objects.length > 0) {
-        const reader = await loadNames();
-        const renames = new Map<string, Promise<string | undefined>>();
-        // A repository that GitHub renamed answers by its old name too, and
-        // an issue that moved to another repository answers by its old
-        // link. So only the repository's own read tells a rename.
-        const renamedTo = async (stored: string, current: string) => {
-          if (stored.toLowerCase() === current.toLowerCase()) return undefined;
-          const key = stored.toLowerCase();
-          let read = renames.get(key);
-          if (!read) {
-            read = reader.readRepositoryName(stored);
-            renames.set(key, read);
-          }
-          return (await read)?.toLowerCase() === current.toLowerCase()
-            ? current
-            : undefined;
-        };
-        await pLimit(READ_CONCURRENCY).map(objects, async ({ key, ref }) => {
-          let name: GitHubObjectName | undefined;
-          let renamed: string | undefined;
-          const stored = `${ref.owner}/${ref.name}`;
-          try {
-            name = await reader.readObject(ref);
-            const current = name && repositoryOf(name.url);
-            renamed = current && (await renamedTo(stored, current));
-          } catch (error) {
-            if (!ctx.lastDelivery) {
-              failure ??= error;
+      while (!progress.done && budget > 0 && failure === undefined) {
+        const named = progress.pass === "named";
+        const limit = budget;
+        // oxlint-disable-next-line no-await-in-loop -- A slice reads a pass at a time, at most two.
+        const batch = await ctx.annotations.listObjects({
+          after: progress.after,
+          limit,
+          named,
+        });
+        // An empty batch ends its pass, so the loop ends.
+        budget -= batch.length;
+        const moves = new Map<string, [from: string, to: string]>();
+        const objects = batch.flatMap((annotation) => {
+          const ref = objectRef(annotation);
+          return ref ? [{ key: annotation.key, ref }] : [];
+        });
+        if (objects.length > 0) {
+          // oxlint-disable-next-line no-await-in-loop -- The token loads once per slice.
+          const names = (reader ??= await loadNames());
+          // oxlint-disable-next-line no-await-in-loop -- See above.
+          await pLimit(READ_CONCURRENCY).map(objects, async ({ key, ref }) => {
+            let name: GitHubObjectName | undefined;
+            let renamed: string | undefined;
+            const stored = `${ref.owner}/${ref.name}`;
+            try {
+              name = await names.readObject(ref);
+              const current = name && repositoryOf(name.url);
+              renamed = current && (await renamedTo(names, stored, current));
+            } catch (error) {
+              if (!ctx.lastDelivery) {
+                failure ??= error;
+                return;
+              }
+              ctx.log.error("GitHub Annotation object read failed", {}, error);
               return;
             }
-            ctx.log.error("GitHub Annotation object read failed", {}, error);
-            return;
-          }
-          if (!name) return;
-          await ctx.annotations.nameObject(key, {
-            subject: {
-              id: name.id,
-              kind:
-                name.kind === "pull_request"
-                  ? GITHUB_INBOX_SUBJECTS.pullRequest
-                  : GITHUB_INBOX_SUBJECTS.issue,
-            },
-            url: name.url,
+            if (!name) return;
+            if (!named) {
+              await ctx.annotations.nameObject(key, {
+                subject: {
+                  id: name.id,
+                  kind:
+                    name.kind === "pull_request"
+                      ? GITHUB_INBOX_SUBJECTS.pullRequest
+                      : GITHUB_INBOX_SUBJECTS.issue,
+                },
+                url: name.url,
+              });
+            }
+            if (renamed) moves.set(stored.toLowerCase(), [stored, renamed]);
           });
-          if (renamed) moves.set(stored.toLowerCase(), [stored, renamed]);
-        });
-      }
-      // A move changes keys of the batch and of later rows, so it runs after
-      // the batch, and the next slice starts over. Each move names at least
-      // one object, so this ends.
-      for (const [from, to] of moves.values()) {
-        // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
-        await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
-      }
-      if (failure) {
-        // The moves changed later keys, so the retry starts over too.
-        if (moves.size > 0) {
-          await ctx.state.set(PROGRESS_KEY, { slices: progress.slices });
         }
+        // A move changes keys of the batch and of later rows, so it runs
+        // after the batch. In the unnamed pass, the pass then starts over,
+        // so a moved object is still named. Each move names at least one
+        // object, so this ends. A moved object with its id needs nothing
+        // more.
+        for (const [from, to] of moves.values()) {
+          // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
+          await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
+        }
+        const last = batch.at(-1);
+        if (!named && moves.size > 0) {
+          progress = { pass: "unnamed", slices: progress.slices };
+        } else if (failure !== undefined) {
+          break;
+        } else if (last && batch.length === limit) {
+          progress = { ...progress, after: last.key };
+        } else if (named) {
+          progress = { pass: "unnamed", slices: progress.slices };
+        } else {
+          progress = { done: true, pass: "unnamed", slices: progress.slices };
+        }
+      }
+      if (failure !== undefined) {
+        if (progress !== start) await ctx.state.set(PROGRESS_KEY, progress);
         throw failure;
       }
-      const slices = progress.slices + 1;
-      const last = batch.at(-1);
-      await ctx.state.set(
-        PROGRESS_KEY,
-        moves.size > 0
-          ? { slices }
-          : !last || batch.length < BATCH
-            ? { done: true, slices }
-            : { after: last.key, slices },
-      );
+      await ctx.state.set(PROGRESS_KEY, {
+        ...progress,
+        slices: start.slices + 1,
+      });
     },
   };
 }

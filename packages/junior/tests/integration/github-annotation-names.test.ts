@@ -86,6 +86,8 @@ async function saveLegacyAnnotation(
     key: string;
     kind: "object" | "resource_link";
     objectType: "code_change" | "task";
+    /** GitHub's id, which a later release saved. */
+    subject?: { id: string; kind: "github:issue" | "github:pull_request" };
     url: string;
   },
 ): Promise<void> {
@@ -98,6 +100,9 @@ async function saveLegacyAnnotation(
       key: row.key,
       kind: row.kind,
       plugin: "github",
+      ...(row.subject
+        ? { subjectId: row.subject.id, subjectKind: row.subject.kind }
+        : undefined),
       title: row.kind === "object" ? "Fix the flaky check" : null,
       updatedAt: new Date(1_000),
       url: row.url,
@@ -298,6 +303,55 @@ describe("GitHub Annotations without GitHub's id of their object", () => {
     await expect(conversationsFound("getsentry/cockroach#5")).resolves.toEqual([
       issue,
     ]);
+  });
+
+  it("sweep once an Annotation that has GitHub's id, so a rename before this release finds it by the new name", async () => {
+    const issue = await conversation("slack:C123:renamed-named-issue");
+    await saveLegacyAnnotation(issue, {
+      key: "getsentry/roach#7",
+      kind: "object",
+      objectType: "task",
+      subject: { id: "7000", kind: "github:issue" },
+      url: "https://github.com/getsentry/roach/issues/7",
+    });
+    let reads = 0;
+    const moved = (location: string) =>
+      new HttpResponse(null, { headers: { location }, status: 301 });
+    mswServer.use(
+      http.get(`${API}/repos/getsentry/roach/issues/7`, () => {
+        reads += 1;
+        return moved(`${API}/repositories/99/issues/7`);
+      }),
+      http.get(`${API}/repositories/99/issues/7`, () =>
+        HttpResponse.json({
+          html_url: "https://github.com/getsentry/cockroach/issues/7",
+          id: 7_000,
+          number: 7,
+        }),
+      ),
+      http.get(`${API}/repos/getsentry/roach`, () =>
+        moved(`${API}/repositories/99`),
+      ),
+      http.get(`${API}/repositories/99`, () =>
+        HttpResponse.json({ full_name: "getsentry/cockroach", id: 99 }),
+      ),
+    );
+
+    await heartbeat();
+
+    expect(await annotationsOf(issue)).toEqual([
+      expect.objectContaining({
+        key: "getsentry/cockroach#7",
+        subjectId: "7000",
+        subjectKind: "github:issue",
+        url: "https://github.com/getsentry/cockroach/issues/7",
+      }),
+    ]);
+    await expect(conversationsFound("getsentry/cockroach#7")).resolves.toEqual([
+      issue,
+    ]);
+    expect(await heartbeat()).toBe(0);
+    expect(reads).toBe(1);
   });
 
   it("read at most one batch per slice, and the next slice reads on from the cursor", async () => {

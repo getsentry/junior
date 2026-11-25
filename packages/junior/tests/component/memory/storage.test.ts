@@ -101,7 +101,7 @@ function memoryHeartbeatContext(args: {
     },
     annotations: {
       forConversation: vi.fn(),
-      listUnnamed: vi.fn(),
+      listObjects: vi.fn(),
       nameObject: vi.fn(),
       objectChanged: vi.fn(),
       objectsMoved: vi.fn(),

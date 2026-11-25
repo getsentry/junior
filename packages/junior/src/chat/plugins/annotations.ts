@@ -22,7 +22,7 @@ import {
   type ObjectSubject,
   type PluginAnnotations,
   type PluginConversationAnnotations,
-  type UnnamedAnnotation,
+  type ListedAnnotation,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -289,19 +289,22 @@ export async function touchAnnotatedConversations(
 // links of objects that the provider moved. The plugin reads the provider,
 // and core owns the rows (`policies/provider-boundaries.md`).
 
-// List the keys of a plugin's Annotations whose subject is only a link.
-async function listUnnamedAnnotations(
+// List the keys of a plugin's Annotations whose subject names a provider
+// id, or whose subject is only a link.
+async function listAnnotationObjects(
   db: JuniorDatabase,
   plugin: string,
-  input: { after?: string | undefined; limit: number },
-): Promise<UnnamedAnnotation[]> {
+  input: { after?: string | undefined; limit: number; named: boolean },
+): Promise<ListedAnnotation[]> {
   const limit = z.number().int().positive().max(500).parse(input.limit);
   return await db
     .select({ key: table.key, url: sql<string | null>`max(${table.url})` })
     .from(table)
     .where(
       and(
-        eq(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link),
+        input.named
+          ? ne(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link)
+          : eq(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link),
         eq(table.plugin, plugin),
         input.after === undefined ? undefined : gt(table.key, input.after),
       ),
@@ -405,8 +408,8 @@ export function createPluginConversationAnnotations(args: {
         db: args.db(),
         plugin: args.plugin,
       }),
-    listUnnamed: async (input) =>
-      await listUnnamedAnnotations(args.db(), args.plugin, input),
+    listObjects: async (input) =>
+      await listAnnotationObjects(args.db(), args.plugin, input),
     nameObject: async (key, object) =>
       await nameAnnotationObject(args.db(), args.plugin, key, object),
     objectsMoved: async (move) =>

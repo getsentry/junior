@@ -86,11 +86,10 @@ export interface PluginAnnotations {
 }
 
 /**
- * The Annotations of one plugin that share a key and name no provider id
- * of their object, such as rows saved before the plugin named its objects.
- * `url` is the link of one of them, if it has one.
+ * The Annotations of one plugin that share a key. `url` is the link of one
+ * of them, if it has one.
  */
-export interface UnnamedAnnotation {
+export interface ListedAnnotation {
   key: string;
   url: string | null;
 }
@@ -104,14 +103,16 @@ export interface AnnotationPrefix {
 export interface PluginConversationAnnotations {
   forConversation(conversationId: string): PluginAnnotations;
   /**
-   * List the keys of this plugin's Annotations that name no provider id,
-   * in key order after `after`, at most `limit`. Once `nameObject` names
-   * the object of a key, the key is not listed again.
+   * List the keys of this plugin's Annotations in key order after `after`,
+   * at most `limit`. With `named`, list the keys whose Annotations name a
+   * provider id of their object. Else list the keys whose Annotations name
+   * none; once `nameObject` names the object of a key, it is not listed.
    */
-  listUnnamed(input: {
+  listObjects(input: {
     after?: string | undefined;
     limit: number;
-  }): Promise<UnnamedAnnotation[]>;
+    named: boolean;
+  }): Promise<ListedAnnotation[]>;
   /**
    * Save the subject and the current link of the object of each Annotation
    * of this plugin with this key that names no provider id.

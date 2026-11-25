@@ -680,7 +680,7 @@ export function route(
     throw new Error("The next-action webhooks do not use this");
   };
   const annotations: PluginConversationAnnotations = {
-    async listUnnamed() {
+    async listObjects() {
       return [];
     },
     async nameObject() {},
