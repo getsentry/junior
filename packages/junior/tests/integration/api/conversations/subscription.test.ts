@@ -441,7 +441,7 @@ describe("private conversation membership", () => {
     expect(await as(ben).reads()).toBe(false);
     expect(await as(ana).open()).toMatchObject({
       canInvite: true,
-      canLeave: true,
+      leaveEndsAccess: true,
     });
 
     // Someone outside cannot add themselves or anyone else.
@@ -522,12 +522,19 @@ describe("private conversation membership", () => {
     expect(await as(ben).reads()).toBe(false);
   });
 
-  it("a public conversation has no Leave: unsubscribe instead", async () => {
-    const { ana } = await sharedThread();
-    expect(await ana.open()).not.toHaveProperty("canLeave");
+  it("Leave on a public conversation only takes it out of your feed", async () => {
+    const { ana, ben } = await sharedThread();
+    expect(await ana.open()).not.toHaveProperty("leaveEndsAccess");
     const left = await ana.api(`/${CONVERSATION_ID}/leave`, {
       method: "POST",
     });
-    expect(left.status).toBe(404);
+    expect(left.status).toBe(200);
+
+    // It stays public, so Ana can still find it and join again.
+    expect(await ana.feed()).toEqual([]);
+    expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ana.feed("?q=shared")).toEqual([CONVERSATION_ID]);
+    await ana.setSubscribed(true);
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
   });
 });

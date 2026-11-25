@@ -7,7 +7,6 @@ import {
   ArrowDown,
   ArrowUp,
   Bell,
-  BellOff,
   FolderInput,
   LogOut,
   MessageSquareShare,
@@ -50,7 +49,7 @@ export type ConversationMenu = {
     continueInSlack(): void;
     delivery(paused: boolean): void;
     eventLog(): void;
-    /** Set where the menu can leave a private Conversation. */
+    /** Set where the menu can confirm leaving a private Conversation. */
     leave?: (() => void) | undefined;
     /** Set where the menu can move the Conversation to a Space. */
     moveToSpace?: (() => void) | undefined;
@@ -66,9 +65,9 @@ export type ConversationMenu = {
     | Pick<
         ConversationDetailReport,
         | "canContinueInSlack"
-        | "canLeave"
         | "deliveryPaused"
         | "isParticipant"
+        | "leaveEndsAccess"
         | "sentryConversationUrl"
         | "subscribed"
         | "turnActive"
@@ -197,17 +196,26 @@ export function useConversationMenuItems(
     stayOpen: true,
   });
 
-  const notifyItems: ConversationMenuItem[] = [
-    {
-      // Only participants have a subscription. A child uses its root's.
+  const notifyItems: ConversationMenuItem[] = [];
+  // Leave takes it out of your feed, and Join puts it back. Leaving a
+  // private Conversation also ends access, so it asks first, and only a
+  // menu with that dialog offers it. Only participants have a subscription.
+  // A child uses its root's.
+  const subscribed = detail?.subscribed === true;
+  const leaveEndsAccess = subscribed && detail?.leaveEndsAccess === true;
+  if (!leaveEndsAccess || actions.leave) {
+    notifyItems.push({
       disabled: detail?.subscribed === undefined || pending.subscription,
-      icon: detail?.subscribed ? BellOff : Bell,
+      icon: subscribed ? LogOut : Bell,
       key: "subscription",
-      label: detail?.subscribed ? "Unsubscribe" : "Subscribe",
-      onClick: () => actions.subscription(!detail?.subscribed),
-      toggle: true,
-    },
-  ];
+      label: subscribed ? "Leave" : "Join",
+      onClick:
+        leaveEndsAccess && actions.leave
+          ? actions.leave
+          : () => actions.subscription(!subscribed),
+      toggle: !leaveEndsAccess,
+    });
+  }
   if (detail?.canContinueInSlack) {
     notifyItems.push({
       // The API refuses while a Turn runs.
@@ -258,18 +266,7 @@ export function useConversationMenuItems(
         : "Archive",
     onClick: actions.archive,
   };
-  const lastItems = [archiveItem];
-  // Only a Participant of a private Conversation with its own member list
-  // gets `canLeave`.
-  if (actions.leave && detail?.canLeave) {
-    lastItems.push({
-      icon: LogOut,
-      key: "leave",
-      label: "Leave",
-      onClick: actions.leave,
-    });
-  }
-  return [actItems, notifyItems, viewItems, lastItems];
+  return [actItems, notifyItems, viewItems, [archiveItem]];
 }
 
 function SlackIcon(props: { className?: string }) {

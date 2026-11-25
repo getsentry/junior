@@ -262,13 +262,13 @@ export function canInviteToConversation(
 }
 
 /**
- * Whether the viewer may leave a Conversation: remove their own Participant
- * row and lose access. Only a private Conversation with an explicit
- * Participant list has one to leave. A person leaves a public Conversation
- * by unsubscribing, a private Space by leaving the Space, and a Slack-backed
- * one by leaving the Slack channel.
+ * Whether Leave ends the viewer's access: it removes their own Participant
+ * row. Only a private Conversation with an explicit Participant list has
+ * one. Elsewhere Leave only takes it out of their feed, because the
+ * Conversation is public, or a private Space or Slack channel decides who
+ * reads it.
  */
-export function canLeaveConversation(
+export function leaveEndsAccess(
   access: ConversationAccess | undefined,
 ): boolean {
   return Boolean(

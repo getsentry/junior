@@ -24,7 +24,7 @@ import {
 } from "./projection";
 import {
   canInviteToConversation,
-  canLeaveConversation,
+  leaveEndsAccess,
   createConversationAccessReader,
   type ConversationAccess,
 } from "./access";
@@ -373,7 +373,9 @@ async function readConversationDetailFromSql(
     ...(canInviteToConversation(access)
       ? { canInvite: true as const }
       : undefined),
-    ...(canLeaveConversation(access) ? { canLeave: true as const } : undefined),
+    ...(leaveEndsAccess(access)
+      ? { leaveEndsAccess: true as const }
+      : undefined),
     ...(report.isParticipant &&
     canPauseConversationDelivery(record.conversation)
       ? {

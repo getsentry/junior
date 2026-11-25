@@ -23,7 +23,7 @@ import type {
 } from "../schema/conversation-subscription";
 import {
   canInviteToConversation,
-  canLeaveConversation,
+  leaveEndsAccess,
   readableSlackTeamId,
   readConversationAccessFromSql,
 } from "./access";
@@ -73,11 +73,12 @@ import {
  *   is always an explicit act. A private Space owns its audience, and a
  *   Slack-backed private Conversation follows its Slack channel, so both
  *   refuse Invite, with the same error as a missing Conversation.
- * - Given a Participant of a private Conversation, when they leave, then
- *   their Participant row is deleted and they lose access. Nobody removes
+ * - Given a Participant, when they Leave, then they unsubscribe. In a
+ *   private Conversation with its own Participant list, their row is also
+ *   deleted, so they lose access until someone Invites them again.
+ *   Elsewhere they keep access and can subscribe again. Nobody removes
  *   another person. When they were the last subscriber, the root and its
- *   unarchived descendants are archived for everyone, as an unsubscribe
- *   does.
+ *   unarchived descendants are archived for everyone.
  * - Given any Invite, an archived root refuses it, because no
  *   feed shows it and a restore is for everyone. A Message that mentions
  *   someone in an archived root still adds them, because that Message
@@ -204,8 +205,19 @@ export async function leaveConversation(
     await readConversationAccessFromSql(getDb(), [conversationId], viewer)
   ).get(conversationId);
   const rootConversationId = access?.rootConversationId;
-  if (!rootConversationId || !canLeaveConversation(access)) {
+  if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
+  }
+  // Where the Conversation is public, or a Space or Slack channel decides
+  // who reads it, Leave only takes it out of the viewer's feed.
+  if (!leaveEndsAccess(access)) {
+    const result = await updateConversationSubscription(
+      viewer,
+      conversationId,
+      false,
+    );
+    if (!result) throwApiError(404, "Conversation not found.");
+    return { archivedAt: result.archivedAt };
   }
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {

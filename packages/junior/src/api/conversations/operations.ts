@@ -134,12 +134,12 @@ export const setConversationAutoArchiveOperation = defineApiOperation({
     setConversationAutoArchive(viewer, conversationId, autoArchive),
 });
 
-/** Remove the viewer from a private Conversation. Nobody removes another. */
+/** The viewer leaves a Conversation. Nobody removes another person. */
 export const leaveConversationOperation = defineApiOperation({
   name: "leaveConversation",
   title: "Leave conversation",
   description:
-    "Leave one of your private conversations. You lose access to it, and only another participant can invite you back. When nobody else is subscribed, it archives the conversation for everyone. Leave a public conversation by unsubscribing instead.",
+    "Leave one of your conversations. It leaves your feed and clears your pin. In a private conversation you also lose access, and only another participant can invite you back. A public one stays readable, and you can subscribe again. When nobody else is subscribed, it archives the conversation for everyone.",
   scope: "conversations:manage",
   input: z.object(conversationIdInput).strict(),
   output: conversationLeaveResponseSchema,
