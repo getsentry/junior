@@ -153,6 +153,33 @@ describe("inbox item tools", () => {
       assignees: ["ana@example.com"],
       visibility: "public",
     });
+    // A later run changes the choices of the question by its id.
+    const changed = await execute(second.update, {
+      id: added.item.id,
+      request: {
+        ...REQUEST,
+        fields: [
+          {
+            ...REQUEST.fields[0],
+            options: [{ label: "Approve" }, { label: "Hold" }],
+          },
+        ],
+      },
+    });
+    expect(changed.item.request.fields[0].options).toEqual([
+      { label: "Approve" },
+      { label: "Hold" },
+    ]);
+    await expect(
+      execute(second.update, {
+        id: added.item.id,
+        request: {
+          related: [{ label: "Spec", url: "https://example.com/spec" }],
+        },
+      }),
+    ).rejects.toThrow(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
     // The item points to the Turn that asked it, not the one that changed it.
     expect((await getInboxItem(getDb(), added.item.id))?.addedByTurnId).toBe(
       "turn-1",

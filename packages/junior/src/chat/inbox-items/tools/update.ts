@@ -27,6 +27,10 @@ import {
   ownerLinks,
   readableItem,
   inboxItemDelivery,
+  questionInput,
+  relatedInput,
+  requestInput,
+  requestInputSchema,
   titleSchema,
   type InboxItemToolContext,
   type InboxItemToolServices,
@@ -54,6 +58,12 @@ export const updateInboxItemToolDefinition = zodToolDefinition({
       id: z.string().trim().min(1),
       title: titleSchema.nullable().optional(),
       body: bodySchema.nullable().optional(),
+      request: requestInputSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Replaces the whole request, such as to change the choices of a question. An action needs a `question` and `fields`. A notice may have only `related`. Omit to keep it.",
+        ),
       assignees: assigneesSchema
         .nullable()
         .optional()
@@ -97,7 +107,11 @@ export function createUpdateInboxItemTool(
       const scope = await readInboxItemAgentScope(context);
       const item = await readableItem(input.id, scope);
       const changesContent =
-        input.title || input.body || input.assignees || input.conversation_ids;
+        input.title ||
+        input.body ||
+        input.request ||
+        input.assignees ||
+        input.conversation_ids;
       // A retry of the same agent close finds the item closed. It still sends
       // the close: the message has a key, so only missing messages go.
       const retriesClose =
@@ -137,6 +151,12 @@ export function createUpdateInboxItemTool(
         throw new ToolInputError("Give a `reason` when you close an item.");
       }
       if (changesContent) {
+        const related = input.request
+          ? relatedInput(input.request.related)
+          : undefined;
+        const request = input.request
+          ? requestInput(questionInput(item.kind, input.request), related ?? [])
+          : item.request;
         // The Conversation that added the item always stays linked.
         const conversationIds = [
           ...new Set([
@@ -152,7 +172,15 @@ export function createUpdateInboxItemTool(
             ...ownerLinks(item),
             ...item.conversationIds,
           ]),
-          conversationIds,
+          // A related Conversation passes the same check as a linked one.
+          conversationIds: [
+            ...new Set([
+              ...conversationIds,
+              ...(related ?? []).flatMap((entry) =>
+                entry.conversationId ? [entry.conversationId] : [],
+              ),
+            ]),
+          ],
           scope,
           tenant: item.tenant,
           visibility,
@@ -187,7 +215,7 @@ export function createUpdateInboxItemTool(
           nowMs: Date.now(),
           title: input.title ?? item.title,
           subject: item.subject,
-          ...(item.request ? { request: item.request } : undefined),
+          ...(request ? { request } : undefined),
         });
         if (!updated) {
           throw new ToolInputError(

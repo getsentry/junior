@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
@@ -17,7 +16,7 @@ import {
   INBOX_ITEM_REPLIED_REASON,
 } from "@/chat/inbox-items/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { juniorInboxItems, juniorQuestions } from "@/db/schema";
+import { juniorInboxItems } from "@/db/schema";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { SLACK_MAX_MARKDOWN_CHARS } from "@/chat/slack/limits";
@@ -91,15 +90,13 @@ describe("Slack webhook: Inbox item cards", () => {
     // the item no longer offers.
     const shipIt = buttonValue(posts[0], "junior_review_item:choice:0");
     const changeChoices = async (options: Array<{ label: string }>) => {
-      await getDb()
-        .update(juniorQuestions)
-        .set({
-          request: {
-            ...SHIP_REQUEST,
-            fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
-          } as any,
-        })
-        .where(eq(juniorQuestions.id, item.subject.id));
+      await updateItem(ana, {
+        id: item.id,
+        request: {
+          ...SHIP_REQUEST,
+          fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
+        },
+      });
     };
     await changeChoices([{ label: "Hold" }, { label: "Wait" }]);
     await click({
