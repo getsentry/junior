@@ -36,19 +36,25 @@ also wake a Conversation or run an Event automation.
 - When the requester requests changes on a Junior PR, the PR asks for
   their review again, in the Inbox and on GitHub, only when Junior marks
   each comment of that change request addressed or declined and the
-  required checks pass. Pushes, merges of the base branch, comments, and
-  replies do not ask. When the requester comments or reviews, Junior acts
-  next, and the Inbox stops asking. A requester who approved since is not
-  asked. The Inbox item says why it asks: every comment is handled, or the
-  checks now pass.
+  required checks pass. A comment that Junior pushes back on or defers is
+  declined. Pushes, merges of the base branch, and replies do not ask.
+  When the requester comments or reviews, Junior acts next, and the Inbox
+  stops asking. A requester who approved since is not asked. The Inbox
+  item says why it asks: every comment is handled, or the checks now pass.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox asks them to review the PR.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" Inbox item.
+  replies in that Conversation know it. When GitHub says that it can merge
+  and no reviewer requests changes, the requester gets a "Ready to merge"
+  Inbox item. Where GitHub requires no review, a PR with no approval gets
+  it too, and the item tells the requester to review it before they merge.
+  When a review is requested and still pending, the PR asks for that review
+  instead, even where the repo allows merging without one.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. Junior reads that state

@@ -6,7 +6,6 @@
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { readAgentUpdateStatus } from "@/chat/agent-invocations/agent-update";
 import { childWorkGoesOn } from "@/chat/agent-invocations/parent-result";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -414,7 +413,7 @@ async function readReceivedChildResults(
     const sender = readInboundMessageSender(message);
     const metadata = message.input.metadata;
     const result = isEventMailboxMetadata(metadata)
-      ? readAgentUpdateStatus(metadata.event.status)
+      ? metadata.event.status
       : undefined;
     const status =
       result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;

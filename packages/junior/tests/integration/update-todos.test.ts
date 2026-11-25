@@ -3,7 +3,6 @@ import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import {
-  appendAndEnqueueInboundMessage,
   dropPendingMessages,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
@@ -77,7 +76,6 @@ async function createHarness() {
   return {
     childConversationId,
     spawn,
-    takeInput,
     work,
     /** Sends one child Turn's result to the parent, as its loop does. */
     send: async (conversationId: string, update: AgentUpdate) => {
@@ -333,57 +331,6 @@ describe("updateTodos", () => {
           "</todo-delta>",
         ].join("\n"),
       );
-    } finally {
-      await harness.close();
-    }
-  });
-
-  // A result queued before the `done` rename names it `completed`, and
-  // still closes the child's To-dos.
-  it("closes a child's To-dos with a result stored before the done status", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      await harness.updateTodos({
-        add: [{ title: "Echo open", assignee: "Echo" }],
-      });
-      vi.setSystemTime(Date.now() + 1_000);
-      const child = harness.childConversationId;
-      await harness.takeInput(child);
-      await appendAndEnqueueInboundMessage({
-        message: {
-          conversationId: parentConversationId,
-          createdAtMs: Date.now(),
-          delivery: "defer",
-          inboundMessageId: `legacy-result-${child}`,
-          input: {
-            authorId: "system",
-            metadata: {
-              event: {
-                eventKey: `legacy-result-${child}`,
-                eventType: "agent.update",
-                identifier: child,
-                namespace: "junior",
-                status: "completed",
-                trustedSummary: "Echo finished.",
-              },
-              kind: "event",
-              sender: { conversationId: child, turnId: "turn_child" },
-            },
-            text: "Reviewed.",
-          },
-          receivedAtMs: Date.now(),
-          source: "event",
-        },
-        queue: harness.work.queue,
-        state: harness.work.state,
-      });
-
-      await expect(
-        listTodos(getSqlExecutor(), parentConversationId),
-      ).resolves.toEqual([
-        expect.objectContaining({ title: "Echo open", status: "done" }),
-      ]);
     } finally {
       await harness.close();
     }

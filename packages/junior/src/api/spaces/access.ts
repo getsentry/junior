@@ -24,7 +24,10 @@ export function spaceReport(space: Space): SpaceReport {
   };
 }
 
-/** Return the Space that the viewer reads, or a 404. */
+/**
+ * Return the Space that the viewer reads, or a 404. A private Space is a 404
+ * to a person who is not a member, so the error does not show it exists.
+ */
 export async function requireSpace(
   viewerUserId: string,
   spaceId: string,
@@ -35,8 +38,8 @@ export async function requireSpace(
 }
 
 /**
- * Return the Space that the viewer changes. Every Space is public, so anyone
- * can read it. Only members change it.
+ * Return the Space that the viewer changes. Anyone can read a public Space,
+ * but only members change a Space.
  */
 export async function requireMemberSpace(
   viewerUserId: string,
