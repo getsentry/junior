@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { juniorConversationParticipants } from "@/db/schema";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
@@ -14,8 +17,8 @@ import {
 
 const CONVERSATION_ID = "slack:CPUB:1.000001";
 
-/** A person signed in to the dashboard, linked to Slack workspace T123. */
-async function user(email: string): Promise<User> {
+/** A person signed in to the dashboard, linked to a Slack workspace. */
+async function user(email: string, tenantId = "T123"): Promise<User> {
   const resolved = await resolveViewerUserFromSql(getDb(), email);
   if (!resolved) throw new Error(`no user for ${email}`);
   return {
@@ -25,7 +28,7 @@ async function user(email: string): Promise<User> {
         id: `identity:slack:${email}`,
         provider: "slack",
         providerSubjectId: `U-${email}`,
-        providerTenantId: "T123",
+        providerTenantId: tenantId,
       },
     ],
   };
@@ -113,6 +116,13 @@ describe("inbox item with no assignees", () => {
       conversations: [{ items: [{ title: "Ask b" }] }],
     });
 
+    // Everyone stays in the owner's workspace: a person of another
+    // workspace does not get these items in their Inbox.
+    const carl = await user("carl@example.com", "T999");
+    expect(
+      (await api(fixture, carl)("?for=viewer&sort=waiting")).items,
+    ).toEqual([]);
+
     // Its Slack card names Everyone, as the card of an item for Everyone does.
     const item = await getInboxItem(getDb(), unassigned);
     if (!item) throw new Error("the ask is missing");
@@ -121,5 +131,87 @@ describe("inbox item with no assignees", () => {
         { type: "mrkdwn", text: "For Everyone" },
       ]),
     });
+  });
+});
+
+describe("inbox item for Everyone in a private Conversation", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("is for the people who can see the Conversation", async () => {
+    const fixture = await createConversationFixture();
+    const privateId = "slack:CPRIV:1.000001";
+    await getConversationStore().recordActivity({
+      conversationId: privateId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CPRIV" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "private",
+    });
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    // Ana takes part in the private Conversation. Ben does not.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date("2026-10-01T12:00:00.000Z"),
+        rootConversationId: privateId,
+        userId: ana.id,
+      });
+    const add = createAddInboxItemTool(
+      {
+        conversationId: privateId,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${ana.id}` } as any,
+          user: ana,
+        }),
+        source: { kind: "slack" } as any,
+      },
+      createSlackInboxItemToolServices(() => fixture.queue),
+    ) as any;
+    const added = await add.execute(
+      add.prepareArguments({
+        kind: "action",
+        title: "Pick a rollout day",
+        body: "The deploy waits on a day.",
+        assignees: ["everyone"],
+        request: {
+          question: "Which day?",
+          fields: [
+            {
+              id: "day",
+              kind: "choice",
+              label: "Day",
+              options: [{ label: "Monday" }, { label: "Tuesday" }],
+            },
+          ],
+        },
+      }),
+      {} as any,
+    );
+    expect(added.item).toMatchObject({
+      assignees: ["everyone"],
+      visibility: "private",
+    });
+
+    // Ana sees it up for grabs. It waits on no one, so her count leaves it
+    // out.
+    const anas = await api(fixture, ana)("?for=viewer&sort=waiting");
+    expect(anas.items).toMatchObject([
+      { id: added.item.id, assignedToEveryone: true, canAct: true },
+    ]);
+    expect(await api(fixture, ana)("/count")).toMatchObject({
+      needsViewer: 0,
+    });
+    expect(await api(fixture, ana)(`/${added.item.id}`)).toMatchObject({
+      id: added.item.id,
+      canAct: true,
+    });
+    // Ben cannot see the Conversation, so Everyone does not include him.
+    expect((await api(fixture, ben)("?for=viewer&sort=waiting")).items).toEqual(
+      [],
+    );
+    expect((await api(fixture, ben)(`/${added.item.id}`)).id).toBeUndefined();
   });
 });

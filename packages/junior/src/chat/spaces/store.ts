@@ -1,6 +1,7 @@
 /**
- * Spaces and their members (`design/spaces.md`). Every Space is public, so
- * any signed-in person can read one. Only members change it.
+ * Spaces and their members (`design/spaces.md`). Any signed-in person can
+ * read a public Space. Only members read a private Space, and only members
+ * change a Space.
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -11,6 +12,7 @@ import {
   exists,
   isNotNull,
   isNull,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -23,12 +25,14 @@ import {
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
+import type { SpaceVisibility } from "@/db/schema/spaces";
 
 /** One Space, as one viewer sees it. */
 export interface Space {
   id: string;
   name: string;
   description: string | null;
+  visibility: SpaceVisibility;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -80,6 +84,7 @@ async function selectSpaces(
       id: juniorSpaces.id,
       name: juniorSpaces.name,
       description: juniorSpaces.description,
+      visibility: juniorSpaces.visibility,
       createdAt: juniorSpaces.createdAt,
       updatedAt: juniorSpaces.updatedAt,
       archivedAt: juniorSpaces.archivedAt,
@@ -89,7 +94,16 @@ async function selectSpaces(
       )}`.mapWith(Boolean),
     })
     .from(juniorSpaces)
-    .where(where)
+    // A private Space is readable only by its members.
+    .where(
+      and(
+        where,
+        or(
+          eq(juniorSpaces.visibility, "public"),
+          exists(viewerMembership(viewerUserId)),
+        ),
+      ),
+    )
     .orderBy(asc(juniorSpaces.name), asc(juniorSpaces.id));
   return rows;
 }
@@ -129,6 +143,7 @@ export async function createSpace(args: {
   creatorUserId: string;
   name: string;
   description: string | null;
+  visibility: SpaceVisibility;
 }): Promise<Space> {
   const executor = getSqlExecutor();
   const id = randomUUID();
@@ -139,6 +154,7 @@ export async function createSpace(args: {
       id,
       name: args.name,
       description: args.description,
+      visibility: args.visibility,
       createdByUserId: args.creatorUserId,
       createdAt: now,
       updatedAt: now,
@@ -152,7 +168,10 @@ export async function createSpace(args: {
   return space;
 }
 
-/** Change the name or description of a Space. */
+/**
+ * Change the name or description of a Space. Its visibility is set when it
+ * is created and never changes.
+ */
 export async function updateSpace(
   spaceId: string,
   changes: {
@@ -197,19 +216,42 @@ export async function joinSpace(
     .onConflictDoNothing();
 }
 
-/** Remove one person from a Space. */
+/**
+ * Remove one person from a Space. Returns "last_member", and changes
+ * nothing, when they are the last member of a private Space: nobody could
+ * read or restore a private Space with no members.
+ */
 export async function leaveSpace(
   spaceId: string,
   userId: string,
-): Promise<void> {
-  await getDb()
-    .delete(juniorSpaceMembers)
-    .where(
-      and(
-        eq(juniorSpaceMembers.spaceId, spaceId),
-        eq(juniorSpaceMembers.userId, userId),
-      ),
+): Promise<"last_member" | undefined> {
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // Two members who leave at once take turns on this lock, so the second
+    // sees that the first left.
+    const [space] = await db
+      .select({ visibility: juniorSpaces.visibility })
+      .from(juniorSpaces)
+      .where(eq(juniorSpaces.id, spaceId))
+      .for("update");
+    const member = and(
+      eq(juniorSpaceMembers.spaceId, spaceId),
+      eq(juniorSpaceMembers.userId, userId),
     );
+    if (space?.visibility === "private") {
+      const members = await db
+        .select({ userId: juniorSpaceMembers.userId })
+        .from(juniorSpaceMembers)
+        .where(eq(juniorSpaceMembers.spaceId, spaceId))
+        .limit(2);
+      if (members.length === 1 && members[0]!.userId === userId) {
+        return "last_member";
+      }
+    }
+    await db.delete(juniorSpaceMembers).where(member);
+    return undefined;
+  });
 }
 
 /** Return the members of a Space, earliest join first. */

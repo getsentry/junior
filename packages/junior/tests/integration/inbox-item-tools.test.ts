@@ -260,9 +260,6 @@ describe("inbox item tools", () => {
       body: "The deploy key expires on Friday.",
     };
 
-    await expect(
-      execute(owner.add, { ...notice, assignees: ["everyone"] }),
-    ).rejects.toThrow("cannot be assigned to Everyone");
     // Ben never took part in the private Conversation.
     await expect(
       execute(owner.add, { ...notice, assignees: ["ben@example.com"] }),

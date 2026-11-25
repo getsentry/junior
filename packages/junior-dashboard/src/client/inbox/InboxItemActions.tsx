@@ -112,15 +112,19 @@ export function InboxItemActions(props: {
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct && !item.canAnswer) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="m-0 text-sm text-dashboard-text-muted">
-          Only an assignee can act on this item.
-        </p>
-        {props.extra ? (
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
-            {props.extra}
-          </div>
-        ) : null}
+      <div className="grid gap-3">
+        {/* Anyone who sees a notice sees what it is about. */}
+        {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            Only an assignee can act on this item.
+          </p>
+          {props.extra ? (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+              {props.extra}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }

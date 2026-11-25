@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createSpace, listSpaces, updateSpace } from "@/chat/spaces/store";
-import { jsonResponse } from "../http";
+import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   createSpaceBodySchema,
@@ -45,6 +45,7 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
         creatorUserId: context.get("viewer").id,
         name: body.name,
         description: body.description ?? null,
+        visibility: body.visibility,
       });
       return jsonResponse(spaceSchema, spaceReport(space), { status: 201 });
     },
@@ -62,8 +63,17 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
+      const { visibility, ...changes } = context.req.valid("json");
+      // A Space keeps the visibility it was created with. A different
+      // audience needs a new Space.
+      if (visibility !== undefined) {
+        throwApiError(
+          400,
+          "A Space's visibility is set when it is created. Create a new Space for a different audience.",
+        );
+      }
       await requireMemberSpace(viewerUserId, spaceId);
-      await updateSpace(spaceId, context.req.valid("json"));
+      await updateSpace(spaceId, changes);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

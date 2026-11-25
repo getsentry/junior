@@ -452,7 +452,7 @@ export function readMockInboxItemCounts(nowMs: number) {
     codeChanges: needsViewer.filter(
       (item) =>
         item.subject?.objectType === "code_change" &&
-        item.subject.kind !== "question",
+        item.subject.kind.includes(":"),
     ).length,
     // Like the server: each snoozed item that is still open.
     snoozed: seeds(nowMs).filter(

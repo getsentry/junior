@@ -27,6 +27,14 @@ import {
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
 
+// The form opens only after a click, so it loads with the first open
+// instead of with every Space page.
+const AddSpaceMemberForm = lazy(() =>
+  import("../../../spaces/AddSpaceMemberForm").then((module) => ({
+    default: module.AddSpaceMemberForm,
+  })),
+);
+
 // Settings open only after a click, so their code and their request load
 // with the first open instead of with every Space page.
 const SpaceSettings = lazy(() =>
@@ -145,12 +153,34 @@ function StateIcon(props: { state: LeadWorkState | undefined }) {
 
 function SpaceMembers(props: { space: SpaceReport }) {
   const members = useSpaceMembersData(props.space.id);
+  const [adding, setAdding] = useState(false);
   return (
     <DetailsCard
+      action={
+        props.space.viewerIsMember ? (
+          <Button
+            aria-expanded={adding}
+            className="rounded-md px-1.5 py-0.5 text-xs"
+            onClick={() => setAdding((value) => !value)}
+            size="bare"
+            variant="ghost"
+          >
+            {adding ? "Cancel" : "Add"}
+          </Button>
+        ) : null
+      }
       count={props.space.memberCount}
       label="Members"
       title="Members"
     >
+      {adding ? (
+        <Suspense fallback={null}>
+          <AddSpaceMemberForm
+            onAdded={() => setAdding(false)}
+            spaceId={props.space.id}
+          />
+        </Suspense>
+      ) : null}
       {members.data ? (
         <DetailsList
           itemKey={(member) => member.userId}

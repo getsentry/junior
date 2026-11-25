@@ -11,6 +11,7 @@ import type {
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
+import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import { endedGitHubPullRequestItemChanges } from "../webhooks/pull-request-action.js";
 import {
@@ -75,6 +76,14 @@ export async function applyGitHubPullRequestOutcome(args: {
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
   await args.codeChanges.record(githubCodeChange(outcome));
+  // After the record, so a requester that the create tool saves meanwhile
+  // reaches the code change.
+  await syncGitHubPullRequestRequesters({
+    codeChanges: args.codeChanges,
+    db: args.db,
+    numbers: [outcome.number],
+    repositoryFullName: outcome.repositoryFullName,
+  });
   if (ended) {
     try {
       await args.conversationChanges.apply({ inboxItems: ended.inboxItems });

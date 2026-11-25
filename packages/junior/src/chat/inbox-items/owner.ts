@@ -48,6 +48,11 @@ function pluginOwnerCases(): SQL[] {
   );
 }
 
+/** SQL: the id of the Conversation that owns a To-do's item. */
+export function todoItemOwnerConversationId(): SQL<string> {
+  return sql<string>`regexp_replace(${item.subjectId}, ':[^:]*$', '')`;
+}
+
 /**
  * SQL: the id of the Conversation that owns the item. Null for an
  * Automation alert, and for a subject whose owner row is gone.
@@ -56,7 +61,7 @@ export function inboxItemOwnerConversationId(): SQL<string | null> {
   return sql<string | null>`(case ${item.subjectKind}
     when ${INBOX_SUBJECT_KINDS.question} then (select ${juniorQuestions.conversationId} from ${juniorQuestions} where ${juniorQuestions.id} = ${item.subjectId})
     when ${INBOX_SUBJECT_KINDS.reply} then ${item.subjectId}
-    when ${INBOX_SUBJECT_KINDS.todo} then regexp_replace(${item.subjectId}, ':[^:]*$', '')
+    when ${INBOX_SUBJECT_KINDS.todo} then ${todoItemOwnerConversationId()}
     ${sql.join(pluginOwnerCases(), sql` `)}
   end)`;
 }

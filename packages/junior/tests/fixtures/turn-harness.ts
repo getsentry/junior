@@ -18,6 +18,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { scheduleInput } from "@/core/turn/schedule";
 import type { ToolDefinition } from "@/core/tool";
+import type { AdvanceTurnOptions } from "@/core/turn/advance";
 import {
   juniorConversations,
   juniorIdentities,
@@ -25,8 +26,10 @@ import {
   juniorTurns,
 } from "@/db/schema";
 import { turnStepConsumer } from "@/turn-steps/consumer";
+import { staticTools } from "./turn-engine";
 import { deliveryConsumer } from "@/turn-steps/delivery";
-import type { TurnInputPayload } from "@/turn-steps/prompt";
+import { turnGroupKey } from "@/turn-steps/group-key";
+import type { TurnInputPayload } from "@/turn-steps/input-payload";
 import { emulatedModelClient } from "./ai-emulator";
 import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
 import {
@@ -97,11 +100,14 @@ export type TurnHarness = {
 
 /**
  * Creates a root Slack Conversation and its queue for one test. The host's
- * Turn steps give the model `tools`.
+ * Turn steps give the model `tools`: the same list at every step, or what a
+ * tools builder, such as the host's own, gives each step.
  */
 export async function createTurnHarness({
   tools = [],
-}: { tools?: ToolDefinition[] } = {}): Promise<TurnHarness> {
+}: {
+  tools?: ToolDefinition[] | AdvanceTurnOptions["tools"];
+} = {}): Promise<TurnHarness> {
   const fixture = await createJuniorSqlFixture();
   const db = fixture.sql.db();
   const threadTs = `${randomInt(1e9, 2e9)}.${randomInt(1e5, 1e6)}`;
@@ -142,7 +148,7 @@ export async function createTurnHarness({
     await turnStepConsumer(engineCtx, {
       client: emulatedModelClient(),
       bot: getChatConfig().bot,
-      tools,
+      tools: typeof tools === "function" ? tools : staticTools(tools),
     }),
   );
   queue.mount(DELIVERY_TOPIC, deliveryConsumer(engineCtx, recording.delivery));
@@ -172,13 +178,15 @@ export async function createTurnHarness({
       actor: input.actor ?? ACTOR,
     };
     const idempotencyKey = `slack-event:${randomUUID()}`;
+    const source = input.source ?? slackSource;
     const { turnId } = await scheduleInput(engineCtx, {
       conversationId,
       actorIdentityId,
+      groupKey: turnGroupKey(actorIdentityId, source),
       payload,
       idempotencyKey,
       sentAt: new Date(),
-      source: input.source ?? slackSource,
+      source,
       destination:
         input.destination === undefined ? slackDestination : input.destination,
       delivery: "interrupt",

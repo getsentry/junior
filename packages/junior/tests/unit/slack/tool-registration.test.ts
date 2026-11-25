@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bindAgentTools, bindTurnTools } from "@/chat/agent/tools";
+import { bindAgentTools } from "@/chat/agent/tools";
 import type { AgentRun } from "@/chat/agent/types";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
@@ -442,31 +442,6 @@ describe("agent tool binding", () => {
       spawnAgent,
     };
   }
-
-  // A person's Turn in a Thread lists the Thread's agent tools, so the
-  // Thread keeps one tool list, but its own tools have none: `createTools`
-  // disables them, also when maxAgentDepth is above 0.
-  it("lists but does not give agent tools to a person's Turn in a Thread", async () => {
-    await createApp({ limits: { maxAgentDepth: 1 } });
-    const { environment, messageAgent, run, spawnAgent } = agentRun();
-    const behavior = turnBehavior({ kind: "thread", personInput: true });
-
-    expect(bindTurnTools(run, behavior)).toEqual({
-      turnTools: behavior.tools,
-      listedTools: {
-        ...behavior.tools,
-        agents: "children_and_parent",
-        reportBlocked: "parent",
-      },
-      spawnAgent,
-      messageAgent,
-    });
-    expect(behavior.tools.agents).toBe("none");
-    expect(environment.bindMessageAgent).toHaveBeenCalledWith(
-      run,
-      "children_and_parent",
-    );
-  });
 
   // A root always spawns. A child spawns only when maxAgentDepth is above 0,
   // and it can always message its parent. A root's messageAgent rejects

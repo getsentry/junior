@@ -5,13 +5,14 @@ import {
   expectSqlBudget,
 } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   CONVERSATION_VERSION_HEADER,
   type Versions,
   VERSIONS_CONVERSATION_LIMIT,
+  VERSIONS_STREAM_HEADER,
   versionsSchema,
 } from "@/api/schema";
 import {
@@ -36,6 +37,21 @@ import {
   createChild,
   recordRoot,
 } from "../../fixtures/dashboard-reporting";
+
+// Chat config reads the kill switch when it loads, so set it first.
+const { previous } = vi.hoisted(() => {
+  const previous = process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
+  process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = "false";
+  return { previous };
+});
+
+afterAll(() => {
+  if (previous === undefined) {
+    delete process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
+  } else {
+    process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = previous;
+  }
+});
 
 const OWN = "slack:CVERSIONS:own";
 const OTHER = "slack:CVERSIONS:other";
@@ -148,9 +164,11 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      // About 720. A feed token that works out each row's status again
-      // costs about 1,330.
-      1_000,
+      // About 1,010. An Inbox item's owner comes from its subject on
+      // purpose, since the item stores no owner, so each owner check costs
+      // one more index lookup than a stored owner column. A feed token that
+      // works out each row's status again costs about 1,330.
+      1_100,
     );
     expect(await read()).toEqual(first);
     expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
@@ -607,5 +625,14 @@ describe("versions API", () => {
       `http://localhost/api/versions?${new URLSearchParams({ conversationIds: [...onScreen, "slack:CVERSIONS:extra"].join(",") })}`,
     );
     expect(tooMany.status).toBe(400);
+  });
+
+  it("keeps the dashboard on the poll when the stream is switched off", async () => {
+    const { app } = await authenticatedApi();
+    const polled = await app.request("http://localhost/api/versions");
+    expect(polled.headers.get(VERSIONS_STREAM_HEADER)).toBeNull();
+    // A 204 stops `EventSource`.
+    const stream = await app.request("http://localhost/api/versions/stream");
+    expect(stream.status).toBe(204);
   });
 });

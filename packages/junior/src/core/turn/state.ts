@@ -79,11 +79,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
-import {
-  findUnreadInputs,
-  inputEventKey,
-  inputSourceKind,
-} from "@/core/turn/inbox";
+import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
@@ -136,7 +132,6 @@ export async function createTurn(
   { executor }: Pick<EngineContext, "executor">,
   args: {
     conversationId: string;
-    actorIdentityId: string;
     priority: number;
   },
 ): Promise<Turn> {
@@ -161,7 +156,6 @@ export type TurnFailure = {
 /** A Turn with the facts that `reconcileTurn` needs, and its failure. */
 export type TurnRecord = Turn & {
   conversationId: string;
-  actorIdentityId: string;
   failureCode: ConversationTurnFailureCode | null;
   failureReason: ConversationTurnFailureReason | null;
   failureEventId: string | null;
@@ -178,7 +172,6 @@ export async function findTurn(
       turnId: juniorTurns.id,
       state: juniorTurns.state,
       conversationId: juniorTurns.conversationId,
-      actorIdentityId: juniorTurns.actorIdentityId,
       failureCode: juniorTurns.failureCode,
       failureReason: juniorTurns.failureReason,
       failureEventId: juniorTurns.failureEventId,
@@ -220,10 +213,9 @@ export async function findOpenTurn(
   return turn;
 }
 
-/** A Turn that has not ended, with the Actor and Source of its inputs. */
+/** A Turn that has not ended, with the group key of its inputs. */
 export type OpenTurn = Turn & {
-  actorIdentityId: string;
-  sourceKind: string;
+  groupKey: string;
   /** True once any step of the Turn has been claimed. */
   started: boolean;
 };
@@ -237,15 +229,14 @@ export async function findOpenTurns(
   { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
 ): Promise<OpenTurn[]> {
-  // Grouping by Source kind gives one row per Turn, because migration 0171
-  // keeps the inputs of a Turn on one Source kind.
+  // Grouping by group key gives one row per Turn, because a database
+  // constraint keeps the inputs of a Turn on one group key.
   const rows = await executor
     .db()
     .select({
       turnId: juniorTurns.id,
       state: juniorTurns.state,
-      actorIdentityId: juniorTurns.actorIdentityId,
-      sourceKind: inputSourceKind,
+      groupKey: juniorTurnInbox.groupKey,
       stepSeq: juniorTurns.stepSeq,
       attempts: juniorTurns.attempts,
     })
@@ -263,7 +254,7 @@ export async function findOpenTurns(
         ),
       ),
     )
-    .groupBy(juniorTurns.id, inputSourceKind)
+    .groupBy(juniorTurns.id, juniorTurnInbox.groupKey)
     .orderBy(...runOrder);
   return rows.map(({ stepSeq, attempts, ...turn }) => ({
     ...turn,
