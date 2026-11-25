@@ -13,6 +13,11 @@
  * next Sandbox response, so a Conversation can be charged more than its own
  * queries cost, never less.
  *
+ * Spend is known only when a response comes back, so each Conversation may
+ * have only a few Sandbox GraphQL requests in flight. Without that limit,
+ * parallel copies of a costly query all pass the check before any of them
+ * is charged.
+ *
  * Counts live in the plugin cache, which every instance shares. A lost
  * entry only resets a count, which lets more requests through, never fewer.
  */
@@ -27,6 +32,16 @@ const GITHUB_SANDBOX_GRAPHQL_CONVERSATION_BUDGET = 2_000;
 
 /** Installation points that Sandbox requests leave for host calls. */
 const GITHUB_GRAPHQL_HOST_RESERVE = 2_000;
+
+/** Sandbox GraphQL requests that one Conversation may have in flight. */
+const GITHUB_SANDBOX_GRAPHQL_IN_FLIGHT_LIMIT = 2;
+
+/**
+ * How long a request holds its in-flight slot when no response frees it,
+ * such as when the upstream fetch fails. GitHub stops a GraphQL query after
+ * 10 seconds.
+ */
+const IN_FLIGHT_SLOT_MS = 60_000;
 
 const HOUR_MS = 60 * 60 * 1000;
 const RATE_LIMIT_CACHE_KEY = "graphql-rate-limit";
@@ -46,6 +61,39 @@ function resetText(resetAtMs: number, nowMs: number): string {
 
 function conversationKey(conversationId: string, hourStartMs: number): string {
   return `graphql-budget:${conversationId}:${hourStartMs}`;
+}
+
+function inFlightKey(conversationId: string): string {
+  return `graphql-in-flight:${conversationId}`;
+}
+
+// Start times of the requests that hold a slot, without the expired ones.
+function heldSlots(starts: number[] | undefined, nowMs: number): number[] {
+  return (starts ?? []).filter((start) => nowMs - start < IN_FLIGHT_SLOT_MS);
+}
+
+async function takeInFlightSlot(
+  ctx: EgressHookContext,
+  conversationId: string,
+  nowMs: number,
+): Promise<void> {
+  let taken = false;
+  // The update runs under the cache's cross-instance lock, so parallel
+  // requests cannot take the same slot.
+  await ctx.cache.update<number[]>(inFlightKey(conversationId), (current) => {
+    const held = heldSlots(current, nowMs);
+    if (held.length >= GITHUB_SANDBOX_GRAPHQL_IN_FLIGHT_LIMIT) {
+      return { ttlMs: IN_FLIGHT_SLOT_MS, value: held };
+    }
+    taken = true;
+    return { ttlMs: IN_FLIGHT_SLOT_MS, value: [...held, nowMs] };
+  });
+  if (taken) {
+    return;
+  }
+  throw new EgressPolicyDenied(
+    `GitHub GraphQL request denied: this Conversation already has ${GITHUB_SANDBOX_GRAPHQL_IN_FLIGHT_LIMIT} Sandbox GraphQL requests in flight. Wait for them to finish, and send GraphQL requests one after another, not in parallel.`,
+  );
 }
 
 // Host tool requests name an egress operation, and a request that carries
@@ -90,6 +138,7 @@ export async function assertGitHubSandboxGraphqlBudgetLeft(
       conversationKey(conversationId, hourStartMs),
     )) ?? 0;
   if (spent < GITHUB_SANDBOX_GRAPHQL_CONVERSATION_BUDGET) {
+    await takeInFlightSlot(ctx, conversationId, nowMs);
     return;
   }
   throw new EgressPolicyDenied(
@@ -98,13 +147,28 @@ export async function assertGitHubSandboxGraphqlBudgetLeft(
 }
 
 /**
- * Keep the installation's GraphQL rate limit from a response's headers, and
- * charge what the response cost to its Conversation's hourly budget when it
- * answers a Sandbox request.
+ * Keep the installation's GraphQL rate limit from a GraphQL response's
+ * headers. When the response answers a Sandbox request, free its in-flight
+ * slot and charge what it cost to its Conversation's hourly budget.
  */
 export async function recordGitHubGraphqlSpend(
   ctx: EgressResponseHookContext,
 ): Promise<void> {
+  const nowMs = Date.now();
+  const { conversationId } = ctx.request;
+  const sandboxConversationId =
+    conversationId && spendsSandboxBudget(ctx.request)
+      ? conversationId
+      : undefined;
+  if (sandboxConversationId) {
+    await ctx.cache.update<number[]>(
+      inFlightKey(sandboxConversationId),
+      (current) => ({
+        ttlMs: IN_FLIGHT_SLOT_MS,
+        value: heldSlots(current, nowMs).slice(1),
+      }),
+    );
+  }
   if (!ctx.grant.name.startsWith("installation-")) {
     return;
   }
@@ -115,7 +179,6 @@ export async function recordGitHubGraphqlSpend(
   const remaining = Number(headers.get("x-ratelimit-remaining"));
   const used = Number(headers.get("x-ratelimit-used"));
   const resetAtMs = Number(headers.get("x-ratelimit-reset")) * 1000;
-  const nowMs = Date.now();
   if (
     !Number.isInteger(remaining) ||
     !Number.isInteger(used) ||
@@ -142,13 +205,12 @@ export async function recordGitHubGraphqlSpend(
       };
     },
   );
-  const { conversationId } = ctx.request;
-  if (!conversationId || !spendsSandboxBudget(ctx.request)) {
+  if (!sandboxConversationId) {
     return;
   }
   const hourStartMs = nowMs - (nowMs % HOUR_MS);
   await ctx.cache.update<number>(
-    conversationKey(conversationId, hourStartMs),
+    conversationKey(sandboxConversationId, hourStartMs),
     (spent = 0) => ({
       ttlMs: hourStartMs + HOUR_MS - nowMs,
       value: spent + cost,

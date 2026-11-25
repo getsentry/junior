@@ -58,7 +58,8 @@ function githubSmartHttpAccess(
   return undefined;
 }
 
-function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
+/** Whether a URL is GitHub's GraphQL endpoint. */
+export function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
   return (
     upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
     upstreamUrl.pathname.toLowerCase().endsWith("/graphql")

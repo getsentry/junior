@@ -401,6 +401,43 @@ describe("GitHub GraphQL policy", () => {
       ).resolves.toMatchObject({ access: "read" });
     });
 
+    it("lets a Conversation have only 2 Sandbox queries in flight", async () => {
+      vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
+      const cache = memoryCache();
+      const send = () =>
+        grantForGraphql({ cache, conversationId: "c1", graphql: query });
+
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+      await expect(send()).rejects.toThrow(
+        "this Conversation already has 2 Sandbox GraphQL requests in flight",
+      );
+      // Host calls and other Conversations do not wait on its slots.
+      await expect(
+        grantForGraphql({
+          cache,
+          graphql: query,
+          operation: "github.pull.get",
+        }),
+      ).resolves.toMatchObject({ access: "read" });
+      await expect(
+        grantForGraphql({ cache, conversationId: "c2", graphql: query }),
+      ).resolves.toMatchObject({ access: "read" });
+
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        remaining: 11_500,
+        resetAtMs,
+        used: 1_000,
+      });
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+      await expect(send()).rejects.toThrow("in flight");
+      // A slot that no response frees expires.
+      vi.advanceTimersByTime(60_000);
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+    });
+
     it("keeps the host reserve of the installation's budget until it resets", async () => {
       vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
       const cache = memoryCache();
