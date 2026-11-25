@@ -251,11 +251,18 @@ describe("the Inbox item of an issue that Junior created", () => {
       ]);
       const unassigned: unknown[] = [];
       const refuse = new Set<string>();
+      let gone = false;
       mswServer.use(
         http.delete(
           "https://api.github.com/repos/getsentry/junior/issues/4254/assignees",
           async ({ request }) => {
             const body = (await request.json()) as { assignees: string[] };
+            if (gone) {
+              return HttpResponse.json(
+                { message: "Not Found" },
+                { status: 404 },
+              );
+            }
             if (body.assignees.some((login) => refuse.has(login))) {
               return HttpResponse.json(
                 { message: "Must have admin rights" },
@@ -352,6 +359,33 @@ describe("the Inbox item of an issue that Junior created", () => {
         ]),
       ).toEqual([200, 200]);
       expect(await issueItem()).toMatchObject({ status: "dismissed" });
+
+      // Once the issue is gone from GitHub, nobody is left to unassign, so
+      // a dismiss still takes the person off the item.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
+      );
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat", "sam"], {
+          assignee: { login: "sam" },
+        }),
+      );
+      const gonePat = await issueItem();
+      expect(gonePat).toMatchObject({
+        assignees: ["pat@example.com", "sam@example.com"],
+        status: "open",
+      });
+      gone = true;
+      expect(await dismissAs("pat@example.com", gonePat!.id)).toBe(200);
+      expect(await issueItem()).toMatchObject({
+        assignees: ["sam@example.com"],
+        status: "open",
+      });
+      // Deleting the issue closes its item.
+      await sendGitHubWebhook("issues", issueEvent(body, "deleted", ["sam"]));
+      expect(await issueItem()).toMatchObject({ status: "done" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

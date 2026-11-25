@@ -17,6 +17,7 @@ const check = {
   output: { title: "Cache refresh test failed", summary: failure },
 };
 const pullRequest = {
+  id: 30_691,
   number: 691,
   title: "Refresh cached values after expiry",
   state: "open",

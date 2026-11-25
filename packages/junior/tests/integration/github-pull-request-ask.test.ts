@@ -89,16 +89,13 @@ function pullRequest(body: string, merged: boolean, updatedAt: string) {
   };
 }
 
-/** What a dashboard reader sees: the chip status and the ask's state. */
-async function readerView() {
-  const chip = (
-    await listConversationAnnotations(getDb(), slackParentConversationId)
-  ).find((annotation) => annotation.key === "getsentry/junior#1592");
+/** The state of the pull request's ask. */
+async function askStatus() {
   const [ask] = await getDb()
     .select({ status: juniorInboxItems.status })
     .from(juniorInboxItems)
     .where(eq(juniorInboxItems.subjectId, PULL_ID));
-  return { ask: ask?.status, chip: chip?.status };
+  return ask?.status;
 }
 
 /** Open pull request #1592 from the person's Turn, as Junior does. */
@@ -159,7 +156,7 @@ describe("the ask of a Junior pull request", () => {
     await disconnectStateAdapter();
   });
 
-  it("closes before the chip says merged, so no reader sees a merged pull request with an open ask", async () => {
+  it("closes the ask when the pull request merges, and changes no Annotation", async () => {
     app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     // A pull request item needs a person Junior knows: one for nobody is
     // not added.
@@ -182,15 +179,8 @@ describe("the ask of a Junior pull request", () => {
         },
       ]);
       const github = { merged: false };
-      // The merge webhook calls GitHub between its writes. Each GitHub read
-      // during it records what a dashboard reader sees at that moment.
-      const views: Array<Awaited<ReturnType<typeof readerView>>> = [];
-      const observe = async () => {
-        if (github.merged) views.push(await readerView());
-      };
       mswServer.use(
         http.get(API, async () => {
-          await observe();
           return HttpResponse.json({
             auto_merge: null,
             draft: false,
@@ -206,7 +196,6 @@ describe("the ask of a Junior pull request", () => {
         }),
         // The next-action check reads the pull request and its reviews.
         http.post("https://api.github.com/graphql", async () => {
-          await observe();
           return HttpResponse.json({
             data: {
               repository: {
@@ -238,7 +227,6 @@ describe("the ask of a Junior pull request", () => {
           });
         }),
         http.get(`${API}/commits`, async () => {
-          await observe();
           return HttpResponse.json([]);
         }),
       );
@@ -253,7 +241,10 @@ describe("the ask of a Junior pull request", () => {
         pull_request: { number: 1592, user: { login: BOT } },
         review: { state: "approved", user: { login: "sam" } },
       });
-      expect(await readerView()).toEqual({ ask: "open", chip: "open" });
+      expect(await askStatus()).toBe("open");
+      const annotations = () =>
+        listConversationAnnotations(getDb(), slackParentConversationId);
+      const before = await annotations();
 
       github.merged = true;
       await sendGitHubWebhook("pull_request", {
@@ -261,9 +252,9 @@ describe("the ask of a Junior pull request", () => {
         pull_request: pullRequest(body, true, "2026-07-03T12:00:00.000Z"),
       });
 
-      expect(views.length).toBeGreaterThan(0);
-      expect(views).not.toContainEqual({ ask: "open", chip: "merged" });
-      expect(await readerView()).toEqual({ ask: "done", chip: "merged" });
+      expect(await askStatus()).toBe("done");
+      // Cards read the pull request live, so the merge writes no Annotation.
+      expect(await annotations()).toEqual(before);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

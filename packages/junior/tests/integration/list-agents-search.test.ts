@@ -231,6 +231,7 @@ describe("listAgents query", () => {
 
   it("lets plugin tools find other Conversations by Annotation", async () => {
     const key = "getsentry/junior#691";
+    const subject = { id: "2900691", kind: "pull_request" };
     const db = getDb();
     const nowMs = Date.now();
     const hourAgoMs = nowMs - 60 * 60 * 1000;
@@ -243,9 +244,11 @@ describe("listAgents query", () => {
         db,
         plugin: "github",
       }).upsert({
-        kind: "resource_link",
+        kind: "object",
         key,
-        label: key,
+        objectType: "code_change",
+        subject,
+        title: "Add events",
         url: "https://github.com/getsentry/junior/pull/691",
       });
     const record = async (args: {
@@ -354,7 +357,7 @@ describe("listAgents query", () => {
       visibility: "public",
     });
 
-    const conversations = createPluginConversations(ownChild);
+    const conversations = createPluginConversations(ownChild, "github");
 
     const workingMatch = {
       conversationId: working,
@@ -363,7 +366,7 @@ describe("listAgents query", () => {
       title: "Work in CWORKING",
       updatedAt: new Date(twoMonthsAgoMs).toISOString(),
     };
-    await expect(conversations.search({ annotation: key })).resolves.toEqual([
+    await expect(conversations.search({ subject })).resolves.toEqual([
       workingMatch,
       {
         conversationId: newer,
@@ -387,8 +390,8 @@ describe("listAgents query", () => {
       },
     ]);
     // Newer idle matches do not push a working one past the limit.
-    await expect(
-      conversations.search({ annotation: key, limit: 1 }),
-    ).resolves.toEqual([workingMatch]);
+    await expect(conversations.search({ limit: 1, subject })).resolves.toEqual([
+      workingMatch,
+    ]);
   });
 });

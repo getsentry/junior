@@ -99,7 +99,13 @@ function memoryHeartbeatContext(args: {
       dispatchForIdentity: vi.fn(),
       get: vi.fn(),
     },
-    annotations: { forConversation: vi.fn() },
+    annotations: {
+      forConversation: vi.fn(),
+      listObjects: vi.fn(),
+      nameObject: vi.fn(),
+      objectChanged: vi.fn(),
+      objectsMoved: vi.fn(),
+    },
     cache: memoryCache,
     codeChanges: {
       associateConversations: vi.fn(),

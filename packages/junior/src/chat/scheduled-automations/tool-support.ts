@@ -114,18 +114,7 @@ export async function scheduleAutomationToolResult(
   return saveAutomationCardResult(
     conversationId,
     compactTask(task, isCreator),
-    {
-      task: task.task,
-      fallbackTitle: "Scheduled automation",
-      trigger:
-        task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
-          ? `${new Intl.DateTimeFormat("en-US", {
-              dateStyle: "medium",
-              timeStyle: "short",
-              timeZone: task.schedule.timezone,
-            }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
-          : task.schedule.description,
-    },
+    { task: task.task, fallbackTitle: "Scheduled automation" },
     action,
   );
 }

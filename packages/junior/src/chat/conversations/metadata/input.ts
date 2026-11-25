@@ -2,6 +2,7 @@ import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { arrayContains, eq } from "drizzle-orm";
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { readConversationEventPage } from "@/api/conversations/event-page";
+import { annotationLabel } from "@/api/objects/live-annotations";
 import { codeChangeUrl } from "@/chat/code/links";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -29,7 +30,7 @@ export type ConversationMetadataInput = {
     mergedAt?: string;
     closedAt?: string;
   }[];
-  resources: { label: string; url: string; status?: string }[];
+  resources: { label: string; url: string }[];
 };
 
 async function readReportEventsThrough(
@@ -128,23 +129,20 @@ export async function conversationMetadataInputFromSql(
         },
       ];
     }),
-    resources: annotations.flatMap((annotation) =>
-      annotation.url
-        ? [
-            {
-              // An object label is only its id, such as `owner/repo#123`.
-              label:
-                annotation.kind === "object" &&
-                annotation.title !== annotation.label
-                  ? `${annotation.label} · ${annotation.title}`
-                  : annotation.label,
-              url: annotation.url,
-              ...(annotation.status
-                ? { status: annotation.status }
-                : undefined),
-            },
-          ]
-        : [],
-    ),
+    resources: annotations.flatMap((annotation) => {
+      const { url } = annotation;
+      if (!url) return [];
+      // The plugin label is short, such as `owner/repo#123`.
+      const label = annotationLabel({ ...annotation, url });
+      return [
+        {
+          label:
+            annotation.kind === "object" && annotation.title !== label
+              ? `${label} · ${annotation.title}`
+              : label,
+          url,
+        },
+      ];
+    }),
   };
 }

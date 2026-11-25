@@ -1,6 +1,9 @@
 import { asc, eq } from "drizzle-orm";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { githubPlugin } from "@sentry/junior-github";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import { recordCodeChange } from "@/chat/code/store";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
@@ -37,6 +40,8 @@ describe("searchConversations", () => {
   });
 
   it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
+    // GitHub makes the label of the link. Search reads no state.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const conversationId = "slack:CARCHIVE:1700000000.100000";
     await getConversationStore().recordActivity({
       conversationId,
@@ -63,8 +68,6 @@ describe("searchConversations", () => {
     }).upsert({
       kind: "resource_link",
       key: "getsentry/junior#1805",
-      label: "getsentry/junior#1805",
-      status: "open",
       url: "https://github.com/getsentry/junior/pull/1805",
     });
     setDashboardConversationLinkOptions({
@@ -96,7 +99,6 @@ describe("searchConversations", () => {
           links: [
             {
               label: "getsentry/junior#1805",
-              status: "open",
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
@@ -278,8 +280,71 @@ describe("searchConversations", () => {
     ]);
   });
 
-  it("lets plugin tools find other Conversations by Annotation", async () => {
-    const key = "getsentry/junior#691";
+  it("finds a linked resource by its reference or link, also after its repository is renamed", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const db = getDb();
+    const conversationId = "slack:CRENAME:1700000000.100000";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CRENAME" },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+      source: "slack",
+      title: "Retry uploads",
+      visibility: "public",
+    });
+    // GitHub renamed the repository after the Conversation opened the
+    // pull request, so its Annotation keeps the old key and link.
+    await createPluginAnnotations({
+      conversationId,
+      db,
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      key: "getsentry/uploads#12",
+      objectType: "code_change",
+      subject: { id: "1200", kind: "pull_request" },
+      title: "Retry uploads",
+      url: "https://github.com/getsentry/uploads/pull/12",
+    });
+    await recordCodeChange(db, "github", {
+      number: 12,
+      openedAt: new Date("2026-07-01T12:00:00.000Z"),
+      providerId: "1200",
+      repository: { name: "getsentry/uploader", providerId: "repo-uploads" },
+      state: "open",
+      updatedAt: new Date("2026-07-02T12:00:00.000Z"),
+    });
+    const tool = createSearchConversationsTool({
+      conversationId: "local:test:rename-requester",
+    });
+    const found = async (annotation: string) =>
+      (await executeTool(tool, { annotation })).conversations.map(
+        (match: { conversation_id: string }) => match.conversation_id,
+      );
+
+    await expect(found("getsentry/uploader#12")).resolves.toEqual([
+      conversationId,
+    ]);
+    await expect(
+      found("https://github.com/getsentry/uploader/pull/12"),
+    ).resolves.toEqual([conversationId]);
+    // The stored key, its repository, and the stored link still match.
+    await expect(found("GetSentry/Uploads#12")).resolves.toEqual([
+      conversationId,
+    ]);
+    await expect(found("getsentry/uploads")).resolves.toEqual([conversationId]);
+    await expect(
+      found("https://github.com/getsentry/uploads/pull/12"),
+    ).resolves.toEqual([conversationId]);
+    await expect(found("getsentry/uploader#13")).resolves.toEqual([]);
+    await expect(found("getsentry/upload")).resolves.toEqual([]);
+  });
+
+  it("lets plugin tools find other Conversations by the subject of an Annotation", async () => {
+    // The Annotations name the repository by its name before a rename. The
+    // subject is GitHub's id of the pull request, which the rename keeps.
+    const key = "getsentry/junior-old#691";
+    const subject = { id: "2900691", kind: "pull_request" };
     const db = getDb();
     const nowMs = Date.now();
     const hourAgoMs = nowMs - 60 * 60 * 1000;
@@ -292,10 +357,12 @@ describe("searchConversations", () => {
         db,
         plugin: "github",
       }).upsert({
-        kind: "resource_link",
+        kind: "object",
         key,
-        label: key,
-        url: "https://github.com/getsentry/junior/pull/691",
+        objectType: "code_change",
+        subject,
+        title: "Add events",
+        url: "https://github.com/getsentry/junior-old/pull/691",
       });
     const record = async (args: {
       activityAtMs: number;
@@ -403,7 +470,7 @@ describe("searchConversations", () => {
       visibility: "public",
     });
 
-    const conversations = createPluginConversations(ownChild);
+    const conversations = createPluginConversations(ownChild, "github");
 
     const workingMatch = {
       conversationId: working,
@@ -412,7 +479,7 @@ describe("searchConversations", () => {
       title: "Work in CWORKING",
       updatedAt: new Date(twoMonthsAgoMs).toISOString(),
     };
-    await expect(conversations.search({ annotation: key })).resolves.toEqual([
+    await expect(conversations.search({ subject })).resolves.toEqual([
       workingMatch,
       {
         conversationId: newer,
@@ -436,8 +503,47 @@ describe("searchConversations", () => {
       },
     ]);
     // Newer idle matches do not push a working one past the limit.
+    await expect(conversations.search({ limit: 1, subject })).resolves.toEqual([
+      workingMatch,
+    ]);
+  });
+
+  it("lets plugin tools find a card saved without its subject by its link", async () => {
+    // A card from a pasted link can lack GitHub's id, so it has only its link.
+    const db = getDb();
+    const url = "https://github.com/getsentry/junior/pull/691";
+    const subject = { id: "2900691", kind: "pull_request" };
+    const record = async (channelId: string) => {
+      const conversationId = `slack:${channelId}:1700000000.100000`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId },
+        nowMs: Date.now(),
+        source: "slack",
+        title: `Work in ${channelId}`,
+        visibility: "public",
+      });
+      return conversationId;
+    };
+    const requester = await record("CREQUEST");
+    const linked = await record("CLINKED");
+    await createPluginAnnotations({
+      conversationId: linked,
+      db,
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      key: "getsentry/junior#691",
+      objectType: "code_change",
+      title: "Add events",
+      url,
+    });
+
+    const conversations = createPluginConversations(requester, "github");
+
     await expect(
-      conversations.search({ annotation: key, limit: 1 }),
-    ).resolves.toEqual([workingMatch]);
+      conversations.search({ subject, url: url.toUpperCase() }),
+    ).resolves.toEqual([expect.objectContaining({ conversationId: linked })]);
+    await expect(conversations.search({ subject })).resolves.toEqual([]);
   });
 });

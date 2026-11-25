@@ -40,6 +40,7 @@ import {
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadGitHubObjectNames,
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
@@ -99,6 +100,11 @@ import {
   startGitHubPullRequestRequesterBackfill,
 } from "./pull-request-requesters/backfill.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import {
+  GITHUB_ANNOTATION_NAMES_TASK,
+  githubAnnotationNamesTask,
+  startGitHubAnnotationNames,
+} from "./annotation-names.js";
 import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
@@ -223,6 +229,14 @@ export function githubPlugin(
     inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
+      [GITHUB_ANNOTATION_NAMES_TASK]: githubAnnotationNamesTask(
+        async () =>
+          await loadGitHubObjectNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
       [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
         async (refs) =>
@@ -489,7 +503,6 @@ export function githubPlugin(
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
-          annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,
@@ -509,6 +522,10 @@ export function githubPlugin(
           tasks: ctx.tasks,
         });
         await startGitHubPullRequestRequesterBackfill({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
+        await startGitHubAnnotationNames({
           state: ctx.state,
           tasks: ctx.tasks,
         });

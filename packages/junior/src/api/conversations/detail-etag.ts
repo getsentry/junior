@@ -449,7 +449,9 @@ export async function readConversationDetailState(
  * Shared content is covered by `detail_version`. The detail state is cheap,
  * so it is read on each request. Names, avatars, Automation titles, and
  * plugin sidebar labels are not covered: they refresh with the next detail
- * change or a reload.
+ * change or a reload. The live cards of Annotations change it when their
+ * plugin reports a provider change (`objectChanged`), which moves
+ * `detail_version` of each Conversation that annotates the object.
  *
  * The read position is not hashed. The dashboard writes it as the reader
  * scrolls and puts the stored value in its cached detail, so a poll after a

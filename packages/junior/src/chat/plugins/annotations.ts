@@ -1,23 +1,48 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  ne,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
 import {
   conversationAnnotationInputSchema,
+  objectSubjectSchema,
   type AnnotationAction,
+  type AnnotationPrefix,
   type ConversationAnnotation,
   type ConversationAnnotationInput,
+  type ObjectSubject,
   type PluginAnnotations,
+  type PluginConversationAnnotations,
+  type ListedAnnotation,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
-import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import type { StoredAnnotationJson } from "@/db/schema/conversation-annotations";
+import {
+  conversationDetailTouch,
+  nextDetailVersion,
+  touchConversationDetail,
+} from "@/chat/conversations/sql/detail-version";
 import {
   INBOX_SUBJECT_KINDS,
   pluginSubjectKind,
   type InboxItemSubject,
 } from "@/chat/inbox-items/subjects";
+
+const table = juniorConversationAnnotations;
+const otherRow = alias(juniorConversationAnnotations, "other_annotation");
 
 /** The plugin name of core's own Annotations, such as Automation cards. */
 export const CORE_ANNOTATION_PLUGIN = "junior";
@@ -54,8 +79,12 @@ export function annotationSubject(
   };
 }
 
+// The JSON holds the shape and the type of the object. A row that an older
+// release saved can also hold `objectId`, which no reader uses.
 const savedAnnotationJsonSchema = z.looseObject({
-  objectId: z.unknown().optional(),
+  key: z.string(),
+  kind: z.enum(["object", "resource_link"]),
+  objectType: z.unknown().optional(),
 });
 
 function annotationFromRow(row: {
@@ -65,18 +94,29 @@ function annotationFromRow(row: {
   plugin: string;
   subjectId: string | null;
   subjectKind: string | null;
+  title: string | null;
   updatedAt: Date;
+  url: string | null;
 }): ConversationAnnotation | undefined {
-  // The subject lives in its columns. A card that an older release saved
-  // kept the provider id in `objectId` instead.
   const saved = savedAnnotationJsonSchema.safeParse(row.annotation);
   if (!saved.success) return undefined;
-  const { objectId: _objectId, ...json } = saved.data;
-  const parsed = conversationAnnotationInputSchema.safeParse(json);
+  const { key, kind, objectType } = saved.data;
+  const parsed = conversationAnnotationInputSchema.safeParse(
+    kind === "object"
+      ? { key, kind, objectType, title: row.title, url: row.url }
+      : { key, kind, objectType, url: row.url },
+  );
   if (!parsed.success) return undefined;
-  const ownKind = row.subjectKind?.startsWith(`${row.plugin}:`)
-    ? row.subjectKind.slice(row.plugin.length + 1)
-    : undefined;
+  // The inverse of `annotationSubject`. A `link` subject names no provider
+  // id, so the annotation gets none.
+  const ownKind =
+    row.plugin === CORE_ANNOTATION_PLUGIN
+      ? row.subjectKind === ANNOTATION_SUBJECT_KINDS.link
+        ? undefined
+        : row.subjectKind
+      : row.subjectKind?.startsWith(`${row.plugin}:`)
+        ? row.subjectKind.slice(row.plugin.length + 1)
+        : undefined;
   return {
     ...parsed.data,
     ...(parsed.data.kind === "object" && ownKind && row.subjectId
@@ -86,6 +126,37 @@ function annotationFromRow(row: {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/**
+ * Move the Annotations of one plugin subject from one provider id to
+ * another, only those whose url starts with `urlPrefix` when it is set.
+ * Only the subject id changes: the saved card and its update time stay.
+ */
+export async function replaceAnnotationSubjectId(
+  db: JuniorDatabase,
+  args: {
+    from: string;
+    kind: string;
+    plugin: string;
+    to: string;
+    urlPrefix?: string | undefined;
+  },
+): Promise<void> {
+  const table = juniorConversationAnnotations;
+  await db
+    .update(table)
+    .set({ subjectId: args.to })
+    .where(
+      and(
+        eq(table.plugin, args.plugin),
+        eq(table.subjectKind, pluginSubjectKind(args.plugin, args.kind)),
+        eq(table.subjectId, args.from),
+        args.urlPrefix === undefined
+          ? undefined
+          : sql`starts_with(${table.url}, ${args.urlPrefix})`,
+      ),
+    );
 }
 
 /**
@@ -108,11 +179,26 @@ export async function upsertPluginAnnotation(
 ): Promise<void> {
   const parsed = conversationAnnotationInputSchema.parse(args.annotation);
   const subject = args.subject ?? annotationSubject(args.plugin, parsed);
-  // The columns hold the subject, so the JSON does not repeat it.
-  const annotation =
-    parsed.kind === "object" ? { ...parsed, subject: undefined } : parsed;
+  // The columns hold the subject, the title, and the link.
+  const annotation: StoredAnnotationJson = {
+    key: parsed.key,
+    kind: parsed.kind,
+    ...(parsed.objectType ? { objectType: parsed.objectType } : undefined),
+  };
+  const title = parsed.kind === "object" ? parsed.title : null;
   const now = new Date();
-  const table = juniorConversationAnnotations;
+  if (subject) {
+    await rekeyBySubject(
+      db,
+      {
+        conversationId: args.conversationId,
+        key: parsed.key,
+        kind: parsed.kind,
+        plugin: args.plugin,
+      },
+      subject,
+    );
+  }
   await db
     .with(conversationDetailTouch(db, [args.conversationId]))
     .insert(table)
@@ -121,18 +207,22 @@ export async function upsertPluginAnnotation(
       annotation,
       conversationId: args.conversationId,
       createdAt: now,
-      key: annotation.key,
-      kind: annotation.kind,
+      key: parsed.key,
+      kind: parsed.kind,
       plugin: args.plugin,
       subjectId: subject?.id,
       subjectKind: subject?.kind,
+      title,
       updatedAt: now,
+      url: parsed.url,
     })
     .onConflictDoUpdate({
       target: [table.conversationId, table.plugin, table.kind, table.key],
       set: {
         annotation,
+        title,
         updatedAt: now,
+        url: parsed.url,
         ...(subject
           ? { subjectId: subject.id, subjectKind: subject.kind }
           : undefined),
@@ -143,6 +233,221 @@ export async function upsertPluginAnnotation(
           : undefined),
       },
     });
+}
+
+// A move at the provider, such as a repository rename, changes the key of
+// an object but not its subject. Give the Annotation that names the object
+// in this Conversation the new key, so that the upsert changes it and adds
+// no second Annotation. It keeps its key when the new key is taken.
+async function rekeyBySubject(
+  db: JuniorDatabase,
+  target: { conversationId: string; key: string; kind: string; plugin: string },
+  subject: InboxItemSubject,
+): Promise<void> {
+  await db
+    .update(table)
+    .set({ key: target.key })
+    .where(
+      and(
+        eq(table.conversationId, target.conversationId),
+        eq(table.plugin, target.plugin),
+        eq(table.kind, target.kind),
+        eq(
+          table.key,
+          db
+            .select({ key: otherRow.key })
+            .from(otherRow)
+            .where(
+              and(
+                eq(otherRow.conversationId, target.conversationId),
+                eq(otherRow.plugin, target.plugin),
+                eq(otherRow.kind, target.kind),
+                eq(otherRow.subjectKind, subject.kind),
+                eq(otherRow.subjectId, subject.id),
+                ne(otherRow.key, target.key),
+              ),
+            )
+            .orderBy(asc(otherRow.createdAt))
+            .limit(1),
+        ),
+        notExists(
+          db
+            .select({ key: otherRow.key })
+            .from(otherRow)
+            .where(
+              and(
+                eq(otherRow.conversationId, target.conversationId),
+                eq(otherRow.plugin, target.plugin),
+                eq(otherRow.kind, target.kind),
+                eq(otherRow.key, target.key),
+              ),
+            ),
+        ),
+      ),
+    );
+}
+
+/**
+ * Mark each Conversation that annotates one object of a plugin as changed,
+ * so its detail and its row read the live card again. Writes no Annotation.
+ */
+export async function touchAnnotatedConversations(
+  db: JuniorDatabase,
+  plugin: string,
+  subject: ObjectSubject,
+): Promise<void> {
+  await db
+    .update(juniorConversations)
+    .set({ detailVersion: nextDetailVersion })
+    .where(
+      inArray(
+        juniorConversations.conversationId,
+        db
+          .select({ conversationId: table.conversationId })
+          .from(table)
+          .where(
+            and(
+              eq(table.subjectKind, pluginSubjectKind(plugin, subject.kind)),
+              eq(table.subjectId, subject.id),
+            ),
+          ),
+      ),
+    );
+}
+
+// Plugin writes that repair the stored names of objects across
+// Conversations: the provider id that an old row lacks, and the keys and
+// links of objects that the provider moved. The plugin reads the provider,
+// and core owns the rows (`policies/provider-boundaries.md`).
+
+// List the keys of a plugin's Annotations whose subject names a provider
+// id, or whose subject is only a link.
+async function listAnnotationObjects(
+  db: JuniorDatabase,
+  plugin: string,
+  input: { after?: string | undefined; limit: number; named: boolean },
+): Promise<ListedAnnotation[]> {
+  const limit = z.number().int().positive().max(500).parse(input.limit);
+  return await db
+    .select({ key: table.key, url: sql<string | null>`max(${table.url})` })
+    .from(table)
+    .where(
+      and(
+        input.named
+          ? ne(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link)
+          : eq(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link),
+        eq(table.plugin, plugin),
+        input.after === undefined ? undefined : gt(table.key, input.after),
+      ),
+    )
+    .groupBy(table.key)
+    .orderBy(asc(table.key))
+    .limit(limit);
+}
+
+/**
+ * Give each Annotation of a plugin with this key and only a link subject
+ * the object's subject and current link. Its update time stays, so the
+ * Annotation keeps its place in the Conversation.
+ */
+async function nameAnnotationObject(
+  db: JuniorDatabase,
+  plugin: string,
+  key: string,
+  object: { subject: ObjectSubject; url: string },
+): Promise<void> {
+  const subject = objectSubjectSchema.parse(object.subject);
+  const url = z.url().max(2048).parse(object.url);
+  await db.transaction(async (tx) => {
+    const named = await tx
+      .update(table)
+      .set({
+        subjectId: subject.id,
+        subjectKind: pluginSubjectKind(plugin, subject.kind),
+        url,
+      })
+      .where(
+        and(
+          eq(table.subjectKind, ANNOTATION_SUBJECT_KINDS.link),
+          eq(table.plugin, plugin),
+          eq(table.key, key),
+        ),
+      )
+      .returning({ conversationId: table.conversationId });
+    await touchConversationDetail(tx, [
+      ...new Set(named.map((row) => row.conversationId)),
+    ]);
+  });
+}
+
+/**
+ * Replace the key prefix and the link prefix of a plugin's moved objects.
+ * A key moves only when its Conversation has no Annotation of the same
+ * kind with the new key, so the primary key holds.
+ */
+async function moveAnnotationObjects(
+  db: JuniorDatabase,
+  plugin: string,
+  move: { from: AnnotationPrefix; to: AnnotationPrefix },
+): Promise<void> {
+  const { from, to } = move;
+  const movedKey = sql`${to.key}::text || substr(${table.key}, length(${from.key}::text) + 1)`;
+  const keyMatches = sql`starts_with(${table.key}, ${from.key}::text)`;
+  const urlMatches = sql`lower(left(${table.url}, length(${from.url}::text))) = ${from.url.toLowerCase()}::text`;
+  const keyMoves = and(
+    keyMatches,
+    notExists(
+      db
+        .select({ key: otherRow.key })
+        .from(otherRow)
+        .where(
+          and(
+            eq(otherRow.conversationId, table.conversationId),
+            eq(otherRow.plugin, table.plugin),
+            eq(otherRow.kind, table.kind),
+            eq(otherRow.key, movedKey),
+          ),
+        ),
+    ),
+  );
+  await db.transaction(async (tx) => {
+    const moved = await tx
+      .update(table)
+      .set({
+        key: sql`case when ${keyMoves} then ${movedKey} else ${table.key} end`,
+        // The saved Annotation names its key too, and lists read it there.
+        annotation: sql`case when ${keyMoves} then jsonb_set(${table.annotation}, '{key}', to_jsonb(${movedKey})) else ${table.annotation} end`,
+        url: sql`case when ${urlMatches} then ${to.url}::text || substr(${table.url}, length(${from.url}::text) + 1) else ${table.url} end`,
+      })
+      .where(and(eq(table.plugin, plugin), or(keyMatches, urlMatches)))
+      .returning({ conversationId: table.conversationId });
+    await touchConversationDetail(tx, [
+      ...new Set(moved.map((row) => row.conversationId)),
+    ]);
+  });
+}
+
+/** Create the Annotations capability of one plugin. */
+export function createPluginConversationAnnotations(args: {
+  db: () => JuniorDatabase;
+  plugin: string;
+}): PluginConversationAnnotations {
+  return {
+    forConversation: (conversationId) =>
+      createPluginAnnotations({
+        conversationId,
+        db: args.db(),
+        plugin: args.plugin,
+      }),
+    listObjects: async (input) =>
+      await listAnnotationObjects(args.db(), args.plugin, input),
+    nameObject: async (key, object) =>
+      await nameAnnotationObject(args.db(), args.plugin, key, object),
+    objectsMoved: async (move) =>
+      await moveAnnotationObjects(args.db(), args.plugin, move),
+    objectChanged: async (subject) =>
+      await touchAnnotatedConversations(args.db(), args.plugin, subject),
+  };
 }
 
 export function createPluginAnnotations(args: {

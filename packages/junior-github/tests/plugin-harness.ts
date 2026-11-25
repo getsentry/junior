@@ -219,6 +219,12 @@ export function createPluginHarness(fixture: GitHubFixture) {
       throw new Error("GitHub webhooks do not dispatch agents");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged() {},
       forConversation() {
         return {
           async upsert() {},
@@ -235,7 +241,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -258,6 +263,12 @@ export function createPluginHarness(fixture: GitHubFixture) {
       throw new Error("The GitHub heartbeat does not use this");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged() {},
       forConversation(conversationId) {
         return {
           async upsert(annotation) {
@@ -276,7 +287,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -310,7 +320,13 @@ export function createPluginHarness(fixture: GitHubFixture) {
       const task = githubPlugin().tasks?.[started.name];
       if (!task?.payload) throw new Error(`No started task ${started.name}`);
       await task.run({
-        annotations: { forConversation: unused },
+        annotations: {
+          forConversation: unused,
+          listObjects: async () => [],
+          nameObject: unused,
+          objectChanged: unused,
+          objectsMoved: async () => {},
+        },
         cache,
         codeChanges,
         conversationChanges: { apply: unused },

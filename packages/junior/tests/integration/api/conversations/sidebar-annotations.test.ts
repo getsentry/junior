@@ -8,6 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { juniorConversationParticipants } from "@/db/schema";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -88,8 +89,6 @@ describe("conversation list sidebar annotations", () => {
         await annotations.upsert({
           kind: "resource_link",
           key: "getsentry/junior#1081",
-          label: "getsentry/junior#1081",
-          status: "open",
           url: "https://github.com/getsentry/junior/pull/1081",
         });
       }
@@ -102,9 +101,7 @@ describe("conversation list sidebar annotations", () => {
         kind: "object",
         objectType: "automation",
         key: "daily",
-        label: "Daily check",
         title: "Daily check",
-        status: "blocked",
         url: null,
       });
       const feed = await readConversationFeedFromSql();
@@ -113,12 +110,8 @@ describe("conversation list sidebar annotations", () => {
           expect.objectContaining({
             conversationId: publicId,
             sidebarAnnotations: [
-              {
-                objectType: "automation",
-                key: "daily",
-                label: "Daily check",
-                status: "blocked",
-              },
+              // No link to read, so the chip shows only the type.
+              { objectType: "automation", key: "daily", label: "Automation" },
               { icon: "circle-dot", key: "github", label: "junior" },
             ],
           }),
@@ -142,9 +135,9 @@ describe("conversation list sidebar annotations", () => {
         expect.objectContaining({
           key: "getsentry/junior#1081",
           kind: "resource_link",
-          label: "getsentry/junior#1081",
+          // No link type reads the link, so its host is the label.
+          label: "github.com",
           plugin: "github",
-          status: "open",
           url: "https://github.com/getsentry/junior/pull/1081",
         }),
       ]);
@@ -198,19 +191,40 @@ describe("conversation list sidebar annotations", () => {
           kind: "object",
           objectType: "code_change",
           key: "getsentry/roach#12",
-          label: "getsentry/roach#12",
+          subject: { id: "1200", kind: "pull_request" },
           title: "Retry flaky uploads",
-          status: "open",
           url: "https://github.com/getsentry/roach/pull/12",
         });
       }
+      // GitHub renamed the repository later. The Annotations keep the old
+      // key and link, and the code change records hold the new name.
+      await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+      await recordCodeChange(fixture.sql.db(), "github", {
+        number: 12,
+        openedAt: new Date(1_000),
+        providerId: "1200",
+        repository: { name: "getsentry/cockroach", providerId: "repo-roach" },
+        state: "open",
+        updatedAt: new Date(1_000),
+      });
 
       const ids = async (q: string) =>
         (await readConversationFeedFromSql({ q })).conversations.map(
           (conversation) => conversation.conversationId,
         );
       await expect(ids("roach")).resolves.toEqual([publicId]);
+      await expect(ids("getsentry/roach#12")).resolves.toEqual([publicId]);
       await expect(ids("FLAKY uploads")).resolves.toEqual([publicId]);
+      await expect(ids("getsentry/cockroach#12")).resolves.toEqual([publicId]);
+      await expect(
+        ids("https://github.com/getsentry/cockroach/pull/12"),
+      ).resolves.toEqual([publicId]);
+      await expect(
+        ids("https://github.com/getsentry/roach/pull/12"),
+      ).resolves.toEqual([publicId]);
+      await expect(ids("getsentry/cockroach#13")).resolves.toEqual([]);
+      // A word of every link matches no Conversation.
+      await expect(ids("pull")).resolves.toEqual([]);
       await expect(ids("sentry/relay")).resolves.toEqual([]);
     } finally {
       await fixture.close();
@@ -274,9 +288,7 @@ describe("conversation list sidebar annotations", () => {
         kind: "object",
         objectType: "code_change",
         key: "getsentry/junior#36",
-        label: "Saved label",
         title: "Draft: retry uploads",
-        status: "open",
         url: `${GITHUB_REPO}/pull/36`,
       });
 

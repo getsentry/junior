@@ -39,7 +39,10 @@ import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers"
 import { findLinkedHandle } from "@/chat/identities/user-lookup";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import {
+  createPluginAnnotations,
+  createPluginConversationAnnotations,
+} from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import {
   annotateToolResult,
@@ -815,7 +818,10 @@ export function getPluginTools(
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
-      conversations: createPluginConversations(context.conversationId),
+      conversations: createPluginConversations(
+        context.conversationId,
+        pluginName,
+      ),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
@@ -1127,14 +1133,10 @@ export function getPluginRoutes(options: {
         dispatchForIdentity: (dispatchOptions) =>
           options.dispatchForIdentity(pluginName, dispatchOptions),
       },
-      annotations: {
-        forConversation: (conversationId) =>
-          createPluginAnnotations({
-            conversationId,
-            db: getDb(),
-            plugin: pluginName,
-          }),
-      },
+      annotations: createPluginConversationAnnotations({
+        db: getDb,
+        plugin: pluginName,
+      }),
       codeChanges: createPluginCodeChanges(pluginName),
       conversationChanges: createPluginConversationChanges({
         plugin: pluginName,

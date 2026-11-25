@@ -89,6 +89,11 @@ import {
 } from "./activity-preview";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
+import {
+  annotationMatches,
+  resolveAnnotationFilter,
+} from "@/chat/conversations/sql/annotation-filter";
+import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
 import { feedMediaSql } from "./feed-media";
 import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
@@ -191,6 +196,7 @@ async function conversationRows(
     limit,
     pinnedForUserId,
     query,
+    querySubjects = [],
     space,
     status,
     waitingForUserId,
@@ -208,6 +214,8 @@ async function conversationRows(
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string | undefined;
+    /** Objects that `query` names, such as a pull request by its reference. */
+    querySubjects?: readonly InboxItemSubject[];
     /** Read only the roots of this Space, in place of membership. */
     space?: { id: string; viewerUserId?: string };
     status: "active" | "archived" | "all";
@@ -281,7 +289,11 @@ async function conversationRows(
                   : eq(juniorDestinations.visibility, "public"),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
-              annotationMatch(db, query, includePrivateMatches),
+              annotationMatch(db, {
+                includePrivate: includePrivateMatches,
+                query,
+                subjects: querySubjects,
+              }),
             )
           : undefined,
       ),
@@ -297,17 +309,27 @@ async function conversationRows(
 const searchAnnotated = alias(juniorConversations, "search_annotated");
 
 /**
- * Match a root whose tree has an Annotation with the text in its label or
- * title, such as `getsentry/roach#12`. The feed shows the annotations of
- * the whole tree, so search reads the same rows. Private annotations match
- * only where the feed shows them.
+ * Match a root whose tree has an Annotation with the text in its key or
+ * title, such as `getsentry/roach#12`, with the text as its link, or of an
+ * object that the text names. The feed shows the annotations of the whole
+ * tree, so search reads the same rows. Private annotations match only where
+ * the feed shows them.
  */
 function annotationMatch(
   db: JuniorDatabase,
-  query: string,
-  includePrivate: boolean,
+  {
+    includePrivate,
+    query,
+    subjects,
+  }: {
+    includePrivate: boolean;
+    query: string;
+    subjects: readonly InboxItemSubject[];
+  },
 ) {
-  const annotation = juniorConversationAnnotations.annotation;
+  // The link matches only whole, so a word of every link, such as `pull`,
+  // does not match each Conversation.
+  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}))`;
   return exists(
     db
       .select({ one: sql`1` })
@@ -328,7 +350,13 @@ function annotationMatch(
           includePrivate
             ? undefined
             : eq(juniorDestinations.visibility, "public"),
-          sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
+          or(
+            sql<boolean>`strpos(${text}, ${query}) > 0`,
+            sql<boolean>`lower(${juniorConversationAnnotations.url}) = ${query}`,
+            subjects.length > 0
+              ? annotationMatches({ references: [], subjects })
+              : undefined,
+          ),
         ),
       ),
   );
@@ -570,6 +598,11 @@ export async function readConversationFeedFromSql(
       ? undefined
       : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
+  // A reference or a link also finds its object by its subject, such as a
+  // pull request after a rename of its repository.
+  const querySubjects = query
+    ? (await resolveAnnotationFilter(db, query)).subjects
+    : [];
   const status: "active" | "archived" | "all" =
     query || options.codeRepositoryId ? "all" : (options.status ?? "active");
   const cursor = options.cursor
@@ -606,6 +639,7 @@ export async function readConversationFeedFromSql(
     include,
     includePrivateMatches: filter?.kind === "viewer",
     query,
+    querySubjects,
     status,
   };
   const firstPage = pinsFirst && !cursor;
