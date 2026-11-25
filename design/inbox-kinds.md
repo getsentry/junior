@@ -49,6 +49,13 @@ answers, and changes an item.
 - `rules-in-owner-doc` The rules of a core kind are in this file. The rules
   of a plugin kind are in the design file of its plugin, such as
   [GitHub](./github.md).
+- `kind-table` Each kind is a decision table in a YAML file in
+  `design/inbox-kinds/`. Its rules use the FIRST hit policy of DMN, and
+  each cell is a simple unary test, such as `clean`, `not(open)`, or `-`.
+  Each rule has its ID and its text in the table. Junior generates the code
+  of the kind, and its rule list in the design file, from the table.
+- `table-checks` The build fails when a rule can never be the first match,
+  or when an input can be unknown and no rule names `unknown`.
 
 **`question`** (an agent asks). Source: the question.
 
@@ -89,6 +96,8 @@ triggers.
 
 ## Gaps
 
+- `kind-table`: no kind is a table yet. The rules of each kind are prose,
+  and people write its code.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.
