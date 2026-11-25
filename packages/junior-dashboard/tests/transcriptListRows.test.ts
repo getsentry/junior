@@ -397,6 +397,34 @@ describe("transcriptListRows", () => {
     expect(keys.has("1:message:0")).toBe(false);
   });
 
+  it("lets only the Events setting fold a Watch Event that got no reply", () => {
+    const entries = [
+      watchEventEntry(1, "pr"),
+      watchEventEntry(2, "plan", "waiting"),
+    ];
+    for (const entry of entries) {
+      if (entry.kind === "message") entry.message.noReply = true;
+    }
+    const rows = (allEvents: boolean) =>
+      rowSummary(
+        transcriptListRows({
+          allEvents,
+          entries,
+          keyPrefix: "c",
+          knownActivityKeys: new Map(),
+        }),
+      );
+
+    expect(rows(false)).toEqual([
+      { keys: ["1:message:0"], kind: "activity", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+    ]);
+    expect(rows(true)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+    ]);
+  });
+
   it("shows each routine Watch Event as a row when all Events are chosen", () => {
     const rows = transcriptListRows({
       allEvents: true,
