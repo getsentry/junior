@@ -4,6 +4,7 @@ import { mobile } from "../screenshot";
 import { expect, test } from "../test";
 import { holdTouch } from "./browserMenu";
 import { mockInboxItems, rowHead } from "./inbox-fixture";
+import { mockFeedPage } from "../mock-reports";
 
 const PIN_TITLES = ["Alpha pin", "Bravo pin", "Charlie pin"];
 const pinId = (index: number) => `slack:CPINS:${1770000000 + index}.000100`;
@@ -19,10 +20,8 @@ async function servePins(page: Page) {
     return route.fulfill({ json: { conversationIds: order } });
   });
   await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-    const response = await route.fetch();
-    const feed = await response.json();
+    const feed = await mockFeedPage(route);
     return route.fulfill({
-      response,
       json: {
         ...feed,
         conversations: PIN_TITLES.map((displayTitle, index) => {
@@ -54,8 +53,7 @@ test.describe("new UI", () => {
     page,
   }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const pin = (index: number, displayTitle: string, status: string) => ({
         ...feed.conversations[0],
         conversationId: `slack:CPINS:${1770000000 + index}.000100`,
@@ -67,7 +65,6 @@ test.describe("new UI", () => {
         turnActive: status === "working",
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           // Stored order Alpha, Bravo, Charlie. Charlie runs, and still
@@ -115,8 +112,7 @@ test.describe("new UI", () => {
     // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
     // more pages follow.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const row = (index: number, displayTitle: string, pinned: boolean) => ({
         ...feed.conversations[0],
         conversationId: `slack:CFEED:${1770000000 + index}.000100`,
@@ -132,7 +128,6 @@ test.describe("new UI", () => {
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       return route.fulfill({
-        response,
         json: cursor
           ? { ...feed, conversations: [], nextCursor: undefined }
           : {
@@ -175,8 +170,7 @@ test.describe("new UI", () => {
 
   test("only pins drag in In flight", async ({ dashboard, page }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const row = (index: number, displayTitle: string, pinned: boolean) => ({
         ...feed.conversations[0],
         conversationId: `slack:CPINS:${1770000000 + index}.000100`,
@@ -188,7 +182,6 @@ test.describe("new UI", () => {
         turnActive: !pinned,
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [

@@ -63,6 +63,7 @@
     "e2e/question-cards.spec.ts",
     "e2e/repositoryConversations.ts",
     "e2e/request-budget.ts",
+    "e2e/mock-reports.ts",
     "e2e/search-fixture.ts",
     "e2e/skill-references.ts",
     "e2e/tab-icon.ts",

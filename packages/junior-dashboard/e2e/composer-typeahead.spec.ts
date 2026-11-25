@@ -2,6 +2,7 @@ import type { Locator, Page, Request } from "@playwright/test";
 
 import { pasteText } from "./paste-text";
 import { expect, test } from "./test";
+import { mockConversationDetail } from "./mock-reports";
 
 const PUBLIC_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PARTICIPANT_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -331,11 +332,8 @@ for (const [name, change] of [
         url.pathname ===
         `/api/conversations/${encodeURIComponent(PARTICIPANT_CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
-        const json = await response.json();
         await route.fulfill({
-          response,
-          json: { ...json, ...change },
+          json: { ...(await mockConversationDetail(route)), ...change },
         });
       },
     );

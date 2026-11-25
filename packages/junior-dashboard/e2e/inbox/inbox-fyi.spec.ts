@@ -11,6 +11,7 @@ import {
 } from "./inbox-fixture";
 import { desktop, mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 // A dashboard Conversation's reply notice. It stores a short preview; its
 // Turn's message holds the reply in full.
@@ -340,10 +341,8 @@ test.describe("new UI", () => {
   }) => {
     // A pin keeps its Conversation in place. It does not keep its notices.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: feed.conversations.map(

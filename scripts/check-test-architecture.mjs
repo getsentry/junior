@@ -186,6 +186,16 @@ export const DASHBOARD_SPEC_RULES = [
     pathPrefix: DASHBOARD_E2E_ROOT,
     pattern: /["'`]networkidle["'`]/g,
   },
+  {
+    // A forwarded read runs in the page and in the mock server at once:
+    // getsentry/junior#3316 (a response disposed mid-handler) and
+    // getsentry/junior#4265 (ECONNRESET on a reused connection).
+    id: "dashboard-e2e-route-forward",
+    message:
+      "dashboard E2E tests must not forward a route to the mock server and edit its response; add the state to src/mock-reporting, or fulfill the whole response",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\broute\.fetch\s*\(/g,
+  },
 ];
 
 // A kind or person-Source branch outside `kind-behavior.ts`.

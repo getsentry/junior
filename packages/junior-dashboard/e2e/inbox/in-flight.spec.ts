@@ -2,6 +2,7 @@ import { waitForOutlineRead } from "../harness";
 import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -79,8 +80,7 @@ test.describe("new UI", () => {
     page,
   }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const conversation = (
         index: number,
         displayTitle: string,
@@ -98,7 +98,6 @@ test.describe("new UI", () => {
         ...fields,
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [
