@@ -62,6 +62,36 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
+test("a Space's page shows its settings when they are opened", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  const details = page.getByRole("complementary", { name: "Space details" });
+  const settings = details.getByRole("region", { name: "Settings" });
+  // Settings load only when opened.
+  await expect(settings.getByText("github.repo")).toHaveCount(0);
+  await settings.getByRole("button", { name: "Show" }).click();
+  await expect(settings.getByText("github.repo")).toBeVisible();
+  await expect(settings.getByText("getsentry/junior")).toBeVisible();
+  await screenshot(page, "space-settings", {
+    target: settings,
+    view: "desktop",
+  });
+  // Junior changes settings, so the page has no controls for them.
+  await expect(settings.getByRole("textbox")).toHaveCount(0);
+
+  await page.goto(`${dashboard.baseURL}${DOCS}`);
+  const docsSettings = page
+    .getByRole("complementary", { name: "Space details" })
+    .getByRole("region", { name: "Settings" });
+  await docsSettings.getByRole("button", { name: "Show" }).click();
+  await expect(
+    docsSettings.getByText("No settings. Ask Junior to set one."),
+  ).toBeVisible();
+});
+
 test("another Space's page does not show the last Space's Conversations", async ({
   dashboard,
   page,
