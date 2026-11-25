@@ -482,4 +482,70 @@ describe("runStep", () => {
     ).rejects.toThrow("Review unavailable");
     expect(executed).toEqual([]);
   });
+
+  it("checks arguments that beforeCalls changed against the tool's schema", async () => {
+    const executed: unknown[] = [];
+    const search = {
+      ...tool("search", {
+        replay: "safe",
+        execute: (args) => {
+          executed.push(args);
+          return Promise.resolve({ content: [] });
+        },
+      }),
+      parameters: {
+        type: "object" as const,
+        properties: { query: { type: "string" as const } },
+        required: ["query"],
+      },
+    };
+    const reply = createAssistantMessage({
+      type: "toolCalls",
+      calls: [
+        { name: "search", arguments: { query: "turns" }, id: "call-search" },
+      ],
+    });
+
+    const { result } = await runStep(
+      stepInput({
+        history: [user, reply],
+        tools: [search],
+        beforeCalls: () =>
+          Promise.resolve(new Map([["call-search", { args: { limit: 3 } }]])),
+      }),
+    );
+
+    expect(executed).toEqual([]);
+    expect(result).toMatchObject({
+      messages: [{ toolCallId: "call-search", isError: true }],
+    });
+  });
+
+  it("starts no tool when the Turn stops during beforeCalls", async () => {
+    const executed: string[] = [];
+    const controller = new AbortController();
+    const stopped = new Error("stopped");
+    const send = tool("send", {
+      replay: "never",
+      execute: () => {
+        executed.push("send");
+        return Promise.resolve({ content: [] });
+      },
+    });
+
+    await expect(
+      runStep(
+        stepInput({
+          history: [user, replyWithCalls("send")],
+          tools: [send],
+          signal: controller.signal,
+          beforeCalls: () => {
+            controller.abort(stopped);
+            return Promise.resolve(new Map());
+          },
+        }),
+      ),
+    ).rejects.toBe(stopped);
+    expect(executed).toEqual([]);
+  });
 });

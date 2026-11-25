@@ -189,6 +189,10 @@ async function runToolCalls(
     input.beforeCalls && ready.length > 0
       ? await input.beforeCalls(ready, input.signal)
       : new Map<string, ToolCallChange>();
+  // A Turn stopped during the host's decision must start no tool.
+  if (input.signal.aborted) {
+    throw input.signal.reason;
+  }
   const results = await Promise.all(
     // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
     checked.map((check) =>
@@ -283,18 +287,32 @@ function checkToolCall(
       ),
     );
   }
+  const valid = validArguments(tool, call);
+  return "error" in valid
+    ? skip(valid.error)
+    : { call, tool, args: valid.args };
+}
+
+/** The call's arguments checked against its tool's schema, or the error. */
+function validArguments(
+  tool: ToolDefinition,
+  call: ToolCall,
+): { args: JsonObject } | { error: ToolCallRun } {
   let args: unknown;
   try {
     args = validateToolArguments(tool, call);
   } catch (error) {
-    return skip(errorRun("invalid_arguments", errorText(error)));
+    return { error: errorRun("invalid_arguments", errorText(error)) };
   }
   if (!isJsonObject(args)) {
-    return skip(
-      errorRun("invalid_arguments", "Tool arguments must be a JSON object"),
-    );
+    return {
+      error: errorRun(
+        "invalid_arguments",
+        "Tool arguments must be a JSON object",
+      ),
+    };
   }
-  return { call, tool, args };
+  return { args };
 }
 
 async function executeToolCall(
@@ -305,9 +323,16 @@ async function executeToolCall(
   if (change && "result" in change) {
     return { status: "replaced", result: change.result };
   }
+  // Arguments that the host changed must match the tool's schema too.
+  const valid = change
+    ? validArguments(tool, { ...call, arguments: change.args })
+    : { args };
+  if ("error" in valid) {
+    return valid.error;
+  }
   // A throw from the tool is a result the model can react to.
   try {
-    const result = await tool.execute(change?.args ?? args, {
+    const result = await tool.execute(valid.args, {
       callId: call.id,
       signal: input.signal,
     });
