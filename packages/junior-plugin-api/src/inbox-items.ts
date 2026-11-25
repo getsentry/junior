@@ -1,3 +1,4 @@
+import type { PluginAnnotations } from "./annotations";
 import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
@@ -36,8 +37,21 @@ export interface PluginInboxSubjectKind {
    * reads the `conversationId` column of that row. Name a table of this
    * plugin and its columns in snake_case. At most one row can have the
    * subject id and a set Conversation: add a unique index for it.
+   *
+   * `annotation` names the Conversation that first saved one of this
+   * plugin's object Annotations whose `objectId` is the subject id, such as
+   * the Conversation that created a GitHub issue.
    */
-  owner: PluginInboxSubjectOwner;
+  owner: PluginInboxSubjectOwner | "annotation";
+  /**
+   * Each assignee has their own place on the object, such as a GitHub
+   * assignee or reviewer. A dismiss then removes only the person who
+   * dismissed the item. Junior first calls the plugin's
+   * `inboxItemDismissed` hook, which removes them on the provider. When the
+   * hook fails, the dismiss fails and the person stays. The item closes when
+   * nobody is left.
+   */
+  dismissLeaves?: boolean;
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */
@@ -136,6 +150,26 @@ export interface PluginInboxItems {
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;
+}
+
+/**
+ * A person dismissed an item of a subject kind with `dismissLeaves`. The
+ * plugin removes them from the object on the provider, such as from a
+ * GitHub issue's assignees.
+ */
+export interface InboxItemDismissedHookContext extends PluginContext {
+  /** Annotations of the Conversation that the item belongs to. */
+  annotations: PluginAnnotations;
+  /** The Conversation that the item belongs to. */
+  conversationId: string;
+  /**
+   * The person's account of the plugin's provider, such as a GitHub login.
+   * Unset when they linked none.
+   */
+  handle?: string;
+  nowMs: number;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
 }
 
 /** A person picked one of the `choices` of an item that this plugin added. */

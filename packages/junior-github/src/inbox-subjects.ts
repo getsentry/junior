@@ -1,10 +1,10 @@
 /**
  * The kinds of Inbox items that the GitHub plugin adds. Junior stores each
  * one as `github:<kind>`. The subject id is GitHub's id of the pull request
- * (`databaseId`), which stays the same when the repository is renamed or
- * moved. It is also the provider id of the code change, so Junior reads the
- * link and the search title from the code change, and the title and state
- * from the pull request's card.
+ * or issue (`databaseId`), which stays the same when the repository is
+ * renamed or moved. A pull request's id is also the provider id of the code
+ * change, so Junior reads the link and the search title from the code
+ * change, and the title and state from the pull request's card.
  */
 import type {
   ObjectAnnotation,
@@ -15,6 +15,7 @@ import type {
 
 /** The subject kinds of GitHub Inbox items. */
 export const GITHUB_INBOX_SUBJECTS = {
+  issue: "issue",
   mergeConflict: "merge_conflict",
   pullRequest: "pull_request",
 } as const;
@@ -59,7 +60,21 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
     label: "Merge conflict",
     owner: pullRequestOwner,
   },
+  // An issue that Junior created, for its assignees. It belongs to the
+  // Conversation that created the issue: the first to save its card. A
+  // dismiss unassigns only the person who dismissed it.
+  {
+    dismissLeaves: true,
+    kind: GITHUB_INBOX_SUBJECTS.issue,
+    label: "Issue",
+    owner: "annotation",
+  },
 ];
+
+/** The subject of the Inbox item of one issue that Junior created. */
+export function issueSubject(issueId: string): PluginInboxItemSubject {
+  return { id: issueId, kind: GITHUB_INBOX_SUBJECTS.issue };
+}
 
 /** The subject of an Inbox item about one pull request. */
 export function pullRequestSubject(

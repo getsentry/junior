@@ -95,6 +95,7 @@ const providerIssueSchema = z.object({
     .transform((assignees) => assignees?.map(({ login }) => login) ?? []),
   body: z.string().nullable().optional().default(null),
   html_url: z.string(),
+  id: z.number().optional(),
   number: z.number(),
   state: z.string(),
   title: z.string(),
@@ -241,6 +242,10 @@ export const gitHubUpdateIssueTool = definePluginTool({
           ...githubObjectFacts("task", parsed),
           repo: repo.ref,
           number: providerResult.number,
+          objectId:
+            providerResult.id === undefined
+              ? undefined
+              : String(providerResult.id),
           title: providerResult.title,
           url: providerResult.html_url,
           objectType: "task",

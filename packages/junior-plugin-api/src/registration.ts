@@ -270,13 +270,22 @@ function validateInboxSubjects(
     }
     const owner = subject.owner;
     if (
+      owner !== "annotation" &&
       ![owner?.table, owner?.subjectId, owner?.conversationId].every(
         (identifier) =>
           typeof identifier === "string" && SQL_IDENTIFIER_RE.test(identifier),
       )
     ) {
       throw new Error(
-        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner table, subjectId column, and conversationId column in snake_case.`,
+        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner: "annotation", or a table, subjectId column, and conversationId column in snake_case.`,
+      );
+    }
+    if (
+      subject.dismissLeaves !== undefined &&
+      typeof subject.dismissLeaves !== "boolean"
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" dismissLeaves must be a boolean.`,
       );
     }
     if (seen.has(subject.kind)) {

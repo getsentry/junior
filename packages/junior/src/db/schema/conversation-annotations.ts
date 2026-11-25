@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   foreignKey,
+  index,
   jsonb,
   pgTable,
   primaryKey,
@@ -31,5 +33,16 @@ export const juniorConversationAnnotations = pgTable(
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }).onDelete("cascade"),
+    // Finds the Conversation that first saved an object, for the owner of
+    // an Inbox item that names the object by its provider id.
+    index("junior_conversation_annotations_object_id_idx")
+      .on(
+        table.plugin,
+        sql`(${table.annotation} ->> 'objectId')`,
+        table.createdAt,
+      )
+      .where(
+        sql`${table.kind} = 'object' and (${table.annotation} ->> 'objectId') is not null`,
+      ),
   ],
 );

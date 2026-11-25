@@ -56,6 +56,10 @@ export const objectAnnotationSchema = z
   .object({
     kind: z.literal("object"),
     key: z.string().trim().min(1).max(256),
+    // The provider's id of the object, such as a GitHub issue id. Unlike
+    // `key`, it stays the same when the object moves or its repository is
+    // renamed. An Inbox item subject can name the object by it.
+    objectId: z.string().trim().min(1).max(256).optional(),
     label: z.string().trim().min(1).max(256),
     objectType: objectTypeSchema,
     title: z.string().trim().min(1).max(512),

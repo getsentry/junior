@@ -49,6 +49,15 @@ also wake a Conversation or run an Event automation.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
   the requester gets a "Ready to merge" Inbox item.
+- An issue that Junior opened is an Inbox item for its GitHub assignees who
+  have a linked account. Assigning a person on GitHub adds them, and
+  unassigning removes them. The item closes when the issue closes or nobody
+  is left.
+- A dismiss on a GitHub item also removes that person on GitHub: from the
+  issue's assignees, or from the PR's requested reviewers. Junior posts
+  nothing about it. If GitHub refuses, the dismiss fails and the person
+  stays. When the person holds no GitHub role on the item, such as on Ready
+  to merge, the dismiss works as for any item.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. Junior reads that state

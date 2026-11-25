@@ -86,6 +86,8 @@ const createIssueStateSchema = Type.Union([
   Type.Object(
     {
       createdAtMs: Type.Number(),
+      // Unset in a state saved before Junior recorded the id.
+      id: Type.Optional(Type.Number()),
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
       facts: Type.Optional(Type.Unknown()),
@@ -114,6 +116,8 @@ type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
   facts?: ObjectAnnotation["facts"] | undefined;
+  /** GitHub's id of the issue, which names its Inbox item. */
+  id?: number | undefined;
   description?: string | undefined;
   sourceUpdatedAt?: string | undefined;
   number: number;
@@ -180,6 +184,7 @@ async function gitHubIssueToolResult(
         sourceUpdatedAt: result.sourceUpdatedAt,
         repo: input.repo,
         number: result.number,
+        objectId: result.id === undefined ? undefined : String(result.id),
         title: input.title,
         url: result.url,
         objectType: "task",
@@ -297,12 +302,17 @@ async function createGitHubIssue(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("GitHub issue creation returned an invalid response.");
   }
-  const issue = parsed as { html_url?: unknown; number?: unknown };
+  const issue = parsed as {
+    html_url?: unknown;
+    id?: unknown;
+    number?: unknown;
+  };
   if (typeof issue.number !== "number" || typeof issue.html_url !== "string") {
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
     ...githubObjectFacts("task", parsed),
+    ...(typeof issue.id === "number" ? { id: issue.id } : undefined),
     number: issue.number,
     url: issue.html_url,
   };
@@ -343,6 +353,7 @@ export const gitHubIssueTool = definePluginTool({
                 : objectFactsSchema.parse(state.facts),
             sourceUpdatedAt: state.sourceUpdatedAt,
             description: state.description,
+            id: state.id,
             number: state.number,
             url: state.url,
           };

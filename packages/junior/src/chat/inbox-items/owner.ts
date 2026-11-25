@@ -6,6 +6,7 @@ import {
 } from "@/chat/inbox-items/subjects";
 import {
   juniorAutomations,
+  juniorConversationAnnotations,
   juniorConversations,
   juniorDestinations,
   juniorInboxItems,
@@ -15,19 +16,34 @@ import {
 // An item stores no owner. Its subject names the owner: a question belongs
 // to the Conversation that asked it, a reply and a To-do to their
 // Conversation, an Automation alert to its Automation, and a plugin item to
-// the Conversation that the plugin's owner table maps its subject id to.
+// the Conversation that the plugin's owner table or Annotations map its
+// subject id to.
 // These expressions read the owner of the `junior_inbox_items` row of the
 // query.
 
 const item = juniorInboxItems;
 
+const annotations = juniorConversationAnnotations;
+
+// The Conversation that first saved the plugin's object Annotation of the
+// subject's object, such as the one that created a GitHub issue. Later
+// Conversations that change the object add their own Annotations of it.
+// `junior_conversation_annotations_object_id_idx` serves this lookup.
+function annotationOwner(plugin: string): SQL {
+  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.plugin} = ${plugin} and ${annotations.kind} = 'object' and ${annotations.annotation}->>'objectId' = ${item.subjectId} order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
+}
+
 /** SQL: the owner Conversation of a plugin item, from the plugin's table. */
 function pluginOwnerCases(): SQL[] {
   return getPlugins().flatMap((plugin) =>
     (plugin.inboxSubjects ?? []).map((subject) => {
+      const kind = pluginSubjectKind(plugin.manifest.name, subject.kind);
+      if (subject.owner === "annotation") {
+        return sql`when ${kind} then ${annotationOwner(plugin.manifest.name)}`;
+      }
       const { conversationId, subjectId, table } = subject.owner;
       const owner = sql`${sql.identifier(table)}.${sql.identifier(conversationId)}`;
-      return sql`when ${pluginSubjectKind(plugin.manifest.name, subject.kind)} then (select ${owner} from ${sql.identifier(table)} where ${sql.identifier(table)}.${sql.identifier(subjectId)} = ${item.subjectId} and ${owner} is not null)`;
+      return sql`when ${kind} then (select ${owner} from ${sql.identifier(table)} where ${sql.identifier(table)}.${sql.identifier(subjectId)} = ${item.subjectId} and ${owner} is not null)`;
     }),
   );
 }

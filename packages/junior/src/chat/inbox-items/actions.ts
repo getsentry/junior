@@ -23,6 +23,11 @@ import {
 import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
+import {
+  dismissLeavesItem,
+  dismissPluginInboxItem,
+  leavePluginInboxItem,
+} from "./plugin-dismiss";
 import { matchReplyToInboxItems } from "./reply-match";
 import {
   closeInboxItem,
@@ -191,6 +196,22 @@ export async function actOnInboxItem(args: {
     return taken;
   }
 
+  if (
+    action === "dismiss" &&
+    item.status === "open" &&
+    dismissLeavesItem(item)
+  ) {
+    const left = await leavePluginItemOnDismiss(item, user, nowMs);
+    if (left) {
+      await deliverInboxItemChange({
+        delivery: args.delivery,
+        item: left,
+        nowMs,
+      });
+      return left;
+    }
+  }
+
   let closed = item;
   let closedNow = false;
   if (item.status === "open") {
@@ -252,6 +273,43 @@ export async function actOnInboxItem(args: {
     nowMs,
   });
   return closed;
+}
+
+/**
+ * Dismiss a `dismissLeaves` item for one assignee: the plugin removes them
+ * on its provider first, and a refusal fails the dismiss. When others stay
+ * on the item, only this person leaves it, and the item is returned. When
+ * they are the only one, return undefined: the item closes as any dismiss.
+ */
+async function leavePluginItemOnDismiss(
+  item: InboxItem,
+  user: User,
+  nowMs: number,
+): Promise<InboxItem | undefined> {
+  if (!canActOnInboxItem(item, user.id)) {
+    throw new InboxItemActionError(
+      "forbidden",
+      "Only an assignee can act on this item.",
+    );
+  }
+  try {
+    await dismissPluginInboxItem({ item, nowMs, user });
+  } catch (error) {
+    logWarn("inbox_item.plugin_dismiss.failed", {
+      "app.inbox_item.id": item.id,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    throw new InboxItemActionError(
+      "conflict",
+      "The provider did not remove you, so you stay on this item. Try again.",
+    );
+  }
+  if (isOnlyAssignee(item, user.id)) return undefined;
+  if (!(await leavePluginInboxItem({ item, nowMs, userId: user.id }))) {
+    throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
+  return await readInboxItemForUser(user, item.id);
 }
 
 /**

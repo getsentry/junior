@@ -297,6 +297,31 @@ export async function requestPullRequestReviewers(
   );
 }
 
+/** Unassign people from one issue, with an issues write token. */
+export async function removeIssueAssignees(
+  env: GitHubInstallationEnv,
+  input: { assignees: string[]; number: number; repositoryFullName: string },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "issue unassign",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { issues: "write" },
+    repositories: [name],
+  });
+  await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
+    {
+      body: { assignees: input.assignees },
+      method: "DELETE",
+      token: token.token,
+    },
+  );
+}
+
 /**
  * Return a read-only GitHub reader for one repository, for the review-again
  * check: GraphQL for the pull request, and REST for the branch rules.

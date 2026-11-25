@@ -94,6 +94,7 @@ import {
   startGitHubRepositoryNameRepair,
 } from "./repository-name-repair.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
@@ -399,6 +400,13 @@ export function githubPlugin(
             text: "Write each GitHub issue, pull request, or commit reference with its repository, such as owner/repo#123 or owner/repo@abc1234, and not in code formatting. A bare #123, GH-123, or SHA is ambiguous when a conversation spans several repositories.",
           },
         ];
+      },
+      async inboxItemDismissed(ctx) {
+        await dismissGitHubItem(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
       },
       async inboxItemAnswered(ctx) {
         if (

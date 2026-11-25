@@ -75,6 +75,8 @@ export function githubObjectKey(repo: string, number: number): string {
 export function githubObjectAnnotation(input: {
   repo: string;
   number: number;
+  /** GitHub's id of the issue or pull request, which a rename keeps. */
+  objectId?: string | undefined;
   title: string;
   url: string;
   objectType: "task" | "code_change";
@@ -86,6 +88,7 @@ export function githubObjectAnnotation(input: {
   return {
     kind: "object",
     key: githubObjectKey(input.repo, input.number),
+    ...(input.objectId ? { objectId: input.objectId } : undefined),
     label: `${input.repo}#${input.number}`,
     title: input.title.slice(0, 512),
     url: input.url,

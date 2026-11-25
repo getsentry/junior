@@ -27,6 +27,10 @@ import {
 import { recordGitHubPullRequestOutcome } from "../pull-request-outcomes/store.js";
 import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
+  normalizeGitHubIssueItemEvent,
+  syncGitHubIssueItem,
+} from "./issue-item.js";
+import {
   normalizeGitHubPullRequestConversations,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
@@ -243,6 +247,10 @@ export function createGitHubWebhookRoute(args: {
         eventName === "issues"
           ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
+      const issueItemEvent =
+        eventName === "issues"
+          ? normalizeGitHubIssueItemEvent({ body, botEmail })
+          : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
           ? normalizeGitHubPullRequestConversations({ body, botEmail })
@@ -316,6 +324,14 @@ export function createGitHubWebhookRoute(args: {
             objectType: "task",
             status: "closed",
           },
+        });
+      }
+      if (issueItemEvent) {
+        await syncGitHubIssueItem({
+          annotations: args.annotations,
+          event: issueItemEvent,
+          findLinkedIdentityIds: args.findLinkedIdentityIds,
+          inboxItems: args.inboxItems,
         });
       }
       if (pullRequestConversations) {
@@ -500,6 +516,7 @@ export function createGitHubWebhookRoute(args: {
       if (
         !pullRequestOutcome &&
         !closedIssue &&
+        !issueItemEvent &&
         !pullRequestConversations &&
         events.length === 0
       ) {
