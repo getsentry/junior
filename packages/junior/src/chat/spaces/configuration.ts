@@ -91,6 +91,29 @@ export async function unsetSpaceConfiguration(
 }
 
 /**
+ * Return the id of the Space that a Conversation's root is in, if any. A
+ * child is in the Space of its root.
+ */
+export async function readConversationSpaceId(
+  conversationId: string,
+): Promise<string | undefined> {
+  const [row] = await getDb()
+    .select({ spaceId: rootConversation.spaceId })
+    .from(juniorConversations)
+    .innerJoin(
+      rootConversation,
+      // An older root has no root id, so it matches by its own id.
+      eq(
+        rootConversation.conversationId,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+      ),
+    )
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  return row?.spaceId ?? undefined;
+}
+
+/**
  * Return the configuration of the Space that a Conversation's root is in. A
  * child is in the Space of its root. A Conversation outside a Space has none.
  */
