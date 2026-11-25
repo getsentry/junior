@@ -88,6 +88,27 @@ export async function findTurnDestination(
   return input?.destination ? destinationSchema.parse(input.destination) : null;
 }
 
+/** An input of a Turn, whether the history has read it or not. */
+export type TurnInputRecord = Pick<TurnInput, "payload"> & {
+  inputId: string;
+};
+
+/** Finds every input of a Turn, oldest first. */
+export async function findTurnInputs(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<TurnInputRecord[]> {
+  return executor
+    .db()
+    .select({
+      inputId: juniorTurnInbox.id,
+      payload: juniorTurnInbox.payload,
+    })
+    .from(juniorTurnInbox)
+    .where(eq(juniorTurnInbox.turnId, turnId))
+    .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
+}
+
 const INPUT_EVENT_KEY_PREFIX = "inbox:";
 
 /** An input of a Turn that no history event has read yet. */
