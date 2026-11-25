@@ -184,10 +184,9 @@ export const juniorConversations = pgTable(
       table.conversationId,
       table.rootConversationId,
     ),
-    // One lead per Identity. Only web creates a lead, so its root Actor is
-    // the web Identity of its User.
-    uniqueIndex("junior_conversations_lead_actor_idx")
-      .on(table.actorIdentityId)
+    // One Lead per Space.
+    uniqueIndex("junior_conversations_space_lead_idx")
+      .on(table.spaceId)
       .where(sql`${table.kind} = 'lead'`),
     // Search reads this exact expression: `conversationSearchVector`.
     index("junior_conversations_search_idx").using(

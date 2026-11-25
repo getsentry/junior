@@ -76,7 +76,6 @@ test.describe("new UI", () => {
     await page.goto(`${dashboard.baseURL}/inbox`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(nav.getByRole("link")).toHaveText([
-      /^Lead$/,
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
@@ -759,7 +758,7 @@ test.describe("new UI", () => {
       },
       // The pull request on the checkout row reads its live state, and the
       // pane reads the viewer's Spaces.
-      { requests: 11, serialRounds: 2 },
+      { requests: 10, serialRounds: 2 },
     );
   });
 

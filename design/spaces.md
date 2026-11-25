@@ -53,15 +53,11 @@ not need a home stays a one-off Conversation.
   members. A Conversation in a private Space can read the other
   Conversations in that Space, and no data goes from it to a Conversation
   outside the Space.
+- A Space's visibility is set when the Space is created and never changes.
+  To make work private or public, a person creates a new Space and moves
+  the work there.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
 - Any member can archive a Space.
 - Configuration resolves in this order: an explicit target in the request,
   then the Space, then the Slack channel, then the install-wide defaults.
-
-## Gaps
-
-- Spaces do not exist. Each person has one private Lead as the dashboard
-  home, and Conversations store no Space. This breaks every goal above.
-- Configuration can be set only on a Slack channel. This breaks "a Space
-  sets its own configuration".

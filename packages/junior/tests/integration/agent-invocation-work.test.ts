@@ -10,7 +10,7 @@ import {
   getAgentReplyMessageId,
   getParentMessageId,
 } from "@/chat/agent-invocations/ids";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import {
@@ -169,7 +169,7 @@ describe("child agent task work", () => {
               sender: { conversationId: childConversationId, turnId },
             }),
             text: expect.stringMatching(
-              /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
+              /^<agent-result [^>]*status="done">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
             ),
           }),
           source: "event",
@@ -379,14 +379,11 @@ describe("child agent task work", () => {
         },
         { conversationStore, queue, state },
       );
-      await enqueueChildResultToParent({
+      await enqueueStarterUpdate({
         actor: slackInvocationInput.actor,
         messageKey: "helper-reply",
         queue,
-        result: {
-          kind: "completed",
-          text: "Helper fact.",
-        },
+        update: { status: "done", text: "Helper fact." },
         sender: {
           childConversationId: helper.childConversationId,
           parentConversationId: childConversationId,
@@ -395,6 +392,20 @@ describe("child agent task work", () => {
         turnId: "turn_helper",
       });
       await processChild();
+      // The helper's result is data, not the person's instruction. The
+      // Turn still runs as the person.
+      const helperInput = (
+        await getConversationEventStore().loadCurrentHistory(
+          childConversationId,
+        )
+      ).find(
+        (event) =>
+          event.data.type === "user_message" &&
+          JSON.stringify(event.data).includes("Helper fact."),
+      );
+      expect(helperInput?.data).toMatchObject({
+        provenance: { authority: "context", actor: slackInvocationInput.actor },
+      });
       // A Turn records each input Message once. Its reply is a
       // `message_handled` row, not an edit of the Message.
       await expectNoMessageRewrites(childConversationId);
@@ -509,7 +520,7 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
         ),
       ],
     },
@@ -537,7 +548,7 @@ describe("child agent task work", () => {
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [
-        expect.stringMatching(/status="completed">\n[\s\S]*\nLost reply\.\n/),
+        expect.stringMatching(/status="done">\n[\s\S]*\nLost reply\.\n/),
       ],
     },
     {
@@ -549,7 +560,7 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
         ),
       ],
     },
@@ -561,7 +572,7 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nDraft summary for the parent\.\n/,
+          /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,
         ),
       ],
     },
@@ -573,7 +584,7 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nDraft summary for the parent\.\n/,
+          /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,
         ),
       ],
     },
@@ -646,14 +657,11 @@ describe("child agent task work", () => {
           "failed-result-1",
         );
         if (replied) {
-          await enqueueChildResultToParent({
+          await enqueueStarterUpdate({
             actor: invocationInput.actor,
             messageKey: turnId,
             queue,
-            result: {
-              kind: "completed",
-              text: "Lost reply.",
-            },
+            update: { status: "done", text: "Lost reply." },
             sender: { childConversationId, parentConversationId },
             state,
             turnId,

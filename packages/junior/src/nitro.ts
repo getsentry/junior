@@ -15,7 +15,7 @@ import {
 } from "@/build/virtual-config";
 import { injectVirtualSystemPrompts } from "@/build/virtual-system-prompts";
 import { resolveBotName } from "@/chat/bot-name";
-import { queueCallbackRoutes } from "@/chat/queue/routes";
+import { queueCallbackRoutes } from "@/build/queue-routes";
 import {
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
   JUNIOR_AUTO_ARCHIVE_ROUTE,

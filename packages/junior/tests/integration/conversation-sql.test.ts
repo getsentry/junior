@@ -501,7 +501,7 @@ ORDER BY table_name ASC, ordinal_position ASC
           (column) => column !== "brief_version",
         ),
       );
-      // `20261124234100_inbox_item_subjects` keeps these Inbox item columns for one release, for old
+      // `20261125080100_inbox_item_subjects` keeps these Inbox item columns for one release, for old
       // workers. Remove this when the follow-up migration drops them.
       const retired = [
         "automation_id",

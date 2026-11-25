@@ -44,7 +44,14 @@ import { juniorQuestions } from "./schema/questions";
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
-import { juniorSpaceMembers, juniorSpaces } from "./schema/spaces";
+import {
+  juniorSpaceConfigurations,
+  juniorSpaceMembers,
+  juniorSpaces,
+} from "./schema/spaces";
+import { juniorTurnInbox } from "./schema/turn-inbox";
+import { juniorTurnOutbox } from "./schema/turn-outbox";
+import { juniorTurns } from "./schema/turns";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -85,12 +92,16 @@ export {
   juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceConfigurations,
   juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -132,12 +143,16 @@ export const juniorSqlSchema = {
   juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceConfigurations,
   juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,

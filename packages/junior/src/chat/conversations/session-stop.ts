@@ -171,6 +171,9 @@ export async function stopConversationTree(
       {
         nowMs: stoppedAt.getTime(),
         queue,
+        // Whoever stopped the tree knows. A person's stop of a child agent
+        // tells its starter in `reportPersonStopToParent`.
+        starter: false,
         state: options.state,
         update: async () => ({
           status: "stopped",

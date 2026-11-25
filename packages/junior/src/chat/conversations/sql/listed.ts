@@ -2,8 +2,8 @@ import { and, isNull, ne, or, type SQL } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 
 /**
- * Match Conversations that are not a Lead. The dashboard home opens the
- * Lead, so lists leave it out. Older rows have no kind.
+ * Match Conversations that are not a Lead. Its Space's page opens the Lead,
+ * so lists leave it out. Older rows have no kind.
  */
 export function notLeadConversation(): SQL {
   return or(

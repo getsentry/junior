@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
+import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 afterEach(() => {
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
   vi.unstubAllEnvs();
 });
 
@@ -19,6 +21,7 @@ describe("createApp bot name", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts("jr");
 
     await createApp({ plugins: defineJuniorPlugins([]) });
 

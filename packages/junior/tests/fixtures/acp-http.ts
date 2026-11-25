@@ -9,6 +9,7 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationWebHarness } from "./conversation";
 import { createSlackAdapterFixture } from "./conversation-work";
+import { mockBuiltSystemPrompts } from "./built-system-prompts";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
 
@@ -28,12 +29,7 @@ export function mockAcpDashboardConfig(botName = "junior"): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
-  // A juniorNitro() build has both modules. This build has no plugins.
-  vi.doMock("#junior/system-prompts", async () => {
-    const { buildSystemPromptTable } =
-      await import("@/chat/system-prompt-table");
-    return { systemPrompts: await buildSystemPromptTable([], botName) };
-  });
+  mockBuiltSystemPrompts(botName);
 }
 
 /** Read the browser verification code shown by an ACP URL elicitation. */

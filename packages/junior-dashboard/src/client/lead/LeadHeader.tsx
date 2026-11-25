@@ -1,44 +1,76 @@
+import { PanelRight } from "lucide-react";
 import type { ReactNode } from "react";
 
+import {
+  MobileHeaderActionsPortal,
+  MobileHeaderTitlePortal,
+} from "../components/layout/DashboardChrome";
+import { HeaderIconButton } from "../conversations/ConversationHeaderActions";
+import { SpaceMenu } from "../spaces/SpaceActions";
+import { useSpaceData } from "../spaces/queries";
+import { SpaceTile } from "../spaces/SpaceTile";
 import { cn } from "../styles";
-import { LeadMark } from "./LeadMark";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
-/** Name the Lead page and say what it is for. */
+/**
+ * Head a Lead with its Space: the Space's tile and name, a member's Space
+ * menu, and the button that shows the Space's details. A phone puts these
+ * in its header.
+ */
 export function LeadHeader(props: {
-  /**
-   * Hide it on small screens, where the app bar already names the open
-   * Conversation, such as on `/conversations/:id`.
-   */
-  mobileHidden: boolean;
+  detailsOpen: boolean;
+  onDetailsClick(): void;
   /** Shows or hides the conversation list when it is beside the Lead. */
   sidebarToggle?: ReactNode | undefined;
+  spaceId: string | undefined;
 }) {
-  return (
-    <header
-      className={cn(
-        "grid items-center border-b border-dashboard-border-subtle px-4 py-3 sm:px-6",
-        // Equal side tracks keep the title on the transcript's center line
-        // when the list toggle is on the left. Wider controls, such as a
-        // back link, widen the left track so they do not cover the title.
-        props.sidebarToggle !== undefined &&
-          "grid-cols-[minmax(2.25rem,max-content)_minmax(0,1fr)_2.25rem] gap-x-2",
-        props.mobileHidden && "hidden md:grid",
-      )}
+  const space = useSpaceData(props.spaceId).data;
+  const menu = space?.viewerIsMember ? <SpaceMenu space={space} /> : null;
+  const detailsButton = props.detailsOpen ? null : (
+    <HeaderIconButton
+      expanded={false}
+      label="Space details"
+      onClick={props.onDetailsClick}
     >
-      {props.sidebarToggle !== undefined ? (
-        <span className="flex items-center">{props.sidebarToggle}</span>
-      ) : null}
-      <div className="mx-auto flex w-full min-w-0 max-w-[52.5rem] items-center gap-3">
-        <LeadMark size="header" />
-        <div className="min-w-0">
-          <h1 className="font-sans text-sm font-semibold text-dashboard-text">
-            Your Lead
+      <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />
+    </HeaderIconButton>
+  );
+  return (
+    <>
+      {space ? (
+        <MobileHeaderTitlePortal>
+          <h1 className="m-0 flex min-w-0 flex-1 items-center gap-2 font-display text-base font-medium text-dashboard-text">
+            <SpaceTile size="md" space={space} />
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {space.name}
+            </span>
           </h1>
-          <p className="truncate font-sans text-xs text-dashboard-text-muted">
-            Starts and tracks your work. Only you see this.
-          </p>
+        </MobileHeaderTitlePortal>
+      ) : null}
+      <MobileHeaderActionsPortal>
+        {detailsButton}
+        {menu}
+      </MobileHeaderActionsPortal>
+      <header className="hidden border-b border-dashboard-border bg-dashboard-bg md:block">
+        <div className="flex h-header min-w-0 items-center gap-2 pr-4 pl-6">
+          {props.sidebarToggle ? (
+            <div className="shrink-0 empty:hidden">{props.sidebarToggle}</div>
+          ) : null}
+          {space ? <SpaceTile size="md" space={space} /> : null}
+          <h1
+            className={cn(
+              fadeOverflowClass,
+              "m-0 font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
+            {space?.name}
+          </h1>
+          <span className="flex-1" />
+          {menu}
+          {detailsButton}
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }

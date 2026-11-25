@@ -14,8 +14,9 @@ import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
-import { createLeadRoutes } from "./api/lead/routes";
 import { createSpaceArchiveRoutes } from "./api/spaces/archive";
+import { createSpaceConfigurationRoutes } from "./api/spaces/configuration";
+import { createSpaceLeadRoutes } from "./api/spaces/lead";
 import { createSpaceMemberRoutes } from "./api/spaces/members";
 import { createSpaceRoutes } from "./api/spaces/space";
 import { createPeopleRoutes } from "./api/people/routes";
@@ -162,7 +163,6 @@ export function createJuniorApi(
   app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
-  app.route("/api/lead", createLeadRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
@@ -170,6 +170,8 @@ export function createJuniorApi(
   app.route("/api/spaces", createSpaceRoutes());
   app.route("/api/spaces", createSpaceArchiveRoutes({ queue }));
   app.route("/api/spaces", createSpaceMemberRoutes());
+  app.route("/api/spaces", createSpaceConfigurationRoutes());
+  app.route("/api/spaces", createSpaceLeadRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

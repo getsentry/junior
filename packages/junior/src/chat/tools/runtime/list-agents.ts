@@ -12,7 +12,7 @@ import {
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import type { ConversationStatus } from "@/chat/conversations/store";
-import { conversationWatch } from "@/chat/conversations/watch-events";
+import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
@@ -219,7 +219,7 @@ function listedChildAgent(
     updated_at: new Date(agent.updatedAtMs).toISOString(),
     ...(relation === "sibling"
       ? {
-          subscribable: conversationWatch({
+          subscribable: agentWatch({
             conversationId: agent.childConversationId,
             title: agent.title ?? agent.agentName ?? agent.childConversationId,
           }),
@@ -239,7 +239,7 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
     ...(url ? { url } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     updated_at: new Date(match.updatedAtMs).toISOString(),
-    subscribable: conversationWatch({
+    subscribable: agentWatch({
       conversationId: match.conversationId,
       title: match.title ?? match.conversationId,
     }),
