@@ -197,18 +197,20 @@ export function useConversationMenuItems(
   });
 
   const notifyItems: ConversationMenuItem[] = [];
-  // Leave takes it out of your feed, and Join puts it back. Leaving a
-  // private Conversation also ends access, so it asks first, and only a
-  // menu with that dialog offers it. Only participants have a subscription.
-  // A child uses its root's.
+  // Leave takes it out of your feed, and Join puts it back. A Participant
+  // of a private Conversation is in it even when not subscribed, so they
+  // always get Leave. That Leave also ends access, so it asks first, and
+  // only a menu with that dialog offers it. Only participants have a
+  // subscription. A child uses its root's.
   const subscribed = detail?.subscribed === true;
-  const leaveEndsAccess = subscribed && detail?.leaveEndsAccess === true;
+  const leaveEndsAccess = detail?.leaveEndsAccess === true;
+  const joined = subscribed || leaveEndsAccess;
   if (!leaveEndsAccess || actions.leave) {
     notifyItems.push({
       disabled: detail?.subscribed === undefined || pending.subscription,
-      icon: subscribed ? LogOut : Bell,
+      icon: joined ? LogOut : Bell,
       key: "subscription",
-      label: subscribed ? "Leave" : "Join",
+      label: joined ? "Leave" : "Join",
       onClick:
         leaveEndsAccess && actions.leave
           ? actions.leave
