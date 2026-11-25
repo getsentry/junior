@@ -342,7 +342,7 @@ export const CONSTRUCTS = [
       ),
       dashboard: native(
         at(
-          `${DASHBOARD}/inbox/InboxItemCard.tsx`,
+          `${DASHBOARD}/shell/inbox/InboxItemCard.tsx`,
           "export function InboxItemCard(",
         ),
       ),
