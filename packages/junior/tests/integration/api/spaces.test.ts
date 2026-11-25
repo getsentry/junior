@@ -18,6 +18,7 @@ import { resolveConversationConfiguration } from "@/chat/configuration/conversat
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
+import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { closeConversationFixture } from "../../fixtures/conversation";
@@ -355,13 +356,17 @@ describe("Spaces API", () => {
       input: { key: string; value: string | null },
     ) => {
       const user = await signedInViewer(email);
-      return await createSetSpaceConfigurationTool({
-        conversationId,
-        resolveActorIdentity: async () => ({
-          identity: { id: `identity:${user.id}` } as Identity,
-          user,
-        }),
-      }).execute?.(input, {});
+      const spaceId = await readConversationSpaceId(conversationId);
+      if (!spaceId) throw new Error("The Conversation is in no Space.");
+      return await createSetSpaceConfigurationTool(
+        {
+          resolveActorIdentity: async () => ({
+            identity: { id: `identity:${user.id}` } as Identity,
+            user,
+          }),
+        },
+        spaceId,
+      ).execute?.(input, {});
     };
     const read = async (app: Hono<JuniorApiEnv>) =>
       spaceConfigurationSchema.parse(
@@ -381,12 +386,8 @@ describe("Spaces API", () => {
         value: "a",
       }),
     ).rejects.toThrow("secret-related");
-    await expect(
-      setting("spaces-config-ana@example.com", outside, {
-        key: "github.repo",
-        value: "a/b",
-      }),
-    ).rejects.toThrow("in no Space");
+    // A Conversation in no Space does not get the tool.
+    expect(await readConversationSpaceId(outside)).toBeUndefined();
 
     // A Thread changes the Space of its root.
     expect(

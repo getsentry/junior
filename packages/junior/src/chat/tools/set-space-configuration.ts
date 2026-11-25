@@ -1,6 +1,5 @@
 import * as z from "zod";
 import { configValueSchema } from "@/chat/configuration/types";
-import { getConversationStore } from "@/chat/db";
 import {
   listSpaceConfiguration,
   setSpaceConfiguration,
@@ -52,28 +51,16 @@ export const setSpaceConfigurationToolDefinition = zodToolDefinition({
   }),
 });
 
-async function readConversationSpaceId(
-  conversationId: string,
-): Promise<string | undefined> {
-  const store = getConversationStore();
-  const conversation = await store.get({ conversationId });
-  const rootId = conversation?.rootConversationId;
-  // A child is in the Space of its root.
-  const root =
-    rootId && rootId !== conversationId
-      ? await store.get({ conversationId: rootId })
-      : conversation;
-  return root?.spaceId;
-}
-
 /**
  * Build the tool that changes the configuration of the current
- * Conversation's Space for the person who started the Turn. The actor comes
+ * Conversation's Space, read when the Turn starts, for the person who
+ * started the Turn. The actor comes
  * from the runtime, and only a member of the Space changes it. Contract:
  * `chat/spaces/configuration.ts`.
  */
 export function createSetSpaceConfigurationTool(
-  context: Pick<ToolRuntimeContext, "conversationId" | "resolveActorIdentity">,
+  context: Pick<ToolRuntimeContext, "resolveActorIdentity">,
+  spaceId: string | undefined,
 ) {
   return zodTool({
     ...setSpaceConfigurationToolDefinition,
@@ -84,7 +71,6 @@ export function createSetSpaceConfigurationTool(
           "This person has no linked User, so they cannot change a Space. No change to the call can fix this.",
         );
       }
-      const spaceId = await readConversationSpaceId(context.conversationId);
       const space = spaceId ? await readSpace(user.id, spaceId) : undefined;
       if (!space) {
         throw new ToolInputError(

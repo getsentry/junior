@@ -132,13 +132,10 @@ describe("turnBehavior", () => {
     });
   });
 
-  // An Automation Conversation lists the tools of the run and of a person who
-  // replies, so its tool list stays the same.
-  it("lists the tools of both senders on every Turn of an Automation Conversation", () => {
-    expect(promptModeTurnTools("automation")).toEqual({
-      ...automationTurn.tools,
-      spaces: true,
-    });
+  // A person's reply lists the run's tools, so the Automation Conversation's
+  // tool list stays the same.
+  it("lists the run's tools on every Turn of an Automation Conversation", () => {
+    expect(promptModeTurnTools("automation")).toEqual(automationTurn.tools);
   });
 
   it("rejects a person's input on a task", () => {

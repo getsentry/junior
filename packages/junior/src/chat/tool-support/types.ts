@@ -106,6 +106,8 @@ interface BaseToolRuntimeContext {
   locationId?: string;
   /** Stored Conversation visibility used by tools. */
   conversationPrivacy?: ConversationPrivacy | undefined;
+  /** The Space of the Conversation's root, read when the Turn starts. */
+  spaceId?: string | undefined;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
