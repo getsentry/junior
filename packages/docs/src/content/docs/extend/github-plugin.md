@@ -90,7 +90,7 @@ installation ID.
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
 
 ### Conversation defaults
 
@@ -99,7 +99,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default GitHub organization or owner when a request does not name one.
 
-- **Define:** `jr-rpc config set github.org <owner>`
+- **Define:** ask Junior to set `github.org`
 - **Install-wide default:** `configDefaults["github.org"]`
 - **Required:** No
 - **Environment override:** None
@@ -111,7 +111,7 @@ Default GitHub organization or owner when a request does not name one.
 
 Default repository in `owner/repo` form when a request does not name one.
 
-- **Define:** `jr-rpc config set github.repo <owner/repo>`
+- **Define:** ask Junior to set `github.repo`
 - **Install-wide default:** `configDefaults["github.repo"]`
 - **Required:** No
 - **Environment override:** None
