@@ -44,6 +44,8 @@ export async function readSpaceRefs(
 export type SpaceMoveRefusal =
   /** No root has the id. */
   | "not_found"
+  /** Another move changed the root's Space at the same time. */
+  | "moved"
   /** The root is in a private Space, and its data stays with the members. */
   | "leaves_private"
   /**
@@ -64,30 +66,21 @@ export async function setConversationSpace(
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
-    // Lock the root, so its Space does not change during the move.
-    const [root] = await db
-      .select({
-        locationId: juniorConversations.destinationId,
-        provider: juniorDestinations.provider,
-        spaceId: juniorConversations.spaceId,
-      })
+    const rootWhere = and(
+      eq(juniorConversations.conversationId, conversationId),
+      isNull(juniorConversations.parentConversationId),
+    );
+    const [current] = await db
+      .select({ spaceId: juniorConversations.spaceId })
       .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(
-        and(
-          eq(juniorConversations.conversationId, conversationId),
-          isNull(juniorConversations.parentConversationId),
-        ),
-      )
-      .limit(1)
-      .for("update", { of: juniorConversations });
-    if (!root) return "not_found";
+      .where(rootWhere)
+      .limit(1);
+    if (!current) return "not_found";
     // Lock the source and target Spaces in id order, so a Space that is
-    // made private during the move cannot lose or gain a root.
-    const spaceIds = [root.spaceId, spaceId].filter(
+    // made private during the move cannot lose or gain a root. Spaces lock
+    // before the root, as when a Space changes its visibility, so the two
+    // never deadlock.
+    const spaceIds = [current.spaceId, spaceId].filter(
       (id): id is string => id !== null,
     );
     const spaces =
@@ -102,6 +95,24 @@ export async function setConversationSpace(
             .orderBy(asc(juniorSpaces.id))
             .for("update")
         : [];
+    // Lock the root, so its Space does not change during the move.
+    const [root] = await db
+      .select({
+        locationId: juniorConversations.destinationId,
+        provider: juniorDestinations.provider,
+        spaceId: juniorConversations.spaceId,
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(rootWhere)
+      .limit(1)
+      .for("update", { of: juniorConversations });
+    if (!root) return "not_found";
+    // Another move changed the root's Space before its lock.
+    if (root.spaceId !== current.spaceId) return "moved";
     const source = spaces.find((space) => space.id === root.spaceId);
     if (source?.visibility === "private") return "leaves_private";
     const target = spaces.find((space) => space.id === spaceId);

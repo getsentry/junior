@@ -74,6 +74,12 @@ export async function setConversationSpaceForViewer(
   }
   const refusal = await setConversationSpace(conversationId, body.spaceId);
   if (refusal === "not_found") throwApiError(404, "Conversation not found.");
+  if (refusal === "moved") {
+    throwApiError(
+      409,
+      "It moved to another Space at the same time. Try again.",
+    );
+  }
   if (refusal === "leaves_private") {
     throwApiError(409, "A conversation in a private Space stays in it.");
   }
