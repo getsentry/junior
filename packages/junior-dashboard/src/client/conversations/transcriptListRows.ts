@@ -43,7 +43,7 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity,
- * with routine Watch Events unless `allEvents` is set, become one group row,
+ * with routine Watch Events, become one group row,
  * a Thread keeps its own row, search drops rows that do not match, and the
  * "New" marker becomes its own row before the first unread row. The Tasks of a Turn move to its end, so they do not split its
  * activity: under its reply, or in a Tasks row when it has no reply yet. A
@@ -56,8 +56,6 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * group keeps its key while events extend either edge.
  */
 export function transcriptListRows(input: {
-  /** Show every Watch Event as a row, routine ones too. */
-  allEvents?: boolean | undefined;
   entries: readonly RenderedTranscriptEntry[];
   keyPrefix: string;
   knownActivityKeys: Map<string, string>;
@@ -67,9 +65,7 @@ export function transcriptListRows(input: {
 }): TranscriptListRow[] {
   const { entries, search } = input;
   const quietKeys = quietTurnEntryKeys(entries);
-  const routineKeys = input.allEvents
-    ? new Set<string>()
-    : routineEventEntryKeys(entries);
+  const routineKeys = routineEventEntryKeys(entries);
   const collapsible = (entry: RenderedTranscriptEntry) =>
     isCollapsibleActivityEntry(entry) ||
     quietKeys.has(entry.key) ||

@@ -20,7 +20,6 @@ import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "../../components/layout/navIcons";
 import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { DensitySwitcher } from "../../conversations/conversationDensity";
-import { TranscriptEventsSwitcher } from "../../conversations/transcriptEvents";
 import {
   Avatar,
   AvatarFallback,
@@ -437,7 +436,6 @@ export function ProfileMenu({
         </button>
         <ThemeSwitcher className="px-3 py-2" />
         <DensitySwitcher className="px-3 py-2" />
-        <TranscriptEventsSwitcher className="px-3 py-2" />
         {feedbackDialog}
       </nav>
     );
@@ -541,7 +539,6 @@ export function ProfileMenu({
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher menu />
           <DensitySwitcher menu />
-          <TranscriptEventsSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}

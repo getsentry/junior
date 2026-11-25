@@ -99,7 +99,6 @@ import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 import { ComfortableDensityContext } from "./conversationDensity";
-import { useTranscriptEvents } from "./transcriptEvents";
 import { formatTime, getDashboardTimeZone } from "../time";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
@@ -515,18 +514,16 @@ function TranscriptEntryList(
   const replyRatings = useTranscriptReplyRatings();
   const listRef = useRef<HTMLDivElement>(null);
   const searchQuery = search.active ? search.normalizedQuery : undefined;
-  const allEvents = useTranscriptEvents() === "all";
   const rows = useMemo(
     () =>
       transcriptListRows({
-        allEvents,
         entries: props.entries,
         keyPrefix: props.keyPrefix,
         knownActivityKeys: activityKeys.current,
         search: searchQuery,
         unread: props.unread,
       }),
-    [allEvents, props.entries, props.keyPrefix, props.unread, searchQuery],
+    [props.entries, props.keyPrefix, props.unread, searchQuery],
   );
   const indexByKey = useMemo(
     () => new Map(rows.map((row, index) => [row.key, index])),

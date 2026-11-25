@@ -91,16 +91,6 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   await expect(
     transcript.getByText("Investigate checkout latency finished").first(),
   ).toBeVisible();
-  // With all Events chosen, each routine one is its own row.
-  await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("menuitemradio", { name: "All events" }).click();
-  await page.keyboard.press("Escape");
-  await expect(
-    transcript.getByRole("button", { name: /^2 routine updates/ }),
-  ).toHaveCount(0);
-  await expect(
-    transcript.getByText("Investigate checkout latency finished").last(),
-  ).toBeVisible();
 
   // A message from the page goes to the Lead, not to a new Conversation.
   const sends: string[] = [];
