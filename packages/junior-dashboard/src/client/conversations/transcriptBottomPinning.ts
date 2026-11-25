@@ -397,6 +397,10 @@ export function usePinnedTranscriptBottom(input: {
   // and the restore after them needs the place from before.
   const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
+  // True while the anchor is the row that a jump showed. Restores keep that
+  // anchor, so the row stays put through later changes, such as a search
+  // that clears. Any other anchor moves to the first row in view.
+  const holdsShownRowRef = useRef(false);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
@@ -435,6 +439,7 @@ export function usePinnedTranscriptBottom(input: {
     const content = contentElementRef.current;
     const root = scrollRootFor(content);
     if (!content || !root) return;
+    holdsShownRowRef.current = false;
     scrollAnchorRef.current = captureScrollAnchor(
       content,
       viewportBounds(root),
@@ -451,19 +456,14 @@ export function usePinnedTranscriptBottom(input: {
     const shift = anchor
       ? scrollAnchorShift(content, viewportBounds(root), anchor)
       : null;
-    // Keep the anchor while its row exists, so the row that a jump showed
-    // stays put through later changes, such as a search that clears.
-    if (shift === null) {
-      rememberPlace();
-      return;
-    }
-    if (Math.abs(shift) >= 1) {
+    if (shift !== null && Math.abs(shift) >= 1) {
       const scrollTop = scrollSnapshot(root).scrollTop + shift;
       setScrollTop(root, scrollTop);
       const restored = scrollSnapshot(root).scrollTop;
       previousScrollTopRef.current = restored;
       restoredScrollTopRef.current = restored;
     }
+    if (shift === null || !holdsShownRowRef.current) rememberPlace();
   }, [rememberPlace]);
 
   const stopFollowing = useCallback(() => {
@@ -604,6 +604,7 @@ export function usePinnedTranscriptBottom(input: {
       // A layout change must not restore the place that the reader left.
       // A smooth scroll remembers each new place on its scroll events.
       if (behavior === "smooth") {
+        holdsShownRowRef.current = false;
         scrollAnchorRef.current = null;
         return true;
       }
@@ -612,6 +613,7 @@ export function usePinnedTranscriptBottom(input: {
       restoredScrollTopRef.current = snapshot.scrollTop;
       // Hold the place on the shown row, not the first row in view.
       scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
+      holdsShownRowRef.current = scrollAnchorRef.current !== null;
       return true;
     },
     [leaveBottom, stopFollowing],
