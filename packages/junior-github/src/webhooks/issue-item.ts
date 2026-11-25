@@ -111,13 +111,20 @@ async function issueOwner(
       return card ? [{ conversationId, createdAt: card.createdAt }] : [];
     },
   );
-  return saved
-    .flat()
-    .sort(
-      (left, right) =>
-        left.createdAt.localeCompare(right.createdAt) ||
-        left.conversationId.localeCompare(right.conversationId),
-    )[0]?.conversationId;
+  // The earliest card wins, then the lowest id, as in core's owner query.
+  // ISO timestamps and ids compare by code unit, with no locale rules.
+  let first: { conversationId: string; createdAt: string } | undefined;
+  for (const card of saved.flat()) {
+    if (
+      !first ||
+      card.createdAt < first.createdAt ||
+      (card.createdAt === first.createdAt &&
+        card.conversationId < first.conversationId)
+    ) {
+      first = card;
+    }
+  }
+  return first?.conversationId;
 }
 
 interface SyncArgs {
