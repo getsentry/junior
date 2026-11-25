@@ -8,6 +8,7 @@
  */
 import { randomBytes } from "node:crypto";
 import * as z from "zod";
+import { PKCE_CODE_CHALLENGE_PATTERN } from "@/api/pkce";
 import { redirectUriMatches, resolveMcpClient } from "./client-metadata";
 import type { McpUrls } from "./metadata";
 import { renderMcpPage } from "./page";
@@ -17,13 +18,12 @@ import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 const AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 const STATE_MAX_LENGTH = 1_000;
 const AUTHORIZATION_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const CODE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const mcpAuthorizationSchema = z
   .object({
     clientId: z.string().min(1),
     clientName: z.string().min(1).optional(),
-    codeChallenge: z.string().regex(CODE_CHALLENGE_PATTERN),
+    codeChallenge: z.string().regex(PKCE_CODE_CHALLENGE_PATTERN),
     /** Fixed end of the request. Opening the consent page does not move it. */
     expiresAtMs: z.number().int().positive(),
     redirectUri: z.string().min(1),
@@ -200,7 +200,7 @@ export async function handleMcpAuthorize(args: {
   const codeChallenge = params.get("code_challenge") ?? "";
   if (
     params.get("code_challenge_method") !== "S256" ||
-    !CODE_CHALLENGE_PATTERN.test(codeChallenge)
+    !PKCE_CODE_CHALLENGE_PATTERN.test(codeChallenge)
   ) {
     return fail("invalid_request", "PKCE with S256 is required.");
   }

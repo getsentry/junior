@@ -1,0 +1,274 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "23c2ff6a-77a2-43ea-a7d7-1bf2406d4095",
+  "prevIds": ["d39cabc3-5768-4a13-b496-fdfc7698d4bc"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_sign_in_sessions"],
+      "writes": [
+        "s|tbl|public.junior_sign_in_sessions",
+        "n|tbl|public.junior_sign_in_sessions",
+        "e|tbl|public.junior_sign_in_sessions",
+        "n|rel|public.junior_sign_in_sessions",
+        "n|type|public.junior_sign_in_sessions",
+        "n|rel|public.junior_sign_in_sessions_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_sign_in_sessions",
+        "junior_sign_in_sessions_token_hash_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_sign_in_sessions_token_hash_uidx",
+        "n|idx|public.junior_sign_in_sessions_token_hash_uidx",
+        "e|idx|public.junior_sign_in_sessions_token_hash_uidx",
+        "n|rel|public.junior_sign_in_sessions_token_hash_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_sign_in_sessions",
+        "n|sch|public",
+        "n|col|public.junior_sign_in_sessions.token_hash"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_sign_in_sessions",
+        "junior_sign_in_sessions_user_email_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_sign_in_sessions_user_email_idx",
+        "n|idx|public.junior_sign_in_sessions_user_email_idx",
+        "e|idx|public.junior_sign_in_sessions_user_email_idx",
+        "n|rel|public.junior_sign_in_sessions_user_email_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_sign_in_sessions",
+        "n|sch|public",
+        "n|col|public.junior_sign_in_sessions.user_email_normalized"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_sign_in_sessions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "token_hash",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "user_email_normalized",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "user_name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "client",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "expires_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "last_used_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "revoked_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "junior_sign_in_sessions_token_hash_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "token_hash",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "junior_sign_in_sessions_user_email_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_email_normalized",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_sign_in_sessions",
+        "name": "junior_sign_in_sessions_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

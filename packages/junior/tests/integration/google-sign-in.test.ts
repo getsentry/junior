@@ -187,4 +187,37 @@ describe("Google sign-in", () => {
     });
     expect(direct.headers.getSetCookie()).toEqual([]);
   });
+
+  it("stores each sign-in so sign-out ends it on the server", async () => {
+    const auth = createAuth(["example.org"]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    const { session } = await signIn(auth);
+    const cookie = session.headers.get("cookie") ?? "";
+    // Only the stored session's cookie stays. Better Auth's own is cleared.
+    expect(cookie).toMatch(/__Host-junior_session=jr_ses_/);
+    expect(cookie).not.toMatch(/better-auth\.session_(token|data)=[^;]/);
+    expect(await auth.getSession(session)).toMatchObject({
+      credential: "cookie",
+      user: { email: "person@example.org", emailVerified: true },
+    });
+
+    // The same token works as a bearer token, as the iOS app sends it.
+    const token = /__Host-junior_session=([^;]+)/.exec(cookie)?.[1] ?? "";
+    const bearer = new Request(`${BASE_URL}/api/me`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(await auth.getSession(bearer)).toMatchObject({
+      credential: "bearer",
+    });
+
+    const signedOut = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-out`, {
+        method: "POST",
+        headers: { cookie, origin: BASE_URL },
+      }),
+    );
+    expect(signedOut.status).toBe(200);
+    expect(await auth.getSession(session)).toBeNull();
+    expect(await auth.getSession(bearer)).toBeNull();
+  });
 });

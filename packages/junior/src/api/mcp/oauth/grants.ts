@@ -4,8 +4,9 @@
  * in shared state with a TTL. A grant ends `GRANT_MAX_AGE_MS` after consent,
  * and refresh does not extend it.
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import * as z from "zod";
+import { pkceVerifierMatches } from "@/api/pkce";
 import { logWarn } from "@/chat/logging";
 import { mcpScopeValueSchema, parseMcpScopes, type McpScope } from "./scopes";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
@@ -17,7 +18,6 @@ const REFRESH_REUSE_GRACE_MS = 60 * 1000;
 // Prefixes let secret scanners find leaked tokens. They carry no authority.
 const ACCESS_TOKEN_PREFIX = "jr_mcp_at_";
 const REFRESH_TOKEN_PREFIX = "jr_mcp_rt_";
-const CODE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
 
 const authorizationCodeSchema = z
   .object({
@@ -145,14 +145,6 @@ async function readGrant(
   return grant && grant.expiresAtMs > Date.now() ? grant : undefined;
 }
 
-/** Return true when the RFC 7636 S256 verifier matches the challenge. */
-function verifierMatches(verifier: string, challenge: string): boolean {
-  return (
-    CODE_VERIFIER_PATTERN.test(verifier) &&
-    createHash("sha256").update(verifier).digest("base64url") === challenge
-  );
-}
-
 /**
  * Save a grant and issue a new access and refresh token pair for it. No
  * record outlives the grant.
@@ -202,7 +194,7 @@ export async function exchangeAuthorizationCode(args: {
     code.clientId !== args.clientId ||
     code.redirectUri !== args.redirectUri ||
     (args.resource !== undefined && args.resource !== code.resource) ||
-    !verifierMatches(args.codeVerifier, code.codeChallenge)
+    !pkceVerifierMatches(args.codeVerifier, code.codeChallenge)
   ) {
     return invalidGrant("The authorization code is not valid.");
   }

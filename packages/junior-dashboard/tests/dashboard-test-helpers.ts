@@ -2,7 +2,7 @@ import {
   dashboardBootstrapSchema,
   type DashboardBootstrap,
 } from "../src/api/schema";
-import type { DashboardAuth, DashboardSession } from "../src/auth";
+import type { DashboardAuth } from "../src/auth";
 
 export const dashboardEnvNames = [
   "BETTER_AUTH_SECRET",
@@ -26,7 +26,7 @@ export function resetDashboardEnv(): void {
 
 /** Build a fixed dashboard auth edge for route tests. */
 export function auth(
-  session: DashboardSession | null,
+  session: Awaited<ReturnType<DashboardAuth["getSession"]>>,
   onSignIn?: (callbackURL: string, errorCallbackURL: string) => void,
 ): DashboardAuth {
   return {

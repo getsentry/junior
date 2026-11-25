@@ -207,6 +207,56 @@ describe("dashboard plugin routes", () => {
     expect(dispatched).toBe(false);
   });
 
+  it("lets a bearer session write and checks the origin of cookie writes", async () => {
+    let deleted = 0;
+    const pluginApp = new Hono();
+    pluginApp.delete("/memories/:id", (c) => {
+      deleted += 1;
+      return c.body(null, 204);
+    });
+    const dashboard = (credential: "bearer" | "cookie") =>
+      createDashboardApp({
+        agentName: "Junior",
+        allowedDomains: ["sentry.io"],
+        auth: auth({
+          credential,
+          user: { email: "person@sentry.io", emailVerified: true },
+        }),
+        pluginRoutes: [
+          { app: pluginApp, pluginName: "notes", prefix: "/api/plugins/notes" },
+        ],
+      });
+    const write = (headers: Record<string, string>) =>
+      new Request("http://localhost/api/plugins/notes/memories/memory-1", {
+        headers,
+        method: "DELETE",
+      });
+
+    // The iOS app sends its session as a bearer token, with no `Origin`.
+    const ios = dashboard("bearer");
+    expect((await ios.fetch(write({}))).status).toBe(204);
+    // A bearer session cannot open pages or manage personal tokens.
+    expect(
+      (await ios.fetch(new Request("http://localhost/conversations"))).status,
+    ).toBe(302);
+    expect(
+      (await ios.fetch(new Request("http://localhost/api/personal-tokens")))
+        .status,
+    ).toBe(401);
+
+    // Browsers send the cookie from any site, so a cookie write must come
+    // from this origin.
+    const browser = dashboard("cookie");
+    expect(
+      (await browser.fetch(write({ origin: "https://evil.test" }))).status,
+    ).toBe(403);
+    expect((await browser.fetch(write({}))).status).toBe(403);
+    expect(
+      (await browser.fetch(write({ origin: "http://localhost" }))).status,
+    ).toBe(204);
+    expect(deleted).toBe(2);
+  });
+
   it("passes sanitized auth context to plugin API route apps", async () => {
     let pluginContext: unknown;
     const authenticated = createDashboardApp({

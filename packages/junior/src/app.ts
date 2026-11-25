@@ -149,6 +149,15 @@ import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
 import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
+  handleIosSignInPage,
+  handleIosSignInToken,
+  handleIosSignOut,
+  IOS_SIGN_IN_PATH,
+  IOS_SIGN_IN_PUBLIC_PATHS,
+  IOS_SIGN_IN_TOKEN_PATH,
+  IOS_SIGN_OUT_PATH,
+} from "@/api/ios-sign-in/routes";
+import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
@@ -685,6 +694,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     method: ["GET", "POST"],
     path: MCP_CONSENT_PATH,
   };
+  const iosSignInRoute: AuthenticatedRoute = {
+    handler: (request, user) =>
+      handleIosSignInPage({
+        agentName: botConfig.userName,
+        request,
+        state: getMcpState(),
+        user,
+      }),
+    method: ["GET", "POST"],
+    path: IOS_SIGN_IN_PATH,
+  };
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -699,13 +719,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
           },
-          ...(mcpEnabled ? [mcpConsentRoute] : []),
+          ...(mcpEnabled ? [mcpConsentRoute, iosSignInRoute] : []),
         ]
       : [];
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
-      coreRoutePaths: mcpEnabled ? MCP_ROUTE_PATHS : [],
+      coreRoutePaths: mcpEnabled
+        ? [...MCP_ROUTE_PATHS, ...IOS_SIGN_IN_PUBLIC_PATHS]
+        : [],
       dashboard,
       routes: pluginRoutes,
     });
@@ -755,6 +777,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
       return handleMcpRequest(c.req.raw);
     });
+    app.post(IOS_SIGN_IN_TOKEN_PATH, (c) =>
+      handleIosSignInToken({ request: c.req.raw, state: getMcpState() }),
+    );
+    app.post(IOS_SIGN_OUT_PATH, (c) => handleIosSignOut(c.req.raw));
   }
   mountRoutes(app, pluginRoutes);
   mountRoutes(
