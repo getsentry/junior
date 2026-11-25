@@ -10,9 +10,12 @@ import {
   spaceListSchema,
   spaceMemberListSchema,
   spaceSchema,
+  versionsSchema,
 } from "@/api/schema";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -99,6 +102,17 @@ async function detailSpace(app: Hono<JuniorApiEnv>, conversationId: string) {
   );
   expect(response.status).toBe(200);
   return conversationDetailReportSchema.parse(await response.json()).space;
+}
+
+async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
+  const response = await request(
+    app,
+    "GET",
+    `/versions?${new URLSearchParams({ conversationIds: conversationId })}`,
+  );
+  return versionsSchema.parse(await response.json()).conversationDetails[
+    conversationId
+  ];
 }
 
 async function startThread(parentConversationId: string, id: string) {
@@ -294,6 +308,13 @@ describe("Spaces API", () => {
     });
     expect((await moveTo(ana, thread, null)).status).toBe(409);
 
+    // A move writes only the root, and the child's detail token still
+    // changes, so an open child detail refreshes its Space.
+    const threadVersion = await detailVersion(ana, thread);
+    expect((await moveTo(ana, inSpace, other.id)).status).toBe(200);
+    expect(await detailVersion(ana, thread)).not.toBe(threadVersion);
+    expect((await moveTo(ana, inSpace, space.id)).status).toBe(200);
+
     // Moving takes membership of both Spaces.
     expect((await moveTo(bo, oneOff, space.id)).status).toBe(404);
     const moved = await moveTo(ana, oneOff, space.id);
@@ -326,6 +347,11 @@ describe("Spaces API", () => {
     });
     const outside = await startConversation(ana, "short-outside");
     const thread = await startThread(first, "local:spaces-archive-thread");
+    // A root from before `root_conversation_id` was set is archived too.
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: null })
+      .where(eq(juniorConversations.conversationId, second));
 
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
     expect(await spaceFeed(ana, space.id)).toEqual([]);

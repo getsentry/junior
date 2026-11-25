@@ -159,6 +159,34 @@ function viewerStateVersion(
   ))`;
 }
 
+const versionSpaceConversation = alias(
+  juniorConversations,
+  "version_space_conversation",
+);
+const versionSpaceRoot = alias(juniorConversations, "version_space_root");
+
+/**
+ * Hash the root's Space. A move writes only the root, and a rename writes
+ * only the Space, so a child's token reads both through its root.
+ */
+function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
+  const space = db
+    .select({
+      state: sql<string>`concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name})`,
+    })
+    .from(versionSpaceConversation)
+    .innerJoin(
+      versionSpaceRoot,
+      eq(
+        versionSpaceRoot.conversationId,
+        sql`coalesce(${versionSpaceConversation.rootConversationId}, ${versionSpaceConversation.conversationId})`,
+      ),
+    )
+    .leftJoin(juniorSpaces, eq(juniorSpaces.id, versionSpaceRoot.spaceId))
+    .where(eq(versionSpaceConversation.conversationId, conversationId));
+  return sql<string>`coalesce((${space}), '')`;
+}
+
 /**
  * Return a query for the change token of each Conversation and its child
  * agents, as the viewer sees it, one row per Conversation found. A missing
@@ -183,7 +211,7 @@ export function conversationVersionsQuery(
     .select({
       conversationId: subtree.conversationId,
       version:
-        sql<string>`concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${viewerState})`.as(
+        sql<string>`concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${rootSpaceVersion(db, rowConversationId)}, ${viewerState})`.as(
           "version",
         ),
     })

@@ -2,7 +2,7 @@
  * Conversations in a Space (`design/spaces.md`). Only a root stores its
  * Space. A child is in the Space of its root, so the two never disagree.
  */
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
@@ -56,15 +56,19 @@ export async function setConversationSpace(
   return rows.length > 0;
 }
 
-/** Every Conversation in the Space, at any depth. */
+/**
+ * Every Conversation in the Space, at any depth. A root from before
+ * `root_conversation_id` was set matches by its own id.
+ */
 function inSpaceTrees(db: JuniorDatabase, spaceId: string) {
-  return inArray(
-    juniorConversations.rootConversationId,
-    db
-      .select({ id: spaceRoot.conversationId })
-      .from(spaceRoot)
-      .where(eq(spaceRoot.spaceId, spaceId)),
-  );
+  const roots = db
+    .select({ id: spaceRoot.conversationId })
+    .from(spaceRoot)
+    .where(eq(spaceRoot.spaceId, spaceId));
+  return or(
+    inArray(juniorConversations.rootConversationId, roots),
+    inArray(juniorConversations.conversationId, roots),
+  )!;
 }
 
 /**
