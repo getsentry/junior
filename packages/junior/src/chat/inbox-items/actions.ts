@@ -197,13 +197,19 @@ export async function actOnInboxItem(args: {
     return taken;
   }
 
+  let closed = item;
+  let closedNow = false;
   if (
     action === "dismiss" &&
     item.status === "open" &&
     hasAssigneeRoles(item)
   ) {
     const left = await leavePluginItemOnDismiss(item, user, nowMs);
-    if (left) {
+    if (left === "closed") {
+      // The dismiss took over the close that its removal caused.
+      closedNow = true;
+      closed = await readInboxItemForUser(user, item.id);
+    } else if (left !== "close") {
       await deliverInboxItemChange({
         delivery: args.delivery,
         item: left,
@@ -213,9 +219,7 @@ export async function actOnInboxItem(args: {
     }
   }
 
-  let closed = item;
-  let closedNow = false;
-  if (item.status === "open") {
+  if (!closedNow && item.status === "open") {
     // Anyone who can see a public question can answer it. Dismiss keeps the
     // assignee rule (`canAnswerInboxItem`).
     const allowed =
@@ -280,13 +284,15 @@ export async function actOnInboxItem(args: {
  * Dismiss an `assigneeRoles` item for one assignee: the plugin removes them
  * on its provider first, and a refusal fails the dismiss. When others stay
  * on the item, only this person leaves it, and the item is returned. When
- * they are the only one, return undefined: the item closes as any dismiss.
+ * they are the only one, return `close`: the item closes as any dismiss.
+ * Return `closed` when the provider's webhook closed it first, and this
+ * dismiss took over that close.
  */
 async function leavePluginItemOnDismiss(
   item: InboxItem,
   user: User,
   nowMs: number,
-): Promise<InboxItem | undefined> {
+): Promise<InboxItem | "close" | "closed"> {
   if (!canActOnInboxItem(item, user.id)) {
     throw new InboxItemActionError(
       "forbidden",
@@ -316,10 +322,10 @@ async function leavePluginItemOnDismiss(
       sinceMs: nowMs,
       userId: user.id,
     });
-    if (taken) return undefined;
+    if (taken) return "closed";
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
-  if (outcome === "last") return undefined;
+  if (outcome === "last") return "close";
   // Their role may have been their only way to see the item, and they just
   // left it, so this read does not check their access again.
   const left = await getInboxItem(getDb(), item.id);
