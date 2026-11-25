@@ -462,6 +462,54 @@ describe("Slack webhook: Inbox item cards", () => {
     );
   });
 
+  it("lists a question's and a notice's related links below the body", async () => {
+    setDashboardConversationLinkOptions({ baseURL: "https://junior.example" });
+    try {
+      inboxItemCardHarness();
+      await slackThread(THREAD, "public");
+      await slackThread(OTHER_THREAD, "public");
+      const ana = await linkSlackUser("ana@example.com", "U123");
+      const related = [
+        { label: "Canary [errors]", url: "https://example.com/canary" },
+        // The same link again shows once.
+        { label: "Canary", url: "https://example.com/canary" },
+        { label: "Checkout latency", conversation_id: OTHER_THREAD },
+      ];
+      await addItem(ana, {
+        kind: "action",
+        title: "Roll out payments-v42?",
+        body: "The canary is green.",
+        assignees: ["everyone"],
+        request: { ...SHIP_REQUEST, related },
+      });
+      await addItem(ana, {
+        kind: "notice",
+        title: "payments-v42 rolled out",
+        body: "All regions are on payments-v42.",
+        assignees: ["everyone"],
+        request: { related },
+      });
+
+      const conversation = `https://junior.example/conversations/${encodeURIComponent(OTHER_THREAD)}`;
+      const lines = slackApiOutbox.messages().map((post) => {
+        const markdown = blocksOf(post).find(
+          (block) => block.type === "markdown",
+        );
+        return markdown?.text;
+      });
+      // The links show on the card as plain links, and the title links to
+      // nothing: they do not decide the card.
+      expect(lines[0]).toContain(
+        `**Roll out payments-v42?**\n\nThe canary is green.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})\n\n`,
+      );
+      expect(lines[1]).toBe(
+        `**payments-v42 rolled out**\n\nAll regions are on payments-v42.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})`,
+      );
+    } finally {
+      setDashboardConversationLinkOptions(undefined);
+    }
+  });
+
   it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -573,12 +621,10 @@ describe("Slack webhook: Inbox item cards", () => {
       request: {
         question,
         fields: ["a", "b", "c", "d"].map(field),
-        related: [
-          {
-            label: "Release",
-            url: `https://example.com/releases/${"1.2.3/".repeat(320)}`,
-          },
-        ],
+        related: Array.from({ length: 10 }, (_, index) => ({
+          label: `Release ${index}`,
+          url: `https://example.com/releases/${index}/${"1.2.3/".repeat(320)}`,
+        })),
       },
     });
 

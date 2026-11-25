@@ -800,7 +800,7 @@ export function bindAgentTools(
   agents: AgentTools,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
-  if (agents === "none" || !bindSpawnAgent) return {};
+  if (!bindSpawnAgent) return {};
   // A Lead steers other top-level agents and starts no child agents.
   if (agents === "lead") {
     const messageAgent = bindMessageAgent?.(run, agents);

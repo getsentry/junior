@@ -1,8 +1,8 @@
 /**
  * Read access to a Conversation's durable event log for model-facing tools,
  * under `policies/conversation-access.md`. The current Conversation tree is
- * always readable. Other Conversations are readable when they are public or
- * at the same Destination as the current one.
+ * always readable. Other Conversations are readable when they are public, at
+ * the same Destination as the current one, or in its private Space.
  */
 import { canReadConversation } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";

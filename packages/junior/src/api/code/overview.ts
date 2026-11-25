@@ -151,9 +151,13 @@ async function readTreeCosts(conversationIds: readonly string[]) {
 }
 
 /**
- * True when any linked conversation actor belongs to the subject user. The
- * subquery starts from the user's Conversations, so Postgres hash-joins them
- * with the linked ids instead of one lookup per code change.
+ * True when any linked conversation actor belongs to the subject user, or
+ * the code change credits one of the user's Identities as requester. A
+ * Thread or an Automation run that someone else started can open a change
+ * for the user, so the requester half finds the changes the actor half
+ * misses. The first subquery starts from the user's Conversations, so
+ * Postgres hash-joins them with the linked ids instead of one lookup per
+ * code change. The second uses the requester GIN index.
  */
 function ownedByUserSql(userId: string | SQL): SQL {
   return sql`${juniorCodeChanges.id} IN (
@@ -166,6 +170,12 @@ function ownedByUserSql(userId: string | SQL): SQL {
       FROM junior_code_changes
     ) AS linked
       ON linked.conversation_id = conversations.conversation_id
+    WHERE identities.user_id = ${userId}
+    UNION ALL
+    SELECT requested.id
+    FROM junior_identities AS identities
+    INNER JOIN junior_code_changes AS requested
+      ON requested.requester_identity_ids @> ARRAY[identities.id]
     WHERE identities.user_id = ${userId}
   )`;
 }
@@ -462,8 +472,8 @@ function afterPersonCodeCursor(
 }
 
 /**
- * Read person-scoped code activity and recent code changes linked through
- * conversation actors on Junior-owned code changes.
+ * Read person-scoped code activity and recent code changes: the ones linked
+ * to the person's Conversations, and the ones that credit them as requester.
  */
 export async function readPersonCodeOverview(args: {
   /** `nextCursor` of the previous page. */

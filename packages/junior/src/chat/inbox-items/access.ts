@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
   inboxItemOwnerConversationId,
+  todoItemOwnerConversationId,
   inboxItemTenantId,
   inboxItemTenantProvider,
   inboxItemVisibility,
@@ -70,6 +71,12 @@ export interface InboxItemReader {
   /** Provider tenants where the reader can see public items. */
   tenants?: readonly ProviderTenant[];
   userId?: string;
+  /**
+   * A person who sees the items for Everyone whose owner they can see
+   * (`inboxItemForEveryoneOfOwner`). Only SQL checks it: `canReadInboxItem`
+   * cannot, and `canUserReadInboxItem` checks it for one item.
+   */
+  ownerAudienceUserId?: string;
 }
 
 /** Return whether two tenants are the same. Two missing tenants match. */
@@ -99,6 +106,7 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
         : [],
     ),
     userId: user.id,
+    ownerAudienceUserId: user.id,
   };
 }
 
@@ -139,9 +147,14 @@ function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
  * the item. This is the rule of `conversationAccessFromRows`: the User is a
  * Participant of the owner when it has no parent, even with no stored root.
  * Otherwise the owner needs a valid stored root, whose Destination is public
- * or whose Participants include the User.
+ * or whose Participants include the User. Pass the narrowest expression
+ * of the owner id that fits the item's subject kind, since each owner
+ * check runs once per Conversation in the version reads.
  */
-function ownerConversationOpenTo(userId: string): SQL {
+function ownerConversationOpenTo(
+  userId: string,
+  ownerConversationId: SQL<string | null>,
+): SQL {
   return exists(
     getDb()
       .select({ one: sql`1` })
@@ -161,7 +174,7 @@ function ownerConversationOpenTo(userId: string): SQL {
       .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
-          eq(todoOwner.conversationId, inboxItemOwnerConversationId()),
+          eq(todoOwner.conversationId, ownerConversationId),
           or(
             and(
               isNull(todoOwner.parentConversationId),
@@ -190,7 +203,7 @@ export function inboxItemAssignedTo(userId: string): SQL {
     sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
     or(
       ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
-      ownerConversationOpenTo(userId),
+      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
     ),
   )!;
 }
@@ -237,6 +250,26 @@ export function inboxItemForUser(userId: string): SQL {
   )!;
 }
 
+/**
+ * SQL: the private Inbox item is for Everyone, and the User can see its
+ * owner Conversation. Everyone means the people who can see the item's
+ * owner, so the members of a private Conversation see its items for
+ * Everyone. A public item reaches Everyone through its tenant (`publicIn`),
+ * which keeps it in the owner's workspace. A To-do's item is only for its
+ * assignee.
+ */
+function inboxItemForEveryoneOfOwner(userId: string): SQL {
+  return and(
+    eq(inboxItemVisibility(), "private"),
+    ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+    or(
+      eq(juniorInboxItems.assignedToEveryone, true),
+      sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
+    ),
+    ownerConversationOpenTo(userId, inboxItemOwnerConversationId()),
+  )!;
+}
+
 /** SQL: the Inbox item links this Conversation. */
 export function inboxItemLinkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorInboxItemConversations} where ${juniorInboxItemConversations.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemConversations.conversationId} = ${conversationId})`;
@@ -268,7 +301,8 @@ export function inboxItemAddedByAnyAutomation(): SQL {
 
 /**
  * SQL form of `canReadInboxItem`, for search. Keep the two the same; the
- * Inbox item access test checks that they agree.
+ * Inbox item access test checks that they agree. Only the SQL form reads
+ * `ownerAudienceUserId`.
  */
 export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
   // `or` of nothing is undefined, so `false` keeps the query closed. Do not
@@ -278,6 +312,9 @@ export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
     or(
       ...publicIn(reader.tenants ?? []),
       ...(reader.userId ? [inboxItemAssignedTo(reader.userId)] : []),
+      ...(reader.ownerAudienceUserId
+        ? [inboxItemForEveryoneOfOwner(reader.ownerAudienceUserId)]
+        : []),
       ...(reader.conversationId
         ? [inboxItemLinkedTo(reader.conversationId)]
         : []),
@@ -353,11 +390,18 @@ export async function canUserReadInboxItem(
     return access.get(todo.conversationId)?.canViewPrivateContent === true;
   }
   if (canReadInboxItem(item, inboxItemReaderForUser(user))) return true;
+  const ownerId =
+    item.visibility === "private" &&
+    item.owner.kind === "conversation" &&
+    isInboxItemForEveryone(item)
+      ? item.owner.id
+      : undefined;
   const access = await readConversationAccessFromSql(
     getDb(),
-    item.conversationIds,
+    [...item.conversationIds, ...(ownerId ? [ownerId] : [])],
     user,
   );
+  if (ownerId && access.get(ownerId)?.canViewPrivateContent) return true;
   return item.conversationIds.some((id) => {
     const conversation = access.get(id);
     return (
@@ -529,8 +573,8 @@ export async function requireInboxItemLinks(args: {
 }
 
 /**
- * Check who an agent assigns a private item to. It cannot go to Everyone.
- * Each User must be the current Actor, a Participant of one of the given
+ * Check who an agent assigns a private item to. Everyone means the people
+ * who can see its owner (`inboxItemForEveryoneOfOwner`). Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that
  * added it), or the creator of the Automation that added the item. An
  * Automation run often has no Actor and no people yet, and its creator wrote
@@ -544,11 +588,6 @@ export async function requireInboxItemAssignees(args: {
   visibility: InboxItemVisibility;
 }): Promise<void> {
   if (args.visibility === "public") return;
-  if (args.assignees.everyone) {
-    throw new ToolInputError(
-      "A private item cannot be assigned to Everyone. Assign Users instead.",
-    );
-  }
   const creatorId = args.automationId
     ? await automationCreatorUserId(getDb(), args.automationId)
     : undefined;

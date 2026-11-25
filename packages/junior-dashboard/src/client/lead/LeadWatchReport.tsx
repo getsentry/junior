@@ -17,8 +17,6 @@ const done: Report = { state: "done", verb: "finished" };
 
 const reports: Record<string, Report> = {
   blocked: { state: "needs_you", verb: "is blocked" },
-  // Agent updates stored before `done` name it `completed`.
-  completed: done,
   done,
   failed: { state: "failed", verb: "failed" },
   stopped: { state: "done", verb: "stopped" },

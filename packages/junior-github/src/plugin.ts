@@ -93,6 +93,11 @@ import {
   githubRepositoryNameRepairTask,
   startGitHubRepositoryNameRepair,
 } from "./repository-name-repair.js";
+import {
+  GITHUB_PULL_REQUEST_REQUESTER_BACKFILL_TASK,
+  githubPullRequestRequesterBackfillTask,
+  startGitHubPullRequestRequesterBackfill,
+} from "./pull-request-requesters/backfill.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
@@ -226,6 +231,8 @@ export function githubPlugin(
             refs,
           ),
       ),
+      [GITHUB_PULL_REQUEST_REQUESTER_BACKFILL_TASK]:
+        githubPullRequestRequesterBackfillTask,
       [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
         async () =>
           await loadRepositoryFullNames({
@@ -497,6 +504,10 @@ export function githubPlugin(
           state: ctx.state,
         });
         await startGitHubRepositoryNameRepair({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
+        await startGitHubPullRequestRequesterBackfill({
           state: ctx.state,
           tasks: ctx.tasks,
         });
