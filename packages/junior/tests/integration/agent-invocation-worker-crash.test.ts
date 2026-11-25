@@ -153,8 +153,8 @@ describe("child agent worker crash", () => {
             messageKey: "helper-reply",
             queue,
             result: {
-              kind: "reply",
-              reply: { text: "Helper fact.", toolCallId: "helper-reply" },
+              kind: "completed",
+              text: "Helper fact.",
             },
             sender: {
               childConversationId: helperId,
@@ -189,8 +189,8 @@ describe("child agent worker crash", () => {
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
             result: {
-              kind: "reply",
-              reply: { text: "Earlier answer.", toolCallId: "call-earlier" },
+              kind: "completed",
+              text: "Earlier answer.",
             },
             turnId: buildDeterministicTurnId(earlier),
           });
@@ -201,8 +201,8 @@ describe("child agent worker crash", () => {
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
             result: {
-              kind: "reply",
-              reply: { text: "Answer.", toolCallId: "call-answer" },
+              kind: "completed",
+              text: "Answer.",
             },
             turnId: buildDeterministicTurnId(
               getAgentReplyMessageId(helperId, "helper-reply"),

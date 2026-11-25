@@ -13,6 +13,19 @@ test.describe("new UI", () => {
     };
   }
 
+  /** Grow active people while each day's spend stays the same. */
+  function personSpendDay(index: number) {
+    const people = 3 + Math.floor(index / 6);
+    const unattributedCostUsd = 0.3 + (index % 3) * 0.1;
+    const personCostUsd = 1.5 - unattributedCostUsd;
+    return {
+      medianPersonCostUsd: (personCostUsd / people) * 0.8,
+      people,
+      personCostUsd,
+      unattributedCostUsd,
+    };
+  }
+
   test("shows system usage and plugin details", async ({ page, dashboard }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
     await page.route("**/api/conversations/stats", async (route) => {
@@ -39,7 +52,16 @@ test.describe("new UI", () => {
         ...(index === 23 ? { cacheCreationTokens: undefined } : undefined),
       }));
       await route.fulfill({
-        json: { ...report, metricDays, metricHours, metricSixHours: undefined },
+        json: {
+          ...report,
+          metricDays,
+          metricHours,
+          metricSixHours: undefined,
+          personSpendDays: metricDays.map((day, index) => ({
+            date: day.date,
+            ...personSpendDay(index),
+          })),
+        },
       });
     });
     await page.goto(`${dashboard.baseURL}/system`);
@@ -53,11 +75,15 @@ test.describe("new UI", () => {
     await expect(page.getByLabel("Conversations per day")).toBeVisible();
     await expect(page.getByText("Input cache")).toBeVisible();
     await expect(
-      page.getByText(/6 merged changes\. The line is/),
+      page.getByText(/6 merged changes used \d+% of spend\. Lines are/),
     ).toBeVisible();
     await expect(
       page.getByLabel("7-day rolling cost per merged change per day"),
     ).toBeVisible();
+    await expect(
+      page.getByLabel("Daily mean spend per active person"),
+    ).toBeVisible();
+    await expect(page.getByLabel("Daily model spend by Actor")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Model spend", exact: true }),
     ).toBeVisible();

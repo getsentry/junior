@@ -222,8 +222,8 @@ describe("child agents", () => {
         actor: slackInvocationInput.actor,
         conversationId: childId,
         result: {
-          kind: "reply",
-          reply: { text: "Deploy is green.", toolCallId: "call-reply" },
+          kind: "completed",
+          text: "Deploy is green.",
         },
         turnId: "turn_child",
       });
@@ -267,8 +267,8 @@ describe("child agents", () => {
         actor: slackInvocationInput.actor,
         conversationId: childId,
         result: {
-          kind: "reply",
-          reply: { text: "Deploy is green.", toolCallId: "call-reply" },
+          kind: "completed",
+          text: "Deploy is green.",
         },
         turnId: "turn_child",
       });

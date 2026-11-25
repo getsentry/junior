@@ -49,6 +49,7 @@ export async function loadConversationSlackTenantIds(
     .db()
     .select({
       conversationId: juniorConversations.conversationId,
+      provider: juniorDestinations.provider,
       providerTenantId: juniorDestinations.providerTenantId,
       sessionSource: juniorConversations.sessionSource,
     })
@@ -67,16 +68,19 @@ export async function loadConversationSlackTenantIds(
 }
 
 /**
- * Return the Slack workspace that owns a conversation, from its Destination
- * tenant or its stored Slack session source.
+ * Return the Slack workspace that owns a conversation, from its Slack
+ * Destination tenant or its stored Slack session source. A dashboard
+ * Destination also has a tenant, such as `web`, which is not a Slack
+ * workspace.
  */
 export function conversationSlackTenantId(row: {
+  provider: string | null | undefined;
   providerTenantId: string | null | undefined;
   sessionSource: unknown;
 }): string | undefined {
   const sessionSource = parseSessionSource(row.sessionSource);
   return (
-    row.providerTenantId?.trim() ||
+    (row.provider === "slack" ? row.providerTenantId?.trim() : undefined) ||
     (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined)
   );
 }

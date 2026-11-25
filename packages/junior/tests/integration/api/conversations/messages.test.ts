@@ -9,7 +9,8 @@ import {
 } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import {
   closeConversationFixture,
@@ -147,5 +148,48 @@ describe("conversation messages API", () => {
       .from(juniorConversationParticipants)
       .where(eq(juniorConversationParticipants.userId, newcomer.id));
     expect(newcomerRoots).not.toContainEqual({ rootConversationId: other });
+  });
+
+  it("shows a person that a dashboard conversation mentions by name", async () => {
+    const { actor } = await createConversationFixture();
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "cleo@example.com",
+      fullName: "Cleo Person",
+      platform: "slack",
+      teamId: SLACK_DESTINATION.teamId,
+      userId: "UCLEO1234",
+    });
+    const api = apiFor(actor.email);
+    const created = acceptedConversationMessageSchema.parse(
+      await (
+        await api.request("http://localhost/api/conversations", {
+          body: JSON.stringify({
+            idempotencyKey: "mention-name",
+            message: "<@UCLEO1234> can you check this?",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        })
+      ).json(),
+    );
+
+    // A dashboard conversation is in no Slack workspace, so the mention
+    // resolves from Junior's people.
+    const pending = conversationPendingMessagesReportSchema.parse(
+      await (
+        await api.request(
+          `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/pending-messages`,
+        )
+      ).json(),
+    );
+    expect(
+      pending.messages.flatMap((message) => message.mentions ?? []),
+    ).toEqual([
+      expect.objectContaining({
+        email: "cleo@example.com",
+        fullName: "Cleo Person",
+        slackUserId: "UCLEO1234",
+      }),
+    ]);
   });
 });

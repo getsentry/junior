@@ -2,7 +2,11 @@ import { describe, expect } from "vitest";
 import { mockDatabaseDocs } from "@junior-evals/fixture/database-docs";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, type Turn } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  type Turn,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Child Agent Results", () => {
@@ -71,6 +75,36 @@ describe("Child Agent Updates", () => {
           "The last reply compares how PostgreSQL, MySQL, and SQLite handle the change.",
         ],
         fail: ["The first reply states findings about a database."],
+      }),
+    );
+  });
+
+  test("when the user asks to hear when delegated work is done, wait for its result instead of checking on the child agent", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
+    mockDatabaseDocs();
+    const conversation = await run(
+      slackMention(
+        "have a background agent look up how postgres handles adding a NOT NULL column with a default to a huge table, from the postgres docs. keep an eye on it and tell me what it finds once it's done",
+      ),
+    );
+
+    expect(completedToolCalls("startAgent", conversation)).not.toEqual([]);
+    // The child's result arrives as a new task. Listing the team again and
+    // again only spends the parent's turns.
+    expect(toolCallsOf("listAgents", conversation).length).toBeLessThanOrEqual(
+      1,
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply explains how PostgreSQL handles adding a NOT NULL column with a default to a large table.",
+        ],
+        fail: [
+          "The last reply says that the work is still running or that there are no findings yet.",
+        ],
       }),
     );
   });

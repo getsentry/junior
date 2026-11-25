@@ -112,6 +112,8 @@ function ConversationTitleHeader(props: {
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
+  /** A link to the Conversation's Space, after the title. */
+  space?: ReactNode;
   /** The tree state or pin icon, before the title. */
   state?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
@@ -393,6 +395,7 @@ function ConversationTitleHeader(props: {
             )}
             {props.status}
             {childAgentTags}
+            {props.space}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}

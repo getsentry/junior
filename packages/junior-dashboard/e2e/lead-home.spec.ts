@@ -130,7 +130,8 @@ test("loads home within its request budget", async ({ page, dashboard }) => {
         page.getByRole("heading", { name: "Your Lead" }),
       ).toBeVisible();
     },
-    { requests: 10, serialRounds: 3 },
+    // One of them reads the viewer's Spaces for the pane.
+    { requests: 11, serialRounds: 3 },
   );
 });
 

@@ -1,7 +1,9 @@
 import * as z from "zod";
 
-const SPACE_NAME_MAX_CHARS = 80;
-const SPACE_DESCRIPTION_MAX_CHARS = 500;
+/** The longest Space name, so a form can stop at it. */
+export const SPACE_NAME_MAX_CHARS = 80;
+/** The longest Space description, so a form can stop at it. */
+export const SPACE_DESCRIPTION_MAX_CHARS = 500;
 
 const spaceNameSchema = z.string().trim().min(1).max(SPACE_NAME_MAX_CHARS);
 const spaceDescriptionSchema = z
@@ -48,6 +50,11 @@ export const archiveSpaceBodySchema = z
   .object({ archived: z.boolean() })
   .strict();
 
+/** The id and name that label the Space of a Conversation. */
+export const spaceRefSchema = z
+  .object({ id: z.string().uuid(), name: z.string().min(1) })
+  .strict();
+
 /** One Space, as the viewer sees it. Every Space is public. */
 export const spaceSchema = z
   .object({
@@ -66,21 +73,6 @@ export const spaceListSchema = z
   .object({ spaces: z.array(spaceSchema) })
   .strict();
 
-export const spaceMemberSchema = z
-  .object({
-    userId: z.string().min(1),
-    email: z.string(),
-    displayName: z.string().nullable(),
-    /** Junior API path of the member's profile photo. */
-    avatarUrl: z.string().nullable(),
-    joinedAt: z.iso.datetime(),
-  })
-  .strict();
-
-export const spaceMemberListSchema = z
-  .object({ members: z.array(spaceMemberSchema) })
-  .strict();
-
+export type SpaceRefReport = z.infer<typeof spaceRefSchema>;
 export type SpaceReport = z.infer<typeof spaceSchema>;
 export type SpaceListReport = z.infer<typeof spaceListSchema>;
-export type SpaceMemberListReport = z.infer<typeof spaceMemberListSchema>;

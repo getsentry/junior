@@ -22,6 +22,13 @@ import {
   mcpAuthSource,
   mcpOauthClientSource,
 } from "./inline-manifest-source";
+import {
+  assertWorkloadIdentityTokenTarget,
+  expandWorkloadIdentityEnvRefs,
+  workloadIdentityCredentials,
+  workloadIdentityHeader,
+  workloadIdentitySourceSchema,
+} from "./workload-identity-manifest";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -696,7 +703,10 @@ function hostOnlyEnvNames(manifest: {
       names.add(name);
     }
   }
-  if (manifest.credentials?.authTokenEnv) {
+  if (
+    manifest.credentials?.type === "oauth-bearer" &&
+    manifest.credentials.authTokenEnv
+  ) {
     names.add(manifest.credentials.authTokenEnv);
   }
   if (manifest.oauth) {
@@ -751,11 +761,41 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
   }
 }
 
+function normalizeWorkloadIdentityCredentials(
+  data: Record<string, unknown>,
+  name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+): PluginCredentials {
+  const prefix = `Plugin ${name} credentials`;
+  const result = workloadIdentitySourceSchema.safeParse(
+    expandWorkloadIdentityEnvRefs(data, (value, path) =>
+      expandEnvPlaceholders(value, envVars, `${prefix}.${path}`),
+    ),
+  );
+  if (!result.success) {
+    throw new Error(issueMessage(result.error, prefix));
+  }
+  const domains = domainsSchema.optional().safeParse(result.data.domains);
+  if (!domains.success) {
+    throw new Error(issueMessage(domains.error, `${prefix}.domains`));
+  }
+  if (!domains.data) {
+    throw new Error(`${prefix} requires domains`);
+  }
+  const credentials = workloadIdentityCredentials(result.data, domains.data);
+  assertWorkloadIdentityTokenTarget(credentials, prefix);
+  return credentials;
+}
+
 function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
   hasOAuth: boolean,
 ): PluginCredentials {
+  if (data["type"] === "workload-identity") {
+    return normalizeWorkloadIdentityCredentials(data, name, envVars);
+  }
   if (data["type"] !== "oauth-bearer") {
     throw new Error(
       `Plugin ${name} has unsupported credentials.type: "${String(data["type"])}"`,
@@ -1325,8 +1365,25 @@ function parseManifestSource(
     : undefined;
 
   const credentials = data.credentials
-    ? normalizeCredentials(data.credentials, data.name, Boolean(data.oauth))
+    ? normalizeCredentials(
+        data.credentials,
+        data.name,
+        envVars,
+        Boolean(data.oauth),
+      )
     : undefined;
+  if (credentials?.type === "workload-identity") {
+    const collision = Object.keys(apiHeaders ?? {}).find(
+      (header) =>
+        header.toLowerCase() ===
+        workloadIdentityHeader(credentials).toLowerCase(),
+    );
+    if (collision) {
+      throw new Error(
+        `Plugin ${data.name} api-headers.${collision} conflicts with credentials.header`,
+      );
+    }
+  }
   const runtimeDependencies = data["runtime-dependencies"]
     ? normalizeRuntimeDependencies(data["runtime-dependencies"], data.name)
     : undefined;
@@ -1367,6 +1424,11 @@ function parseManifestSource(
   if (data.oauth) {
     if (!credentials && options?.allowHookManagedEgress !== true) {
       throw new Error(`Plugin ${data.name} oauth requires credentials`);
+    }
+    if (credentials?.type === "workload-identity") {
+      throw new Error(
+        `Plugin ${data.name} oauth cannot be used with workload-identity credentials`,
+      );
     }
 
     const result = oauthSourceSchema.safeParse(data.oauth);

@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
+import { juniorSpaces } from "./spaces";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -111,6 +112,9 @@ export const juniorConversations = pgTable(
     rootConversationId: text("root_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // The Space of a root, or null for a one-off. Only a root stores it, so
+    // a child reads the Space of its root and can never disagree with it.
+    spaceId: text("space_id").references(() => juniorSpaces.id),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     /**
      * Set while the Conversation is stopped. Its Watch Events are then saved
@@ -142,6 +146,10 @@ export const juniorConversations = pgTable(
       "junior_conversations_kind_parent_check",
       sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
+    check(
+      "junior_conversations_space_root_check",
+      sql`${table.spaceId} is null or ${table.parentConversationId} is null`,
+    ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
       table.conversationId,
@@ -162,6 +170,10 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
+    // The Conversation list of one Space, by activity.
+    index("junior_conversations_space_activity_idx")
+      .on(table.spaceId, table.lastActivityAt.desc())
+      .where(sql`${table.spaceId} is not null`),
     index("junior_conversations_forked_from_idx").on(
       table.forkedFromConversationId,
     ),

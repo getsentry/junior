@@ -22,9 +22,11 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import type { ConversationAccess, ConversationAccessReader } from "./access";
 import { readConversationForks } from "./fork";
 import {
@@ -44,6 +46,7 @@ const detailViewer = alias(juniorUsers, "detail_viewer");
 const forkSource = alias(juniorConversations, "detail_fork_source");
 const fork = alias(juniorConversations, "detail_fork");
 const agentTreeRoot = alias(juniorConversations, "detail_agent_tree_root");
+const spaceRoot = alias(juniorConversations, "detail_space_root");
 
 /**
  * Return the root fields that label the agent tree of a child: its title and
@@ -156,6 +159,34 @@ function viewerStateVersion(
   ))`;
 }
 
+const versionSpaceConversation = alias(
+  juniorConversations,
+  "version_space_conversation",
+);
+const versionSpaceRoot = alias(juniorConversations, "version_space_root");
+
+/**
+ * Hash the root's Space. A move writes only the root, and a rename writes
+ * only the Space, so a child's token reads both through its root.
+ */
+function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
+  const space = db
+    .select({
+      state: sql<string>`concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name})`,
+    })
+    .from(versionSpaceConversation)
+    .innerJoin(
+      versionSpaceRoot,
+      eq(
+        versionSpaceRoot.conversationId,
+        sql`coalesce(${versionSpaceConversation.rootConversationId}, ${versionSpaceConversation.conversationId})`,
+      ),
+    )
+    .leftJoin(juniorSpaces, eq(juniorSpaces.id, versionSpaceRoot.spaceId))
+    .where(eq(versionSpaceConversation.conversationId, conversationId));
+  return sql<string>`coalesce((${space}), '')`;
+}
+
 /**
  * Return a query for the change token of each Conversation and its child
  * agents, as the viewer sees it, one row per Conversation found. A missing
@@ -180,7 +211,7 @@ export function conversationVersionsQuery(
     .select({
       conversationId: subtree.conversationId,
       version:
-        sql<string>`concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${viewerState})`.as(
+        sql<string>`concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${rootSpaceVersion(db, rowConversationId)}, ${viewerState})`.as(
           "version",
         ),
     })
@@ -255,6 +286,9 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId,
+      // A child is in the Space of its root.
+      spaceId: juniorSpaces.id,
+      spaceName: juniorSpaces.name,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
@@ -271,6 +305,8 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         juniorConversations.forkedFromConversationId,
       ),
     )
+    .leftJoin(spaceRoot, eq(spaceRoot.conversationId, rootConversationId))
+    .leftJoin(juniorSpaces, eq(juniorSpaces.id, spaceRoot.spaceId))
     .leftJoin(juniorConversationParticipants, viewerParticipant)
     .leftJoin(
       detailViewer,
@@ -289,6 +325,11 @@ export type ConversationDetailState = {
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
+  /**
+   * The Space of the root, or null. A move writes only the root, so the
+   * ETag hashes it for each Conversation in the tree.
+   */
+  space: SpaceRef | null;
   /** The viewer has not unsubscribed from the root. */
   subscribed?: boolean;
   /**
@@ -361,6 +402,10 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
+      space:
+        row?.spaceId && row.spaceName
+          ? { id: row.spaceId, name: row.spaceName }
+          : null,
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
       ...(viewerMarks ? { viewerMarks } : undefined),
@@ -437,6 +482,7 @@ export async function readConversationDetailEtag(
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
+    space: state.space,
     subscribed: state.subscribed ?? null,
     version,
     viewerMarks: state.viewerMarks ?? null,

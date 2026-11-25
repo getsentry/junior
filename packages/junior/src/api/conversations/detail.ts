@@ -1,6 +1,7 @@
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { startSpan } from "@/chat/sentry";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
@@ -70,6 +71,7 @@ function projectConversationDetail(args: {
   authors: NonNullable<ConversationDetailReport["authors"]>;
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
+  space: SpaceRef | null;
   sourceTask?: ConversationDetailReport["sourceTask"];
   status: ConversationDetailReport["status"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -97,6 +99,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      space: args.space,
       status: args.status,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
@@ -322,6 +325,7 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
+    space: state.space,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,

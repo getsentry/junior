@@ -456,7 +456,6 @@ describe("agent tool binding", () => {
       listedTools: {
         ...behavior.tools,
         agents: "children_and_parent",
-        reply: "parent",
         reportBlocked: "parent",
       },
       spawnAgent,

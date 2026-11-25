@@ -60,6 +60,8 @@ import {
 } from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
+import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { ConversationDock } from "./ConversationDock";
 import {
@@ -275,6 +277,7 @@ export function ConversationPage(props: {
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
+  const [movingToSpace, setMovingToSpace] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
@@ -764,6 +767,7 @@ export function ConversationPage(props: {
                   continueInSlack: () => setContinueInSlackOpen(true),
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
                   subscription: (subscribed) => subscription.mutate(subscribed),
@@ -801,6 +805,11 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
+              space={
+                conversation?.space ? (
+                  <SpaceChip className="shrink-0" space={conversation.space} />
+                ) : null
+              }
               state={
                 displayState ? (
                   <ConversationStateIcon state={displayState} />
@@ -964,6 +973,13 @@ export function ConversationPage(props: {
         <ContinueInSlackDialog
           conversationId={conversationId}
           onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
+      {movingToSpace ? (
+        <MoveToSpaceDialog
+          conversationId={conversationId}
+          current={conversation?.space ?? null}
+          onClose={() => setMovingToSpace(false)}
         />
       ) : null}
     </div>

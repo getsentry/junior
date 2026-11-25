@@ -90,6 +90,9 @@ test.describe("new UI", () => {
         /^Conversations$/,
         /^Code$/,
         /^Automations/,
+        // The viewer's Spaces.
+        /Billing migration$/,
+        /Mobile app$/,
         new RegExp(checkout),
       ]);
       // Like the badge: the "Pull request ready for review" notice does not
@@ -781,8 +784,9 @@ test.describe("new UI", () => {
             .getByRole("link", { name: new RegExp(checkout) }),
         ).toBeVisible();
       },
-      // The pull request on the checkout row reads its live state.
-      { requests: 10, serialRounds: 2 },
+      // The pull request on the checkout row reads its live state, and the
+      // pane reads the viewer's Spaces.
+      { requests: 11, serialRounds: 2 },
     );
   });
 

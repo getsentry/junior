@@ -10,7 +10,7 @@ Use the bundled `scripts/speech.mjs` from this directory. Node.js and the instal
 ## Workflow
 
 1. Resolve the requested spoken text. For a sample of Junior's voice, use the bundled sample. Do not send unrelated private context or the full persona to the provider.
-2. Use the default `junior-v1` preset: a bright, warm, mischievous adult helper with dry humor. Use `--delivery plain` for serious or sensitive text. Do not present it as an imitation or recording of a real performer.
+2. Use the default `junior-v2` preset: an eager, slightly nervous young intern who stays dry about broken software. Use `--delivery plain` for serious or sensitive text. Do not present it as an imitation or recording of a real performer.
 3. Write narration to a UTF-8 file. Keep each clip at 1–5000 characters. Generation spends Gateway credits. Do not generate extra variants without a request.
 4. Generate to a fresh `.wav` path. Inspect an existing file before trying again. Do not automatically retry timeouts or failures: generation may already have spent credits.
 5. Use `sendFiles` to deliver the returned path as `audio/wav`. Say it is synthetic narration. For a video, measure the new audio and pass it to the rendering workflow; speech generation alone does not update the video.
@@ -31,7 +31,7 @@ node scripts/speech.mjs --text-file /tmp/narration.txt --output /tmp/narration.w
 node scripts/speech.mjs --text-file /tmp/incident.txt --output /tmp/incident.wav --delivery plain
 ```
 
-Read `assets/junior-v1.json` when the user asks how the voice is defined. Read `assets/sample.txt` when previewing the sample script. The script sends delivery instructions separately from text. Do not prepend those directions to narration.
+Read `assets/junior-v2.json` when the user asks how the voice is defined. Read `assets/sample.txt` when previewing the sample script. The script sends delivery instructions separately from text. Do not prepend those directions to narration.
 
 Results are JSON with path, bytes, MIME type, model, voice, profile, delivery, and synthetic status. Use `--help` for the command surface. No key argument is accepted.
 
