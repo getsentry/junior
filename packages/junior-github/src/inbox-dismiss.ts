@@ -32,7 +32,9 @@ async function unassignFromIssue(
   // repository's old name with a redirect.
   const card = (await ctx.annotations.list()).find(
     (annotation) =>
-      annotation.kind === "object" && annotation.objectId === ctx.subject.id,
+      annotation.kind === "object" &&
+      annotation.subject?.kind === ctx.subject.kind &&
+      annotation.subject.id === ctx.subject.id,
   );
   const ref = card ? parseObjectKey(card.key) : undefined;
   if (!ref) {

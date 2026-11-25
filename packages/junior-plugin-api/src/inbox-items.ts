@@ -38,9 +38,10 @@ export interface PluginInboxSubjectKind {
    * plugin and its columns in snake_case. At most one row can have the
    * subject id and a set Conversation: add a unique index for it.
    *
-   * `annotation` names the Conversation that first saved one of this
-   * plugin's object Annotations whose `objectId` is the subject id, such as
-   * the Conversation that created a GitHub issue.
+   * `annotation` names the Conversation that first saved an Annotation
+   * whose `subject` is the item's subject, such as the Conversation that
+   * created a GitHub issue. Annotations name their objects with these
+   * kinds too, so register each kind that an object Annotation uses.
    */
   owner: PluginInboxSubjectOwner | "annotation";
   /**

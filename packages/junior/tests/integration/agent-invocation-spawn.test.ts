@@ -262,7 +262,7 @@ describe("child agent spawn and result delivery", () => {
               toolName: "github_createPullRequest",
               details: {
                 objectCards: await saveObjectAnnotations(childId, "github", [
-                  change(key),
+                  { action: "created", ...change(key) },
                 ]),
               },
               isError: false,

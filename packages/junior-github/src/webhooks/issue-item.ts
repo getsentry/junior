@@ -19,7 +19,7 @@ import {
 import pLimit from "p-limit";
 import * as z from "zod";
 import { githubConversationIds } from "../conversation-footer.js";
-import { issueSubject } from "../inbox-subjects.js";
+import { GITHUB_INBOX_SUBJECTS, issueSubject } from "../inbox-subjects.js";
 import { isBotLogin } from "./ownership.js";
 
 // A footer names a few Conversations, but a person can edit it.
@@ -104,7 +104,9 @@ async function issueOwner(
         await annotations.forConversation(conversationId).list()
       ).find(
         (annotation) =>
-          annotation.kind === "object" && annotation.objectId === event.issueId,
+          annotation.kind === "object" &&
+          annotation.subject?.kind === GITHUB_INBOX_SUBJECTS.issue &&
+          annotation.subject.id === event.issueId,
       );
       return card ? [{ conversationId, createdAt: card.createdAt }] : [];
     },

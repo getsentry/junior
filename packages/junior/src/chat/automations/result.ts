@@ -1,7 +1,11 @@
 /** Result fields and the card that scheduled and event Automations share. */
-import type { ObjectAnnotation, TaskOutcome } from "@sentry/junior-plugin-api";
+import type { AnnotatedObject, TaskOutcome } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
+import {
+  ANNOTATION_SUBJECT_KINDS,
+  CORE_ANNOTATION_PLUGIN,
+} from "@/chat/plugins/annotations";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { destinationFilterValue, type AutomationDestination } from "./creator";
@@ -124,6 +128,7 @@ export async function saveAutomationCardResult<
     trigger: string;
     triggerProblems?: readonly string[] | undefined;
   },
+  action: AnnotatedObject["action"],
 ) {
   const description = automationTaskDescription(card.task);
   const title =
@@ -133,11 +138,13 @@ export async function saveAutomationCardResult<
     statusReason: automation.status_reason,
     triggerProblems: card.triggerProblems,
   });
-  const annotation: ObjectAnnotation = {
+  const annotation: AnnotatedObject = {
+    action,
     kind: "object",
     objectType: "automation",
     label: title,
     key: automation.id,
+    subject: { id: automation.id, kind: ANNOTATION_SUBJECT_KINDS.automation },
     title,
     url: automation.url,
     description,
@@ -150,8 +157,10 @@ export async function saveAutomationCardResult<
   };
   return {
     automation,
-    objectCards: await saveObjectAnnotations(conversationId, "junior", [
-      annotation,
-    ]),
+    objectCards: await saveObjectAnnotations(
+      conversationId,
+      CORE_ANNOTATION_PLUGIN,
+      [annotation],
+    ),
   };
 }

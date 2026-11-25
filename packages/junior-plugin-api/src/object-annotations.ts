@@ -41,6 +41,32 @@ function utf8ByteLength(text: string): number {
 }
 
 /**
+ * The object that an Annotation points to: one of the plugin's registered
+ * subject kinds (`inboxSubjects`), such as `issue`, and the provider's id
+ * of the object, such as GitHub's id of the issue. Unlike `key`, the id
+ * stays the same when the object moves or its repository is renamed. An
+ * Inbox item with the same subject is about the same object.
+ */
+export const objectSubjectSchema = z
+  .object({
+    kind: z.string().trim().min(1).max(100),
+    id: z.string().trim().min(1).max(256),
+  })
+  .strict();
+export type ObjectSubject = z.output<typeof objectSubjectSchema>;
+
+/**
+ * What a Conversation did to the object of an Annotation. `attached`: a
+ * person attached a link of the object to the Conversation.
+ */
+export const annotationActionSchema = z.enum([
+  "created",
+  "changed",
+  "attached",
+]);
+export type AnnotationAction = z.output<typeof annotationActionSchema>;
+
+/**
  * Verified facts shared by Conversation annotations and Message cards.
  * Plugins select small facts from responses they already have. Each surface owns
  * its layout. Omit unknown facts; do not infer approval or passing checks.
@@ -56,10 +82,7 @@ export const objectAnnotationSchema = z
   .object({
     kind: z.literal("object"),
     key: z.string().trim().min(1).max(256),
-    // The provider's id of the object, such as a GitHub issue id. Unlike
-    // `key`, it stays the same when the object moves or its repository is
-    // renamed. An Inbox item subject can name the object by it.
-    objectId: z.string().trim().min(1).max(256).optional(),
+    subject: objectSubjectSchema.optional(),
     label: z.string().trim().min(1).max(256),
     objectType: objectTypeSchema,
     title: z.string().trim().min(1).max(512),
@@ -97,3 +120,13 @@ export const ownedObjectAnnotationSchema = objectAnnotationSchema.safeExtend({
 export type OwnedObjectAnnotation = z.output<
   typeof ownedObjectAnnotationSchema
 >;
+
+/**
+ * One object that a tool or hook created or changed, to save as an
+ * Annotation of the Conversation. Set `subject` whenever the provider id is
+ * known.
+ */
+export const annotatedObjectSchema = objectAnnotationSchema.safeExtend({
+  action: annotationActionSchema.exclude(["attached"]),
+});
+export type AnnotatedObject = z.output<typeof annotatedObjectSchema>;

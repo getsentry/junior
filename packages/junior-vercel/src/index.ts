@@ -20,6 +20,7 @@ import {
   VERCEL_DEPLOYMENT_MATCH_FIELDS,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
+import { vercelInboxSubjectKinds } from "./inbox-subjects.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
@@ -27,6 +28,7 @@ import { vercelWebhookSecret } from "./webhooks/secret.js";
 export function vercelPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vercel",
+    inboxSubjects: vercelInboxSubjectKinds,
     events: {
       resourceTypes: [
         {

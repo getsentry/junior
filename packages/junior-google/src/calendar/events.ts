@@ -1,9 +1,10 @@
 import {
   PluginToolInputError,
-  type ObjectAnnotation,
+  type AnnotatedObject,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { emailDomain } from "../config";
+import { GOOGLE_SUBJECT_KINDS } from "../inbox-subjects";
 import {
   googleApiError,
   googleApiRequest,
@@ -142,6 +143,7 @@ export function ownEventResult(
   event: OwnEvent,
   timeZone: string,
   accountEmail: string,
+  action: AnnotatedObject["action"],
 ) {
   const url =
     event.htmlLink && accountChooserLink(event.htmlLink, accountEmail);
@@ -151,9 +153,11 @@ export function ownEventResult(
     Date.parse(event.end.dateTime),
     timeZone,
   );
-  const annotation: ObjectAnnotation = {
+  const annotation: AnnotatedObject = {
+    action,
     kind: "object",
     key: event.id,
+    subject: { id: event.id, kind: GOOGLE_SUBJECT_KINDS.calendarEvent },
     label: new Intl.DateTimeFormat("en-US", {
       day: "numeric",
       month: "short",

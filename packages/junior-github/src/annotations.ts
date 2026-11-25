@@ -10,6 +10,7 @@ import {
   type PluginConversationAnnotations,
   type PluginLogger,
 } from "@sentry/junior-plugin-api";
+import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 
 function githubObjectType(
   annotation: ConversationAnnotation,
@@ -75,8 +76,11 @@ export function githubObjectKey(repo: string, number: number): string {
 export function githubObjectAnnotation(input: {
   repo: string;
   number: number;
-  /** GitHub's id of the issue or pull request, which a rename keeps. */
-  objectId?: string | undefined;
+  /**
+   * GitHub's id of the issue or pull request (`databaseId`), which a
+   * rename keeps. It names the object with the kind of its Inbox items.
+   */
+  id?: string | undefined;
   title: string;
   url: string;
   objectType: "task" | "code_change";
@@ -88,7 +92,17 @@ export function githubObjectAnnotation(input: {
   return {
     kind: "object",
     key: githubObjectKey(input.repo, input.number),
-    ...(input.objectId ? { objectId: input.objectId } : undefined),
+    ...(input.id
+      ? {
+          subject: {
+            id: input.id,
+            kind:
+              input.objectType === "code_change"
+                ? GITHUB_INBOX_SUBJECTS.pullRequest
+                : GITHUB_INBOX_SUBJECTS.issue,
+          },
+        }
+      : undefined),
     label: `${input.repo}#${input.number}`,
     title: input.title.slice(0, 512),
     url: input.url,
