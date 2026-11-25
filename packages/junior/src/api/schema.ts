@@ -404,6 +404,12 @@ export {
 } from "./schema/space-member";
 export type { SpaceMemberListReport } from "./schema/space-member";
 export {
+  setSpaceConfigBodySchema,
+  spaceConfigEntrySchema,
+  spaceConfigurationSchema,
+} from "./schema/space-configuration";
+export type { SpaceConfigurationReport } from "./schema/space-configuration";
+export {
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,
 } from "./schema/conversation-space";

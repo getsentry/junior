@@ -8,10 +8,12 @@ import {
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
+  spaceConfigurationSchema,
   spaceMemberListSchema,
   spaceSchema,
   versionsSchema,
 } from "@/api/schema";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -334,6 +336,61 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+  });
+
+  it("lets members set the configuration that a Space's Conversations use", async () => {
+    const ana = apiFor("spaces-config-ana@example.com");
+    const bo = apiFor("spaces-config-bo@example.com");
+    const space = await createSpace(ana, "Configured");
+    const path = `/${space.id}/configuration`;
+    const read = async (app: Hono<JuniorApiEnv>) =>
+      spaceConfigurationSchema.parse(
+        await (await send(app, "GET", path)).json(),
+      );
+
+    expect((await read(bo)).entries).toEqual([]);
+    expect(
+      (await send(bo, "PUT", `${path}/github.repo`, { value: "a/b" })).status,
+    ).toBe(403);
+    expect(
+      (await send(ana, "PUT", `${path}/github.token`, { value: "a" })).status,
+    ).toBe(400);
+
+    const set = await send(ana, "PUT", `${path}/github.repo`, {
+      value: "getsentry/junior",
+    });
+    expect(
+      spaceConfigurationSchema.parse(await set.json()).entries,
+    ).toMatchObject([{ key: "github.repo", value: "getsentry/junior" }]);
+    // Anyone who reads the Space reads its configuration.
+    expect((await read(bo)).entries).toMatchObject([
+      { key: "github.repo", value: "getsentry/junior" },
+    ]);
+
+    // A Conversation in the Space resolves the Space's value over the
+    // values below it, and keeps the keys that the Space does not set.
+    const inSpace = await startConversation(ana, "configured-work", {
+      spaceId: space.id,
+    });
+    expect(
+      await resolveConversationConfiguration({
+        configuration: { "github.repo": "a/run", "sentry.org": "run-org" },
+        conversationId: inSpace,
+      }),
+    ).toMatchObject({
+      "github.repo": "getsentry/junior",
+      "sentry.org": "run-org",
+    });
+    const thread = await startThread(inSpace, "local:spaces-config-thread");
+    expect(
+      await resolveConversationConfiguration({ conversationId: thread }),
+    ).toMatchObject({ "github.repo": "getsentry/junior" });
+
+    expect((await send(bo, "DELETE", `${path}/github.repo`)).status).toBe(403);
+    const removed = await send(ana, "DELETE", `${path}/github.repo`);
+    expect(
+      spaceConfigurationSchema.parse(await removed.json()).entries,
+    ).toEqual([]);
   });
 
   it("stops and archives every Conversation when a Space is archived", async () => {
