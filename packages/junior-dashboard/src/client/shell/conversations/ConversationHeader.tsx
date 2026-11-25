@@ -61,18 +61,26 @@ const ConversationMenuSheet = lazy(() =>
 );
 
 /**
- * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
- * bar until the page knows which it is, else the Conversation's own header.
+ * Head a Conversation page: its Space's header on a Lead, an empty bar until
+ * the page knows which it is, else the Conversation's own header.
  */
 export function ConversationHeader(
   props: ComponentProps<typeof ConversationTitleHeader> & {
-    /** Undefined until the page knows whether it shows the Lead. */
+    /** Undefined until the page knows whether it shows a Lead. */
     lead: boolean | undefined;
+    /** The Conversation's Space, which a Lead's header shows. */
+    spaceId?: string | undefined;
   },
 ) {
-  // The app bar names the Lead on a phone.
   if (props.lead)
-    return <LeadHeader mobileHidden sidebarToggle={props.sidebarToggle} />;
+    return (
+      <LeadHeader
+        detailsOpen={props.detailsOpen}
+        onDetailsClick={props.onDetailsClick}
+        sidebarToggle={props.sidebarToggle}
+        spaceId={props.spaceId}
+      />
+    );
   if (props.lead === undefined)
     return (
       <div

@@ -87,7 +87,7 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
-import { createMockLeadRoutes } from "./lead";
+import { createMockSpaceLeadRoutes } from "./lead";
 import { readMockConversationOutline } from "./outline";
 import {
   answerMockInboxItemByReply,
@@ -313,7 +313,7 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(locationDetailReportSchema, report)
       : errorResponse("Location not found.", 404);
   });
-  app.route("/lead", createMockLeadRoutes());
+  app.route("/spaces", createMockSpaceLeadRoutes());
   app.route("/spaces", createMockSpaceRoutes());
   addMockConversationSpaceRoute(app);
   app.get("/conversations", (c) => {

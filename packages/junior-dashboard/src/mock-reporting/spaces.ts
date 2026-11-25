@@ -23,6 +23,7 @@ import {
   readMockConversationDetail,
   setMockConversationArchived,
 } from "./fixtures";
+import { mockLeadSpaceId } from "./sends";
 
 type MockMember = {
   avatarUrl: string | null;
@@ -43,19 +44,21 @@ type MockSpace = {
   viewerMember: boolean;
 };
 
-const AVERY: MockMember = {
+/** A member of every seeded Space but Docs refresh. */
+export const AVERY: MockMember = {
   avatarUrl: null,
   displayName: "Avery Chen",
   email: "avery@sentry.io",
 };
-const RILEY: MockMember = {
+/** A member of Mobile app and Docs refresh. */
+export const RILEY: MockMember = {
   avatarUrl: null,
   displayName: "Riley Park",
   email: "riley@sentry.io",
 };
 
 /** The seeded Spaces. The viewer is a member of the first two. */
-const MOCK_SPACE_IDS = {
+export const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
@@ -106,6 +109,18 @@ const SEEDED_CONVERSATION_SPACES = [
   ["internal:history-4", MOCK_SPACE_IDS.docs],
 ] as const;
 
+// Only a public Conversation can join a Space, so the seeded ones are public.
+const SEEDED_PUBLIC_IDS = new Set<string>(
+  SEEDED_CONVERSATION_SPACES.map(([conversationId]) => conversationId),
+);
+
+function visibilityOf(
+  conversationId: string,
+  visibility: "private" | "public" | undefined,
+) {
+  return SEEDED_PUBLIC_IDS.has(conversationId) ? "public" : visibility;
+}
+
 const mockSpaces = new Map<string, MockSpace>();
 /** The Space of each root, by Conversation id. */
 const mockConversationSpaces = new Map<string, string>();
@@ -134,6 +149,7 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
     conversations: feed.conversations.map((row) => ({
       ...row,
       space: spaceRef(mockConversationSpaces.get(row.conversationId)),
+      visibility: visibilityOf(row.conversationId, row.visibility),
     })),
   };
 }
@@ -151,12 +167,26 @@ export function filterMockConversationsBySpace(
   };
 }
 
-/** Label a detail with the Space of its root. A child is in its root's. */
+/**
+ * Label a detail with the Space of its root. A child is in its root's, and
+ * a Lead is in its own.
+ */
 export function withMockSpace<T extends ConversationDetailReport>(
   detail: T,
 ): T {
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
-  return { ...detail, space: spaceRef(mockConversationSpaces.get(rootId)) };
+  return {
+    ...detail,
+    space: spaceRef(
+      mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
+    ),
+    visibility: visibilityOf(detail.conversationId, detail.visibility),
+  };
+}
+
+/** Read one mock Space, as the routes see it. */
+export function readMockSpace(spaceId: string): MockSpace | undefined {
+  return mockSpaces.get(spaceId);
 }
 
 /**
@@ -211,7 +241,7 @@ export function addMockConversationSpaceRoute(
     if (spaceId) {
       const target = mockSpaceForWork(spaceId);
       if ("error" in target) return errorResponse(target.error, target.status);
-      if (conversation.visibility === "private")
+      if (visibilityOf(conversationId, conversation.visibility) !== "public")
         return errorResponse(
           "Only a public conversation can join a Space.",
           409,
@@ -259,13 +289,21 @@ function members(space: MockSpace, viewer: User) {
     : others;
 }
 
-/** Archive or restore a mock Space with its Conversations, as the API does. */
+/**
+ * Archive or restore a mock Space with its Conversations, as the API does.
+ * The archive skips a root that is already archived, so the restore leaves
+ * it archived.
+ */
 function setArchived(space: MockSpace, archived: boolean): void {
   if (archived === Boolean(space.archivedAt)) return;
   if (archived) {
     space.archivedAt = new Date().toISOString();
     space.archived = [...mockConversationSpaces]
-      .filter(([, spaceId]) => spaceId === space.id)
+      .filter(
+        ([conversationId, spaceId]) =>
+          spaceId === space.id &&
+          !readMockConversationDetail(conversationId, 1)?.archivedAt,
+      )
       .flatMap(([conversationId]) =>
         setMockConversationArchived(conversationId, true, true)
           ? [conversationId]

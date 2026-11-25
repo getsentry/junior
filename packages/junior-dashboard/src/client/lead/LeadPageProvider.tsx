@@ -1,11 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 
-import { useLead, useLeadWatchRefresh } from "./Lead";
+import { useLeadWatchRefresh, useSpaceLead } from "./Lead";
 import { LeadPage } from "./leadPage";
 import { useLeadWork } from "./useLeadWork";
 
 /**
- * Give the Lead transcript the viewer's Conversations, the Lead's Watches,
+ * Give the Lead transcript its Space's Conversations, the Lead's Watches,
  * and a way to fill its reply box.
  */
 function LeadPageProvider(props: {
@@ -13,10 +13,11 @@ function LeadPageProvider(props: {
   /** The Lead transcript's last event seq. A new event can change Watches. */
   lastSeq: number | undefined;
   prefill(text: string): void;
+  spaceId: string | undefined;
 }) {
-  const work = useLeadWork();
-  const lead = useLead();
-  useLeadWatchRefresh(props.lastSeq, lead.data?.lastSeq);
+  const work = useLeadWork(props.spaceId);
+  const lead = useSpaceLead(props.spaceId);
+  useLeadWatchRefresh(props.spaceId, props.lastSeq, lead.data?.lastSeq);
   const watched = lead.data?.watchedConversationIds;
   const { prefill } = props;
   const value = useMemo(
@@ -37,10 +38,16 @@ export function LeadPageScope(props: {
   lastSeq: number | undefined;
   lead: boolean;
   prefill(text: string): void;
+  /** The Lead's Space. */
+  spaceId: string | undefined;
 }) {
   if (!props.lead) return props.children;
   return (
-    <LeadPageProvider lastSeq={props.lastSeq} prefill={props.prefill}>
+    <LeadPageProvider
+      lastSeq={props.lastSeq}
+      prefill={props.prefill}
+      spaceId={props.spaceId}
+    >
       {props.children}
     </LeadPageProvider>
   );
