@@ -77,7 +77,7 @@ const inputSchema = z
       .literal(true)
       .optional()
       .describe(
-        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so its code owners are not asked. A person who already reviewed it is not asked again.",
+        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person who already reviewed it is not asked again.",
       ),
   })
   .strict()
@@ -259,7 +259,7 @@ export function createGitHubUpdatePullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state, or ask the person who asked for it to review it. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
     async execute(
