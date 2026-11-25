@@ -245,13 +245,16 @@ export function inboxItemForUser(userId: string): SQL {
 }
 
 /**
- * SQL: the Inbox item is for Everyone, and the User can see its owner
- * Conversation. Everyone means the people who can see the item's owner, so
- * the members of a private Conversation see its items for Everyone. A
- * To-do's item is only for its assignee.
+ * SQL: the private Inbox item is for Everyone, and the User can see its
+ * owner Conversation. Everyone means the people who can see the item's
+ * owner, so the members of a private Conversation see its items for
+ * Everyone. A public item reaches Everyone through its tenant (`publicIn`),
+ * which keeps it in the owner's workspace. A To-do's item is only for its
+ * assignee.
  */
 function inboxItemForEveryoneOfOwner(userId: string): SQL {
   return and(
+    eq(inboxItemVisibility(), "private"),
     ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
     or(
       eq(juniorInboxItems.assignedToEveryone, true),
@@ -382,7 +385,9 @@ export async function canUserReadInboxItem(
   }
   if (canReadInboxItem(item, inboxItemReaderForUser(user))) return true;
   const ownerId =
-    item.owner.kind === "conversation" && isInboxItemForEveryone(item)
+    item.visibility === "private" &&
+    item.owner.kind === "conversation" &&
+    isInboxItemForEveryone(item)
       ? item.owner.id
       : undefined;
   const access = await readConversationAccessFromSql(

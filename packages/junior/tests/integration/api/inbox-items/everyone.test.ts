@@ -17,8 +17,8 @@ import {
 
 const CONVERSATION_ID = "slack:CPUB:1.000001";
 
-/** A person signed in to the dashboard, linked to Slack workspace T123. */
-async function user(email: string): Promise<User> {
+/** A person signed in to the dashboard, linked to a Slack workspace. */
+async function user(email: string, tenantId = "T123"): Promise<User> {
   const resolved = await resolveViewerUserFromSql(getDb(), email);
   if (!resolved) throw new Error(`no user for ${email}`);
   return {
@@ -28,7 +28,7 @@ async function user(email: string): Promise<User> {
         id: `identity:slack:${email}`,
         provider: "slack",
         providerSubjectId: `U-${email}`,
-        providerTenantId: "T123",
+        providerTenantId: tenantId,
       },
     ],
   };
@@ -115,6 +115,13 @@ describe("inbox item with no assignees", () => {
     expect(await api(fixture, ana)("/waiting-conversations")).toMatchObject({
       conversations: [{ items: [{ title: "Ask b" }] }],
     });
+
+    // Everyone stays in the owner's workspace: a person of another
+    // workspace does not get these items in their Inbox.
+    const carl = await user("carl@example.com", "T999");
+    expect(
+      (await api(fixture, carl)("?for=viewer&sort=waiting")).items,
+    ).toEqual([]);
 
     // Its Slack card names Everyone, as the card of an item for Everyone does.
     const item = await getInboxItem(getDb(), unassigned);
