@@ -229,7 +229,12 @@ describe("conversation list sidebar annotations", () => {
       await expect(
         ids("https://github.com/getsentry/cockroach/pull/12"),
       ).resolves.toEqual([publicId]);
+      await expect(
+        ids("https://github.com/getsentry/roach/pull/12"),
+      ).resolves.toEqual([publicId]);
       await expect(ids("getsentry/cockroach#13")).resolves.toEqual([]);
+      // A word of every link matches no Conversation.
+      await expect(ids("pull")).resolves.toEqual([]);
       await expect(ids("sentry/relay")).resolves.toEqual([]);
     } finally {
       await fixture.close();
