@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { and, arrayOverlaps, eq, inArray, lt, lte, sql } from "drizzle-orm";
+import {
+  and,
+  arrayOverlaps,
+  eq,
+  inArray,
+  lt,
+  lte,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   codeChangeFilterSchema,
   codeChangeInputSchema,
@@ -63,6 +73,26 @@ export async function recordCodeRepository(
   return repositoryId;
 }
 
+/**
+ * The stored values of a text array column with the given values added,
+ * once each and sorted. With no values, the column keeps its value.
+ */
+function withAddedValues(
+  column: AnyPgColumn,
+  values: readonly string[],
+): SQL<string[]> | AnyPgColumn {
+  if (values.length === 0) return column;
+  const added = sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  );
+  return sql<string[]>`ARRAY(
+    SELECT DISTINCT value
+    FROM unnest(${column} || ARRAY[${added}]::text[]) AS value
+    ORDER BY value
+  )`;
+}
+
 /** Record the latest details for one code change created by Junior. */
 export async function recordCodeChange(
   db: JuniorDatabase,
@@ -83,27 +113,20 @@ export async function recordCodeChange(
     updatedAt: change.updatedAt,
   });
 
-  const conversationIds = sql.join(
-    change.conversationIds.map((conversationId) => sql`${conversationId}`),
-    sql`, `,
-  );
   const values = {
     closedAt: change.closedAt ?? null,
-    conversationIds:
-      change.conversationIds.length > 0
-        ? sql<string[]>`ARRAY(
-            SELECT DISTINCT value
-            FROM unnest(
-              ${juniorCodeChanges.conversationIds}
-              || ARRAY[${conversationIds}]::text[]
-            ) AS value
-            ORDER BY value
-          )`
-        : juniorCodeChanges.conversationIds,
+    conversationIds: withAddedValues(
+      juniorCodeChanges.conversationIds,
+      change.conversationIds,
+    ),
     mergedAt: change.mergedAt ?? null,
     number: change.number,
     openedAt: change.openedAt,
     repositoryId,
+    requesterIdentityIds: withAddedValues(
+      juniorCodeChanges.requesterIdentityIds,
+      change.requesterIdentityIds,
+    ),
     state: change.state,
     ...(change.title ? { title: change.title } : undefined),
     updatedAt: change.updatedAt,
@@ -116,6 +139,7 @@ export async function recordCodeChange(
       id: randomUUID(),
       provider,
       providerId: change.providerId,
+      requesterIdentityIds: change.requesterIdentityIds,
     })
     .onConflictDoUpdate({
       target: [juniorCodeChanges.provider, juniorCodeChanges.providerId],
@@ -161,21 +185,13 @@ export async function associateCodeChangeConversations(
   input: { conversationIds: string[]; providerId: string },
 ): Promise<void> {
   if (input.conversationIds.length === 0) return;
-  const conversationIds = sql.join(
-    input.conversationIds.map((conversationId) => sql`${conversationId}`),
-    sql`, `,
-  );
   await db
     .update(juniorCodeChanges)
     .set({
-      conversationIds: sql`ARRAY(
-        SELECT DISTINCT value
-        FROM unnest(
-          ${juniorCodeChanges.conversationIds}
-          || ARRAY[${conversationIds}]::text[]
-        ) AS value
-        ORDER BY value
-      )`,
+      conversationIds: withAddedValues(
+        juniorCodeChanges.conversationIds,
+        input.conversationIds,
+      ),
     })
     .where(
       and(

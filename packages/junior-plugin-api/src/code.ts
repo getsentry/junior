@@ -17,6 +17,12 @@ export const codeChangeInputSchema = z
         providerId: z.string().min(1),
       })
       .strict(),
+    /**
+     * Junior Identity ids of the people credited as requesters: the person
+     * Work owners of the Turns that opened or changed the code change. They
+     * add to the stored ones, like `conversationIds`.
+     */
+    requesterIdentityIds: z.array(z.string().min(1)).default([]),
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),

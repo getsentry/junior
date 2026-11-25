@@ -117,3 +117,31 @@ export async function listGitHubPullRequestOpeners(
   }
   return openers;
 }
+
+/**
+ * Load every requester of each pull request: the person who asked Junior to
+ * open it and each person who asked Junior to update it.
+ */
+export async function listGitHubPullRequestRequesters(
+  db: GitHubDb,
+  input: { numbers: number[]; repositoryFullName: string },
+): Promise<Map<number, string[]>> {
+  const requesters = new Map<number, string[]>();
+  if (input.numbers.length === 0) return requesters;
+  const rows = await db
+    .select({ identityId: table.identityId, number: table.number })
+    .from(table)
+    .where(
+      and(
+        eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
+        inArray(table.number, [...new Set(input.numbers)]),
+      ),
+    );
+  for (const row of rows) {
+    requesters.set(row.number, [
+      ...(requesters.get(row.number) ?? []),
+      row.identityId,
+    ]);
+  }
+  return requesters;
+}

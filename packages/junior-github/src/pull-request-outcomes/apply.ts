@@ -15,6 +15,7 @@ import {
   updateGitHubAnnotations,
 } from "../annotations.js";
 import type { GitHubDb } from "../db/database.js";
+import { listGitHubPullRequestRequesters } from "../pull-request-requesters/store.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import { endedGitHubPullRequestItemChanges } from "../webhooks/pull-request-action.js";
 import {
@@ -24,11 +25,12 @@ import {
 } from "./store.js";
 
 /**
- * Write a pull request outcome as a code change in Junior's code index. It
- * names no Conversations, so the linked ones stay.
+ * Write a pull request outcome as a code change in Junior's code index, with
+ * its saved requesters. It names no Conversations, so the linked ones stay.
  */
 export function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
+  requesterIdentityIds: string[],
 ): CodeChangeInput {
   return {
     closedAt: outcome.closedAt,
@@ -40,6 +42,7 @@ export function githubCodeChange(
       name: outcome.repositoryFullName,
       providerId: outcome.repositoryId,
     },
+    requesterIdentityIds,
     state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
     title: outcome.title,
     updatedAt: outcome.updatedAt,
@@ -82,7 +85,13 @@ export async function applyGitHubPullRequestOutcome(args: {
     : undefined;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
-  await args.codeChanges.record(githubCodeChange(outcome));
+  const requesters = await listGitHubPullRequestRequesters(args.db, {
+    numbers: [outcome.number],
+    repositoryFullName: outcome.repositoryFullName,
+  });
+  await args.codeChanges.record(
+    githubCodeChange(outcome, requesters.get(outcome.number) ?? []),
+  );
   if (state) {
     const conversationIds =
       (await findGitHubPullRequest(args.codeChanges, outcome))

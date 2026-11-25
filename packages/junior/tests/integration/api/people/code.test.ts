@@ -36,7 +36,7 @@ describe("people code API", () => {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
   });
 
-  test("attributes code changes through conversation actors", async () => {
+  test("attributes code changes through conversation actors and requesters", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
@@ -128,10 +128,33 @@ describe("people code API", () => {
         title: "Alice fresh change",
         updatedAt: new Date("2026-08-24T08:00:00.000Z"),
       } satisfies CodeChangeInput;
+      // Bob's Conversation opened it, but Alice asked for it, as in a Thread
+      // that someone else started.
+      const alice = await resolveViewerUserFromSql(
+        fixture.sql.db(),
+        "alice@example.com",
+      );
+      const aliceRequestedChange = {
+        ...bobChange,
+        number: 14,
+        openedAt: new Date("2026-08-23T12:00:00.000Z"),
+        providerId: "change-alice-requested",
+        requesterIdentityIds: [alice!.identities[0]!.id],
+        title: "Alice requested change",
+        updatedAt: new Date("2026-08-23T12:00:00.000Z"),
+      } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceFreshChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
+      await recordCodeChange(fixture.sql.db(), "github", aliceRequestedChange);
+      // A later update that names no requesters keeps the stored ones.
+      const { requesterIdentityIds: _requesters, ...aliceRequestedUpdate } =
+        aliceRequestedChange;
+      await recordCodeChange(fixture.sql.db(), "github", {
+        ...aliceRequestedUpdate,
+        updatedAt: new Date("2026-08-23T13:00:00.000Z"),
+      });
       const codeChanges = createPluginCodeChanges("github");
       const activity = { number: 10, repositoryProviderId: "repository-1" };
       await codeChanges.recordActivity({
@@ -152,12 +175,12 @@ describe("people code API", () => {
       expect(report.summary).toEqual({
         closed: 0,
         costUsd: 0,
-        created: 2,
+        created: 3,
         idle: 0,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
-        open: 2,
+        open: 3,
       });
       // Open changes come first, longest idle first, by activity or opening.
       expect(report.changes).toEqual([
@@ -166,6 +189,7 @@ describe("people code API", () => {
           number: 10,
           state: "open",
         }),
+        expect.objectContaining({ number: 14, state: "open" }),
         expect.objectContaining({ number: 13, state: "open" }),
         expect.objectContaining({
           number: 11,
