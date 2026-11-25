@@ -52,6 +52,14 @@ export function useMemberSpacesData(enabled: boolean) {
 }
 
 /**
+ * Refresh the pane's Spaces, whose rows roll up the state of their
+ * Conversations.
+ */
+export function invalidateMemberSpaces(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: memberSpacesKey });
+}
+
+/**
  * Fetch one Space. Anyone can read a public Space, and only members read a
  * private one.
  */
@@ -263,6 +271,8 @@ export function useMoveConversationToSpace(conversationId: string) {
     onSuccess: () =>
       Promise.all([
         invalidateConversationFeeds(queryClient),
+        // The roll-up of the Space it left and the one it joined.
+        invalidateMemberSpaces(queryClient),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(conversationId),
         }),

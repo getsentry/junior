@@ -76,6 +76,62 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
+test("each pane row shows what its Space's Conversations need", async ({
+  dashboard,
+  page,
+}) => {
+  // One state for each Space, as the API rolls them up for the viewer.
+  const states: Record<string, object> = {
+    "Billing migration": { latestTurnFailed: true, treeState: "needs_you" },
+    "Mobile app": { latestTurnFailed: true, treeState: "working" },
+    "Pricing launch": { latestTurnFailed: false, treeState: "working" },
+  };
+  await page.route("**/api/spaces", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      spaces: { name: string }[];
+    };
+    await route.fulfill({
+      json: {
+        spaces: body.spaces.map((space) => ({
+          ...space,
+          ...states[space.name],
+        })),
+      },
+      response,
+    });
+  });
+  const spaces = page.getByRole("list", { name: "Spaces" });
+  const row = (name: string) => spaces.getByRole("link", { name });
+  const expectStates = async () => {
+    await expect(
+      row("Billing migration").getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    // A failure outranks work that still runs.
+    await expect(
+      row("Mobile app").getByRole("img", { name: "A Conversation failed" }),
+    ).toBeVisible();
+    await expect(
+      row("Pricing launch").getByRole("status", { name: "Working" }),
+    ).toBeVisible();
+  };
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}/inbox`);
+  await expectStates();
+  await screenshot(page, "spaces-pane-states", {
+    lightTheme: true,
+    target: page.getByRole("navigation", { name: "Primary" }),
+    view: "desktop",
+  });
+  // A phone shows the pane as its own page.
+  await page.setViewportSize(mobile);
+  await expectStates();
+  await screenshot(page, "spaces-pane-states", {
+    lightTheme: true,
+    view: "mobile",
+  });
+});
+
 test("a Space's page shows its settings when they are opened", async ({
   dashboard,
   page,

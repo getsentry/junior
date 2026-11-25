@@ -1,6 +1,6 @@
 import { waitForOutlineRead } from "../harness";
 import { mockInboxItems } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 test.describe("new UI", () => {
@@ -30,6 +30,23 @@ test.describe("new UI", () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
+    // On hover, its `⋯` takes the place of its state on the right.
+    const pinnedState = inFlight
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /Roll out payments-v42/ }),
+      })
+      .getByRole("img", { name: "Pinned" });
+    await expect(pinnedState).toBeVisible();
+    // The shot keeps the pointer only at its own size.
+    await page.setViewportSize(desktop);
+    await pinned.hover();
+    await expect(pinnedState).toBeHidden();
+    await screenshot(page, "inbox-in-flight-hover", {
+      lightTheme: true,
+      target: inFlight,
+      view: "desktop",
+    });
     // A right-click on an In flight row opens its Conversation menu.
     const menu = page.getByRole("menu");
     await pinned.click({ button: "right" });
