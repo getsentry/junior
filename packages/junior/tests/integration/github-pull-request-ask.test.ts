@@ -9,6 +9,7 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
@@ -17,7 +18,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { juniorInboxItems } from "@/db/schema";
+import { juniorIdentities, juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -455,6 +456,150 @@ describe("the ask of a Junior pull request", () => {
         },
       ]);
       expect(cardReads).toBe(1);
+    } finally {
+      setDashboardConversationLinkOptions(previousDashboard);
+      await fixture.close();
+    }
+  });
+  it("removes the person who dismisses from the requested reviewers, and a GitHub refusal keeps them", async () => {
+    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await seedLinkedPerson({
+      email: "pat@example.com",
+      linked: { handle: "pat", provider: "github", subjectId: "2002" },
+      slackUserId: person.userId,
+    });
+    const { fixture } = await prepareSlackParentConversation();
+    // Only the people in the Conversation can be on its items.
+    const [pat] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(eq(juniorIdentities.providerSubjectId, person.userId));
+    await recordConversationParticipant(getSqlExecutor(), {
+      actorIdentityId: pat!.id,
+      atMs: Date.now(),
+      conversationId: slackParentConversationId,
+    });
+    const previousDashboard = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      await migratePluginSchemas(fixture.sql, [
+        {
+          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
+          pluginName: "github",
+        },
+      ]);
+      const github = { refuse: true, reviewers: ["pat"] };
+      const removed: unknown[] = [];
+      mswServer.use(
+        http.get(API, () =>
+          HttpResponse.json({
+            auto_merge: null,
+            draft: false,
+            head: { sha: "head-1" },
+            html_url: PULL_URL,
+            mergeable_state: "clean",
+            merged: false,
+            requested_reviewers: github.reviewers.map((login) => ({ login })),
+            state: "open",
+            title: "fix: Check",
+            user: { id: 264270552 },
+          }),
+        ),
+        http.delete(`${API}/requested_reviewers`, async ({ request }) => {
+          if (github.refuse) {
+            return HttpResponse.json(
+              { message: "Resource not accessible by integration" },
+              { status: 403 },
+            );
+          }
+          removed.push(await request.json());
+          github.reviewers = [];
+          return HttpResponse.json({ requested_reviewers: [] });
+        }),
+        http.get(`${API}/commits`, () => HttpResponse.json([])),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/collaborators/pat/permission",
+          () => HttpResponse.json({ permission: "write" }),
+        ),
+        http.post("https://api.github.com/graphql", () =>
+          HttpResponse.json({
+            data: {
+              repository: {
+                pullRequest: {
+                  autoMergeRequest: null,
+                  commits: { nodes: [] },
+                  headRefOid: "head-1",
+                  isDraft: false,
+                  mergeStateStatus: "CLEAN",
+                  reviewRequests: {
+                    nodes: github.reviewers.map((login) => ({
+                      requestedReviewer: { __typename: "User", login },
+                    })),
+                  },
+                  reviews: {
+                    nodes: [],
+                    pageInfo: { hasPreviousPage: false, startCursor: null },
+                  },
+                  state: "OPEN",
+                  timelineItems: { nodes: [] },
+                  title: "fix: Check",
+                  url: PULL_URL,
+                },
+              },
+            },
+          }),
+        ),
+      );
+
+      const body = await openPullRequest();
+      await sendGitHubWebhook("pull_request", {
+        action: "opened",
+        pull_request: pullRequest(body, false, "2026-07-01T12:00:00.000Z"),
+      });
+      await sendGitHubWebhook("pull_request", {
+        action: "review_requested",
+        pull_request: pullRequest(body, false, "2026-07-01T12:01:00.000Z"),
+        requested_reviewer: { login: "pat" },
+      });
+      const [review] = await getDb()
+        .select({ id: juniorInboxItems.id })
+        .from(juniorInboxItems)
+        .where(eq(juniorInboxItems.subjectId, PULL_ID));
+
+      const viewer = await signedInViewer("pat@example.com");
+      const api = new Hono<JuniorApiEnv>();
+      api.use("*", async (context, next) => {
+        context.set("viewer", viewer);
+        await next();
+      });
+      api.route("/", createJuniorApi());
+      const dismiss = async () =>
+        await api.request(
+          `http://localhost/api/inbox-items/${review!.id}/actions`,
+          {
+            body: JSON.stringify({ action: "dismiss" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+      const status = async () =>
+        (
+          await getDb()
+            .select({ status: juniorInboxItems.status })
+            .from(juniorInboxItems)
+            .where(eq(juniorInboxItems.id, review!.id))
+        )[0]?.status;
+
+      // GitHub refuses, so the dismiss fails and the item stays open.
+      expect((await dismiss()).status).toBe(409);
+      expect(await status()).toBe("open");
+
+      github.refuse = false;
+      expect((await dismiss()).status).toBe(200);
+      expect(removed).toEqual([{ reviewers: ["pat"] }]);
+      // Pat was the only person on it, so the item closes.
+      expect(await status()).toBe("dismissed");
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

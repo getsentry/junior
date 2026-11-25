@@ -47,9 +47,12 @@ const pullRequestOwner: PluginInboxSubjectOwner = {
 
 /** The registered kinds and labels, for the plugin registration. */
 export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
+  // A dismiss removes only the person who dismissed it, and removes them
+  // from the requested reviewers when GitHub lists them there.
   {
     ask: pullRequestAsk,
     codeChange: true,
+    dismissLeaves: true,
     kind: GITHUB_INBOX_SUBJECTS.pullRequest,
     label: "Pull request",
     owner: pullRequestOwner,

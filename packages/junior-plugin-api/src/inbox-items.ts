@@ -160,6 +160,8 @@ export interface PluginConversationInboxItems {
 export interface InboxItemDismissedHookContext extends PluginContext {
   /** Annotations of the Conversation that the item belongs to. */
   annotations: PluginAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
   conversationId: string;
   /**

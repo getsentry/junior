@@ -322,6 +322,49 @@ export async function removeIssueAssignees(
   );
 }
 
+// Only user reviewers: a team request names no person.
+const requestedReviewersSchema = z.object({
+  requested_reviewers: z.array(z.object({ login: z.string().min(1) })),
+});
+
+/**
+ * Remove one person from the requested reviewers of a pull request, with a
+ * pull requests write token. Does nothing when GitHub does not list them.
+ */
+export async function removeRequestedReviewer(
+  env: GitHubInstallationEnv,
+  input: { login: string; number: number; repositoryFullName: string },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "review request removal",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "write" },
+    repositories: [name],
+  });
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}`;
+  const pullRequest = requestedReviewersSchema.parse(
+    await githubRequest("https://api.github.com", path, {
+      token: token.token,
+    }),
+  );
+  const login = input.login.toLowerCase();
+  if (
+    !pullRequest.requested_reviewers.some(
+      (reviewer) => reviewer.login.toLowerCase() === login,
+    )
+  ) {
+    return;
+  }
+  await githubRequest("https://api.github.com", `${path}/requested_reviewers`, {
+    body: { reviewers: [input.login] },
+    method: "DELETE",
+    token: token.token,
+  });
+}
+
 /**
  * Return a read-only GitHub reader for one repository, for the review-again
  * check: GraphQL for the pull request, and REST for the branch rules.
