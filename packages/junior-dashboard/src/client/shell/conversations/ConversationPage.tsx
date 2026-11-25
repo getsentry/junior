@@ -60,7 +60,10 @@ import {
 } from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
+import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
 import { ConversationDock } from "./ConversationDock";
 import {
   saveDetailsOpen,
@@ -237,17 +240,16 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  const { known: kindKnown, lead } = useLeadPageKind(
-    props.conversationId,
-    props.detail.data,
-  );
+  const { known: kindKnown, lead } = useLeadPageKind(props.detail.data);
+  const spaceId = props.detail.data?.space?.id;
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  // A Lead has no details: it is private and never archives.
-  const detailsShown = showDetails && !zen.active && kindKnown && !lead;
+  // A Lead's details are its Space's.
+  const detailsShown =
+    showDetails && !zen.active && kindKnown && (!lead || Boolean(spaceId));
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -275,6 +277,7 @@ export function ConversationPage(props: {
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
+  const [movingToSpace, setMovingToSpace] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
@@ -640,7 +643,9 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {detailsShown ? (
+      {detailsShown && lead && spaceId ? (
+        <SpaceDetailsPanel onClose={closeDetails} spaceId={spaceId} />
+      ) : detailsShown && !lead ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -711,6 +716,7 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               lead={kindKnown ? lead : undefined}
+              spaceId={spaceId}
               agentTree={conversationDetail?.agentTree}
               detailsOpen={showDetails}
               errors={[
@@ -764,6 +770,7 @@ export function ConversationPage(props: {
                   continueInSlack: () => setContinueInSlackOpen(true),
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
                   subscription: (subscribed) => subscription.mutate(subscribed),
@@ -801,6 +808,11 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
+              space={
+                conversation?.space ? (
+                  <SpaceChip className="shrink-0" space={conversation.space} />
+                ) : null
+              }
               state={
                 displayState ? (
                   <ConversationStateIcon state={displayState} />
@@ -851,6 +863,7 @@ export function ConversationPage(props: {
                   lastSeq={detail.data?.events.at(-1)?.seq}
                   lead={lead}
                   prefill={leadFirstRun.prefill}
+                  spaceId={spaceId}
                 >
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
@@ -916,12 +929,14 @@ export function ConversationPage(props: {
               detail={detail}
               focusRequest={replyFocusRequest}
               hasNewerPage={Boolean(history.newer)}
+              lead={lead}
               live={live}
               onEngage={engageComposer}
               onFocusRequestDone={setReplyFocusDoneKey}
               onPinRequest={requestPin}
               placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
               ref={replyRef}
+              spaceId={spaceId}
               view={view}
             />
           }
@@ -964,6 +979,13 @@ export function ConversationPage(props: {
         <ContinueInSlackDialog
           conversationId={conversationId}
           onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
+      {movingToSpace ? (
+        <MoveToSpaceDialog
+          conversationId={conversationId}
+          current={conversation?.space ?? null}
+          onClose={() => setMovingToSpace(false)}
         />
       ) : null}
     </div>

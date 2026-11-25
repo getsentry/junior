@@ -41,10 +41,12 @@ export const MOCK_LEAD_WATCHED_CONVERSATION_IDS = [
 /**
  * A mock Lead's transcript, at fixture time: two Turns that start fixture
  * Conversations in each state and watch some, then a Watch report for one
- * that needs the viewer and one that failed.
+ * that needs the viewer and one that failed. Another member asks first, and
+ * the viewer asks next, since members share their Space's Lead.
  */
 export function mockLeadEvents(
   actorIdentity: ActorIdentity,
+  otherMember: ActorIdentity,
 ): ConversationReportEvent[] {
   const events: ConversationReportEvent[] = [];
   const push = (atMs: number, data: MockEventData) => {
@@ -121,7 +123,7 @@ export function mockLeadEvents(
               intent: "Tell the person when it needs them or ends.",
               label: `Conversation ${watched.title}`,
               namespace: "junior",
-              resource_type: "conversation",
+              resource_type: "agent",
             },
           },
         ],
@@ -176,7 +178,7 @@ export function mockLeadEvents(
       messageId: "mock-lead-morning-request",
       role: "user",
       source: "web",
-      actorIdentity,
+      actorIdentity: otherMember,
       text: "Triage last night's checkout latency alert, and find out why the snuba deploy failed.",
     },
     reply:

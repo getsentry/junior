@@ -111,6 +111,7 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
+    ...(value.spaceId ? { spaceId: value.spaceId } : undefined),
     ...(value.archivedAt
       ? { archivedAtMs: value.archivedAt.getTime() }
       : undefined),

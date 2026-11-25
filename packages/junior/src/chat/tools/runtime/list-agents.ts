@@ -1,5 +1,8 @@
 import * as z from "zod";
-import type { PluginEmbedder } from "@sentry/junior-plugin-api";
+import {
+  subscribableResourceSchema,
+  type PluginEmbedder,
+} from "@sentry/junior-plugin-api";
 import {
   listAgentRelatives,
   type ParentAgent,
@@ -9,6 +12,7 @@ import {
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import type { ConversationStatus } from "@/chat/conversations/store";
+import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
@@ -147,6 +151,11 @@ const listedAgentSchema = z
       .optional()
       .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
+    subscribable: subscribableResourceSchema
+      .optional()
+      .describe(
+        "Watch it with watchEvents to hear its updates. Only on siblings and other matches, whose updates do not arrive by themselves.",
+      ),
     todos: z
       .array(todoOutputSchema)
       .optional()
@@ -184,6 +193,8 @@ async function parentTodos(
     .map((todo) => parentTodo(todo, conversationId));
 }
 
+// Results of a child agent arrive as new tasks, so only a sibling or a
+// match outside the team offers a Watch.
 function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
@@ -206,6 +217,14 @@ function listedChildAgent(
       ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
+    ...(relation === "sibling"
+      ? {
+          subscribable: agentWatch({
+            conversationId: agent.childConversationId,
+            title: agent.title ?? agent.agentName ?? agent.childConversationId,
+          }),
+        }
+      : undefined),
   };
 }
 
@@ -220,6 +239,10 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
     ...(url ? { url } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     updated_at: new Date(match.updatedAtMs).toISOString(),
+    subscribable: agentWatch({
+      conversationId: match.conversationId,
+      title: match.title ?? match.conversationId,
+    }),
   };
 }
 

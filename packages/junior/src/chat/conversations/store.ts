@@ -90,6 +90,11 @@ export interface Conversation {
   /** Immutable root of the Conversation tree, read from storage. */
   rootConversationId?: string;
   /**
+   * Space of a root. A child has none: it is in the Space of its root. Only
+   * a create and `setConversationSpace` write it.
+   */
+  spaceId?: string;
+  /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.
    */
@@ -221,6 +226,8 @@ export interface ConversationStore {
      * keeps its kind.
      */
     kind?: TopLevelConversationKind;
+    /** Space of a new root. An existing Conversation keeps its Space. */
+    spaceId?: string | undefined;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved

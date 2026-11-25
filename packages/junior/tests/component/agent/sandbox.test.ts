@@ -23,6 +23,12 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
   maybeExecuteJrRpcCustomCommand: executeCustomCommandMock,
 }));
 
+vi.mock("@/chat/spaces/configuration", () => ({
+  readConversationSpaceConfiguration: async () => ({
+    "github.repo": "space/repo",
+  }),
+}));
+
 vi.mock("@/chat/discovery", () => ({
   listReferenceFiles: () => ["/tmp/reference.md"],
 }));
@@ -219,6 +225,39 @@ describe("createAgentSandbox", () => {
 
     expect(executeSandboxToolMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({ details: { exit_code: 0 } });
+  });
+
+  // The Space's value wins over the channel's, so a channel change leaves a
+  // key that the Space sets.
+  it("keeps the Space's values when jr-rpc changes the channel", async () => {
+    executeCustomCommandMock.mockImplementation(
+      async (
+        _command: string,
+        deps: {
+          onConfigurationValueChanged(key: string, value: unknown): unknown;
+        },
+      ) => {
+        await deps.onConfigurationValueChanged("github.repo", undefined);
+        await deps.onConfigurationValueChanged("sentry.org", "channel-org");
+        return { handled: false };
+      },
+    );
+    const configurationValues: Record<string, unknown> = {
+      "github.repo": "space/repo",
+    };
+    const sandbox = createAgentSandbox(
+      options({ configurationValues, conversationId: "local:space-config" }),
+    );
+
+    await sandbox.tools.execute({
+      toolName: "bash",
+      input: { command: "jr-rpc config unset github.repo" },
+    });
+
+    expect(configurationValues).toEqual({
+      "github.repo": "space/repo",
+      "sentry.org": "channel-org",
+    });
   });
 
   it("forwards ordinary tools and generated artifacts", async () => {

@@ -13,6 +13,7 @@ import {
   createAndEnqueueConversation,
   createConversationId,
 } from "@/chat/conversations/web-input";
+import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import {
@@ -30,11 +31,12 @@ import type {
   AcceptedConversationMessage,
   CreateConversationBody,
   CreateConversationMessageBody,
-} from "../schema/conversation";
+} from "../schema/conversation-create";
 import {
   canAddConversationMessages,
   readConversationAccessFromSql,
 } from "./access";
+import { requireSpaceForWork } from "./space";
 import { inviteMentionedPeople } from "./subscription";
 
 /** Check uploads before accepting work. A bad upload is a request error. */
@@ -93,6 +95,9 @@ export async function requireWebMessageConversation(
       "Only participants can add messages to a private conversation.",
     );
   }
+  if (messagesNeedSpaceMembership(conversation.kind) && conversation.spaceId) {
+    await requireSpaceForWork(viewer, conversation.spaceId);
+  }
   return conversationId;
 }
 
@@ -115,6 +120,13 @@ export async function createConversationForViewer(
   body: CreateConversationBody,
   services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
+  if (body.spaceId) {
+    // Every Space is public, so its Conversations are public too.
+    if (body.visibility === "private") {
+      throwApiError(400, "A conversation in a Space is public.");
+    }
+    await requireSpaceForWork(viewer, body.spaceId);
+  }
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -138,6 +150,7 @@ export async function createConversationForViewer(
         uploads,
         ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
+        ...(body.spaceId ? { spaceId: body.spaceId } : undefined),
       },
       {
         conversationStore: getConversationStore(),

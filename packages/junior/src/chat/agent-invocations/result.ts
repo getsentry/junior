@@ -3,6 +3,7 @@ import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
+  quietEventNoteKey,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -10,7 +11,13 @@ import {
   enqueueAutomatedInput,
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
-import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { hasConversationNote } from "@/chat/conversations/notes";
+import { mapBounded } from "@/chat/fan-out";
+import {
+  publishAgentUpdate,
+  starterWatchId,
+  updateEventKey,
+} from "@/chat/conversations/watch-events";
 import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
@@ -18,11 +25,7 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import {
-  parentResultActor,
-  type DeliverToParent,
-  type ParentResult,
-} from "./parent-result";
+import { parentResultActor } from "./parent-result";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -52,14 +55,11 @@ import {
   AGENT_MESSAGE_EVENT_TYPE,
   AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
-import { renderAgentResult } from "./agent-update";
+import { renderAgentResult, type AgentUpdateStatus } from "./agent-update";
 import type { ChildAgent, ChildAgentSender } from "./types";
 
 // TODO(dcramer): Add a `waiting` agent update from a child when it can pause
 // for input or auth instead of failing (#881).
-
-/** How one child result that reaches the parent ended. */
-type ResultStatus = "blocked" | "completed" | "failed" | "stopped";
 
 /**
  * Render the parent agent input for one child agent result as one
@@ -69,7 +69,7 @@ type ResultStatus = "blocked" | "completed" | "failed" | "stopped";
  */
 function renderResultInput(
   sender: ChildAgentSender,
-  result: { output: string; status: ResultStatus },
+  result: { output: string; status: AgentUpdateStatus },
   openSiblings: readonly ChildAgent[],
 ): string {
   return renderAgentResult({
@@ -97,7 +97,7 @@ function siblingLabel(sibling: ChildAgent): string {
  */
 function renderResultUnderLock(
   sender: ChildAgentSender,
-  result: { output: string; status: ResultStatus },
+  result: { output: string; status: AgentUpdateStatus },
 ): RenderInboundText {
   return async (parentInboundMessageIds, messageSenders) =>
     renderResultInput(
@@ -206,41 +206,56 @@ export async function enqueueAgentMessageToParent(args: {
   });
 }
 
-const RESULT_SUMMARIES = {
+/** The status of an update that reaches the starter's mailbox. A wait is a note. */
+type StarterUpdateStatus = Exclude<AgentUpdateStatus, "waiting">;
+
+const RESULT_SUMMARIES: Record<StarterUpdateStatus, string> = {
   blocked: "is blocked.",
-  completed: "finished.",
+  done: "finished.",
   failed: "failed.",
   stopped: "was stopped.",
-} as const;
+};
+
+const UPDATE_OUTCOMES = {
+  blocked: "blocked",
+  done: "success",
+  failed: "error",
+  stopped: "aborted",
+} as const satisfies Record<StarterUpdateStatus, SubagentOutcome>;
 
 /**
- * Append the result of one child agent Turn to its parent mailbox and wake
- * the parent: a completed, blocked, failed, or stopped result. A completed
- * result while the child still works reaches the parent as a message.
- * `sender` names the child, and `actor` is the Actor of the child's Turn;
- * the parent never runs with more authority than it. The Turn id keys the
- * message, so a repeat call is safe.
+ * Append one agent update of a child agent to its starter's mailbox and
+ * wake the starter: what the update reached the parent edge with. A `done`
+ * update while the child still works reaches the parent as a message.
+ * `sender` names the child, and `actor` is the Actor that the parent's Turn
+ * runs as; the parent never runs with more authority than the child's Turn.
+ * `messageKey` keys the message, so a repeat call is safe. The child's
+ * markers end first.
  */
-export async function enqueueChildResultToParent(args: {
+export async function enqueueStarterUpdate(args: {
   actor: Actor;
-  result: ParentResult;
   messageKey: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
   sender: ChildAgentSender;
   state?: StateAdapter | undefined;
-  /** The child Turn that sent the result. */
+  /** The child Turn that sent the update. */
   turnId: string;
+  update: { status: StarterUpdateStatus; text: string };
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.childConversationId;
+  const { status } = args.update;
+  await recordChildAgentEnded(senderId, UPDATE_OUTCOMES[status], {
+    state: args.state,
+  });
   const inboundMessageId = getAgentReplyMessageId(senderId, args.messageKey);
-  const rendered = { output: args.result.text, status: args.result.kind };
+  const rendered = { output: args.update.text, status };
   // A child may message its parent more than once. Final text while the
   // child still works is a message, not its result, and does not count as
   // the child's answer for `waiting_on`.
   const stillWorks =
-    args.result.kind === "completed" && (await childAgentStillWorks(senderId));
+    status === "done" && (await childAgentStillWorks(senderId));
   const text = stillWorks
     ? renderMessageInput(args.sender, rendered.output)
     : renderResultInput(args.sender, rendered, []);
@@ -250,8 +265,8 @@ export async function enqueueChildResultToParent(args: {
       eventType: AGENT_UPDATE_EVENT_TYPE,
       identifier: senderId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-      ...(stillWorks ? undefined : { status: rendered.status }),
-      trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[args.result.kind]}`,
+      ...(stillWorks ? undefined : { status }),
+      trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[status]}`,
     }),
     ...childMessageSenderMetadata({
       conversationId: senderId,
@@ -278,7 +293,7 @@ export async function enqueueChildResultToParent(args: {
       // One sent before the stop can reach this lock after that drop, so a
       // stopped sender's reply is dropped here. The `stopped` result
       // reports that stop, so it stays.
-      args.result.kind !== "stopped" &&
+      status !== "stopped" &&
       (await getConversationStoppedAtMs(senderId)) !== undefined
         ? undefined
         : stillWorks
@@ -293,47 +308,10 @@ export async function enqueueChildResultToParent(args: {
   });
 }
 
-const PARENT_RESULT_OUTCOMES = {
-  blocked: "blocked",
-  completed: "success",
-  failed: "error",
-  stopped: "aborted",
-} as const satisfies Record<ParentResult["kind"], SubagentOutcome>;
-
-/**
- * Build the parent delivery of child agent Turns. The child Conversation
- * names the child for the parent.
- */
-export function createDeliverToParent(options: {
-  queue: ConversationWorkQueue;
-  state?: StateAdapter | undefined;
-}): DeliverToParent {
-  return async ({ actor, result, conversationId, turnId }) => {
-    const sender = await readChildConversationSender(conversationId);
-    if (!sender) {
-      throw new Error(`Conversation ${conversationId} has no parent agent`);
-    }
-    await recordChildAgentEnded(
-      conversationId,
-      PARENT_RESULT_OUTCOMES[result.kind],
-      options,
-    );
-    await enqueueChildResultToParent({
-      actor,
-      result,
-      messageKey: turnId,
-      queue: options.queue,
-      sender,
-      state: options.state,
-      turnId,
-    });
-  };
-}
-
 /**
  * End the work of a child Conversation whose last attempt lost its worker.
- * Its open markers end with `error`. Then the child tells its parent that it
- * failed, as a failed Turn does.
+ * Its open markers end with `error`. Then the child tells its starter that
+ * it failed, as a failed Turn does.
  */
 export function createEndStoppedChildWork(options: {
   queue: ConversationWorkQueue;
@@ -341,24 +319,21 @@ export function createEndStoppedChildWork(options: {
   conversationId: string,
   inboundMessageIds: readonly string[],
 ) => Promise<void> {
-  const deliverToParent = createDeliverToParent(options);
   return async (conversationId, inboundMessageIds) => {
     // The worker gave up on all of the child's input.
     await recordChildAgentEnded(conversationId, "error", {
       includeWaiting: true,
     });
     const conversation = await getConversationStore().get({ conversationId });
-    if (
-      !conversation ||
-      turnBehavior({ kind: conversation.kind, personInput: false })
-        .failureNotice !== "parent"
-    ) {
+    const sender = await readChildConversationSender(conversationId);
+    if (!conversation || !sender) {
       return;
     }
     const turns = await listActiveMailboxTurns(conversationId);
-    // A Turn sends its result before it saves, so a lost worker can follow
-    // a result that the parent already has. Its Turn id comes from its record
-    // or, before the first save, from its input, which is still pending.
+    // A Turn reports when it records its end, before it acks its input, so
+    // a lost worker can follow a result that the parent already has. Its
+    // Turn id comes from its record or, before the first save, from its
+    // input, which is still pending.
     // `inboundMessageIds` also holds the input of earlier Turns.
     const work = await getConversationWorkState({ conversationId });
     const pending = work?.execution.pendingMessages ?? [];
@@ -368,9 +343,7 @@ export function createEndStoppedChildWork(options: {
         buildDeterministicTurnId(message.inboundMessageId),
       ),
     ]);
-    const sender = await readChildConversationSender(conversationId);
     if (
-      sender &&
       (
         await readParentChildMessages(sender.parentConversationId, undefined)
       ).some(
@@ -381,19 +354,38 @@ export function createEndStoppedChildWork(options: {
     ) {
       return;
     }
+    // A quiet `noReply` end reached the starter as a note, not a message.
+    const heardQuietly = await mapBounded([...turnIds], (turnId) =>
+      hasConversationNote({
+        conversationId: sender.parentConversationId,
+        key: quietEventNoteKey(
+          starterWatchId(conversationId),
+          updateEventKey(conversationId, { type: "turn", turnId }),
+        ),
+      }),
+    );
+    if (heardQuietly.some(Boolean)) {
+      return;
+    }
     const [turn] = turns;
-    await deliverToParent({
-      actor: parentResultActor(
-        turn?.actor ?? EVENT_SYSTEM_ACTOR,
-        turn?.source?.kind,
-      ),
-      result: {
-        kind: "failed",
-        text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,
-      },
+    await publishAgentUpdate(
       conversationId,
-      turnId: turn?.turnId ?? `lost:${inboundMessageIds.at(-1) ?? "input"}`,
-    });
+      {
+        type: "turn_failed",
+        turnId: turn?.turnId ?? `lost:${inboundMessageIds.at(-1) ?? "input"}`,
+      },
+      {
+        queue: options.queue,
+        starter: parentResultActor(
+          turn?.actor ?? EVENT_SYSTEM_ACTOR,
+          turn?.source?.kind,
+        ),
+        update: async () => ({
+          status: "failed",
+          text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,
+        }),
+      },
+    );
   };
 }
 

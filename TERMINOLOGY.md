@@ -19,9 +19,10 @@ Canonical words for Junior code and docs. One concept, one word.
   Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
-- **Lead**: one person's private top-level Conversation that finds, starts,
-  and steers their other Conversations. It has no child agents and does no
-  work itself. `startConversation` starts a public root for the person.
+- **Lead**: a Space's public top-level Conversation that finds, starts,
+  and steers the Space's other Conversations. Each Space has one. It has no
+  child agents and does no work itself. `startConversation` starts a root in
+  the Space for the Member who asked.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
 - **Thread**: a child Conversation that people can message like a root. Say

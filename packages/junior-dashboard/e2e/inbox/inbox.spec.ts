@@ -76,13 +76,15 @@ test.describe("new UI", () => {
     await page.goto(`${dashboard.baseURL}/inbox`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(nav.getByRole("link")).toHaveText([
-      /^Lead$/,
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
       /^Conversations$/,
       /^Code$/,
       /^Automations/,
+      // The viewer's Spaces.
+      /Billing migration$/,
+      /Mobile app$/,
       new RegExp(checkout),
     ]);
     // A filter counts what waits on the viewer, like the badge: the
@@ -754,7 +756,8 @@ test.describe("new UI", () => {
             .getByRole("link", { name: new RegExp(checkout) }),
         ).toBeVisible();
       },
-      // The pull request on the checkout row reads its live state.
+      // The pull request on the checkout row reads its live state, and the
+      // pane reads the viewer's Spaces.
       { requests: 10, serialRounds: 2 },
     );
   });

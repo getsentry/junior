@@ -225,6 +225,8 @@ export type Conversation = {
   /** The latest Turn failed and no newer Turn started. Server-owned. */
   latestTurnFailed?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The Space of the root, or null for a one-off. Feed rows and details. */
+  space?: ConversationSummaryReport["space"] | undefined;
   /** The viewer's newest answer here. The viewer's own feed rows only. */
   viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };

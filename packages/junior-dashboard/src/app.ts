@@ -55,6 +55,7 @@ import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockTodos } from "./mock-reporting/todos";
 import { resetMockWatches } from "./mock-reporting/watches";
+import { resetMockSpaces } from "./mock-reporting/spaces";
 import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
@@ -104,6 +105,7 @@ export function resetMockDashboardState(): void {
   resetMockInboxItems();
   resetMockSends();
   resetMockWatches();
+  resetMockSpaces();
 }
 
 export interface JuniorDashboardOptions {
