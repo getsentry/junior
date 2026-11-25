@@ -151,12 +151,9 @@ describe("Google email requests", () => {
     const context: HeartbeatHookContext = {
       agent: { dispatch: vi.fn(), dispatchForIdentity, get: vi.fn() },
       annotations: unused("annotations"),
-      cache: {
-        async getOrLoad(_key, load) {
-          return (await load()).value;
-        },
-      },
+      cache: unused("cache"),
       codeChanges: unused("codeChanges"),
+      conversationChanges: unused("conversationChanges"),
       db: fixture.db(),
       decider,
       embedder: unused("embedder"),
@@ -164,8 +161,9 @@ describe("Google email requests", () => {
       log,
       nowMs: Date.now(),
       plugin: { name: "google" },
-      reviewItems: unused("reviewItems"),
+      inboxItems: unused("inboxItems"),
       state,
+      tasks: unused("tasks"),
     };
     return googlePlugin().hooks!.heartbeat!(context);
   }
