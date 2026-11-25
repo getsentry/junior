@@ -68,8 +68,8 @@ also wake a Conversation or run an Event automation.
   pending, its merge state is clean, and no reviewer requests changes, the
   requester gets "Ready to merge".
 - `pr-merge-reviewer` When it is approved, GitHub reports that it can merge,
-  and it is not a draft, a reviewer whose review GitHub still requests gets
-  "Ready to merge".
+  it is not a draft, and auto-merge is off, a reviewer whose review GitHub
+  still requests gets "Ready to merge".
 - `pr-review-again` When Junior handled every comment of the requester's
   change request and the required checks pass, the requester gets "Review
   requested". A requester who approved since is not asked. When the

@@ -52,8 +52,8 @@ answers, and changes an item.
 - `kind-table` Each kind is a decision table in a YAML file in
   `design/inbox-kinds/`. Its rules use the FIRST hit policy of DMN, and
   each cell is a simple unary test, such as `clean`, `not(open)`, or `-`.
-  Each rule has its ID and its text in the table. Junior generates the code
-  of the kind, and its rule list in the design file, from the table.
+  Each rule has its ID in the table. Junior generates the code of the kind,
+  and the text of each rule in the design file, from the table.
 - `table-checks` The build fails when a rule can never be the first match,
   or when an input can be unknown and no rule names `unknown`.
 
