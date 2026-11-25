@@ -100,6 +100,25 @@ describe("object link types", () => {
       ]),
     ).not.toThrow();
 
+    // A sign-in page that opens different pages claims different URLs.
+    const chooser = (host: string) => ({
+      host: "accounts.example.com",
+      path: "/choose",
+      target: { param: "continue", filters: [{ host }] },
+    });
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("docs.example.com")]),
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("calendar.example.com")]),
+      ]),
+    ).toThrow(/claim the same URLs/);
+
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
