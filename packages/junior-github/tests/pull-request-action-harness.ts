@@ -107,7 +107,11 @@ export function commented(
   if (eventName === "issue_comment") {
     (github.comments ??= []).push(by);
   } else {
+    // GitHub keeps a reply as a comment-only review that holds only it.
     github.reviews.push({
+      body: "",
+      comments: [comment.id],
+      id: comment.id,
       state: "COMMENTED",
       submitted_at: by.at,
       user: { login: by.login },
@@ -279,13 +283,10 @@ function botReactionGroups(github: GitHubState, key: string) {
 // What the feedback tool and the check suite webhook read to decide
 // whether to ask a reviewer again.
 function reviewAgainPull(github: GitHubState, reviewer: string) {
-  const review = github.reviews
-    .filter(
-      (item) =>
-        item.user.login.toLowerCase() === reviewer.toLowerCase() &&
-        item.state !== "COMMENTED",
-    )
-    .at(-1);
+  const lower = reviewer.toLowerCase();
+  const reviews = github.reviews
+    .filter((item) => item.user.login.toLowerCase() === lower)
+    .slice(-20);
   return {
     baseRef: { refUpdateRule: null },
     baseRefName: "main",
@@ -312,29 +313,26 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
       })),
     },
     reviews: {
-      nodes: review
-        ? [
-            {
-              body: review.body ?? "Please change this.",
-              databaseId: review.id ?? null,
-              comments: {
-                nodes: (review.comments ?? []).map((id) => ({
-                  databaseId: id,
-                  reactionGroups: graphqlReactionGroups(
-                    github,
-                    `comment:${id}`,
-                  ),
-                })),
-                totalCount: review.comments?.length ?? 0,
-              },
-              reactionGroups: graphqlReactionGroups(
-                github,
-                `review:${review.id}`,
-              ),
-              state: review.state,
-            },
-          ]
-        : [],
+      nodes: reviews.map((review) => ({
+        body: review.body ?? "Please change this.",
+        databaseId: review.id ?? null,
+        comments: {
+          nodes: (review.comments ?? []).map((id) => ({
+            databaseId: id,
+            reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
+          })),
+          totalCount: review.comments?.length ?? 0,
+        },
+        reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
+        state: review.state,
+        submittedAt: review.submitted_at ?? null,
+      })),
+    },
+    timelineItems: {
+      nodes: (github.reviewRequests ?? []).map((request) => ({
+        createdAt: request.at,
+        requestedReviewer: { login: request.login },
+      })),
     },
   };
 }
@@ -608,10 +606,20 @@ export async function markFeedback(
   state: PluginState,
   target: { id: number; kind: "review" | "review_body" },
   status: "addressed" | "declined" = "addressed",
+  /** Junior works for the requester, so it knows their GitHub login. */
+  requesterWork?: GitHubFixture,
 ): Promise<void> {
   const tool = bindPluginTool(
     githubPlugin().hooks!.tools!()["updatePullRequestFeedback"],
     {
+      db: requesterWork?.db(),
+      resolveWorkOwner: async () =>
+        requesterWork
+          ? {
+              kind: "person",
+              ...(await requesterUsers.readIdentity("identity-requester")),
+            }
+          : undefined,
       egress: {
         fetch: async ({ request }: { request: Request }) =>
           await fetch(request),

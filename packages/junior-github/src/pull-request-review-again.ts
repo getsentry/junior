@@ -4,8 +4,11 @@
  *
  * Only an explicit signal asks again: Junior marks every comment of the
  * reviewer's latest change request addressed or declined with the feedback
- * tool. Pushes, base-branch syncs, comments, and replies never ask on their
- * own. The ask also waits until the required checks of the head commit pass.
+ * tool. For the requester, a comment-only review counts as a change request
+ * (`webhooks/pull-request-next-action.ts`), so their comment-only reviews
+ * after their latest decision count too. Pushes, base-branch syncs,
+ * comments, and replies never ask on their own. The ask also waits until
+ * the required checks of the head commit pass.
  * GitHub sends no webhook for a reaction, so the feedback tool reads this
  * when it marks a comment. When the checks have not passed yet, it saves a
  * held ask, and the check suite webhook reads this again.
@@ -133,6 +136,20 @@ const reviewAgainSchema = z.object({
                 }),
                 databaseId: z.number().nullable(),
                 state: z.string(),
+                submittedAt: z.string().nullable(),
+              })
+              .nullable(),
+          ),
+        }),
+        timelineItems: z.object({
+          nodes: z.array(
+            z
+              .object({
+                createdAt: z.string().optional(),
+                requestedReviewer: z
+                  .object({ login: z.string().optional() })
+                  .nullable()
+                  .optional(),
               })
               .nullable(),
           ),
@@ -219,6 +236,58 @@ function requiredChecksPass(
   return true;
 }
 
+// How many of the reviewer's latest reviews `PULL_REQUEST_REVIEW_AGAIN`
+// reads.
+const REVIEWS_READ = 20;
+
+type FeedbackReview = NonNullable<
+  z.output<
+    typeof reviewAgainSchema
+  >["data"]["repository"]["pullRequest"]["reviews"]["nodes"][number]
+>;
+
+/**
+ * Return the reviews whose comments Junior must mark before it asks again,
+ * oldest first, or undefined when there is no feedback to answer. The
+ * feedback is the reviewer's latest change request. For the requester
+ * (`commentsCount`), it also takes their comment-only reviews after their
+ * latest approval or change request. After an approval, only the
+ * comment-only reviews after a later ask count, so a comment on an
+ * approved pull request does not ask again. For others, a comment-only
+ * review is left out, so a reply to Junior does not hide their change
+ * request. A full page of comment-only reviews can hide older reviews,
+ * which count as open.
+ */
+async function feedbackReviews(
+  reviews: FeedbackReview[],
+  askedAt: number,
+  commentsCount: () => Promise<boolean>,
+): Promise<FeedbackReview[] | undefined> {
+  let decidedIndex = reviews.length - 1;
+  while (decidedIndex >= 0 && reviews[decidedIndex]?.state === "COMMENTED") {
+    decidedIndex -= 1;
+  }
+  const decided = reviews[decidedIndex];
+  const approvedAt =
+    decided?.state === "APPROVED"
+      ? Date.parse(decided.submittedAt ?? "")
+      : undefined;
+  const comments = reviews
+    .slice(decidedIndex + 1)
+    .filter(
+      (review) =>
+        approvedAt === undefined ||
+        (askedAt > approvedAt &&
+          Date.parse(review.submittedAt ?? "") > askedAt),
+    );
+  const changeRequest = decided?.state === "CHANGES_REQUESTED";
+  if (comments.length > 0 && (await commentsCount())) {
+    if (decided === undefined && reviews.length >= REVIEWS_READ) return;
+    return changeRequest ? [decided, ...comments] : comments;
+  }
+  return changeRequest ? [decided] : undefined;
+}
+
 /**
  * Read whether `reviewer`'s latest change request on a pull request is
  * ready for their review again. The comments of a change request are its
@@ -229,6 +298,12 @@ export async function readReviewAgainReadiness(
   read: GitHubRead,
   target: {
     botUserId: number;
+    /**
+     * Whether the reviewer is the requester, whose comment-only reviews count
+     * as a change request. Read only when the reviewer's latest review is
+     * comment-only.
+     */
+    isRequester?: (() => Promise<boolean>) | undefined;
     /**
      * The comment that the caller just marked. It counts as marked, because
      * GitHub's GraphQL read can lag behind a reaction that was just added.
@@ -255,25 +330,42 @@ export async function readReviewAgainReadiness(
   const requested = pull.reviewRequests.nodes.some(
     (request) => request?.requestedReviewer?.login?.toLowerCase() === lower,
   );
-  const review = pull.reviews.nodes[0];
-  if (requested || review?.state !== "CHANGES_REQUESTED") return "none";
-  const comments = review.comments.nodes.filter((comment) => comment !== null);
-  // A comment past the first 100 cannot be read, so it counts as open.
-  if (comments.length < review.comments.totalCount) return "none";
+  if (requested) return "none";
+  const askedAt = Math.max(
+    Number.NEGATIVE_INFINITY,
+    ...pull.timelineItems.nodes.flatMap((item) =>
+      item?.createdAt && item.requestedReviewer?.login?.toLowerCase() === lower
+        ? [Date.parse(item.createdAt)]
+        : [],
+    ),
+  );
+  const reviews = await feedbackReviews(
+    pull.reviews.nodes.filter((review) => review !== null),
+    askedAt,
+    async () => (await target.isRequester?.()) ?? false,
+  );
+  if (!reviews) return "none";
   const { marked } = target;
   const justMarked = (id: number | null, kind: "review" | "review_body") =>
     marked?.kind === kind && marked.id === id;
-  const bodyMarked =
-    justMarked(review.databaseId, "review_body") ||
-    markedBy(review, target.botUserId);
-  const bodyCounts = review.body.trim() !== "" || comments.length === 0;
-  if (bodyCounts && !bodyMarked) return "none";
-  const commentsMarked = comments.every(
-    (comment) =>
-      justMarked(comment.databaseId, "review") ||
-      markedBy(comment, target.botUserId),
-  );
-  if (!commentsMarked) return "none";
+  for (const review of reviews) {
+    const comments = review.comments.nodes.filter(
+      (comment) => comment !== null,
+    );
+    // A comment past the first 100 cannot be read, so it counts as open.
+    if (comments.length < review.comments.totalCount) return "none";
+    const bodyMarked =
+      justMarked(review.databaseId, "review_body") ||
+      markedBy(review, target.botUserId);
+    const bodyCounts = review.body.trim() !== "" || comments.length === 0;
+    if (bodyCounts && !bodyMarked) return "none";
+    const commentsMarked = comments.every(
+      (comment) =>
+        justMarked(comment.databaseId, "review") ||
+        markedBy(comment, target.botUserId),
+    );
+    if (!commentsMarked) return "none";
+  }
   return (await readRequiredChecksPass(read, target, pull))
     ? "ready"
     : "checks";

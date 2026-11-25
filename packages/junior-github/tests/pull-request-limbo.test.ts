@@ -210,7 +210,7 @@ describe("limbo review ask", () => {
       name: "another person removed the requester's review request",
     },
     {
-      asks: true,
+      asks: false,
       github: {
         reviews: [
           {
@@ -220,7 +220,7 @@ describe("limbo review ask", () => {
           },
         ],
       },
-      name: "the requester left only a comment-only review after the last push",
+      name: "the requester left a comment-only review, so Junior acts next",
     },
     {
       asks: false,
@@ -236,8 +236,7 @@ describe("limbo review ask", () => {
           },
         ],
       },
-      item: true,
-      name: "a comment-only review keeps the requester's ask open",
+      name: "a comment-only review answers no ask, but Junior acts next",
     },
   ])(
     "backfill asks the requester's review in limbo: $name",
