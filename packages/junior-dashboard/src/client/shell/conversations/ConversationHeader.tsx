@@ -163,11 +163,24 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // The element that last took focus. A layout switch can hide it with CSS,
+  // and then focus also falls to the body, but details did not take it.
+  const lastFocusRef = useRef<Element | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      lastFocusRef.current = event.target as Element;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // Details that close with focus inside them return it to their trigger.
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
-      document.activeElement === document.body
+      document.activeElement === document.body &&
+      !lastFocusRef.current?.isConnected
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current
