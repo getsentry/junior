@@ -24,7 +24,7 @@ import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import {
-  dismissLeavesItem,
+  hasAssigneeRoles,
   dismissPluginInboxItem,
   leavePluginInboxItem,
 } from "./plugin-dismiss";
@@ -199,7 +199,7 @@ export async function actOnInboxItem(args: {
   if (
     action === "dismiss" &&
     item.status === "open" &&
-    dismissLeavesItem(item)
+    hasAssigneeRoles(item)
   ) {
     const left = await leavePluginItemOnDismiss(item, user, nowMs);
     if (left) {
@@ -276,7 +276,7 @@ export async function actOnInboxItem(args: {
 }
 
 /**
- * Dismiss a `dismissLeaves` item for one assignee: the plugin removes them
+ * Dismiss an `assigneeRoles` item for one assignee: the plugin removes them
  * on its provider first, and a refusal fails the dismiss. When others stay
  * on the item, only this person leaves it, and the item is returned. When
  * they are the only one, return undefined: the item closes as any dismiss.

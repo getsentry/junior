@@ -11,23 +11,23 @@ import { leaveInboxItem } from "./deliveries";
 import { ownerConversationId, type InboxItem } from "./store";
 
 /**
- * Return whether a dismiss of the item removes only the person who
- * dismissed it: its plugin registered the subject kind with
- * `dismissLeaves`.
+ * Return whether the item's assignees hold roles on its object: its plugin
+ * registered the subject kind with `assigneeRoles`. A role puts a person on
+ * the item outside the owner Conversation, and a dismiss removes only them.
  */
-export function dismissLeavesItem(item: Pick<InboxItem, "subject">): boolean {
+export function hasAssigneeRoles(item: Pick<InboxItem, "subject">): boolean {
   const pluginName = inboxItemPlugin(item);
   if (!pluginName) return false;
   const own = item.subject.kind.slice(pluginName.length + 1);
   return Boolean(
     getPlugins()
       .find((plugin) => plugin.manifest.name === pluginName)
-      ?.inboxSubjects?.find((subject) => subject.kind === own)?.dismissLeaves,
+      ?.inboxSubjects?.find((subject) => subject.kind === own)?.assigneeRoles,
   );
 }
 
 /**
- * Let the plugin remove the person who dismissed a `dismissLeaves` item from
+ * Let the plugin remove the person who dismissed an `assigneeRoles` item from
  * the object on its provider, such as from a GitHub issue's assignees. Throws
  * when the plugin fails, so the dismiss fails and the person stays.
  */
