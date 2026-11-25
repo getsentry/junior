@@ -24,7 +24,6 @@ import {
 } from "../conversations/PinnedConversationOrder";
 import {
   ROW_ACTION_BUTTON_CLASS,
-  ROW_ACTIONS_FADE_CLASS,
   ROW_ACTIONS_REVEAL_CLASS,
 } from "../conversations/sidebarRowActions";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
@@ -54,7 +53,7 @@ function InFlightRow(props: {
       <ContextMenuTrigger
         {...browserMenuOnLinks}
         className={cn(
-          "group relative list-none [--row-actions-width:1.25rem]",
+          "group relative list-none",
           drag?.dragging && "opacity-40",
         )}
         onKeyDown={drag?.onKeyDown}
@@ -66,7 +65,13 @@ function InFlightRow(props: {
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            paneEntryClass(props.selected ? "page" : undefined, props.phone),
+            // The state sits on the right, as on a Space row, so the title
+            // takes the icon column.
+            paneEntryClass(
+              props.selected ? "page" : undefined,
+              props.phone,
+              false,
+            ),
             // Phones always show the `⋯`, so the title stops before it.
             "max-sm:pr-10",
             // The row shows which Conversation its open menu acts on.
@@ -79,23 +84,18 @@ function InFlightRow(props: {
           draggable={drag ? false : undefined}
           to={conversationPath(conversation.id)}
         >
-          <ConversationStateIcon
-            className="justify-self-center"
-            state={conversationDisplayState(conversation)}
-          />
           <span
-            className={cn(
-              fadeOverflowClass,
-              ROW_ACTIONS_FADE_CLASS,
-              // The same fade while the `⋯` menu is open. Tailwind needs the
-              // whole class written out.
-              "sm:group-has-data-popup-open:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]",
-              "text-dashboard-text",
-            )}
+            className={cn(fadeOverflowClass, "text-dashboard-text")}
             ref={fadeWhenOverflowing}
           >
             {conversation.displayTitle}
           </span>
+          {/* The `⋯` takes the state's place while it shows. Phones show
+              both. */}
+          <ConversationStateIcon
+            className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
+            state={conversationDisplayState(conversation)}
+          />
         </Link>
         <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>
           <DropdownMenuTrigger
