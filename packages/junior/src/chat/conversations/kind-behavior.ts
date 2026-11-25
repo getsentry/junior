@@ -81,8 +81,8 @@ export type TurnBehavior = {
     userCustomization: boolean;
     /**
      * The Turn changes settings for its person, such as the configuration of
-     * its Slack channel or Space. Only a person's request changes them, so
-     * only a person's Turn has it.
+     * its Slack channel or Space, or the Space that a Conversation is in.
+     * Only a person's request changes them, so only a person's Turn has it.
      */
     settings: boolean;
     /**

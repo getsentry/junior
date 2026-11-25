@@ -47,6 +47,7 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
+import { moveConversationToSpaceToolDefinition } from "@/chat/tools/move-conversation-to-space";
 import { setConfigurationToolDefinition } from "@/chat/tools/set-configuration";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listedToolExposure } from "@/chat/tool-exposure";
@@ -196,6 +197,10 @@ const CORE_TOOLS = {
   setConversationSubscription: {
     when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
+  },
+  moveConversationToSpace: {
+    when: ({ listedTools }) => listedTools.settings,
+    definition: () => moveConversationToSpaceToolDefinition,
   },
   setConfiguration: {
     when: ({ listedTools }) => listedTools.settings,
