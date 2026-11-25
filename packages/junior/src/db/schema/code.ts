@@ -71,6 +71,11 @@ export const juniorCodeChanges = pgTable(
     repositoryId: uuid("repository_id")
       .notNull()
       .references(() => juniorCodeRepositories.id, { onDelete: "cascade" }),
+    /** Identities of the people credited as requesters, from the code plugin. */
+    requesterIdentityIds: text("requester_identity_ids")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     state: text("state").$type<CodeChangeState>().notNull(),
     title: text("title"),
     updatedAt: timestamptz("updated_at").notNull(),
@@ -98,6 +103,11 @@ export const juniorCodeChanges = pgTable(
     index("junior_code_changes_conversation_ids_idx").using(
       "gin",
       table.conversationIds,
+    ),
+    // A person's code changes include the ones that credit them as requester.
+    index("junior_code_changes_requester_identity_ids_idx").using(
+      "gin",
+      table.requesterIdentityIds,
     ),
     index("junior_code_changes_open_idx")
       .on(table.id)

@@ -130,8 +130,6 @@ function always(definition: StaticZodToolDefinition): StaticToolEntry {
 
 const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
-const hasAgents = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents !== "none";
 const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents === "children" ||
   listedTools.agents === "children_and_parent";
@@ -243,10 +241,7 @@ const CORE_TOOLS = {
     when: (scope) => !isLead(scope),
     definition: () => listAgentsToolDefinition,
   },
-  messageAgent: {
-    when: hasAgents,
-    definition: () => messageAgentToolDefinition,
-  },
+  messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,
     definition: () => replyToolDefinition,

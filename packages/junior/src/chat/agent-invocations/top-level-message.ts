@@ -17,7 +17,7 @@ import {
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderDataTag } from "@/chat/input-tags";
-import { readLeadSpaceId } from "@/chat/lead/conversation";
+import { readLeadSpace } from "@/chat/lead/conversation";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
@@ -32,9 +32,9 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
  * Check that a top-level agent can message another top-level agent under
  * `policies/conversation-access.md`. Public agents can message each other.
  * A private agent can message only agents at its own Destination, such as
- * another thread in the same private Slack channel. A Space's Lead messages a
- * root outside its Space only when the member who asked is a Participant of
- * that root.
+ * another thread in the same private Slack channel, or in its own private
+ * Space. A Space's Lead messages a root outside its Space only when the
+ * member who asked is a Participant of that root.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */
@@ -80,10 +80,10 @@ async function requireTopLevelAgentAccess(args: {
   // nothing private.
   if (receiver.visibility === "public" && sender.visibility !== "public") {
     throw new AgentMessageTargetError(
-      `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
+      `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel, DM, or private Space`,
     );
   }
-  const leadSpaceId = await readLeadSpaceId(args.senderConversationId);
+  const leadSpaceId = (await readLeadSpace(args.senderConversationId))?.id;
   if (leadSpaceId && target.spaceId !== leadSpaceId) {
     const person = args.askingActor
       ? (await readActorIdentity(args.askingActor))?.user

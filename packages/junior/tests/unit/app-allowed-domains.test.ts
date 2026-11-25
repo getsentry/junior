@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
+import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 afterEach(() => {
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
   vi.unstubAllEnvs();
 });
 
@@ -23,6 +25,7 @@ describe("createApp allowed domains", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts();
 
     const app = await createApp({
       allowedDomains: [" Sentry.io "],
@@ -46,6 +49,7 @@ describe("createApp allowed domains", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts();
 
     await expect(
       createApp({
@@ -80,6 +84,7 @@ describe("createApp dashboard links", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts();
 
     await createApp({
       dashboard: {

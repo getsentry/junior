@@ -36,6 +36,7 @@ import {
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
 import { saveGitHubDraftReviewers } from "../pull-request-requesters/draft-reviewers.js";
+import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestOpener } from "../pull-request-requesters/store.js";
 import {
   stackGitHubPullRequest,
@@ -341,8 +342,8 @@ async function createGitHubPullRequest(
 }
 
 /**
- * Save the opener of a pull request GitHub opened. A create with no Junior
- * identity has no opener.
+ * Save the opener of a pull request GitHub opened, and credit them on its
+ * code change. A create with no Junior identity has no opener.
  */
 async function recordOpener(
   ctx: ToolRegistrationHookContext,
@@ -353,11 +354,19 @@ async function recordOpener(
   const { conversationId, identityId } = requester;
   if (!identityId) return;
   const repo = parseRepo(input.repo);
-  await recordGitHubPullRequestOpener(ctx.db as GitHubDb, {
+  const db = ctx.db as GitHubDb;
+  await recordGitHubPullRequestOpener(db, {
     conversationId,
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
+    repositoryFullName: repo.ref,
+  });
+  // The `opened` webhook can record the code change before the row above.
+  await syncGitHubPullRequestRequesters({
+    codeChanges: ctx.codeChanges,
+    db,
+    numbers: [state.number],
     repositoryFullName: repo.ref,
   });
 }

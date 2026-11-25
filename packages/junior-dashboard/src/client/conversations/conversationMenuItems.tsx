@@ -168,8 +168,9 @@ export function useConversationMenuItems(
     label: "Rename",
     onClick: actions.rename,
   });
-  // A child is in the Space of its root, and a Lead never moves. Every
-  // Space is public, so only a public Conversation can join one.
+  // A child is in the Space of its root, and a Lead never moves. Only a
+  // public Conversation can join a Space. A Conversation in a private Space
+  // is private, so it never moves out.
   if (
     actions.moveToSpace &&
     (conversation?.kind === "root" || conversation?.kind === "automation") &&

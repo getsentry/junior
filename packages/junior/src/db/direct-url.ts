@@ -1,17 +1,17 @@
 const NEON_POOLER_SUFFIX = "-pooler";
 
 /**
- * Pick the database URL for `junior upgrade` migrations.
+ * Pick the database URL for work that needs its own Postgres session, such as
+ * the `junior upgrade` migration lock or a `LISTEN`.
  *
- * The migration lock is a session advisory lock. A transaction-mode pooler,
- * such as Neon's `-pooler` endpoint, keeps that lock on its server session
- * after the client leaves. The next upgrade on another session then waits,
- * and one on the same session takes the lock again. For Neon, use the
+ * A transaction-mode pooler, such as Neon's `-pooler` endpoint, shares one
+ * server session between clients. It keeps a session advisory lock after the
+ * client leaves, and it does not support `LISTEN`. For Neon, use the
  * `DATABASE_URL` host without the `-pooler` suffix. The direct endpoint takes
- * the same user, password, database, and parameters, so upgrade always
- * migrates the database that `DATABASE_URL` names.
+ * the same user, password, database, and parameters, so it always reaches the
+ * database that `DATABASE_URL` names.
  */
-export function readMigrationDatabaseUrl(databaseUrl: string): string {
+export function readDirectDatabaseUrl(databaseUrl: string): string {
   // libpq URIs with an empty host, such as `postgresql://user@/db?host=/tmp`,
   // are not WHATWG URLs. They can't name a Neon endpoint.
   if (!URL.canParse(databaseUrl)) {

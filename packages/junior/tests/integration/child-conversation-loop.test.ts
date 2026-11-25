@@ -5,8 +5,9 @@ import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import type { ChildAgentSender } from "@/chat/agent-invocations/types";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { botConfig } from "@/chat/config";
+import type { Actor } from "@/chat/actor";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { ingestEvent } from "@/chat/events/ingest";
 import { createWatch, listWatches } from "@/chat/events/store";
@@ -15,11 +16,14 @@ import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-noti
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { juniorConversations } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
@@ -37,11 +41,13 @@ import {
 } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
+  commitRunInput,
   createHarness,
   finishRun,
   sendPersonMessage,
   startThread,
   type Harness,
+  yieldRun,
 } from "../fixtures/thread-input";
 
 /** Start a child whose spawn Turn has ended, so it has no open work. */
@@ -94,9 +100,13 @@ async function createHelper(
 }
 
 /** Send a helper's `reply` to its parent, the child. */
-async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
+async function sendHelperReply(
+  harness: Harness,
+  sender: ChildAgentSender,
+  actor: Actor = slackInvocationInput.actor,
+) {
   await enqueueStarterUpdate({
-    actor: slackInvocationInput.actor,
+    actor,
     messageKey: "helper-reply",
     nowMs: Date.now(),
     queue: harness.queue,
@@ -179,6 +189,77 @@ describe("child Turns on the Conversation loop", () => {
         conversationId: childId,
       });
       expect(run.credentialContext).toEqual({ actor: EVENT_SYSTEM_ACTOR });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // A helper's result is data from the helper, not the person's instruction.
+  // The Turn runs as the person, but the result does not count as a
+  // message from them, also after the Turn resumes.
+  it("runs a helper result as context, not as the person's instruction", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const threadId = await startIdleChild(harness, "thread");
+      const lastMessageAt = async () =>
+        (
+          await getDb()
+            .select({ at: juniorConversations.lastMessageAt })
+            .from(juniorConversations)
+            .where(eq(juniorConversations.conversationId, threadId))
+        )[0]?.at;
+      const lastMessageBefore = await lastMessageAt();
+      const latestInstructionBefore =
+        await getConversationEventStore().loadLatestInstruction(threadId);
+      // The first run takes the result and yields. The next run resumes
+      // that Turn and ends it without a reply.
+      harness.onRun(async (run) => {
+        const resumed =
+          harness.runs.filter((earlier) => earlier.turnId === run.turnId)
+            .length > 1;
+        if (!run.instruction.text.includes("Helper fact.") || resumed) {
+          return await finishRun(run);
+        }
+        await commitRunInput(run);
+        return await yieldRun(run);
+      });
+      await sendHelperReply(harness, await createHelper(harness, threadId));
+      await harness.drain(threadId);
+
+      const resultRuns = harness.runs.filter(
+        (run) =>
+          run.conversationId === threadId && run.source?.kind === "event",
+      );
+      expect(resultRuns).toHaveLength(2);
+      for (const run of resultRuns) {
+        expect(run).toMatchObject({
+          actor: slackInvocationInput.actor,
+          instruction: {
+            provenance: {
+              authority: "context",
+              actor: slackInvocationInput.actor,
+            },
+          },
+        });
+      }
+      // Compaction keeps the parent's task as the last instruction.
+      await expect(
+        getConversationEventStore().loadLatestInstruction(threadId),
+      ).resolves.toEqual(latestInstructionBefore);
+      // The dashboard and the Inbox see no new message.
+      await expect(lastMessageAt()).resolves.toEqual(lastMessageBefore);
+      // No person used the Thread, so its parent can archive it.
+      const archive = createArchiveAgentTool(slackParentConversationId);
+      await expect(
+        archive.execute!(
+          archive.prepareArguments({
+            apply_to_children: true,
+            conversation_id: threadId,
+          }),
+          {},
+        ),
+      ).resolves.toMatchObject({ conversation_id: threadId });
     } finally {
       await harness.close();
     }
@@ -566,6 +647,41 @@ describe("child Turns on the Conversation loop", () => {
       }
     },
   );
+
+  // A person's Turn in a Thread can start a helper, which runs as that
+  // person. Its result runs in the Thread as the person, and the Thread's
+  // result carries the person's Actor to the parent.
+  it("passes a Thread helper's Actor through to the parent", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "thread");
+      const helper = await createHelper(harness, childId, {
+        actor: webTestActor,
+      });
+      const before = (await parentMessages()).length;
+      await sendHelperReply(harness, helper, webTestActor);
+      harness.onRun((run) =>
+        finishRun(run, { finalText: "The helper is done." }),
+      );
+      await harness.drain(childId);
+
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: webTestActor,
+        conversationId: childId,
+      });
+      expect(
+        (await parentMessages())
+          .slice(before)
+          .filter((message) =>
+            message.input.text.includes("The helper is done."),
+          )
+          .map((message) => message.input.authorId),
+      ).toEqual([resultAuthorId(webTestActor)]);
+    } finally {
+      await harness.close();
+    }
+  });
 
   it.each([
     { kind: "task", input: "helper reply" },

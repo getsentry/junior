@@ -608,6 +608,9 @@ importers:
       drizzle-kit:
         specifier: 'catalog:'
         version: 1.0.0-rc.6(drizzle-orm@1.0.0-rc.6(@neondatabase/serverless@1.1.0)(@sinclair/typebox@0.34.49)(@types/pg@8.15.6)(pg@8.21.0)(zod@4.6.7))
+      emulate:
+        specifier: 0.14.0
+        version: 0.14.0
       msw:
         specifier: ^2.14.6
         version: 2.14.6(@types/node@24.19.2)(typescript@7.0.2)
@@ -7048,6 +7051,10 @@ packages:
   empathic@2.1.0:
     resolution: {integrity: sha512-AnfC1ATldl49/cvZdLPDjBfrRNwbDO05aibiOtzQu3qtlbJtomNLhF30HEtn/7iBz50dlMECqATo3fG0LrdEgw==}
     engines: {node: '>=14'}
+
+  emulate@0.14.0:
+    resolution: {integrity: sha512-mlM/PJ34ynD2OTGVBvy+8/F7gEDwkHWmpqLG/JetaDmaqifkHtCw2VMmXTKBy6Zwa5yvCziLvyyvmAoVeuPZoA==}
+    hasBin: true
 
   encodeurl@2.0.0:
     resolution: {integrity: sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==}
@@ -17466,6 +17473,12 @@ snapshots:
   emojilib@2.4.0: {}
 
   empathic@2.1.0: {}
+
+  emulate@0.14.0:
+    dependencies:
+      commander: 14.0.3
+      picocolors: 1.1.1
+      yaml: 2.9.0
 
   encodeurl@2.0.0: {}
 
