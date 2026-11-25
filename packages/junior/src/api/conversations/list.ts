@@ -306,10 +306,11 @@ async function conversationRows(
 const searchAnnotated = alias(juniorConversations, "search_annotated");
 
 /**
- * Match a root whose tree has an Annotation with the text in its key, title,
- * or link, such as `getsentry/roach#12`, or of an object that the text
- * names. The feed shows the annotations of the whole tree, so search reads
- * the same rows. Private annotations match only where the feed shows them.
+ * Match a root whose tree has an Annotation with the text in its key or
+ * title, such as `getsentry/roach#12`, with the text as its link, or of an
+ * object that the text names. The feed shows the annotations of the whole
+ * tree, so search reads the same rows. Private annotations match only where
+ * the feed shows them.
  */
 function annotationMatch(
   db: JuniorDatabase,
@@ -323,7 +324,9 @@ function annotationMatch(
     subjects: readonly InboxItemSubject[];
   },
 ) {
-  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}, ${juniorConversationAnnotations.url}))`;
+  // The link matches only whole, so a word of every link, such as `pull`,
+  // does not match each Conversation.
+  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}))`;
   return exists(
     db
       .select({ one: sql`1` })
@@ -346,6 +349,7 @@ function annotationMatch(
             : eq(juniorDestinations.visibility, "public"),
           or(
             sql<boolean>`strpos(${text}, ${query}) > 0`,
+            sql<boolean>`lower(${juniorConversationAnnotations.url}) = ${query}`,
             subjects.length > 0
               ? annotationMatches({ references: [], subjects })
               : undefined,
