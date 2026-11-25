@@ -7,12 +7,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  expect,
-  type Page,
-  type Request as PageRequest,
-  type Route,
-} from "@playwright/test";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 import { mockSearchRows } from "./search-fixture";
 import type * as DashboardApp from "../src/app";
@@ -73,20 +68,6 @@ export async function routeConversationVersion(
       },
     }),
   );
-}
-
-/**
- * Wait until `count` versions checks are answered, then let the page finish
- * the work that the last answer started. A test that controls timers moves
- * the clock only after that, so the next poll timer is already set.
- */
-export async function waitForVersionChecks(
-  page: Page,
-  checks: () => number,
-  count: number,
-) {
-  await expect.poll(checks).toBe(count);
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
 }
 
 /**
