@@ -461,6 +461,9 @@ describe("the ask of a Junior pull request", () => {
           },
         },
       ]);
+      // Pat is the requester, with no review request now, so their dismiss
+      // changes nothing on GitHub and says nothing more.
+      expect(items[0]!.subject).not.toHaveProperty("dismissNote");
       expect(cardReads).toBe(1);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
@@ -706,8 +709,43 @@ describe("the ask of a Junior pull request", () => {
           "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
           () => HttpResponse.json({ permission: "write" }),
         ),
-        http.post("https://api.github.com/graphql", () =>
-          HttpResponse.json({
+        http.post("https://api.github.com/graphql", async ({ request }) => {
+          const { query } = (await request.json()) as { query: string };
+          // The pull request's card, with the reviewers GitHub requests now.
+          if (query.includes("PullRequestCards")) {
+            return HttpResponse.json({
+              data: {
+                p0: {
+                  pullRequest: {
+                    additions: 1,
+                    author: { login: BOT },
+                    baseRefName: "main",
+                    body: "",
+                    changedFiles: 1,
+                    commits: { nodes: [] },
+                    deletions: 1,
+                    headRefName: "fix/check",
+                    headRefOid: "head-1",
+                    isDraft: false,
+                    mergeable: "MERGEABLE",
+                    merged: false,
+                    number: 1592,
+                    reviewDecision: null,
+                    reviewRequests: {
+                      nodes: github.reviewers.map((login) => ({
+                        requestedReviewer: { __typename: "User", login },
+                      })),
+                    },
+                    state: "OPEN",
+                    title: "fix: Check",
+                    updatedAt: "2026-07-02T12:00:00Z",
+                    url: PULL_URL,
+                  },
+                },
+              },
+            });
+          }
+          return HttpResponse.json({
             data: {
               repository: {
                 pullRequest: {
@@ -732,8 +770,8 @@ describe("the ask of a Junior pull request", () => {
                 },
               },
             },
-          }),
-        ),
+          });
+        }),
       );
       const reviewItem = async () => {
         const [item] = await getDb()
@@ -796,7 +834,12 @@ describe("the ask of a Junior pull request", () => {
       expect(card).toMatchObject({
         canAct: true,
         conversationIds: [],
-        subject: { kind: "github:pull_request", url: PULL_URL },
+        subject: {
+          // Dismiss says that it also removes Out from the reviewers.
+          dismissNote: "Also removes you from the reviewers on GitHub.",
+          kind: "github:pull_request",
+          url: PULL_URL,
+        },
       });
       // No root tells the dashboard that the viewer cannot see it.
       expect(card).not.toHaveProperty("rootConversationId");

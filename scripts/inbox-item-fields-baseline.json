@@ -49,5 +49,14 @@
     "visibility",
     "wake"
   ],
-  "subject": ["id", "kind", "label", "object", "objectType", "resource", "url"]
+  "subject": [
+    "dismissNote",
+    "id",
+    "kind",
+    "label",
+    "object",
+    "objectType",
+    "resource",
+    "url"
+  ]
 }

@@ -9,6 +9,7 @@
 import type {
   ObjectAnnotation,
   PluginInboxItemSubject,
+  PluginInboxViewer,
   PluginInboxSubjectKind,
   PluginInboxSubjectOwner,
 } from "@sentry/junior-plugin-api";
@@ -36,6 +37,29 @@ export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
     : "Review requested";
 }
 
+/**
+ * Say what a dismiss of a pull request's item also changes on GitHub for
+ * the viewer: a requested reviewer on its card leaves the reviewers. A
+ * requester who holds no review request changes nothing there.
+ */
+function pullRequestDismissNote(
+  object: ObjectAnnotation | undefined,
+  viewer: PluginInboxViewer,
+): string | undefined {
+  const handle = viewer.handle?.toLowerCase();
+  const reviewers =
+    object?.facts?.type === "code_change" ? object.facts.reviewers : [];
+  return handle && reviewers?.some((login) => login.toLowerCase() === handle)
+    ? "Also removes you from the reviewers on GitHub."
+    : undefined;
+}
+
+// The assignees of an issue's item are its GitHub assignees, so a dismiss
+// by anyone on the item unassigns them there.
+function issueDismissNote(): string {
+  return "Also unassigns you on GitHub.";
+}
+
 // Both kinds use GitHub's pull request id as the subject id. The item
 // belongs to the Conversation where a person asked Junior to open the pull
 // request: only that opener row has both columns set.
@@ -55,6 +79,7 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
     ask: pullRequestAsk,
     codeChange: true,
     assigneeRoles: true,
+    dismissNote: pullRequestDismissNote,
     kind: GITHUB_INBOX_SUBJECTS.pullRequest,
     label: "Pull request",
     owner: pullRequestOwner,
@@ -70,6 +95,7 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
   // dismiss unassigns only the person who dismissed it.
   {
     assigneeRoles: true,
+    dismissNote: issueDismissNote,
     kind: GITHUB_INBOX_SUBJECTS.issue,
     label: "Issue",
     owner: "annotation",

@@ -2,10 +2,17 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 
 /**
  * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
- * has no check mark, so it does not read as an answer or an approval.
+ * has no check mark, so it does not read as an answer or an approval. A
+ * note says what else the dismiss changes, such as on GitHub, in its
+ * tooltip, so the change is no surprise.
  */
 export function RowDismissButton(props: {
   disabled?: boolean;
@@ -15,21 +22,32 @@ export function RowDismissButton(props: {
   label?: string;
   /** The accessible name, when the label alone does not say what it acts on. */
   name?: string;
+  /** What else the dismiss changes, such as `Also unassigns you on GitHub.` */
+  note?: string | undefined;
   onClick(): void;
 }) {
   const label = props.label ?? "Dismiss";
-  return (
+  const button = (
     <Button
       aria-label={props.name}
       className={props.look && LOOK_CLASSES[props.look]}
       disabled={props.disabled}
       onClick={props.onClick}
-      title={props.look === "icon" ? label : undefined}
+      title={props.look === "icon" && !props.note ? label : undefined}
       variant="ghost"
     >
       <X aria-hidden="true" size={15} />
       <ButtonLabel look={props.look}>{label}</ButtonLabel>
     </Button>
+  );
+  if (!props.note) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent size="compact">
+        {props.look === "icon" ? `${label}. ${props.note}` : props.note}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

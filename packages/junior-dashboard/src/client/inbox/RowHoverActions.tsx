@@ -16,6 +16,8 @@ import { onLinkOpen } from "./rowClick";
 export type InboxCardActions = {
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
+  /** What else Dismiss changes, such as on GitHub (`RowDismissButton`). */
+  dismissNote?: string | undefined;
   /** Marks a To-do for the viewer done. */
   onDone?(): void;
   onSnooze?(untilMs: number): void;
@@ -75,7 +77,11 @@ export function RowQuickActions(props: {
   return (
     <>
       {actions.onDismiss ? (
-        <RowDismissButton look="icon" onClick={actions.onDismiss} />
+        <RowDismissButton
+          look="icon"
+          note={actions.dismissNote}
+          onClick={actions.onDismiss}
+        />
       ) : null}
       {actions.onSnooze ? (
         <RowSnoozeButton

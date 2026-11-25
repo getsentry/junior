@@ -169,6 +169,7 @@ export function InboxItemActions(props: {
       {dismiss ? (
         <RowDismissButton
           disabled={action.isPending || sending}
+          note={item.subject.dismissNote}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}

@@ -173,6 +173,7 @@ export function inboxCardActions(input: {
           : undefined;
       const todo = item.todoId !== undefined;
       return {
+        dismissNote: item.subject.dismissNote,
         eventSnooze: eventSnoozeOf([item], snooze),
         onDismiss: close("dismiss"),
         onDone: todo ? close("done") : undefined,
