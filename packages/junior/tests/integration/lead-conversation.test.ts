@@ -603,18 +603,16 @@ describe("Lead", () => {
       },
       { toolCallId: "call-watch-deploy" },
     );
-    // A Watch made before agent updates names the old Event type. It hears
-    // the same update until it expires.
     await createWatch(
       {
         conversationId: lead.conversationId,
-        events: ["conversation.completed"],
+        events: ["agent.update"],
         expiresAtMs: Date.now() + 3_600_000,
         identifier: images,
         intent: "Tell the person how the image cleanup ends.",
         label: "Image cleanup",
         namespace: "junior",
-        resourceType: "conversation",
+        resourceType: "agent",
       },
       { state: harness.state },
     );
