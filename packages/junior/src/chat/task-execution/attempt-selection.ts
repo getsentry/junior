@@ -128,6 +128,21 @@ export function canSteerParentTurn(
   );
 }
 
+/**
+ * True when a message that another Turn sent may steer a running Turn: both
+ * Turns act for the same Actor with the same credentials.
+ */
+export function canSteerForSender(
+  turn: { actor: Actor; credentialContext: CredentialContext },
+  sender: { actor: Actor; credentialContext: CredentialContext },
+): boolean {
+  const owner = (facts: typeof turn): TurnOwner => ({
+    authorId: isUserActor(facts.actor) ? facts.actor.userId : undefined,
+    credentials: facts,
+  });
+  return hasSameOwner(owner(turn), owner(sender));
+}
+
 function selectContiguousTurnBatch(
   messages: readonly InboundMessage[],
 ): InboundMessage[] {

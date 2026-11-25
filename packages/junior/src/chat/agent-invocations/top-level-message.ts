@@ -5,6 +5,8 @@
  * credentials never reach the target.
  */
 import type { StateAdapter } from "chat";
+import { actorSchema } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import {
   canAccessConversation,
@@ -13,6 +15,7 @@ import {
 import { getConversationStore, getDb } from "@/chat/db";
 import {
   EVENT_WAIT_MS,
+  isEventMailboxMetadata,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -20,6 +23,7 @@ import { renderDataTag } from "@/chat/input-tags";
 import { readLeadSpace } from "@/chat/lead/conversation";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
 import { PARENT_AGENT_TARGET } from "./types";
@@ -42,7 +46,7 @@ async function requireTopLevelAgentAccess(args: {
   askingActor?: Actor | undefined;
   senderConversationId: string;
   to: string;
-}): Promise<void> {
+}): Promise<{ toTeam: boolean }> {
   const notReachable = new AgentMessageTargetError(
     `"${args.to}" is not "${PARENT_AGENT_TARGET}", a child agent of this conversation, or a top-level agent that you can message`,
   );
@@ -84,7 +88,12 @@ async function requireTopLevelAgentAccess(args: {
     );
   }
   const leadSpaceId = (await readLeadSpace(args.senderConversationId))?.id;
-  if (leadSpaceId && target.spaceId !== leadSpaceId) {
+  // A root stores no link to the Lead that started it, so the Lead's team is
+  // the roots in its Space.
+  if (leadSpaceId && target.spaceId === leadSpaceId) {
+    return { toTeam: true };
+  }
+  if (leadSpaceId) {
     const person = args.askingActor
       ? (await readActorIdentity(args.askingActor))?.user
       : undefined;
@@ -99,6 +108,7 @@ async function requireTopLevelAgentAccess(args: {
       );
     }
   }
+  return { toTeam: false };
 }
 
 // Another agent wrote the text, so it is escaped data. The system prompt
@@ -118,12 +128,58 @@ function renderTopLevelMessageInput(args: {
   );
 }
 
+function topLevelMessageAuthorId(senderConversationId: string): string {
+  return `agent-message:${senderConversationId}`;
+}
+
+const leadMessageMetadataSchema = z.object({
+  actor: actorSchema,
+  event: z.object({
+    eventType: z.literal(TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE),
+    identifier: z.string().min(1),
+    namespace: z.literal(AGENT_MESSAGE_EVENT_NAMESPACE),
+  }),
+  kind: z.literal("event"),
+});
+
+/**
+ * Read the sender of a message that a Lead sent to a root in its Space: the
+ * Lead's Conversation id and the Actor of the Lead's Turn. Returns nothing
+ * for any other input, also a top-level message that carries no Actor.
+ */
+export function readTeamMessageSender(
+  message: InboundMessage,
+): { actor: Actor; senderConversationId: string } | undefined {
+  if (message.source !== "event") return undefined;
+  const parsed = leadMessageMetadataSchema.safeParse(message.input.metadata);
+  return parsed.success &&
+    message.input.authorId ===
+      topLevelMessageAuthorId(parsed.data.event.identifier)
+    ? {
+        actor: parsed.data.actor,
+        senderConversationId: parsed.data.event.identifier,
+      }
+    : undefined;
+}
+
+/** Whether an input is a message from another top-level agent. */
+export function isTopLevelAgentMessage(message: InboundMessage): boolean {
+  const metadata = message.input.metadata;
+  return (
+    isEventMailboxMetadata(metadata) &&
+    metadata.event.namespace === AGENT_MESSAGE_EVENT_NAMESPACE &&
+    metadata.event.eventType === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE
+  );
+}
+
 /**
  * Send one message from a top-level agent to another top-level agent and
  * wake the target. The access check runs on each call. A stopped target
  * holds the message, so once the automated-turn limit stops one of two
- * agents, they cannot keep each other running. Repeat calls with the same
- * `messageKey` are safe.
+ * agents, they cannot keep each other running. A Lead's message to a root
+ * in its Space also carries the Actor of the Lead's Turn, so a running Turn
+ * of that root for the same Actor can take it at its next model call. Repeat
+ * calls with the same `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
   /** The person whose input started this Turn, if a person started it. */
@@ -136,7 +192,7 @@ export async function enqueueTopLevelAgentMessage(args: {
   text: string;
   to: string;
 }): Promise<void> {
-  await requireTopLevelAgentAccess(args);
+  const { toTeam } = await requireTopLevelAgentAccess(args);
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
   const summary = `Top-level agent ${args.senderConversationId} sent a message.`;
@@ -149,6 +205,9 @@ export async function enqueueTopLevelAgentMessage(args: {
       namespace: AGENT_MESSAGE_EVENT_NAMESPACE,
       trustedSummary: summary,
     },
+    // Only a running Turn's steering drain reads it. The queued message
+    // still runs as the event system Actor.
+    ...(toTeam && args.askingActor ? { actor: args.askingActor } : undefined),
   };
   await enqueueAutomatedInput({
     message: {
@@ -159,7 +218,7 @@ export async function enqueueTopLevelAgentMessage(args: {
       input: {
         // One author per sender, so messages of one sender share a Turn and
         // never join a Turn of watch Events.
-        authorId: `agent-message:${args.senderConversationId}`,
+        authorId: topLevelMessageAuthorId(args.senderConversationId),
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: renderTopLevelMessageInput({

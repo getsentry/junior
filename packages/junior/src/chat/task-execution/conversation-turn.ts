@@ -122,6 +122,7 @@ import type {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { createParentSteeringDrain } from "@/chat/agent-invocations/parent-steering";
+import { createTeamSteeringDrain } from "@/chat/agent-invocations/team-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   type eventBatchMessageMeta,
@@ -642,6 +643,20 @@ export function createConversationTurnWorker(
                     context,
                     conversation,
                     credentialContext,
+                    turnId,
+                  }),
+                ]
+              : []),
+            // A Turn of a root in a Space also reads the later messages that
+            // the Space's Lead sends for the Turn's Actor.
+            ...(storedConversation?.spaceId
+              ? [
+                  createTeamSteeringDrain({
+                    actor,
+                    context,
+                    conversation,
+                    credentialContext,
+                    spaceId: storedConversation.spaceId,
                     turnId,
                   }),
                 ]

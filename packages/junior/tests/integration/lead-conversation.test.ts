@@ -4,11 +4,11 @@ import {
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
-import type { AgentRun } from "@/chat/agent/types";
+import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import {
   createAndEnqueueConversation,
   webActorFromUser,
@@ -22,6 +22,7 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -44,6 +45,12 @@ import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import {
+  commitRunInput,
+  createHarness,
+  finishRun,
+  steerRun,
+} from "../fixtures/thread-input";
 import { signedInViewer } from "../fixtures/user";
 
 /**
@@ -315,10 +322,113 @@ describe("Lead", () => {
     await expect(send(boOutside, "call-bo")).rejects.toThrow(
       "is outside this Space",
     );
+    // Only a message to a root of its team can steer a running Turn, so
+    // only that message carries the Actor of the Lead's Turn.
+    const leadMessageActors = async (conversationId: string) =>
+      (await getConversationWorkState({ conversationId }))?.messages
+        .filter((message) => message.source === "event")
+        .map(
+          (message) => (message.input.metadata as { actor?: unknown }).actor,
+        );
+    expect(await leadMessageActors(boInSpace)).toEqual([webActorFromUser(ana)]);
+    expect(await leadMessageActors(anaOutside)).toEqual([undefined]);
     // A Turn that no member started writes only inside the Space.
     await expect(send(anaOutside, "call-watch", WATCH_SOURCE)).rejects.toThrow(
       "is outside this Space",
     );
+  });
+
+  it("steers the running Turn of a root that it started only for that Turn's Actor", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const ana = await signedInViewer("lead-running@example.com");
+      const bo = await signedInViewer("lead-running-other@example.com");
+      const { lead } = await spaceLead(ana);
+      const { conversation_id: started } = (await startTool({
+        leadConversationId: lead.conversationId,
+        person: ana,
+        queue: harness.queue,
+        turnId: "lead-running-turn",
+      }).execute!(
+        { task: "Check the deploy.", title: "Deploy check" },
+        { toolCallId: "call-start" },
+      )) as { conversation_id: string };
+      // A Lead Turn that a member started.
+      const send = async (person: User, toolCallId: string, text: string) =>
+        await createMessageAgentTool(
+          bindMessageAgent(
+            {
+              actor: webActorFromUser(person),
+              conversationId: lead.conversationId,
+              destination: lead.destination!,
+              instruction: { text: "Steer the deploy check." },
+              source: createWebSource(lead.conversationId, "public"),
+              turnId: `lead-turn-${person.id}`,
+            },
+            { queue: harness.queue, state: harness.state },
+          )!,
+        ).execute!({ text, to: started }, { toolCallId });
+
+      const drained: AgentSteeringMessage[][] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        const startedAtMs = Date.now();
+        // The Lead sends these while the root's model call runs.
+        await expect(
+          send(ana, "call-retry", "Also check the retry path."),
+        ).resolves.toEqual({ conversation_id: started, delivery: "queued" });
+        vi.setSystemTime(Date.now() + 1);
+        await send(ana, "call-timeout", "Also check the timeout.");
+        // A Lead Turn for another member never steers ana's Turn.
+        vi.setSystemTime(Date.now() + 1);
+        await send(bo, "call-billing", "Check billing.");
+        // The fake run saves its prompt with the time that it started at.
+        vi.setSystemTime(startedAtMs);
+        const steered = await steerRun(run, (messages) => {
+          drained.push(messages);
+        });
+        await steerRun(run, (messages) => drained.push(messages), steered);
+        const outcome = await finishRun(
+          run,
+          { noReply: {} },
+          undefined,
+          steered,
+        );
+        // bo's message waits out the Event window, then runs.
+        vi.setSystemTime(startedAtMs + EVENT_WAIT_MS + 10);
+        return outcome;
+      });
+      await harness.drain(started);
+
+      // Both of ana's messages join the next model call together, as data.
+      expect(drained).toHaveLength(1);
+      expect(drained[0]!.map((message) => message.provenance)).toEqual([
+        { authority: "context" },
+        { authority: "context" },
+      ]);
+      expect(drained[0]!.map((message) => message.text)).toEqual([
+        expect.stringMatching(
+          /source="top_level_agent"[\s\S]*Also check the retry path\./,
+        ),
+        expect.stringMatching(
+          /source="top_level_agent"[\s\S]*Also check the timeout\./,
+        ),
+      ]);
+      // bo's message runs its own Turn, as the event system Actor.
+      expect(harness.runs.map((run) => run.actor)).toEqual([
+        expect.objectContaining({ platform: "web", userId: ana.id }),
+        { name: "event", platform: "system" },
+      ]);
+      expect(harness.runs[1]!.instruction.text).toContain("Check billing.");
+      expect(
+        (await getConversationWorkState({ conversationId: started }))?.messages,
+      ).toEqual([]);
+    } finally {
+      await harness.close();
+      vi.useRealTimers();
+    }
   });
 
   it("watches only the Conversations that it may read", async () => {
