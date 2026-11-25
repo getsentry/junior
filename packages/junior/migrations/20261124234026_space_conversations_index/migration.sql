@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_space_activity_idx" ON "junior_conversations" ("space_id","last_activity_at" DESC NULLS LAST) WHERE "space_id" is not null;

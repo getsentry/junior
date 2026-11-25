@@ -1,6 +1,7 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { ConversationDetails } from "./ConversationDetails";
+import { ConversationGlance } from "./ConversationGlance";
 import type { ConversationLink } from "../../conversations/ConversationLinkedWork";
 import {
   ConversationStats,
@@ -43,6 +44,9 @@ export function ConversationDetailsPanel(props: {
   return (
     <ConversationDetails
       agentTree={detail?.agentTree}
+      glance={
+        <ConversationGlance conversation={conversation} detail={detail} />
+      }
       summary={detail?.summary}
       summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
@@ -62,11 +66,13 @@ export function ConversationDetailsPanel(props: {
         hasConversationStats({
           conversation,
           detail,
+          glance: true,
           showUsageBreakdown,
         }) ? (
           <ConversationStats
             conversation={conversation}
             detail={detail}
+            glance
             showUsageBreakdown={showUsageBreakdown}
           />
         ) : null
@@ -76,6 +82,7 @@ export function ConversationDetailsPanel(props: {
           <ConversationUsageBreakdown
             conversation={conversation}
             detail={detail}
+            glance
           />
         ) : null
       }

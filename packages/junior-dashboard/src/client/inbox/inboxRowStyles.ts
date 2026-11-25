@@ -41,9 +41,12 @@ export function inboxHeadGridClass(): string {
   );
 }
 
-/** The meta at the end of an Inbox row head, such as its age. */
+/**
+ * The meta at the end of an Inbox row head, such as its age. It is as tall
+ * as the title's first line (`leading-snug`), so both share a center.
+ */
 export const INBOX_ROW_META_CLASS =
-  "col-start-3 row-start-1 flex items-center gap-2 pt-0.5 text-xs tabular-nums text-dashboard-text-faint";
+  "col-start-3 row-start-1 flex min-h-[1.375rem] items-center gap-2 text-xs tabular-nums text-dashboard-text-faint";
 
 /** The button that heads an Inbox row and expands it in place. */
 export function inboxRowButtonClass(expanded: boolean): string {

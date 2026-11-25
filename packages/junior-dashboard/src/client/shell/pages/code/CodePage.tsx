@@ -12,10 +12,14 @@ import {
   type TimeRangeDays,
 } from "../../../components/controls/TimeRangeSelector";
 import { getDashboardAgentName } from "../../../agentName";
+import { MessageObjectsProvider } from "../../../display-text/DisplayText";
 import { useInboxData } from "../../../inbox/inboxData";
 import { inboxViewPath, viewRows } from "../../../inbox/inboxModel";
 import {
   PullRequestChange,
+  type PullRequestChangeRow,
+  PullRequestStack,
+  stackedChanges,
   usePullRequestSections,
 } from "../../../inbox/InboxPullRequests";
 import { InboxEmptyState, InboxSection } from "../../../inbox/InboxSection";
@@ -33,7 +37,7 @@ import { CodeSummaryCards } from "../../../pages/code/CodeSummaryCards";
 import { codeActivity } from "../../../pages/code/RepositorySections";
 import { codeScopeOf } from "../../../pages/code/codeRepositoryRoutes";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { CodePageFrame } from "./CodePageFrame";
+import { PageFrame } from "../../../components/layout/PageFrame";
 import { CodeScopeTabs } from "./CodeScopeTabs";
 
 /**
@@ -49,9 +53,9 @@ export function CodePage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const rangeSelector = <TimeRangeSelector onChange={setRange} value={range} />;
   return (
-    <CodePageFrame
+    <PageFrame
       returnPath={`${location.pathname}${location.search}`}
-      tabs={
+      actions={
         signedIn ? (
           <CodeScopeTabs scope={scope} search={location.search} />
         ) : undefined
@@ -59,11 +63,14 @@ export function CodePage() {
       title="Code"
     >
       {scope === "mine" ? (
-        <CodeMine range={range} rangeSelector={rangeSelector} />
+        // The open changes read their live cards in one request.
+        <MessageObjectsProvider>
+          <CodeMine range={range} rangeSelector={rangeSelector} />
+        </MessageObjectsProvider>
       ) : (
         <CodeAll range={range} rangeSelector={rangeSelector} />
       )}
-    </CodePageFrame>
+    </PageFrame>
   );
 }
 
@@ -96,6 +103,18 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
       <PageContentSkeleton label="Loading your pull requests" variant="list" />
     );
   const report = pullRequests.report;
+  const changeRow = (row: PullRequestChangeRow) => (
+    <PullRequestChange
+      expanded={false}
+      key={row.change.id}
+      nowMs={pullRequests.nowMs}
+      row={row}
+    >
+      {row.items.length > 0
+        ? row.items.map((item) => <AskRow item={item} key={item.key} nested />)
+        : null}
+    </PullRequestChange>
+  );
   return (
     <>
       <div>
@@ -112,20 +131,19 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
               label={section.label}
               onToggle={() => toggle(section.key)}
             >
-              {section.changes.map((row) => (
-                <PullRequestChange
-                  expanded={false}
-                  key={row.change.id}
-                  nowMs={pullRequests.nowMs}
-                  row={row}
-                >
-                  {row.items.length > 0
-                    ? row.items.map((item) => (
-                        <AskRow item={item} key={item.key} nested />
-                      ))
-                    : null}
-                </PullRequestChange>
-              ))}
+              {stackedChanges(section.changes).map((entry) =>
+                entry.kind === "stack" ? (
+                  <PullRequestStack
+                    count={entry.rows.length}
+                    key={entry.key}
+                    stack={entry.stack}
+                  >
+                    {entry.rows.map(changeRow)}
+                  </PullRequestStack>
+                ) : (
+                  changeRow(entry.row)
+                ),
+              )}
               {section.items.map((item) => (
                 <AskRow item={item} key={item.key} />
               ))}

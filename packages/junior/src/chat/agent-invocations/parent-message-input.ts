@@ -6,7 +6,7 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 /**
  * A parent agent task or message to a child: who sent it and the
  * instruction. It names the parent Conversation, the
- * Actor and grants of the parent's Turn, and the `spawnAgent` or
+ * Actor and grants of the parent's Turn, and the `startAgent` or
  * `messageAgent` tool call that sent it. Its text is the raw task. `fork`
  * marks the task of a fork spawn.
  */

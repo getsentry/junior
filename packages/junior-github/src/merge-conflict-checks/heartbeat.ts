@@ -8,6 +8,8 @@
  */
 import type {
   EventPublisher,
+  PluginCache,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginState,
@@ -25,6 +27,11 @@ import {
   closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
+import {
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "./resolved.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -100,6 +107,7 @@ async function checkConflict(
   // Conflict events match only `repo` and `pullRequest`.
   if (!(await args.events.hasMatch?.(events))) return;
   for (const event of await applyGitHubConflictPolicy({
+    codeChanges: args.codeChanges,
     conflict: input.conflict,
     db: args.db,
     draft: input.draft,
@@ -131,10 +139,23 @@ async function checkRepository(
     const mergeable: number[] = [];
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
-      if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable === "MERGEABLE") mergeable.push(node.number);
-      if (node.mergeable !== "CONFLICTING") continue;
       const ref = { number: node.number, repositoryFullName };
+      if (node.mergeable === "UNKNOWN") unknown = true;
+      if (node.mergeable === "MERGEABLE") {
+        mergeable.push(node.number);
+        // oxlint-disable-next-line no-await-in-loop -- One entry write per mergeable pull request.
+        await clearGitHubCachedConflict(args.cache, ref, node.headRefOid);
+        // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+        await publishGitHubConflictResolved({
+          events: args.events,
+          headSha: node.headRefOid,
+          ref,
+          state: args.state,
+        });
+      }
+      if (node.mergeable !== "CONFLICTING") continue;
+      // oxlint-disable-next-line no-await-in-loop -- One state write per conflicted pull request.
+      await markGitHubConflict(args.state, ref);
       const conflict: GitHubMergeConflict = {
         baseBranch: node.baseRefName,
         headSha: node.headRefOid,
@@ -150,6 +171,7 @@ async function checkRepository(
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
     await closeGitHubConflictItems({
+      codeChanges: args.codeChanges,
       db: args.db,
       log: args.log,
       numbers: mergeable,
@@ -165,6 +187,9 @@ async function checkRepository(
 }
 
 interface CheckArgs {
+  /** The plugin cache, whose entry a mergeable pull request clears of a conflict. */
+  cache: PluginCache;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
@@ -216,7 +241,7 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
   const nowMs = args.now.getTime();
   let checked = 0;
   for (const repositoryFullName of await listGitHubRepositoriesWithOpenPullRequests(
-    args.db,
+    args.codeChanges,
   )) {
     if (checked >= CHECK_LIMIT) break;
     // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.

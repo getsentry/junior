@@ -18,12 +18,6 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A parent manages the lifecycle of its child agents. It starts, steers,
   stops, and archives them, so finished children do not pile up.
 
-## Entry points
-
-- Dashboard: the Threads and Tasks lists of a Conversation, and the page of
-  each child agent. People message a Thread on its page.
-- Config: `limits.maxAgentDepth`.
-
 ## Rules
 
 - A child agent is an ordinary Conversation. Its `kind`, `thread` or
@@ -61,8 +55,6 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
 - A parent does not archive its child agents when their work is done. This
-  breaks "a parent manages the lifecycle of its child agents".
-- A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
 - A parent message that arrives while a person stops its child does not
   run, and a retried spawn can lose its task to a worker that holds the

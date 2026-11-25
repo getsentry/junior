@@ -56,13 +56,17 @@ import {
   CONVERSATION_METADATA_TASK,
   updateConversationMetadata,
 } from "@/chat/conversations/metadata/task";
-import { getRegistrations } from "./agent-hooks";
+import { type AppEventPublisher, getRegistrations } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
+  type PluginTaskSendOptions,
+  type SessionPluginTaskMessage,
 } from "./task-queue";
+import { processStartedPluginTask } from "./started-task-runner";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 import { mapBounded } from "@/chat/fan-out";
@@ -78,9 +82,18 @@ const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
  * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
  * by default, or an in-process queue.
  */
-export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
+export type SendPluginTask = (
+  message: PluginTaskQueueMessage,
+  options?: PluginTaskSendOptions,
+) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
+  /** Queue delivery of this message, when the queue reports it. */
+  deliveryCount?: number | undefined;
+  /** Publishes the Events of a started task. */
+  events?: AppEventPublisher | undefined;
+  /** Shows an Inbox item that a started task changed. */
+  showInboxItem?: ShowInboxItem | undefined;
   signal?: AbortSignal;
 }
 
@@ -412,7 +425,7 @@ async function loadPluginRun(
 /** Build the plugin-facing context for one claimed task attempt. */
 function taskPluginContext(
   plugin: PluginRegistration,
-  message: PluginTaskQueueMessage,
+  message: SessionPluginTaskMessage,
   options: ProcessPluginTaskOptions = {},
 ): PluginTaskContext {
   const pluginName = plugin.manifest.name;
@@ -458,14 +471,16 @@ function taskPluginContext(
   };
 }
 
-function isConversationMetadataTask(message: PluginTaskQueueMessage): boolean {
+function isConversationMetadataTask(
+  message: SessionPluginTaskMessage,
+): boolean {
   return (
     message.plugin === CONVERSATION_METADATA_TASK.plugin &&
     message.name === CONVERSATION_METADATA_TASK.name
   );
 }
 
-function findPluginTask(message: PluginTaskQueueMessage) {
+function findPluginTask(message: SessionPluginTaskMessage) {
   const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
@@ -473,7 +488,8 @@ function findPluginTask(message: PluginTaskQueueMessage) {
     return undefined;
   }
   const task = plugin.tasks[message.name];
-  return { plugin, task };
+  // A task with a payload runs only when its plugin starts it.
+  return task && !task.payload ? { plugin, task } : undefined;
 }
 
 /**
@@ -487,10 +503,9 @@ export async function scheduleSessionCompletedPluginTasks(
   const coreParams = pluginTaskParamsSchema.parse(params);
   const tasks = [
     ...getRegistrations().flatMap((plugin) =>
-      Object.keys(plugin.tasks ?? {}).map((name) => ({
-        name,
-        plugin: plugin.manifest.name,
-      })),
+      Object.entries(plugin.tasks ?? {})
+        .filter(([, task]) => !task.payload)
+        .map(([name]) => ({ name, plugin: plugin.manifest.name })),
     ),
     CONVERSATION_METADATA_TASK,
   ];
@@ -523,6 +538,15 @@ export async function processPluginTask(
   message: PluginTaskQueueMessage,
   options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
+  if ("payload" in message) {
+    const { events } = options;
+    // Only the app's queue consumers deliver started tasks, and they pass it.
+    if (!events) {
+      throw new Error("A started plugin task needs the app event publisher");
+    }
+    await processStartedPluginTask(message, { ...options, events });
+    return;
+  }
   const params = pluginTaskParamsSchema.parse(message.params);
   await withSpan(
     `plugin.task ${message.plugin}.${message.name}`,

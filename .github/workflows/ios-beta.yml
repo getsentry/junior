@@ -50,7 +50,7 @@ jobs:
 
   testflight:
     name: Upload to TestFlight
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     outputs:
       build: ${{ steps.upload.outputs.build }}
@@ -60,6 +60,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # The beta's version is the latest release tag, and its notes list
+          # the commits since the last beta.
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0

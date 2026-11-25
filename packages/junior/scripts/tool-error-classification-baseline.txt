@@ -53,6 +53,12 @@ packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error(message);
 packages/junior-vercel/src/tool-support/vercel-api.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
+packages/junior-vimeo/src/tool-support/media.ts	throw new Error(`Vimeo tus HEAD failed with HTTP ${response.status}`);
+packages/junior-vimeo/src/tool-support/media.ts	throw new Error(`Vimeo tus PATCH failed with HTTP ${response.status}`);
+packages/junior-vimeo/src/tool-support/vimeo-api.ts	throw new Error(`Vimeo returned an unexpected video URI: ${uri}`);
+packages/junior-vimeo/src/tool-support/vimeo-api.ts	throw new Error(message);
+packages/junior-vimeo/src/tools/set-thumbnail.ts	throw new Error( `Vimeo thumbnail upload failed with HTTP ${response.status}`, );
+packages/junior-vimeo/src/tools/upload.ts	throw new Error( `Vimeo video ${id} was created, but the upload did not finish: ${String(error)}`, { cause: error }, );
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
 packages/junior/src/chat/automations/tools/create.ts	throw new Error("Automation creation requires a tool-call identity.");
@@ -61,7 +67,7 @@ packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment $
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${content.bytes}.`, );
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error(`Failed to ${action}: ${result.stderr}`);
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
-packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of Thread ${childConversationId} returned ${result.status}`, );
+packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of child agent ${childConversationId} returned ${result.status}`, );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );

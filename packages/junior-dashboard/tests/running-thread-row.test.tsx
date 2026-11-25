@@ -34,8 +34,8 @@ function render(node: ReactNode): string {
   );
 }
 
-// The feed card needs a DOM, so the classic e2e "a running row that needs
-// input shows both" covers it.
+// The feed card needs a DOM, so the e2e "a running row that needs input
+// shows both" covers it.
 describe("a running Thread row that needs input", () => {
   it("shows both on a Thread row", () => {
     const markup = render(

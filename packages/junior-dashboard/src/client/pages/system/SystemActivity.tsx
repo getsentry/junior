@@ -19,6 +19,7 @@ import { formatCompactNumber, formatCostSummary } from "../../format";
 import { ConversationActivityChart } from "./ConversationActivityChart";
 import { GuardianActivity } from "./GuardianActivity";
 import { MergedChangeCostChart } from "./MergedChangeCostChart";
+import { PersonSpendCharts } from "./PersonSpendCharts";
 
 function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
@@ -122,6 +123,10 @@ export function SystemActivity(props: {
         bucketUnit={bucketUnit}
         days={days}
         history={mergedChangeCostHistory(props.stats, bucketUnit, days)}
+      />
+      <PersonSpendCharts
+        days={props.stats.personSpendDays}
+        range={props.range}
       />
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />

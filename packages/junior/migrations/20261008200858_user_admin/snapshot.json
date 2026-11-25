@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "fe5fe73a-8243-4d7d-874f-87f40fc30f7f",
+  "prevIds": ["cdab36df-cfaa-426f-bc00-3c200dfadcdd"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_users", "is_admin"],
+      "writes": [
+        "s|col|public.junior_users.is_admin",
+        "n|col|public.junior_users.is_admin",
+        "e|col|public.junior_users.is_admin"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "is_admin",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

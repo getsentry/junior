@@ -305,6 +305,7 @@ export const conversationTurnFailureReasonSchema = z.enum([
   "empty_output",
   "tool_errors",
   "suppressed_output",
+  "cut_off_output",
 ]);
 
 /** Why a failed turn stopped. */
@@ -749,6 +750,11 @@ export interface ConversationEventStore {
     conversationId: string,
     type: KnownConversationEventType,
   ): Promise<ConversationEvent[]>;
+  /** Newest event of any of the types, across every history version. */
+  loadLatestEventOfTypes(
+    conversationId: string,
+    types: readonly KnownConversationEventType[],
+  ): Promise<ConversationEvent | undefined>;
   /** Events of one type in the current history version in `seq` order. */
   loadCurrentEventsOfType(
     conversationId: string,

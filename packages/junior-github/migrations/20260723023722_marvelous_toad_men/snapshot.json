@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "6e0acdc7-db48-4ebf-846e-0589fc32afb5",
+  "prevIds": ["fb7f4132-d92f-4127-be54-23f93c79034b"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_issues",
+        "state_reason"
+      ],
+      "writes": [
+        "s|col|public.junior_github_issues.state_reason",
+        "n|col|public.junior_github_issues.state_reason",
+        "e|col|public.junior_github_issues.state_reason"
+      ],
+      "reads": ["n|tbl|public.junior_github_issues", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_issues",
+        "name": "state_reason",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

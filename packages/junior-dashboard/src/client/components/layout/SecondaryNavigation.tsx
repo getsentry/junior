@@ -15,8 +15,8 @@ import { SecondaryNavigationPortal } from "./DashboardChrome";
 export type SecondaryNavigationItem = SegmentedNavItem;
 
 /**
- * The new UI's pane state: whether the desktop pane shows, and Zen mode.
- * `PaneNav` provides it. The current UI has none.
+ * The pane state: whether the desktop pane shows, and Zen mode. `PaneNav`
+ * provides it.
  */
 export const PaneLinksContext = createContext<{
   paneOpen: boolean;
@@ -35,9 +35,9 @@ export function SecondaryNavigation(props: {
   children: ReactNode;
   items: SecondaryNavigationItem[];
   /**
-   * In the new UI, the pane lists these pages (see `AreaSidebar`), so the
-   * desktop links show only while the reader has closed the pane, not in
-   * Zen mode, and phones open on the list instead.
+   * The pane lists these pages (see `AreaSidebar`), so the desktop links
+   * show only while the reader has closed the pane, not in Zen mode, and
+   * phones open on the list instead.
    */
   listedInPane?: boolean;
   /**

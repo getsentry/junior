@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a54d392c-28bb-4cd3-ba14-1bcfa793fcce",
+  "prevIds": ["5c4638ae-9d00-4ebe-8d93-989a8c3f879b"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_github_pull_requests",
+        "junior_github_pull_requests_unmerged_conversations_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_github_pull_requests_unmerged_conversations_idx",
+        "n|idx|public.junior_github_pull_requests_unmerged_conversations_idx",
+        "e|idx|public.junior_github_pull_requests_unmerged_conversations_idx",
+        "n|rel|public.junior_github_pull_requests_unmerged_conversations_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_requests",
+        "n|sch|public",
+        "n|col|public.junior_github_pull_requests.conversation_ids"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "junior_github_pull_requests_unmerged_conversations_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_ids",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_github_pull_requests\".\"state\" <> 'merged'",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

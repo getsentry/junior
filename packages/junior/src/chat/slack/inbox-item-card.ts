@@ -4,6 +4,7 @@ import {
   getDashboardInboxItemLink,
   getDashboardInboxItemSnoozeLink,
 } from "@/chat/dashboard-link";
+import { isInboxItemForEveryone } from "@/chat/inbox-items/access";
 import {
   INBOX_ITEM_REPLIED_REASON,
   type InboxItem,
@@ -20,6 +21,7 @@ import {
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
+import { SLACK_MAX_MARKDOWN_CHARS } from "./limits";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,
 // so these ids keep the name from before Review items became Inbox items.
@@ -50,10 +52,10 @@ function personName(person: InboxItemAssignee): string {
 
 function assigneeText(item: InboxItem): string {
   const names = [
-    ...(item.assignedToEveryone ? ["Everyone"] : []),
+    ...(isInboxItemForEveryone(item) ? ["Everyone"] : []),
     ...item.assignees.map(personName),
   ];
-  return names.length ? `For ${names.join(", ")}` : "Not assigned";
+  return `For ${names.join(", ")}`;
 }
 
 /**
@@ -68,18 +70,28 @@ function titleText(item: InboxItem): string {
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
 }
 
-/** The title, body, and question of an item, in Slack markdown. */
+/**
+ * The title, body, and question of an item, in Slack markdown. The card is
+ * one message that changes in place, so it cannot post the rest of a long
+ * item as another message. When the whole item is over Slack's markdown
+ * limit, the body gets shorter, and the Inbox shows all of it.
+ */
 function itemText(item: InboxItem): string {
-  return normalizeSlackReplyMarkdown(
-    [
-      titleText(item),
-      // A plugin item asks its body as the question, so it shows once.
-      ...(item.request?.question === item.body
-        ? []
-        : [truncate(item.body, MAX_BODY_CHARS)]),
-      ...(item.request ? [slackUserInputText(item.request)] : []),
-    ].join("\n\n"),
-  );
+  const render = (bodyChars: number) =>
+    normalizeSlackReplyMarkdown(
+      [
+        titleText(item),
+        // A plugin item asks its body as the question, so it shows once.
+        ...(item.request?.question === item.body
+          ? []
+          : [truncate(item.body, bodyChars)]),
+        ...(item.request ? [slackUserInputText(item.request)] : []),
+      ].join("\n\n"),
+    );
+  const bodyChars = Math.min(item.body.length, MAX_BODY_CHARS);
+  const text = render(bodyChars);
+  const overflow = text.length - SLACK_MAX_MARKDOWN_CHARS;
+  return overflow > 0 ? render(bodyChars - overflow) : text;
 }
 
 /**

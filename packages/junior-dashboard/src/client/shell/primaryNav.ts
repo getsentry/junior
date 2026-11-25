@@ -20,13 +20,10 @@ export function isAuthPrimaryNavPath(pathname: string): boolean {
 }
 
 function navItem(
-  key: "automations" | "code" | "inbox" | "lead" | "system",
+  key: "automations" | "code" | "inbox" | "system",
 ): DashboardHeaderNavItem {
   return { key, label: NAV_PAGES[key].label, to: NAV_PAGES[key].to };
 }
-
-/** The nav item key of the viewer's Lead, the home page. */
-export const LEAD_NAV_KEY = "lead";
 
 const SYSTEM_NAV_ITEM = navItem("system");
 
@@ -49,7 +46,6 @@ export function buildPrimaryNavItems(input: {
   const showAccountPages = !input.loading && !input.loggedIn;
 
   return [
-    ...(input.loggedIn ? [navItem(LEAD_NAV_KEY)] : []),
     { ...navItem("inbox"), count: input.inboxCount },
     navItem("code"),
     ...(showTasksNav ? [navItem("automations")] : []),

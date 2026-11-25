@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "3ca2c031-7771-48cf-ae0a-9ceb60274aa4",
+  "prevIds": ["8c5944d5-b348-4020-970b-1b7c7510b10b"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_artifacts",
+        "junior_artifacts_public_sha_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_artifacts_public_sha_uidx",
+        "n|idx|public.junior_artifacts_public_sha_uidx",
+        "e|idx|public.junior_artifacts_public_sha_uidx",
+        "n|rel|public.junior_artifacts_public_sha_uidx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "e|col|public.junior_artifacts.conversation_id",
+        "e|col|public.junior_artifacts.sha256"
+      ],
+      "sharedWrites": []
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_artifacts_public_sha_uidx\"]"
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "eee3e099-55f7-4834-b317-2fea0edf97dd",
+  "prevIds": ["8c016ebf-a0bb-49d0-bf98-29964629b681"],
+  "footprints": [
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_conversation_embeddings"],
+      "writes": [
+        "s|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_brief_fk",
+        "n|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_brief_fk",
+        "e|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_brief_fk",
+        "n|con|public.junior_conversation_embeddings.junior_conversation_embeddings_brief_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_embeddings",
+        "n|sch|public",
+        "e|col|public.junior_conversation_embeddings.conversation_id",
+        "e|col|public.junior_conversation_embeddings.brief_version"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_embeddings",
+        "through_seq"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_embeddings.through_seq",
+        "n|col|public.junior_conversation_embeddings.through_seq",
+        "e|col|public.junior_conversation_embeddings.through_seq"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_embeddings", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "summary"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.summary",
+        "n|col|public.junior_conversations.summary",
+        "e|col|public.junior_conversations.summary"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "metadata_through_seq"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.metadata_through_seq",
+        "n|col|public.junior_conversations.metadata_through_seq",
+        "e|col|public.junior_conversations.metadata_through_seq"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_embeddings",
+        "brief_version"
+      ],
+      "writes": [
+        "s|colprop|public.junior_conversation_embeddings.brief_version.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_conversation_embeddings.brief_version"
+      ],
+      "sqlHash": "9c0226a416958a8d"
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_embeddings"],
+      "writes": [
+        "s|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_conversation_fk",
+        "n|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_conversation_fk",
+        "e|fk|public.junior_conversation_embeddings.junior_conversation_embeddings_conversation_fk",
+        "n|con|public.junior_conversation_embeddings.junior_conversation_embeddings_conversation_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_embeddings",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_embeddings.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_embeddings",
+        "name": "through_seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "summary",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "metadata_through_seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_embeddings",
+        "name": "junior_conversation_embeddings_conversation_fk",
+        "nameExplicit": true,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_conversation_embeddings\",\"junior_conversation_embeddings_brief_fk\"]"
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_conversation_embeddings\",\"brief_version\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

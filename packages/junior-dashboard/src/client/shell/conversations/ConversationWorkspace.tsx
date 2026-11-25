@@ -65,16 +65,13 @@ import {
 import { HomeSummary } from "./HomeSummary";
 
 /**
- * The Inbox: its entries in the pane, and in the main area the Lead, the
- * list of the selected entry, one Conversation, or the composer that "+"
- * opens. Phones show one of these at a time: the entries, a list, then a
+ * The Inbox: its entries in the pane, and in the main area the list of the
+ * selected entry, one Conversation, or the composer that "+" opens. Phones show one of these at a time: the entries, a list, then a
  * Conversation.
  */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
-  /** The viewer's Lead, which home shows. */
-  leadId?: string | undefined;
 }) {
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
@@ -88,9 +85,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params["conversationId"] ?? props.leadId;
-  // The Lead is home, so it has no list to go back to.
-  const leadHome = props.leadId !== undefined;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const { conversations, feed, pendingArchiveUpdates } =
     useInboxConversations();
@@ -270,7 +265,7 @@ export function ConversationWorkspace(props: {
   // menu or dialog, a docked question, or a text box. It runs first, in
   // the capture phase, because a focused tooltip stops Esc from bubbling.
   useEffect(() => {
-    if (!selectedId || leadHome) return;
+    if (!selectedId) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -285,7 +280,7 @@ export function ConversationWorkspace(props: {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [leadHome, navigate, returnPath, selectedId]);
+  }, [navigate, returnPath, selectedId]);
 
   // The Automations bundle became its own page.
   if (isOldAutomationsPath(location))
@@ -336,7 +331,7 @@ export function ConversationWorkspace(props: {
                     sidebarToggle={
                       <span className="flex items-center gap-1">
                         <PaneCollapsedControls />
-                        {leadHome ? null : <BackToList />}
+                        <BackToList />
                       </span>
                     }
                   />
@@ -363,12 +358,11 @@ function BackToList() {
     <Link
       aria-keyshortcuts="Escape"
       aria-label={`Back to ${label}`}
-      className="-ml-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-2 font-sans text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      title="Back (Esc)"
+      className="-ml-2 inline-flex size-8 items-center justify-center rounded-lg text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      title={`Back to ${label} (Esc)`}
       to={to}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
-      {label}
     </Link>
   );
 }

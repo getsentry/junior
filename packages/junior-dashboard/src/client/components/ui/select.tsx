@@ -8,6 +8,13 @@ function Select<Value>(props: SelectPrimitive.Root.Props<Value>) {
   return <SelectPrimitive.Root {...props} />;
 }
 
+/**
+ * The look of a select trigger, for a control that opens its own list, such
+ * as a searchable one in a popover.
+ */
+const selectTriggerClass =
+  "inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel pr-2 pl-2.5 font-sans text-xs font-medium whitespace-nowrap text-dashboard-text-muted transition-colors outline-none select-none md:h-8 hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-popup-open:text-dashboard-text [&_svg]:pointer-events-none [&_svg]:shrink-0";
+
 /** Open the options from a compact control that shows the chosen value. */
 function SelectTrigger({
   className,
@@ -17,10 +24,7 @@ function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
-      className={cn(
-        "inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel pr-2 pl-2.5 font-sans text-xs font-medium whitespace-nowrap text-dashboard-text-muted transition-colors outline-none select-none md:h-8 hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-popup-open:text-dashboard-text [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        className,
-      )}
+      className={cn(selectTriggerClass, className)}
       {...props}
     >
       {children}
@@ -106,4 +110,11 @@ function SelectItem({
   );
 }
 
-export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
+export {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  selectTriggerClass,
+  SelectValue,
+};

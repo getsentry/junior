@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "274435a4-3e2a-463a-98ca-872a6ec7d7e3",
+  "prevIds": ["8c000a3c-a86f-4543-a3c5-b1db2e397d4d"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_code_changes", "draft"],
+      "writes": [
+        "s|col|public.junior_code_changes.draft",
+        "n|col|public.junior_code_changes.draft",
+        "e|col|public.junior_code_changes.draft"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "draft",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

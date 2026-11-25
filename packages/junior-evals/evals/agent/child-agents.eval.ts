@@ -2,7 +2,11 @@ import { describe, expect } from "vitest";
 import { mockDatabaseDocs } from "@junior-evals/fixture/database-docs";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, type Turn } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  type Turn,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Child Agent Results", () => {
@@ -16,11 +20,11 @@ describe("Child Agent Results", () => {
     });
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
+        'Use startAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
       ),
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
@@ -38,7 +42,7 @@ function postedTurns(turns: Turn[]) {
   return turns.filter((turn) => turn.replies.length > 0);
 }
 
-// The user never names spawnAgent or asks for updates. These cases measure
+// The user never names startAgent or asks for updates. These cases measure
 // whether Junior decides on its own which child agent updates people need.
 describe("Child Agent Updates", () => {
   test("when delegated research is the only outcome of the first turn, post a short status and then only the answer", async ({
@@ -56,7 +60,7 @@ describe("Child Agent Updates", () => {
 
     const [first, ...later] = conversation.turns;
     expect(
-      first?.toolCalls.filter((call) => call.name === "spawnAgent").length,
+      first?.toolCalls.filter((call) => call.name === "startAgent").length,
     ).toBeGreaterThanOrEqual(2);
     // Without a status, the thread looks finished while children still work.
     expect(first?.replies).toHaveLength(1);
@@ -71,6 +75,36 @@ describe("Child Agent Updates", () => {
           "The last reply compares how PostgreSQL, MySQL, and SQLite handle the change.",
         ],
         fail: ["The first reply states findings about a database."],
+      }),
+    );
+  });
+
+  test("when the user asks to hear when delegated work is done, wait for its result instead of checking on the child agent", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
+    mockDatabaseDocs();
+    const conversation = await run(
+      slackMention(
+        "have a background agent look up how postgres handles adding a NOT NULL column with a default to a huge table, from the postgres docs. keep an eye on it and tell me what it finds once it's done",
+      ),
+    );
+
+    expect(completedToolCalls("startAgent", conversation)).not.toEqual([]);
+    // The child's result arrives as a new task. Listing the team again and
+    // again only spends the parent's turns.
+    expect(toolCallsOf("listAgents", conversation).length).toBeLessThanOrEqual(
+      1,
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply explains how PostgreSQL handles adding a NOT NULL column with a default to a large table.",
+        ],
+        fail: [
+          "The last reply says that the work is still running or that there are no findings yet.",
+        ],
       }),
     );
   });

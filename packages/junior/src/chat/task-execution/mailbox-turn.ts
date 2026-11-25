@@ -297,6 +297,16 @@ export async function getAuthPausedConversationTurnId(
 }
 
 /** Read one web input batch as Turn input. A batch with no web input gives []. */
+/** Return the transcript author of a web Actor's Message. */
+export function webMessageAuthor(actor: WebActor): ConversationAuthor {
+  return {
+    email: actor.email,
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+    userId: actor.userId,
+    ...(actor.userName ? { userName: actor.userName } : undefined),
+  };
+}
+
 function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
@@ -331,12 +341,7 @@ function parseWebMessages(
     };
     return {
       actor,
-      author: {
-        email: actor.email,
-        ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-        userId: actor.userId,
-        ...(actor.userName ? { userName: actor.userName } : undefined),
-      },
+      author: webMessageAuthor(actor),
       message: entry.message,
       source: createWebSource(entry.message.conversationId),
     };

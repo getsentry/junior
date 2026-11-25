@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a060e2c9-de82-4766-94c1-358cac925a4e",
+  "prevIds": ["5c9ad6b9-5a37-427f-bc06-7bc3d5345353"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "finished_at"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.finished_at",
+        "n|col|public.junior_github_pull_requests.finished_at",
+        "e|col|public.junior_github_pull_requests.finished_at"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "finished_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

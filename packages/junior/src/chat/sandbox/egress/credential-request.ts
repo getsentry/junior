@@ -3,6 +3,7 @@ import {
   resolveAuthTokenPlaceholder,
 } from "@/chat/plugins/auth/auth-token-placeholder";
 import type { PluginManifest } from "@/chat/plugins/types";
+import { workloadIdentityHeader } from "@/chat/plugins/workload-identity-manifest";
 
 // Module overview: decide whether one Sandbox request asks for its plugin's
 // credential.
@@ -39,20 +40,27 @@ const CREDENTIAL_HEADERS = ["authorization", "cookie"];
 const BROWSER_HEADER = "sec-fetch-site";
 
 function placeholders(manifest: PluginManifest): string[] {
+  const credentials = manifest.credentials;
   return [
     HOST_MANAGED_CREDENTIAL_PLACEHOLDER,
-    ...(manifest.credentials
-      ? [resolveAuthTokenPlaceholder(manifest.credentials)]
+    ...(credentials?.type === "oauth-bearer"
+      ? [resolveAuthTokenPlaceholder(credentials)]
       : []),
   ];
 }
 
 function credentialHeaders(manifest: PluginManifest): Set<string> {
+  const credentials = manifest.credentials;
   return new Set(
     [
       ...CREDENTIAL_HEADERS,
       ...Object.keys(manifest.apiHeaders ?? {}),
-      ...Object.keys(manifest.credentials?.apiHeaders ?? {}),
+      ...(credentials?.type === "oauth-bearer"
+        ? Object.keys(credentials.apiHeaders ?? {})
+        : []),
+      ...(credentials?.type === "workload-identity"
+        ? [workloadIdentityHeader(credentials)]
+        : []),
     ].map((name) => name.toLowerCase()),
   );
 }

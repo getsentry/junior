@@ -17,7 +17,8 @@ import {
 } from "../../../components/controls/TimeRangeSelector";
 import { buildConversations, workspacePath } from "../../../format";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
-import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
+import { MessageObjectsProvider } from "../../../display-text/DisplayText";
+import { CodeChangeRows } from "../../../pages/code/CodeChangeRow";
 import { CodeSummaryCards } from "../../../pages/code/CodeSummaryCards";
 import {
   CODE_ALL_PATH,
@@ -37,7 +38,7 @@ import {
 import { cn, dashboardInlineLinkClass } from "../../../styles";
 import { OutboundLink } from "../../../components/OutboundLink";
 import { getDashboardAgentName } from "../../../agentName";
-import { CodePageFrame } from "./CodePageFrame";
+import { PageFrame } from "../../../components/layout/PageFrame";
 
 const RECENT_ROWS = 5;
 
@@ -66,12 +67,12 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const name = data?.repository.name ?? "Repository";
   const tabLabel = TABS.find((tab) => tab.key === props.tab)?.label;
   return (
-    <CodePageFrame
+    <PageFrame
       back={BACK_TO_CODE}
       documentTitle={props.tab === "overview" ? name : `${name} · ${tabLabel}`}
       phoneTitle={name}
       returnPath={`${location.pathname}${location.search}`}
-      tabs={
+      actions={
         data ? (
           <RepositoryTabsNav
             repositoryId={data.repository.id}
@@ -99,7 +100,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
       ) : (
         <PageContentSkeleton label="Loading repository" variant="stats" />
       )}
-    </CodePageFrame>
+    </PageFrame>
   );
 }
 
@@ -174,12 +175,16 @@ function RepositoryOverview(props: { data: CodeRepositoryReport }) {
           viewAllTo={codeRepositoryPath(data.repository.id, "conversations")}
         >
           {conversations.length > 0 ? (
-            conversations.map((conversation) => (
-              <RecentConversationRow
-                conversation={conversation}
-                key={conversation.id}
-              />
-            ))
+            // The rows read the live status of their linked work in one
+            // request.
+            <MessageObjectsProvider>
+              {conversations.map((conversation) => (
+                <RecentConversationRow
+                  conversation={conversation}
+                  key={conversation.id}
+                />
+              ))}
+            </MessageObjectsProvider>
           ) : conversationsQuery.data || conversationsQuery.error ? (
             <div className="p-4">
               <EmptyTelemetry>
@@ -197,9 +202,7 @@ function RepositoryOverview(props: { data: CodeRepositoryReport }) {
           viewAllTo={codeRepositoryPath(data.repository.id, "changes")}
         >
           {changes.length > 0 ? (
-            changes.map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))
+            <CodeChangeRows changes={changes} />
           ) : (
             <div className="p-4">
               <EmptyTelemetry>No code changes are recorded yet.</EmptyTelemetry>

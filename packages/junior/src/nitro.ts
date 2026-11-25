@@ -13,6 +13,8 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { injectVirtualSystemPrompts } from "@/build/virtual-system-prompts";
+import { resolveBotName } from "@/chat/bot-name";
 import { queueCallbackRoutes } from "@/chat/queue/routes";
 import {
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
@@ -50,28 +52,10 @@ export function withSentryConfig(
   config: SentryNitroConfig,
   options: SentryNitroOptions = {},
 ): SentryNitroConfig {
-  return withSentryNitroConfig(bundleSentryNitroRuntime(config), {
+  return withSentryNitroConfig(config, {
     ...options,
     release: { name: getDeploymentServiceVersion(), ...options.release },
   });
-}
-
-// `@sentry/nitro` adds its runtime plugin from `node_modules`, and since
-// 11.11.0 that plugin imports the virtual module `#nitro/virtual/tasks`.
-// `nitro dev` keeps `node_modules` files external, so Node loads the plugin
-// and fails with ERR_PACKAGE_IMPORT_NOT_DEFINED. Production builds already
-// bundle it. TODO: Remove when `@sentry/nitro` marks its runtime noExternal.
-const SENTRY_NITRO_RUNTIME =
-  /[/\\]@sentry[/\\]nitro[/\\]build[/\\]esm[/\\]runtime[/\\]/;
-
-function bundleSentryNitroRuntime(
-  config: SentryNitroConfig,
-): SentryNitroConfig {
-  if (config.noExternals === true) return config;
-  return {
-    ...config,
-    noExternals: [...(config.noExternals || []), SENTRY_NITRO_RUNTIME],
-  };
 }
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
@@ -89,6 +73,12 @@ export type JuniorNitroPluginSource =
   | string;
 
 export interface JuniorNitroOptions {
+  /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME` at build, then `junior`. The build puts it in the
+   * system prompt, and the runtime reads the same value.
+   */
+  botName?: string;
   cwd?: string;
   /** Authenticated dashboard configuration injected for createApp(). */
   dashboard?: JuniorNitroDashboardOptions;
@@ -248,6 +238,21 @@ function dropRoutedServerEntry(nitro: Nitro): void {
   }
 }
 
+// `nitro dev` does not resolve `#junior/config`, so the runtime reads
+// `JUNIOR_BOT_NAME`. Each app worker copies `process.env` when it starts.
+function shareDevBotName(nitro: Nitro, botName: string): void {
+  const previous = process.env["JUNIOR_BOT_NAME"];
+  process.env["JUNIOR_BOT_NAME"] = botName;
+  // A change to the Nitro config closes this instance and runs modules again.
+  nitro.hooks.hook("close", () => {
+    if (previous === undefined) {
+      delete process.env["JUNIOR_BOT_NAME"];
+    } else {
+      process.env["JUNIOR_BOT_NAME"] = previous;
+    }
+  });
+}
+
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void | Promise<void> };
@@ -258,6 +263,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         const cwd = path.resolve(
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
+        const botName = resolveBotName(options.botName, process.env);
 
         const functionMaxDurationSeconds = configureVercelDeployment(
           nitro,
@@ -306,6 +312,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             (plugin) => plugin.manifest.name,
           );
         injectVirtualConfig(nitro, {
+          botName,
           functionMaxDurationSeconds,
           ...(pluginModule
             ? {
@@ -317,6 +324,13 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,
+        });
+        injectVirtualSystemPrompts(nitro, {
+          botName,
+          loadPlugins: async () =>
+            pluginRuntimeRegistrationsFromPluginSet(
+              await loadConfiguredPluginSet(),
+            ),
         });
 
         const copyBuildContent = async () => {
@@ -347,7 +361,11 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           });
         });
 
-        return nitro.options.dev ? startDevQueue(nitro) : undefined;
+        if (!nitro.options.dev) {
+          return undefined;
+        }
+        shareDevBotName(nitro, botName);
+        return startDevQueue(nitro);
       },
     },
   };

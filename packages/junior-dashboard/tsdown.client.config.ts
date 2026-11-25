@@ -7,7 +7,6 @@ import {
   DASHBOARD_CLIENT_MANIFEST_FILE,
   DASHBOARD_STYLESHEET_NAME,
   type DashboardClientManifest,
-  type DashboardShell,
 } from "./src/public-assets";
 
 const publicDir = "dist/public";
@@ -78,33 +77,28 @@ function editorChunkUrlPlugin(): Rolldown.Plugin {
 }
 
 /**
- * Write the client manifest: each UI shell's entry and every file it imports
- * statically, the stylesheet, and the first-paint fonts. The page shell
- * preloads the files of the viewer's shell, so the browser fetches them
- * beside the entry instead of after it.
+ * Write the client manifest: the entry and every file it imports statically,
+ * the stylesheet, and the first-paint fonts. The page shell preloads these
+ * files, so the browser fetches them beside the entry instead of after it.
  */
 function clientManifestPlugin(): Rolldown.Plugin {
   return {
     name: "junior-dashboard-client-manifest",
     writeBundle(_options, bundle) {
-      const shellFiles = (shell: DashboardShell) => {
-        const entry = Object.values(bundle).find(
-          (output) =>
-            output.type === "chunk" && output.isEntry && output.name === shell,
-        )?.fileName;
-        if (!entry) throw new Error(`Dashboard ${shell} entry was not built`);
-        const imports = new Set<string>();
-        const pending = [entry];
-        for (let file = pending.pop(); file; file = pending.pop()) {
-          const output = bundle[file];
-          for (const item of output?.type === "chunk" ? output.imports : []) {
-            if (imports.has(item)) continue;
-            imports.add(item);
-            pending.push(item);
-          }
+      const entry = Object.values(bundle).find(
+        (output) => output.type === "chunk" && output.isEntry,
+      )?.fileName;
+      if (!entry) throw new Error("Dashboard entry was not built");
+      const imports = new Set<string>();
+      const pending = [entry];
+      for (let file = pending.pop(); file; file = pending.pop()) {
+        const output = bundle[file];
+        for (const item of output?.type === "chunk" ? output.imports : []) {
+          if (imports.has(item)) continue;
+          imports.add(item);
+          pending.push(item);
         }
-        return { entry, imports: [...imports].sort() };
-      };
+      }
       // tsup.styles.config.ts writes the stylesheet and fonts first.
       const files = readdirSync(publicDir);
       const stylesheet = files.find((file) =>
@@ -114,8 +108,9 @@ function clientManifestPlugin(): Rolldown.Plugin {
         throw new Error("Dashboard stylesheet was not built");
       }
       const manifest: DashboardClientManifest = {
+        entry,
         fonts: files.filter((file) => FIRST_PAINT_FONT.test(file)).sort(),
-        shells: { classic: shellFiles("classic"), inbox: shellFiles("inbox") },
+        imports: [...imports].sort(),
         stylesheet,
       };
       mkdirSync("dist", { recursive: true });
@@ -131,69 +126,15 @@ function clientManifestPlugin(): Rolldown.Plugin {
 // the package name anywhere in the path.
 const WORKSPACE_PACKAGE = /[\\/]@sentry[\\/]junior[\\/]/;
 
-type ChunkingContext = Parameters<Rolldown.CodeSplittingNameFunction>[1];
-
-const SHELL_ENTRIES: Record<DashboardShell, string> = {
-  classic: path.resolve("src/classic.ts"),
-  inbox: path.resolve("src/inbox.ts"),
-};
-
-// The modules that each shell imports statically, for one chunking pass.
-// Rolldown reuses its module infos within a pass, so the entry's info keys
-// the result.
-const shellModules = new WeakMap<object, Record<DashboardShell, Set<string>>>();
-
-function staticModulesOf(entry: string, ctx: ChunkingContext): Set<string> {
-  const seen = new Set([entry]);
-  const pending = [entry];
-  for (let id = pending.pop(); id; id = pending.pop()) {
-    for (const imported of ctx.getModuleInfo(id)?.importedIds ?? []) {
-      if (seen.has(imported)) continue;
-      seen.add(imported);
-      pending.push(imported);
-    }
-  }
-  return seen;
-}
-
-/**
- * Name a first-load group chunk by the shells that import its module
- * statically. Both shells share the group's chunk only for code that both
- * load first. Code that only one shell loads first gets that shell's chunk,
- * so the other shell does not download it.
- */
-function shellGroupName(group: string): Rolldown.CodeSplittingNameFunction {
-  return (id, ctx) => {
-    const key = ctx.getModuleInfo(SHELL_ENTRIES.inbox);
-    if (!key) return group;
-    let modules = shellModules.get(key);
-    if (!modules) {
-      modules = {
-        classic: staticModulesOf(SHELL_ENTRIES.classic, ctx),
-        inbox: staticModulesOf(SHELL_ENTRIES.inbox, ctx),
-      };
-      shellModules.set(key, modules);
-    }
-    const inbox = modules.inbox.has(id);
-    if (inbox === modules.classic.has(id)) return group;
-    return `${group}-${inbox ? "inbox" : "classic"}`;
-  };
-}
-
 // Run with `--config-loader unrun`: Node's own loader cannot resolve the
 // extensionless imports in ./src/public-assets.
 //
 // Rolldown, not esbuild: esbuild puts shared code in one chunk per set of
 // importing routes, so the first load had about 58 files, many under 1 KB.
 // Rolldown keeps code that the entry already loads in the entry.
-//
-// Each UI shell is its own entry, and the page loads only the viewer's. A
-// shell imports the shared startup from src/client.tsx, so the two entries
-// share its chunks. `$initial` below covers what either entry imports.
 export default defineConfig({
   entry: {
-    classic: "src/classic.ts",
-    inbox: "src/inbox.ts",
+    dashboard: "src/dashboard.ts",
   },
   format: "esm",
   platform: "browser",
@@ -226,9 +167,9 @@ export default defineConfig({
   },
   outputOptions: {
     // Deploys change app code far more often than dependencies. Keep the
-    // third-party code that the first load needs out of the entries, so its
+    // third-party code that the first load needs out of the entry, so its
     // files keep their hashes and stay cached across deploys. `$initial`
-    // limits each group to code that an entry imports statically, so lazy
+    // limits each group to code that the entry imports statically, so lazy
     // pages, grammars, and wasm stay lazy.
     //
     // App code imports single icons and Base UI components by name, so a
@@ -241,36 +182,31 @@ export default defineConfig({
     codeSplitting: {
       groups: [
         {
-          debugName: "vendor-react",
-          name: shellGroupName("vendor-react"),
+          name: "vendor-react",
           test: /node_modules[\\/](?:react|react-dom|react-router|scheduler)[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          debugName: "vendor-sentry",
-          name: shellGroupName("vendor-sentry"),
+          name: "vendor-sentry",
           test: /node_modules[\\/]@sentry[\\/](?!junior)/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          debugName: "vendor-icons",
-          name: shellGroupName("vendor-icons"),
+          name: "vendor-icons",
           test: /node_modules[\\/]lucide-react[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          debugName: "vendor-ui",
-          name: shellGroupName("vendor-ui"),
+          name: "vendor-ui",
           test: /node_modules[\\/]@base-ui[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          debugName: "vendor",
-          name: shellGroupName("vendor"),
+          name: "vendor",
           test: (id) =>
             /node_modules[\\/]/.test(id) && !WORKSPACE_PACKAGE.test(id),
           tags: ["$initial"],
@@ -279,8 +215,7 @@ export default defineConfig({
         {
           // Lowest priority: `vendor` takes zod first. Otherwise this group
           // would pull it in as a dependency of @sentry/junior.
-          debugName: "junior",
-          name: shellGroupName("junior"),
+          name: "junior",
           test: WORKSPACE_PACKAGE,
           tags: ["$initial"],
           priority: 0,

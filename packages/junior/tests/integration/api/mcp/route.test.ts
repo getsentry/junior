@@ -400,6 +400,7 @@ describe("remote MCP HTTP", () => {
       "searchInboxItems",
       "sendMessage",
       "setConversationAutoArchive",
+      "setConversationSpace",
       "setConversationSubscription",
       "stopConversation",
     ]);

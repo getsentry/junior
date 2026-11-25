@@ -1,13 +1,12 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@dashboard/lib/utils";
-import { useInboxUi } from "@dashboard/uiShell";
 
 const commandButtonClass =
   "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium leading-none focus-visible:outline-2 focus-visible:outline-offset-2";
 
 /**
- * The box of one toolbar control in the new UI: 32px, rounded like
+ * The box of one toolbar control: 32px, rounded like
  * sidebar rows. Icon buttons use it, and so does anything that sits in a
  * row beside them, such as the pane's logo, so their edges line up.
  */
@@ -74,13 +73,12 @@ function Button({
   ...props
 }: Omit<ButtonPrimitive.Props, "className"> &
   VariantProps<typeof buttonVariants> & { className?: string | undefined }) {
-  const inbox = useInboxUi();
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(
         buttonVariants({ variant, size }),
-        inbox && size === "icon" && toolbarControlBoxClass,
+        size === "icon" && toolbarControlBoxClass,
         className,
       )}
       {...props}

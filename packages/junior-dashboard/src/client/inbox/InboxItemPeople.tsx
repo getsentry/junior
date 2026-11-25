@@ -22,15 +22,15 @@ export function InboxItemTitle(props: {
   );
 }
 
-/** Name the assignees of an item as people: Everyone first, then each User. */
+/**
+ * Name the assignees of an item as people: Everyone first, then each User.
+ * The server sends an item with no assignees as one for Everyone.
+ */
 export function InboxItemAssignees(props: {
   card?: boolean;
   item: InboxItemPayload;
 }) {
   const { item } = props;
-  if (!item.assignedToEveryone && item.assignees.length === 0) {
-    return "Unassigned";
-  }
   return (
     <>
       {item.assignedToEveryone ? "Everyone" : null}

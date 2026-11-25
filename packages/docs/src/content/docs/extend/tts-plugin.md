@@ -34,9 +34,9 @@ The host adds the bearer key only to `ai-gateway.vercel.sh` requests. The script
 
 ## Junior Voice
 
-`junior-v1` uses the prebuilt `Puck` voice with separate delivery instructions. It is bright, warm, clear, mischievous, and gently snarky. It is an original adult helper voice, not a performer or character imitation. For serious material, plain mode keeps the voice but drops the teasing.
+`junior-v2` uses the prebuilt `Achird` voice with separate delivery instructions. It sounds like a young intern: bright, eager, a little nervous, and still dry about broken software. It is an original adult character voice, not a performer or character imitation. For serious material, plain mode keeps the voice but drops the nerves and teasing.
 
-The preset is stored in `skills/tts/assets/junior-v1.json`. The sample script is in `skills/tts/assets/sample.txt`. These files are reusable inputs, not proof of a generated or listening-approved voice. The same preset cannot guarantee identical audio after provider updates.
+The preset is stored in `skills/tts/assets/junior-v2.json`. The sample script is in `skills/tts/assets/sample.txt`. These files are reusable inputs, not proof of a generated or listening-approved voice. The same preset cannot guarantee identical audio after provider updates.
 
 Ask Junior:
 

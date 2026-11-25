@@ -46,20 +46,12 @@ export function getParentMessageId(
 
 const REPLY_MESSAGE_PREFIX = "agent-reply:";
 
-/** Return the parent mailbox identity of one child agent `reply` call. */
+/** Return the parent mailbox identity of one child agent Turn's result. */
 export function getAgentReplyMessageId(
   childConversationId: string,
-  toolCallId: string,
+  messageKey: string,
 ): string {
-  return `${REPLY_MESSAGE_PREFIX}${childConversationId}:${toolCallId}`;
-}
-
-/**
- * Return the key of the `reply` of one Turn on a child's Conversation loop.
- * Readers take the sender from the message's sender fields, not this key.
- */
-export function getTurnReplyKey(turnId: string, toolCallId: string): string {
-  return `${turnId}:${toolCallId}`;
+  return `${REPLY_MESSAGE_PREFIX}${childConversationId}:${messageKey}`;
 }
 
 // The Turn id of the `stopped` result that a person's stop of a child agent

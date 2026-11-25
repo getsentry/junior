@@ -10,8 +10,7 @@ import {
   prReview,
 } from "./inbox-fixture";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   function todoRows(page: Page): Locator {
     return page
       .getByRole("region", { name: "To do" })

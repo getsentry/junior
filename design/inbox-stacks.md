@@ -24,30 +24,6 @@ can act on it.
   To do, Up for grabs, and other sections, around the normal Inbox rows.
   It adds no color.
 
-## Entry points
-
-- Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
-  Conversations view.
-- The stack title, which opens the root Conversation. A click on empty
-  space in the stack's header does the same.
-- A right-click anywhere on a stack, which opens the root Conversation's
-  menu, as on its Conversation row.
-- A row click, which opens the row and its answer form.
-- On each row, on hover: Dismiss, Snooze, and the row's main step, as
-  icons with their names as tooltips. The main step comes last. On a code
-  change row it opens the change on its provider, such as "Review on
-  GitHub". A row with no main step, such as a question, shows Expand. A
-  "To do for you" row's main step is Done. A touch screen has no
-  hover, so there a row shows its actions only once it is open. Rows do
-  not repeat them.
-- On a stack: Dismiss and Snooze, as quiet buttons in the order of a
-  row's actions, and the stack's item count once, right-most. The buttons
-  do not repeat the count. Their names say what they cover, such as
-  "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
-  the open asks that the viewer can act on, except To-dos.
-- On a Conversation row, on hover: Archive, Pin, then Open, last.
-- A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
-
 ## Rules
 
 Grouping:

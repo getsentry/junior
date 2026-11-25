@@ -34,8 +34,6 @@ function section(root: string, anchor: string, label: string): NavPage {
 
 /** Every dashboard page that a link names, in nav order within each area. */
 export const NAV_PAGES = {
-  // Home is the viewer's Lead.
-  lead: { access: "account", label: "Lead", to: "/" },
   inbox: { label: INBOX_VIEW_LABELS.inbox, to: inboxViewPath("inbox") },
   snoozed: {
     access: "account",

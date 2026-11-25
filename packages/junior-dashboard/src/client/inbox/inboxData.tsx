@@ -84,11 +84,13 @@ export type InboxFeedPages = {
 
 function useBuildInboxData(input: {
   conversations: Conversation[];
+  /** The first feed page has not loaded yet. */
+  conversationsPending: boolean;
   feed: InboxFeedPages;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
-  const { conversations, feed, signedIn } = input;
+  const { conversations, conversationsPending, feed, signedIn } = input;
   // To do shows the first page even while collapsed, and the waiting sort
   // puts what needs the viewer on it.
   const { items: loaded, query: itemsQuery } = useInboxItemsData({
@@ -240,19 +242,23 @@ function useBuildInboxData(input: {
     [conversations],
   );
   // Items can come from Conversations outside the loaded feed, such as an
-  // Automation run. Those titles load on their own.
+  // Automation run. Those titles load on their own, after the first feed
+  // page, so that a feed still in flight does not read every title.
   const missingIds = useMemo(
-    () => [
-      ...new Set(
-        list.flatMap((item) =>
-          item.rootConversationId &&
-          !conversationById.has(item.rootConversationId)
-            ? [item.rootConversationId]
-            : [],
-        ),
-      ),
-    ],
-    [conversationById, list],
+    () =>
+      conversationsPending
+        ? []
+        : [
+            ...new Set(
+              list.flatMap((item) =>
+                item.rootConversationId &&
+                !conversationById.has(item.rootConversationId)
+                  ? [item.rootConversationId]
+                  : [],
+              ),
+            ),
+          ],
+    [conversationById, conversationsPending, list],
   );
   const missingTitles = useLinkedConversationTitles(missingIds);
   // An item that no Conversation owns has no Conversation title.
@@ -277,7 +283,7 @@ function useBuildInboxData(input: {
   const awake = shown.filter(
     (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
   );
-  // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
+  // One pin: the Conversation's own.
   const isPinned = (conversationId: string | undefined) =>
     Boolean(conversationId && conversationById.get(conversationId)?.pinnedAt);
 
@@ -336,8 +342,8 @@ function useBuildInboxData(input: {
   const conversationRows = rowsByTime(inboxBundles(awake));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Busy rows come
-  // first, a busy pin with them, then the other pins in the viewer's order.
+  // the viewer, works, or watches for an Event or Timer. Pins come first,
+  // busy or not, in the viewer's order, then the busy Conversations.
   // Collapsed, every pin shows, each one click away, and busy Conversations
   // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
@@ -351,9 +357,8 @@ function useBuildInboxData(input: {
     (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedBusy: Conversation[]) => [
+    ...pinned,
     ...unpinnedBusy,
-    ...pinned.filter(busy),
-    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   // Each badge counts its page's rows (`inboxCounts`). A row that leaves
@@ -457,6 +462,7 @@ export function InboxDataProvider(props: {
   const { conversations, feed } = useInboxConversations();
   const value = useBuildInboxData({
     conversations,
+    conversationsPending: feed.isPending,
     // A failed feed page waits for Try again, as the other lists do. A list
     // end can still ask for more after the failure renders.
     feed: scrollPages({

@@ -41,7 +41,7 @@ function proposal(): ToolActionProposal {
       omittedEntries: 0,
     },
     input: { name: "scout", task: "Reply with only the code word MAPLE-7." },
-    tool: { name: "spawnAgent", description: "Start a child agent." },
+    tool: { name: "startAgent", description: "Start a child agent." },
   };
 }
 
@@ -65,7 +65,7 @@ describe("Guardian fixture edge", () => {
         {
           evidence: proposal().evidence!.entries,
           input: proposal().input,
-          tool: "spawnAgent",
+          tool: "startAgent",
         },
       ]);
     },

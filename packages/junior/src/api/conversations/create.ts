@@ -13,6 +13,7 @@ import {
   createAndEnqueueConversation,
   createConversationId,
 } from "@/chat/conversations/web-input";
+import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import {
@@ -30,11 +31,13 @@ import type {
   AcceptedConversationMessage,
   CreateConversationBody,
   CreateConversationMessageBody,
-} from "../schema/conversation";
+} from "../schema/conversation-create";
 import {
   canAddConversationMessages,
   readConversationAccessFromSql,
 } from "./access";
+import { requireSpaceForWork } from "./space";
+import { inviteMentionedPeople } from "./subscription";
 
 /** Check uploads before accepting work. A bad upload is a request error. */
 async function verifyUploads(
@@ -92,6 +95,9 @@ export async function requireWebMessageConversation(
       "Only participants can add messages to a private conversation.",
     );
   }
+  if (messagesNeedSpaceMembership(conversation.kind) && conversation.spaceId) {
+    await requireSpaceForWork(viewer, conversation.spaceId);
+  }
   return conversationId;
 }
 
@@ -114,6 +120,13 @@ export async function createConversationForViewer(
   body: CreateConversationBody,
   services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
+  if (body.spaceId) {
+    // Every Space is public, so its Conversations are public too.
+    if (body.visibility === "private") {
+      throwApiError(400, "A conversation in a Space is public.");
+    }
+    await requireSpaceForWork(viewer, body.spaceId);
+  }
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -127,8 +140,9 @@ export async function createConversationForViewer(
     body.uploadIds,
     services.attachmentStorage,
   );
+  let accepted: AcceptedConversationMessage;
   try {
-    return await createAndEnqueueConversation(
+    accepted = await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
@@ -136,6 +150,7 @@ export async function createConversationForViewer(
         uploads,
         ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
+        ...(body.spaceId ? { spaceId: body.spaceId } : undefined),
       },
       {
         conversationStore: getConversationStore(),
@@ -146,6 +161,8 @@ export async function createConversationForViewer(
   } catch (error) {
     throwApiError(500, "Unable to create conversation.", error);
   }
+  await inviteMentionedPeople(viewer, accepted.conversationId, body.message);
+  return accepted;
 }
 
 /** Append one viewer message to an existing conversation. */
@@ -187,8 +204,10 @@ export async function appendConversationMessageForViewer(
   // this Conversation, like a typed Slack reply. The viewer also saw the
   // transcript so far. The message can wait as pending with no event, so
   // move the read position here: it closes the reply notice, and a reply
-  // task that runs later sees the read and adds no notice.
-  const closeAnsweredAndRead = async () => {
+  // task that runs later sees the read and adds no notice. The people it
+  // mentions join now too, not when its Turn starts.
+  const applyAccepted = async () => {
+    await inviteMentionedPeople(viewer, conversationId, body.message);
     await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
@@ -216,11 +235,11 @@ export async function appendConversationMessageForViewer(
         getConversationWorkState({ conversationId, state }),
       ]);
       if (work?.execution.inboundMessageIds.includes(messageId)) {
-        await closeAnsweredAndRead();
+        await applyAccepted();
       }
       throw error;
     }
-    await closeAnsweredAndRead();
+    await applyAccepted();
     return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);

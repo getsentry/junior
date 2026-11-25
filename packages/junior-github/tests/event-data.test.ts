@@ -16,6 +16,7 @@ import { gitHubPullRequestSubscribable } from "../src/events/pull-request";
 import { gitHubReleaseSourceSubscribable } from "../src/events/release";
 import { gitHubRepositorySubscribable } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
+import { gitHubConflictResolvedEvents } from "../src/merge-conflict-checks/resolved";
 import { gitHubMergeConflictEvents } from "../src/webhooks/merge-conflict";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
 import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
@@ -162,7 +163,11 @@ function fixtureDeliveries(
     },
     ...[
       { action: "opened" },
+      { action: "reopened" },
       { action: "ready_for_review" },
+      { action: "converted_to_draft" },
+      { action: "synchronize" },
+      { action: "review_requested" },
       { action: "closed", merged: true },
       { action: "closed", merged: false },
     ].map(({ action, merged }) => ({
@@ -220,15 +225,18 @@ function releaseDelivery(repo: string, tag: string) {
 
 /** The events that a pull request read adds to a webhook delivery. */
 function mergeConflictEvents(scope: FixtureScope): EventInput[] {
-  return gitHubMergeConflictEvents({
-    conflict: {
-      baseBranch: "main",
-      headSha: scope.checkSha,
-      url: `https://github.com/${scope.repo}/pull/${scope.pullRequest}`,
-    },
-    number: scope.pullRequest,
-    repositoryFullName: scope.repo,
-  });
+  const ref = { number: scope.pullRequest, repositoryFullName: scope.repo };
+  return [
+    ...gitHubMergeConflictEvents({
+      ...ref,
+      conflict: {
+        baseBranch: "main",
+        headSha: scope.checkSha,
+        url: `https://github.com/${scope.repo}/pull/${scope.pullRequest}`,
+      },
+    }),
+    ...gitHubConflictResolvedEvents(ref, scope.checkSha),
+  ];
 }
 
 /** Publish deliveries the way the webhook route does, with every lookup. */

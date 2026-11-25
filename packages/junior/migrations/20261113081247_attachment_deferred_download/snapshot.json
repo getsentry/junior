@@ -1,0 +1,52 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "60fd2cf9-e028-493b-996c-98c8196dbcf9",
+  "prevIds": ["df55d2df-8ffd-443f-ab18-573457ae4c17"],
+  "footprints": [
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "storage_key"
+      ],
+      "writes": ["s|colprop|public.junior_attachments.storage_key.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.storage_key"
+      ],
+      "sqlHash": "b3a99066ec2da111"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_attachments", "sha256"],
+      "writes": ["s|colprop|public.junior_attachments.sha256.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.sha256"
+      ],
+      "sqlHash": "3adfda44dd30c1d3"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"storage_key\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"sha256\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

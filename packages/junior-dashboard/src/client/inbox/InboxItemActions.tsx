@@ -107,7 +107,7 @@ export function InboxItemActions(props: {
   }, [item.id, item.status]);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
-  if (!item.canAct) {
+  if (!item.canAct && !item.canAnswer) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <p className="m-0 text-sm text-dashboard-text-muted">
@@ -142,7 +142,9 @@ export function InboxItemActions(props: {
 
   // A To-do for the viewer closes with Done, its main action.
   const todo = item.todoId !== undefined;
-  const dismiss = props.dismiss ?? true;
+  // A person who may only answer, such as a reader of a public question,
+  // gets no Dismiss or Snooze.
+  const dismiss = item.canAct && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.

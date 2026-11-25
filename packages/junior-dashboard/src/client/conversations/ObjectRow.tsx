@@ -9,7 +9,7 @@ import { ActorAvatar } from "../components/ActorAvatar";
 import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
-import { SameTabLink } from "../components/SameTabLink";
+import { MessageLink } from "../components/MessageLink";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
@@ -75,14 +75,14 @@ export function ObjectRow(props: {
       <div className="flex min-w-0 flex-1 flex-col">
         {card.url ? (
           // No outbound icon: the row itself reads as a link to the source.
-          <SameTabLink
+          <MessageLink
             // The link covers the row, so the whole row opens the source.
             className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
             href={card.url}
             title={card.title}
           >
             {card.title}
-          </SameTabLink>
+          </MessageLink>
         ) : (
           <span
             className="min-w-0 truncate font-medium text-dashboard-text"

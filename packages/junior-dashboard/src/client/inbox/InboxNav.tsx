@@ -2,7 +2,11 @@ import { Ellipsis } from "lucide-react";
 import { useCallback, useId } from "react";
 import { Link } from "react-router";
 
-import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +36,7 @@ import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
 import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpacesNav } from "../spaces/SpacesNav";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -41,11 +46,13 @@ function InFlightRow(props: {
   const { conversation } = props;
   const drag = usePinnedRowDrag(conversation.id);
   const actions = useInboxRowActions(conversation, {
+    move: drag?.move,
     selected: props.selected,
   });
   return (
     <ContextMenu onOpenChange={actions.onMenuOpenChange}>
       <ContextMenuTrigger
+        {...browserMenuOnLinks}
         className={cn(
           "group relative list-none [--row-actions-width:1.25rem]",
           drag?.dragging && "opacity-40",
@@ -68,6 +75,7 @@ function InFlightRow(props: {
             // A long press opens the row menu, not the iOS link callout.
             "[-webkit-touch-callout:none]",
           )}
+          data-row-menu=""
           draggable={drag ? false : undefined}
           to={conversationPath(conversation.id)}
         >
@@ -120,9 +128,10 @@ function InFlightRow(props: {
 
 /**
  * The pane, like Google Inbox: no list of Conversations, only the
- * destinations that open a list in the main area, then the Conversations
- * in flight, running or pinned, each one click away. Pins drag into a new
- * order here. Every page with destinations shows it.
+ * destinations that open a list in the main area, then the viewer's
+ * Spaces, then the Conversations in flight, running or pinned, each one
+ * click away. Pins drag into a new order here. Every page with destinations
+ * shows it.
  */
 export function InboxNav(props: {
   /** On a phone the entries are a page, and each opens its list page. */
@@ -155,15 +164,15 @@ export function InboxNav(props: {
       )}
     >
       <PaneDestinations phone={props.phone} />
+      <SpacesNav phone={props.phone} signedIn={data.signedIn} />
       {data.inFlight.length > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
             In flight
             <span className={dashboardCountClass}>{data.inFlight.length}</span>
           </h2>
-          {/* Every pin shows, so a drop can place them all. Running pins
-              show first, so a drop moves the pin within the stored order,
-              and the other pins keep theirs. */}
+          {/* Every pin shows, in the stored order, so a drop can place
+              them all. */}
           <PinnedConversationOrder
             conversations={data.pinned}
             onError={onReorderError}

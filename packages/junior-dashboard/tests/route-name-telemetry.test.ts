@@ -45,6 +45,7 @@ describe("HTTP route names on request spans", () => {
     const { Hono } = await import("hono");
     const { createDashboardApp } = await import("../src/app");
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp,
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
