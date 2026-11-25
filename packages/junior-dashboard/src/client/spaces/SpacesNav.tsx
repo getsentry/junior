@@ -71,7 +71,12 @@ function SpaceNavRow(props: {
  * away, with the state of its Conversations, and a way to create one. A
  * Space's context menu edits, archives, or leaves it.
  */
-export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
+export function SpacesNav(props: {
+  /** The Space of the open Conversation, which marks its row. */
+  conversationSpaceId?: string;
+  phone?: boolean;
+  signedIn: boolean;
+}) {
   const { pathname } = useLocation();
   const spaces = useMemberSpacesData(props.signedIn);
   const [creating, setCreating] = useState(false);
@@ -94,7 +99,10 @@ export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
         <ul aria-label="Spaces" className="m-0 grid gap-0.5 p-0">
           {spaces.data.spaces.map((space) => (
             <SpaceNavRow
-              current={pathname === spacePath(space.id)}
+              current={
+                pathname === spacePath(space.id) ||
+                space.id === props.conversationSpaceId
+              }
               key={space.id}
               phone={props.phone}
               space={space}
