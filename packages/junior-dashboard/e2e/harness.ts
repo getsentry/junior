@@ -7,12 +7,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  expect,
-  type Page,
-  type Request as PageRequest,
-  type Route,
-} from "@playwright/test";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 import { mockSearchRows } from "./search-fixture";
 import type * as DashboardApp from "../src/app";
@@ -73,20 +68,6 @@ export async function routeConversationVersion(
       },
     }),
   );
-}
-
-/**
- * Wait until `count` versions checks are answered, then let the page finish
- * the work that the last answer started. A test that controls timers moves
- * the clock only after that, so the next poll timer is already set.
- */
-export async function waitForVersionChecks(
-  page: Page,
-  checks: () => number,
-  count: number,
-) {
-  await expect.poll(checks).toBe(count);
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
 }
 
 /**
@@ -183,10 +164,13 @@ export async function releaseHeldRequests(page: Page): Promise<void> {
 // route that the test never released.
 const DRAIN_MS = 3_000;
 
-/** The open fetches of each tracked page, and a way to wait for one to end. */
+/**
+ * The open requests of each tracked page, of every kind, and a way to wait
+ * for one to end.
+ */
 const trackedPages = new WeakMap<
   Page,
-  { open: ReadonlySet<PageRequest>; nextEnd: () => Promise<void> }
+  { loading: ReadonlySet<PageRequest>; nextEnd: () => Promise<void> }
 >();
 
 /**
@@ -202,21 +186,24 @@ export function trackOpenRequests(page: Page): {
   expectNoneOpen: () => Promise<void>;
 } {
   const open = new Set<PageRequest>();
+  const loading = new Set<PageRequest>();
   const waiters = new Set<() => void>();
   const nextEnd = () => new Promise<void>((resolve) => waiters.add(resolve));
   const end = (request: PageRequest) => {
     open.delete(request);
+    loading.delete(request);
     for (const wake of waiters) wake();
     waiters.clear();
   };
   page.on("request", (request) => {
+    loading.add(request);
     // The app reads and writes with fetches. A page asset, such as an
     // image, can still load when the test ends with no harm.
     if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
   });
   page.on("requestfinished", end);
   page.on("requestfailed", end);
-  trackedPages.set(page, { open, nextEnd });
+  trackedPages.set(page, { loading, nextEnd });
   return {
     expectNoneOpen: async () => {
       // Wait until none is open, not only for those open now: a request can
@@ -256,18 +243,26 @@ export async function waitForRender(page: Page): Promise<void> {
   await page.evaluate(async () => {
     for (let task = 0; task < 3; task++) {
       await new Promise<void>((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => resolve();
-        channel.port2.postMessage(undefined);
+        // A window message, not a MessageChannel: the page can collect a
+        // channel that nothing holds before its message arrives.
+        const id = `junior-e2e-render-${task}-${Math.random()}`;
+        const onMessage = (event: MessageEvent) => {
+          if (event.data !== id) return;
+          window.removeEventListener("message", onMessage);
+          resolve();
+        };
+        window.addEventListener("message", onMessage);
+        window.postMessage(id, "*");
       });
     }
   });
 }
 
 /**
- * Wait until the page has no fetch open, and starts none as it renders the
- * responses. Use it to assert that the page sent no more requests, or to
- * count all of them. Fail with each one still open after `timeoutMs`.
+ * Wait until the page has no request open, such as a fetch or a lazy code
+ * chunk, and starts none as it renders the responses. Use it to assert that
+ * the page sent no more requests, or to count all of them. Fail with each
+ * one still open after `timeoutMs`.
  */
 export async function waitForRequestsToEnd(
   page: Page,
@@ -277,13 +272,13 @@ export async function waitForRequestsToEnd(
   if (!tracked) throw new Error("The page fixture does not track this page.");
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    while (tracked.open.size > 0) {
+    while (tracked.loading.size > 0) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
         throw new Error(
           [
             `Requests were still open after ${timeoutMs}ms:`,
-            ...requestLines(tracked.open),
+            ...requestLines(tracked.loading),
           ].join("\n"),
         );
       }
@@ -293,7 +288,7 @@ export async function waitForRequestsToEnd(
       ]);
     }
     await waitForRender(page);
-    if (tracked.open.size === 0) return;
+    if (tracked.loading.size === 0) return;
   }
 }
 
