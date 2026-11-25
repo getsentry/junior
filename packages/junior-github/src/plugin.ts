@@ -482,7 +482,6 @@ export function githubPlugin(
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
-          annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,

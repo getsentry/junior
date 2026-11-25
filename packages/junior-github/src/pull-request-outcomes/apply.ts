@@ -1,24 +1,19 @@
 /**
  * The one write path for a pull request lifecycle outcome. The webhook and
  * the daily reconcile both use it, so the stored row, Junior's code index,
- * and the conversation chip change together.
+ * and the Inbox items change together. Annotations read the pull request
+ * live, so an outcome changes none.
  */
 import type {
   CodeChangeInput,
   PluginCodeChanges,
-  PluginConversationAnnotations,
   PluginConversationChanges,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import {
-  githubAnnotationChange,
-  updateGitHubAnnotations,
-} from "../annotations.js";
 import type { GitHubDb } from "../db/database.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import { endedGitHubPullRequestItemChanges } from "../webhooks/pull-request-action.js";
 import {
-  findGitHubPullRequest,
   type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestOutcome,
 } from "./store.js";
@@ -48,15 +43,12 @@ export function githubCodeChange(
 
 /**
  * Record one pull request outcome. When the stored row changes, update the
- * code index. A merged or closed pull request then marks the chip of the
- * conversation that asked for it and closes its Inbox items in one batch, so
- * no reader sees a merged chip next to an open item. Each other conversation
- * that the code index links gets its chip in its own write, so a stale
- * conversation id breaks only its own chip. The chips and items are optional UI, so a
- * failed write is logged and does not stop the work after it.
+ * code index. A merged or closed pull request then closes the Inbox items
+ * of the conversation that asked for it in one batch. The items are
+ * optional UI, so a failed write is logged and does not stop the work after
+ * it.
  */
 export async function applyGitHubPullRequestOutcome(args: {
-  annotations: PluginConversationAnnotations;
   codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
@@ -83,47 +75,17 @@ export async function applyGitHubPullRequestOutcome(args: {
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
   await args.codeChanges.record(githubCodeChange(outcome));
-  if (state) {
-    const conversationIds =
-      (await findGitHubPullRequest(args.codeChanges, outcome))
-        ?.conversationIds ?? [];
-    const update = {
-      repo: outcome.repositoryFullName,
-      number: outcome.number,
-      objectType: "code_change",
-      status: state,
-    } as const;
-    if (ended) {
-      try {
-        await args.conversationChanges.apply({
-          annotations: conversationIds.includes(ended.conversationId)
-            ? [
-                await githubAnnotationChange({
-                  annotations: args.annotations,
-                  conversationId: ended.conversationId,
-                  update,
-                }),
-              ]
-            : [],
-          inboxItems: ended.inboxItems,
-        });
-      } catch (error) {
-        logFailOpenFailure(
-          args.log,
-          "GitHub ended pull request change failed",
-          error,
-          { number: outcome.number, repository: outcome.repositoryFullName },
-        );
-      }
+  if (ended) {
+    try {
+      await args.conversationChanges.apply({ inboxItems: ended.inboxItems });
+    } catch (error) {
+      logFailOpenFailure(
+        args.log,
+        "GitHub ended pull request change failed",
+        error,
+        { number: outcome.number, repository: outcome.repositoryFullName },
+      );
     }
-    await updateGitHubAnnotations({
-      annotations: args.annotations,
-      conversationIds: conversationIds.filter(
-        (id) => id !== ended?.conversationId,
-      ),
-      log: args.log,
-      update,
-    });
   }
   return recorded;
 }

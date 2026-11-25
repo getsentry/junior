@@ -235,7 +235,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -276,7 +275,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),

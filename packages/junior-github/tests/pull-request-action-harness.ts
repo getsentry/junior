@@ -695,7 +695,6 @@ export function route(
     annotations,
     codeChanges: fixture.codeIndex.codeChanges,
     conversationChanges: conversationChangesThrough({
-      annotations,
       inboxItems,
     }),
     db: fixture.db(),
