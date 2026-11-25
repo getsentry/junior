@@ -46,8 +46,17 @@ function toolContext(
   replyTarget: { in_reply_to_id: number | null } = { in_reply_to_id: null },
   resolveWorkOwner: () => Promise<PluginWorkOwner | undefined> = async () =>
     requester,
+  // The logins that GitHub already asks for a review.
+  requested: string[] = [],
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
+    if (
+      request.method === "GET" &&
+      request.url.endsWith("/requested_reviewers")
+    ) {
+      const users = requested.map((login) => ({ login }));
+      return new Response(JSON.stringify({ users }), { status: 200 });
+    }
     if (request.method === "GET") {
       return new Response(JSON.stringify({ id: 42, ...replyTarget }), {
         status: 200,
@@ -80,6 +89,16 @@ function toolContext(
       state,
     }),
   };
+}
+
+/** The methods of the tool's calls to the requested reviewers endpoint. */
+function reviewerCalls(
+  fetch: ReturnType<typeof toolContext>["fetch"],
+): string[] {
+  return fetch.mock.calls
+    .map(([{ request }]) => request)
+    .filter((request) => request.url.endsWith("/requested_reviewers"))
+    .map((request) => request.method);
 }
 
 /**
@@ -191,8 +210,8 @@ describe("commentOnPullRequest", () => {
       ),
     ).resolves.toMatchObject({ comment_id: 88, requester_asked: true });
 
-    const ask = fetch.mock.calls[1]?.[0];
-    expect(ask?.request.method).toBe("POST");
+    expect(reviewerCalls(fetch)).toEqual(["GET", "POST"]);
+    const ask = fetch.mock.calls[2]?.[0];
     expect(ask?.request.url).toBe(
       "https://api.github.com/repos/getsentry/junior-comment-tests/pulls/701/requested_reviewers",
     );
@@ -206,6 +225,32 @@ describe("commentOnPullRequest", () => {
         repositoryFullName: "getsentry/junior-comment-tests",
       }),
     ).resolves.toMatchObject({ reason: "question", reviewer: "Requester" });
+  });
+
+  it("asks again a requester that GitHub already asks, so GitHub records a new ask", async () => {
+    await seedOpener(706);
+    const { fetch, tool } = toolContext(
+      undefined,
+      undefined,
+      async () => requester,
+      ["requester"],
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 706,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ requester_asked: true });
+    expect(reviewerCalls(fetch)).toEqual(["GET", "DELETE", "POST"]);
+    await expect(
+      fetch.mock.calls[2]?.[0]?.request.clone().json(),
+    ).resolves.toEqual({ reviewers: ["Requester"] });
   });
 
   it.for([
@@ -258,31 +303,6 @@ describe("commentOnPullRequest", () => {
         { toolCallId: "ask" },
       ),
     ).resolves.toMatchObject({ comment_id: 88, requester_asked: false });
-  });
-
-  it("drops the question mark when GitHub does not post the comment", async () => {
-    await seedOpener(706);
-    const { state, tool } = toolContext(
-      new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }),
-    );
-
-    await expect(
-      tool.execute(
-        {
-          repo: "getsentry/junior-comment-tests",
-          pull_request: 706,
-          body: "Which option do you want?",
-          asks_requester: true,
-        },
-        { toolCallId: "ask" },
-      ),
-    ).rejects.toThrow("HTTP 404");
-    await expect(
-      readGitHubReviewAsked(state, {
-        number: 706,
-        repositoryFullName: "getsentry/junior-comment-tests",
-      }),
-    ).resolves.toBeUndefined();
   });
 
   it("returns GitHub validation errors to the agent", async () => {

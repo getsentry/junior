@@ -419,18 +419,6 @@ async function askHeldReview(
   return undefined;
 }
 
-/** Whether a Junior comment marked a question for the requester. */
-async function asksQuestion(
-  state: PluginState,
-  target: GitHubPullRequestTarget,
-  requesterLogin: string | undefined,
-): Promise<boolean> {
-  const asked = await readGitHubReviewAsked(state, target);
-  return (
-    asked?.reason === "question" && sameLogin(asked.reviewer, requesterLogin)
-  );
-}
-
 /**
  * Return why Junior asked the requester, if it did: the reason of the held
  * ask that this sync released, or the reason of the mark that a Junior tool
@@ -496,13 +484,9 @@ async function syncOne(
   const name = itemName(target);
   const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
-  // Another person's comment changes nothing, but Junior's comment that
-  // asks the requester a question can show on an item that is already
-  // open, when GitHub sends no new review request.
   if (
     target.commentBy !== undefined &&
-    !sameLogin(target.commentBy, requesterLogin) &&
-    !(await asksQuestion(args.state, target, requesterLogin))
+    !sameLogin(target.commentBy, requesterLogin)
   ) {
     return;
   }
