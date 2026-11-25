@@ -654,4 +654,73 @@ describe("next action item", () => {
       await fixture.close();
     }
   });
+
+  const pushedAt = "2026-07-02T12:00:00.000Z";
+  it.each<{ asks: boolean; github: Partial<GitHubState>; name: string }>([
+    { asks: true, github: {}, name: "waits on nobody" },
+    {
+      asks: true,
+      github: {
+        comments: [{ at: "2026-07-02T11:00:00.000Z", login: "Requester" }],
+      },
+      name: "the requester commented before the last push",
+    },
+    {
+      asks: false,
+      github: {
+        comments: [{ at: "2026-07-02T13:00:00.000Z", login: "Requester" }],
+      },
+      name: "the requester commented after the last push, so Junior acts next",
+    },
+    {
+      asks: false,
+      github: {
+        reviews: [{ state: "APPROVED", user: { login: "someone-else" } }],
+      },
+      name: "it is approved and waits on others",
+    },
+    {
+      asks: false,
+      github: {
+        reviews: [
+          { state: "CHANGES_REQUESTED", user: { login: "someone-else" } },
+        ],
+      },
+      name: "a reviewer requests changes, so Junior acts next",
+    },
+    { asks: false, github: { autoMerge: true }, name: "auto-merge is on" },
+  ])(
+    "backfill asks the requester's review in limbo: $name",
+    async ({ asks, github }) => {
+      const fixture = await createGitHubFixture();
+      const requests: string[] = [];
+      mockGitHub(
+        {
+          draft: false,
+          headCommittedAt: pushedAt,
+          mergeableStates: ["blocked"],
+          merged: false,
+          reviews: [],
+          state: "open",
+          ...github,
+        },
+        requests,
+      );
+      try {
+        await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+        const h = createPluginHarness(fixture, requesterUsers);
+        await h.heartbeat(Date.parse("2026-07-03T12:00:00.000Z"));
+        await h.runStartedTasks();
+        // Only the requester, never a team or a code owner.
+        expect(
+          requests.filter((request) => request.startsWith("request")),
+        ).toEqual(asks ? ["request Requester"] : []);
+        expect(h.notices.map(({ notice }) => notice.title)).toEqual(
+          asks ? ["Review requested · #946"] : [],
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 });

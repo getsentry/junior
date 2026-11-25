@@ -475,6 +475,11 @@ const nextActionSchema = z.object({
     repository: z.object({
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
+        commits: z.object({
+          nodes: nodesSchema(
+            z.object({ commit: z.object({ committedDate: timestampSchema }) }),
+          ),
+        }),
         isDraft: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
@@ -539,6 +544,8 @@ export interface GitHubPullRequestMergeState {
    */
   changesRequested: boolean;
   draft: boolean;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: Date;
   /**
    * The requester's latest review that approves or requests changes
    * approves it. Read for drafts too, from the last 100 reviews, because the
@@ -567,8 +574,8 @@ export interface GitHubPullRequestMergeState {
   /**
    * `approved` with at least one approval and no reviewer who still
    * requests changes. `changesRequested` while a reviewer still requests
-   * changes. Undefined with neither. Read only when GitHub says the pull
-   * request can merge cleanly and auto-merge is off.
+   * changes. Undefined with neither. Read only when the pull request is
+   * open and not a draft.
    */
   reviewOutcome?: "approved" | "changesRequested";
   state: "closed" | "merged" | "open";
@@ -668,11 +675,15 @@ export async function loadPullRequestMergeState(
   const mergeableState = unknown(pull.mergeStateStatus)
     ? undefined
     : pull.mergeStateStatus.toLowerCase();
+  const headCommittedAt = pull.commits.nodes[0]?.commit.committedDate;
   const state: GitHubPullRequestMergeState = {
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
     draft: pull.isDraft,
+    ...(headCommittedAt
+      ? { headCommittedAt: new Date(headCommittedAt) }
+      : undefined),
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
@@ -720,12 +731,10 @@ export async function loadPullRequestMergeState(
     reviewState === "DISMISSED" ? [] : [login],
   );
   const reviewStates = [...latest.values()].map((review) => review.state);
-  if (!state.autoMerge && state.mergeableState === "clean") {
-    if (reviewStates.includes("CHANGES_REQUESTED")) {
-      state.reviewOutcome = "changesRequested";
-    } else if (reviewStates.includes("APPROVED")) {
-      state.reviewOutcome = "approved";
-    }
+  if (reviewStates.includes("CHANGES_REQUESTED")) {
+    state.reviewOutcome = "changesRequested";
+  } else if (reviewStates.includes("APPROVED")) {
+    state.reviewOutcome = "approved";
   }
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
   return state;

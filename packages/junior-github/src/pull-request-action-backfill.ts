@@ -8,7 +8,8 @@
  * request once, through the same path as a webhook. That path changes an
  * item only when the derived action is not the saved one, so a pull request
  * whose saved action still holds keeps its item as it is, also one that a
- * person dismissed.
+ * person dismissed. A pull request in limbo, which waits on nobody, gets a
+ * review request for its requester on GitHub, and so a review item.
  *
  * The heartbeat starts one page at a time until the last page is done. Bump
  * `VERSION` when a new derivation rule must reach pull requests that went
@@ -76,6 +77,7 @@ export function githubPullRequestActionBackfillTask(args: {
         .sort((a, b) => a.id - b.id)
         .slice(0, PAGE_SIZE);
       await syncGitHubPullRequestActions({
+        askInLimbo: true,
         botEmail: args.botEmail(),
         codeChanges: ctx.codeChanges,
         db: gitHubDbSchema.parse(ctx.db),

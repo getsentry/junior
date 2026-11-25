@@ -38,6 +38,11 @@
  * state and each side's latest activity. A comment by another person needs
  * no read.
  *
+ * A pull request is in limbo when it waits on nobody: it is ready, the
+ * action is none, and no person or rule moves it on (`inLimbo`). A sync that
+ * may ask asks for the requester's review on GitHub, as Junior does when a
+ * draft becomes ready, and the review request then shows the item.
+ *
  * The requester takes one action, not both, so one item per pull request
  * shows it. Each webhook that can change one of these facts reads them
  * again from GitHub. Junior saves the derived action and changes the item
@@ -305,6 +310,30 @@ function isRequested(
   );
 }
 
+/**
+ * Whether a pull request whose action is none waits on nobody. It is open,
+ * not a draft, and auto-merge is off. The requester has a linked GitHub
+ * account, GitHub does not ask them for a review, and they have not
+ * reviewed or commented since the last push. No reviewer approved it, so
+ * it does not wait only on others, and no reviewer requests changes, so
+ * Junior does not act next.
+ */
+function inLimbo(
+  state: GitHubPullRequestMergeState,
+  requester: { actedAt: Date | undefined; login: string | undefined },
+): boolean {
+  return (
+    state.state === "open" &&
+    !state.draft &&
+    !state.autoMerge &&
+    requester.login !== undefined &&
+    !isRequested(state, requester.login) &&
+    timeOf(requester.actedAt) <= timeOf(state.headCommittedAt) &&
+    state.reviewOutcome === undefined &&
+    !state.changesRequested
+  );
+}
+
 type CloseReason = { reason: string; status: "done" | "dismissed" };
 
 type EndedState = Exclude<GitHubPullRequestMergeState["state"], "open">;
@@ -560,6 +589,7 @@ async function askReason(
 
 async function syncOne(
   args: {
+    askInLimbo?: boolean | undefined;
     botEmail: string | undefined;
     codeChanges: Pick<PluginCodeChanges, "list">;
     db: GitHubDb;
@@ -610,6 +640,9 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
+  // Ask a pull request in limbo once per sync, so a request that GitHub
+  // takes but does not show yet cannot ask again.
+  let askedInLimbo = false;
   // One check: read GitHub, change the items, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
@@ -635,6 +668,20 @@ async function syncOne(
       },
       previous,
     );
+    if (
+      args.askInLimbo &&
+      !askedInLimbo &&
+      requesterLogin &&
+      next !== undefined &&
+      next.action === undefined &&
+      inLimbo(state, { actedAt: activity.requesterAt, login: requesterLogin })
+    ) {
+      askedInLimbo = true;
+      // The next read sees the request and shows its item.
+      if (await requestReviewAgain(args, target, requesterLogin)) {
+        return await check(previous);
+      }
+    }
     // Act only on a change. So repeat events add no second item, and an
     // item that a person closed does not come back until the action
     // changes. When the action cannot be known yet, a later event decides.
@@ -708,6 +755,11 @@ async function syncOne(
  * and does not fail the delivery.
  */
 export async function syncGitHubPullRequestActions(args: {
+  /**
+   * Ask for the requester's review on each pull request in limbo. Only the
+   * one-off backfill asks.
+   */
+  askInLimbo?: boolean;
   botEmail: string | undefined;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;

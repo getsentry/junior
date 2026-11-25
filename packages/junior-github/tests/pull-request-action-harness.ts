@@ -180,6 +180,8 @@ export interface GitHubState {
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha?: string;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: string;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -502,7 +504,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
-                commits: { nodes: [] },
+                commits: {
+                  nodes: github.headCommittedAt
+                    ? [{ commit: { committedDate: github.headCommittedAt } }]
+                    : [],
+                },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
