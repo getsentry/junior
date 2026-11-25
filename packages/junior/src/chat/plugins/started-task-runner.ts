@@ -12,12 +12,14 @@ import type {
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { getDb } from "@/chat/db";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { logException, withSpan } from "@/chat/logging";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import { readIdentityById } from "@/chat/plugins/viewer";
 import {
   type AppEventPublisher,
   createPluginEventPublisher,
@@ -61,12 +63,21 @@ function startedTaskContext(
     }),
     db: getDb(),
     events: createPluginEventPublisher(plugin, options.events),
+    inboxItems: {
+      forConversation: (conversationId) =>
+        createPluginInboxItems({
+          conversationId,
+          plugin: pluginName,
+          show: options.showInboxItem ?? (async () => {}),
+        }),
+    },
     lastDelivery: (options.deliveryCount ?? 0) >= PLUGIN_TASK_MAX_DELIVERIES,
     log: createPluginLogger(pluginName),
     name,
     payload,
     plugin: { name: pluginName },
     state: createPluginState(pluginName),
+    users: { readIdentity: readIdentityById },
   };
 }
 

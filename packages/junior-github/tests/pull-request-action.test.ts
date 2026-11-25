@@ -1,13 +1,16 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK } from "../src/pull-request-action-backfill";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { createPluginHarness } from "./plugin-harness";
 import {
   DEDUPE_KEY,
   PULL_URL,
   checkSuiteCompleted,
   mockGitHub,
   pullRequestAction,
+  requesterUsers,
   reviewSubmitted,
   route,
   seedJuniorPullRequest,
@@ -575,6 +578,78 @@ describe("next action item", () => {
       await route(fixture, calls).handler(reviewSubmitted("approved"));
       expect(requests).toEqual([]);
       expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills the next action of quiet pull requests once, one page at a time", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    // GitHub asked the requester before the derivation shipped, and no
+    // webhook came since.
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        requestedReviewers: ["Requester"],
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      // A full first page of pull requests that no person asked for. They
+      // need no GitHub read.
+      for (let number = 1; number <= 50; number += 1) {
+        fixture.codeIndex.seed({
+          conversationIds: [],
+          number,
+          openedAt: new Date("2026-07-01T12:00:00.000Z"),
+          providerId: String(number),
+          repository: { name: "getsentry/junior", providerId: "2001" },
+          state: "open",
+          updatedAt: new Date("2026-07-01T12:00:00.000Z"),
+        });
+      }
+      const h = createPluginHarness(fixture, requesterUsers);
+      const backfills = () =>
+        h.startedTasks.filter(
+          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
+        );
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+
+      await h.heartbeat(now);
+      expect(backfills()).toHaveLength(1);
+      await h.runStartedTasks();
+      expect(requests).toEqual([]);
+      expect(h.notices).toEqual([]);
+
+      await h.heartbeat(now + 60_000);
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+
+      // The last page is done, so a dismissed item stays closed.
+      h.dismiss(DEDUPE_KEY);
+      await h.heartbeat(now + 120_000);
+      expect(backfills()).toEqual([]);
+      // The reconcile and the name repair read GitHub APIs that this test
+      // does not mock.
+      expect(
+        h.heartbeatLogs.filter(([, message]) =>
+          message.includes("pull request action"),
+        ),
+      ).toEqual([]);
     } finally {
       await fixture.close();
     }

@@ -611,6 +611,32 @@ export async function markFeedback(
   );
 }
 
+/** The requester, who linked the GitHub account `Requester`. */
+export const requesterUsers = {
+  readIdentity: async (identityId: string) =>
+    identityId === "identity-requester"
+      ? {
+          identity: {
+            id: identityId,
+            provider: "slack",
+            providerSubjectId: "U123",
+          },
+          user: {
+            email: "requester@example.com",
+            id: "user-requester",
+            identities: [
+              {
+                handle: "Requester",
+                id: "identity-github",
+                provider: "github",
+                providerSubjectId: "1001",
+              },
+            ],
+          },
+        }
+      : undefined,
+};
+
 export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
   | { conversationId: string; input: unknown; kind: "close" };
@@ -694,31 +720,7 @@ export function route(
     inboxItems,
     state,
     tasks: { start: unused },
-    // The requester linked the GitHub account `Requester`.
-    users: {
-      readIdentity: async (identityId: string) =>
-        identityId === "identity-requester"
-          ? {
-              identity: {
-                id: identityId,
-                provider: "slack",
-                providerSubjectId: "U123",
-              },
-              user: {
-                email: "requester@example.com",
-                id: "user-requester",
-                identities: [
-                  {
-                    handle: "Requester",
-                    id: "identity-github",
-                    provider: "github",
-                    providerSubjectId: "1001",
-                  },
-                ],
-              },
-            }
-          : undefined,
-    },
+    users: requesterUsers,
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
   return webhook;
