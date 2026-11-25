@@ -30,10 +30,12 @@ const TILE_SIZES = {
 
 // The lock sits on the bottom-right corner. The top-right corner and the
 // row's trailing column stay free for activity and needs-you marks.
+// Important, so that a parent's `[&_svg]:size-*`, such as a command item's,
+// does not grow the lock over the tile.
 const LOCK_SIZES = {
-  sm: "size-2.5 p-px",
-  md: "size-3 p-0.5",
-  lg: "size-4 p-0.5",
+  sm: "!size-2.5 p-px",
+  md: "!size-3 p-0.5",
+  lg: "!size-4 p-0.5",
 } as const;
 
 /** The same Space gets the same color on every surface. */
