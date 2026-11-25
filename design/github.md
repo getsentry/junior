@@ -62,6 +62,7 @@ also wake a Conversation or run an Event automation.
 
 **`github:pull_request`**. Source: the pull request in the GitHub cache.
 
+<!-- Generated from inbox-kinds/github-pull-request.yaml. -->
 - `pr-ended` When it merged or closed, nobody gets it.
 - `pr-merge` When it is open, not a draft, auto-merge is off, no review is
   pending, its merge state is clean, and no reviewer requests changes, the
@@ -74,6 +75,7 @@ also wake a Conversation or run an Event automation.
   requested". Dismiss removes them from the reviewers on GitHub. For the
   requester, their reply after their own change request ends it, because
   Junior acts next.
+<!-- End of inbox-kinds/github-pull-request.yaml. -->
 
 **`github:merge_conflict`**. Source: the pull request in the GitHub cache,
 and Junior's conflict fixes.

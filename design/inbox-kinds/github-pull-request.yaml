@@ -1,0 +1,87 @@
+kind: github:pull_request
+source: github.pull_request
+hit: first
+doc: design/github.md
+code: packages/junior-github/src/webhooks/pull-request-kind.generated.ts
+inputs:
+  state: [open, merged, closed]
+  draft: bool
+  auto_merge: bool
+  review_pending: bool
+  merge_state: [clean, conflict, blocked, unknown]
+  changes_requested: bool
+  viewer.requester: bool
+  viewer.requested: bool
+  viewer.asked_again: bool
+  viewer.requests_changes: bool
+  viewer.replied: bool
+  viewer.shown: [nothing, merge, review]
+rules:
+  - id: pr-ended
+    text: When it merged or closed, nobody gets it.
+    rows:
+      - when: { state: merged }
+        output: { close: done }
+      - when: { state: closed }
+        output: { close: dismissed }
+  - id: pr-merge
+    text: >-
+      When it is open, not a draft, auto-merge is off, no review is pending,
+      its merge state is clean, and no reviewer requests changes, the
+      requester gets "Ready to merge". A reviewer whose review GitHub still
+      requests gets it too.
+    rows:
+      - when:
+          viewer.requester: true
+          state: open
+          draft: false
+          auto_merge: false
+          review_pending: false
+          merge_state: clean
+          changes_requested: false
+        output: { ask: { label: Ready to merge } }
+      - when:
+          viewer.requester: false
+          viewer.requested: true
+          state: open
+          draft: false
+          auto_merge: false
+          merge_state: clean
+          changes_requested: false
+        output: { ask: { label: Ready to merge } }
+      - when:
+          state: open
+          draft: false
+          auto_merge: false
+          review_pending: false
+          merge_state: unknown
+          viewer.shown: merge
+        output: keep
+      - when:
+          state: open
+          draft: false
+          auto_merge: false
+          review_pending: false
+          merge_state: unknown
+          viewer.asked_again: false
+        output: keep
+  - id: pr-review-again
+    text: >-
+      When Junior handled every comment of the requester's change request and
+      the required checks pass, the requester gets "Review requested".
+    rows:
+      - when: { viewer.requester: true, viewer.asked_again: true }
+        output: { ask: { label: Review requested } }
+  - id: pr-review
+    text: >-
+      When GitHub requests the viewer's review, they get "Review requested".
+      Dismiss removes them from the reviewers on GitHub. For the requester,
+      their reply after their own change request ends it, because Junior acts
+      next.
+    rows:
+      - when: { viewer.requested: true, viewer.requester: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+      - when: { viewer.requested: true, viewer.requests_changes: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+      - when: { viewer.requested: true, viewer.replied: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }

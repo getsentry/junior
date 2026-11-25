@@ -82,6 +82,11 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import { botUserIdFromEmail } from "./ownership.js";
+import {
+  decide,
+  type Inputs,
+  type Outcome,
+} from "./pull-request-kind.generated.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
 
 // Pull requests that one delivery syncs at once, under GitHub rate limits.
@@ -245,8 +250,31 @@ function timeOf(at: Date | undefined): number {
 }
 
 /**
- * Derive the requester's next action. Return undefined when it cannot be
- * known yet, so a later event decides.
+ * GitHub's merge state as the table's input. Every state but `clean` and
+ * `dirty`, such as `blocked`, `behind`, or `unstable`, keeps the merge from
+ * being the requester's next action.
+ */
+function mergeStateInput(
+  mergeableState: string | undefined,
+): Inputs["merge_state"] {
+  if (!mergeableState) return "unknown";
+  if (mergeableState === "clean") return "clean";
+  return mergeableState === "dirty" ? "conflict" : "blocked";
+}
+
+/** The action that each ask of the table shows. */
+const ASK_ACTIONS: Record<
+  Extract<Outcome, { kind: "ask" }>["label"],
+  GitHubPullRequestAction
+> = {
+  "Ready to merge": "merge",
+  "Review requested": "review",
+};
+
+/**
+ * Derive the requester's next action from the rules in
+ * `design/inbox-kinds/github-pull-request.yaml`. Return undefined when it
+ * cannot be known yet, so a later event decides.
  */
 function nextAction(
   state: GitHubPullRequestMergeState,
@@ -257,29 +285,27 @@ function nextAction(
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
-  if (state.state !== "open") return {};
-  // With auto-merge on, GitHub merges it, so no person needs to. A pending
-  // review request comes first, even where GitHub requires no review.
-  const canMerge = !state.draft && !state.autoMerge && !state.reviewPending;
-  if (
-    canMerge &&
-    state.mergeableState === "clean" &&
-    state.reviewOutcome !== "changesRequested"
-  ) {
-    return { action: "merge" };
-  }
-  // GitHub has not computed the merge state yet, such as after a push. The
-  // merge can still be the action, so it stays until a later event decides.
-  if (canMerge && !state.mergeableState && saved === "merge") return undefined;
-  if (requester.askedAgain) return { action: "review" };
-  const requested = isRequested(state, requester.login);
-  // A reply to the change request ends the review that Junior asked for,
-  // though GitHub still asks for it, because Junior acts next.
-  if (requested && (!requester.actedLast || !state.changesRequested)) {
-    return { action: "review" };
-  }
-  if (canMerge && !state.mergeableState) return undefined;
-  return {};
+  // The item serves only the requester, so the requester is the viewer.
+  // `reviewOutcome` is read only when the merge state is clean, and
+  // `requestedReviewers` is never set without `reviewPending`.
+  const outcome = decide({
+    auto_merge: state.autoMerge,
+    changes_requested: state.reviewOutcome === "changesRequested",
+    draft: state.draft,
+    merge_state: mergeStateInput(state.mergeableState),
+    review_pending: state.reviewPending,
+    state: state.state,
+    viewer: {
+      asked_again: requester.askedAgain,
+      replied: requester.actedLast,
+      requested: isRequested(state, requester.login),
+      requester: true,
+      requests_changes: state.changesRequested,
+      shown: saved ?? "nothing",
+    },
+  });
+  if (outcome.kind === "keep") return undefined;
+  return outcome.kind === "ask" ? { action: ASK_ACTIONS[outcome.label] } : {};
 }
 
 function isRequested(

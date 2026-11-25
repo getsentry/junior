@@ -336,6 +336,9 @@ importers:
       yaml:
         specifier: ^2.9.0
         version: 2.9.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
 
   apps/example:
     dependencies:
