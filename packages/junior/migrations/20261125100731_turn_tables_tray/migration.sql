@@ -3,10 +3,6 @@
 -- A Turn's Actor, Source kind and Destination now live only on the Turn row,
 -- so the inbox loses those columns and its one-Source exclusion constraint.
 -- btree_gist stays installed.
---
--- Each table takes an insert, a few updates and, for the inbox, a delete per
--- input or Turn, so dead tuples build up while few rows stay live. The
--- default autovacuum threshold scales with live rows and waits too long.
 DROP TABLE "junior_turn_outbox";--> statement-breakpoint
 DROP TABLE "junior_turn_inbox";--> statement-breakpoint
 DROP TABLE "junior_turns";--> statement-breakpoint
@@ -22,7 +18,7 @@ CREATE TABLE "junior_turn_inbox" (
 	"attempted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "junior_turn_inbox_payload_check" CHECK (jsonb_typeof("payload") = 'object')
-) WITH (autovacuum_vacuum_scale_factor = 0, autovacuum_vacuum_threshold = 1000);
+);
 --> statement-breakpoint
 CREATE TABLE "junior_turn_outbox" (
 	"id" uuid PRIMARY KEY,
@@ -41,7 +37,7 @@ CREATE TABLE "junior_turn_outbox" (
 	CONSTRAINT "junior_turn_outbox_sent_check" CHECK (("state" = 'sent') = ("sent_at" is not null)),
 	CONSTRAINT "junior_turn_outbox_attempts_check" CHECK ("attempts" >= 0),
 	CONSTRAINT "junior_turn_outbox_destination_check" CHECK (jsonb_typeof("destination") = 'object')
-) WITH (autovacuum_vacuum_scale_factor = 0.01, autovacuum_vacuum_threshold = 1000);
+);
 --> statement-breakpoint
 CREATE TABLE "junior_turns" (
 	"id" uuid PRIMARY KEY,
@@ -68,7 +64,7 @@ CREATE TABLE "junior_turns" (
 	CONSTRAINT "junior_turns_ended_check" CHECK (("state" in ('completed', 'failed', 'cancelled')) = ("ended_at" is not null)),
 	CONSTRAINT "junior_turns_counters_check" CHECK ("step_seq" >= 0 and "lease_epoch" >= 0 and "attempts" >= 0),
 	CONSTRAINT "junior_turns_priority_check" CHECK ("priority" >= 0)
-) WITH (autovacuum_vacuum_scale_factor = 0.01, autovacuum_vacuum_threshold = 1000);
+);
 --> statement-breakpoint
 CREATE UNIQUE INDEX "junior_turn_inbox_idempotency_idx" ON "junior_turn_inbox" ("conversation_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX "junior_turn_inbox_turn_idx" ON "junior_turn_inbox" ("turn_id","created_at");--> statement-breakpoint
