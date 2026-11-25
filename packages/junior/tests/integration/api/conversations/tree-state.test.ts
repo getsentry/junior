@@ -561,7 +561,7 @@ describe("conversation tree state", () => {
     };
     const asViewer = () => spaceRow((path) => fixture.request(path));
     const asBob = () =>
-      spaceRow((path) => bobApp.request(`http://localhost${path}`));
+      spaceRow(async (path) => await bobApp.request(`http://localhost${path}`));
     const idle = { latestTurnFailed: false, treeState: "done" };
     await expect(asViewer()).resolves.toEqual(idle);
 
@@ -601,6 +601,7 @@ describe("conversation tree state", () => {
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, conversationId));
     await setConversationArchive({
+      applyToChildren: false,
       archived: true,
       conversationId,
       lastSeenAt: row!.lastActivityAt.toISOString(),
