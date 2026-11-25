@@ -70,4 +70,3 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 - Compaction on idle never changes history under a running Turn. While a
   Run holds the Conversation, Junior warms instead.
 - Compaction on idle runs only while cache warming is on.
-  `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns off only compaction on idle.

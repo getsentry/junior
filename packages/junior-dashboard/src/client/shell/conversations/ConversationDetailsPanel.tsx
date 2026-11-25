@@ -16,10 +16,8 @@ import type {
   ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../../components/ParticipantAvatarStack";
+import { conversationParticipants } from "../../components/ParticipantAvatarStack";
+import { ConversationParticipants } from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -36,7 +34,6 @@ export function ConversationDetailsPanel(props: {
   onSelectMemory(entry: ConversationMemoryEntry): void;
 }) {
   const { conversation, detail } = props;
-  const participants = conversationParticipants(conversation);
   const showUsageBreakdown = hasConversationUsageBreakdown({
     conversation,
     detail,
@@ -51,10 +48,12 @@ export function ConversationDetailsPanel(props: {
       summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
-      identity={
-        participants.length > 0 ? (
-          <ParticipantAvatarStack participants={participants} size="detail" />
-        ) : null
+      participants={
+        <ConversationParticipants
+          conversationId={props.conversationId}
+          detail={detail}
+          participants={conversationParticipants(conversation)}
+        />
       }
       isParticipant={detail?.isParticipant === true}
       onClose={props.onClose}

@@ -2,8 +2,9 @@
 
 Commands that Junior runs in a Sandbox, such as provider CLIs, git, and
 scripts, reach provider APIs like GitHub and Sentry with no real token in the
-Sandbox. When a request leaves the Sandbox, Junior adds the credential that
-the plugin chooses: the plugin's own access, or the Actor's connected account.
+Sandbox. When a request that asks for access leaves the Sandbox, Junior adds
+the credential that the plugin chooses: the plugin's own access, or the
+Actor's connected account.
 
 ## Intent
 

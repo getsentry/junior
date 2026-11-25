@@ -17,6 +17,10 @@
 # the app there and uninstalls it at the end, and restores its appearance; it
 # never shuts that simulator down.
 #
+# JUNIOR_IOS_DISPLAY=<id> picks the display that `shots` saves on a device
+# with more than one, such as iPhone Duo. `simctl io <udid> enumerate` lists
+# the ids.
+#
 # JUNIOR_IOS_SERVER=http://127.0.0.1:<port> points the app and the UI tests
 # at a mock server that you started with PORT=<port>.
 set -euo pipefail
@@ -29,6 +33,7 @@ server="${JUNIOR_IOS_SERVER:-http://127.0.0.1:4317}"
 fixed_now="${JUNIOR_IOS_NOW:-2026-08-07T12:00:00Z}"
 udid=""
 reused="${JUNIOR_IOS_REUSE_UDID:-}"
+display="${JUNIOR_IOS_DISPLAY:-}"
 reused_appearance=""
 
 log() { echo "sim: $*" >&2; }
@@ -174,7 +179,7 @@ cmd_shots() {
       -JuniorServer "$server" -JuniorFixedNow "$fixed_now" \
       -JuniorOpen "$path" -JuniorTheme "${theme:-dark}" -JuniorAccessToken mock-access-token >/dev/null
     sleep "${JUNIOR_IOS_SHOT_DELAY:-3}"
-    xcrun simctl io "$udid" screenshot "$out/$name.png" >/dev/null
+    xcrun simctl io "$udid" screenshot ${display:+"--display=$display"} "$out/$name.png" >/dev/null
     log "saved $out/$name.png"
   done
 }

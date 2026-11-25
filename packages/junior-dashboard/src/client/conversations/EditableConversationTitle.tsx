@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { CONVERSATION_TITLE_MAX_LENGTH } from "@sentry/junior/api/schema";
 
-import { MobileHeaderTitlePortal } from "../components/layout/DashboardChrome";
 import { Input } from "../components/ui/input";
 import { cn } from "../styles";
 
@@ -42,22 +41,6 @@ export function EditableConversationTitle(
       }}
       title={props.title}
     />
-  );
-}
-
-/** Put the editable title in the app bar, which shows the title on a phone. */
-export function MobileEditableConversationTitle(
-  props: ConversationTitleEdit & { children: ReactNode; title: string },
-) {
-  return (
-    <MobileHeaderTitlePortal>
-      <h1 className="m-0 flex min-w-0 flex-1 text-dashboard-text">
-        <EditableConversationTitle
-          {...props}
-          className="font-display text-sm font-medium"
-        />
-      </h1>
-    </MobileHeaderTitlePortal>
   );
 }
 

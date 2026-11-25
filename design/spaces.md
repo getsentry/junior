@@ -58,6 +58,23 @@ not need a home stays a one-off Conversation.
   the work there.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
+- Each Space in the sidebar shows what its Conversations need from the
+  member, the first that applies: a Conversation needs them, one failed, or
+  one works. A Space with none of these shows nothing. Its Conversations
+  still show in In flight, so each one stays one click away.
 - Any member can archive a Space.
 - Configuration resolves in this order: an explicit target in the request,
   then the Space, then the Slack channel, then the install-wide defaults.
+
+## Gaps
+
+- A Space's Lead cannot archive a Conversation that it started. This breaks
+  "a Space's Lead coordinates and does not do the work".
+- A Space's Lead has no To-do list. This breaks "a Space and its Lead share
+  one name, description, and To-do list".
+- The public MCP server does not show a Conversation's Space, so the iOS app
+  cannot show it. This breaks "every Conversation knows its Space".
+- A Conversation in a private Space cannot move out, and only a public
+  Conversation can join a Space. So a person cannot move work to change
+  its visibility. This breaks "to make work private or public, a person
+  creates a new Space and moves the work there".

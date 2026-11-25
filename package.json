@@ -26,6 +26,7 @@
     "provider-state:check": "node scripts/check.mjs provider-state",
     "reply-rendering:check": "node scripts/check.mjs reply-rendering",
     "lockfile-families:check": "node scripts/check.mjs lockfile-families",
+    "path-case:check": "node scripts/check.mjs path-case",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node scripts/check.mjs test-architecture",
     "type-assertions:check": "node scripts/check.mjs type-assertions",

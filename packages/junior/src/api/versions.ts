@@ -4,10 +4,10 @@ import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { inboxItemsNeedingUserVersionQuery } from "@/chat/inbox-items/waiting";
 import { juniorUsers } from "@/db/schema";
-import { conversationVersionsQuery } from "../conversations/detail-etag";
-import { conversationFeedVersionQuery } from "../conversations/list";
-import { personalSpendVersionQuery } from "../people/spend.query";
-import type { Versions } from "../schema/versions";
+import { conversationVersionsQuery } from "./conversations/detail-etag";
+import { conversationFeedVersionQuery } from "./conversations/list";
+import { personalSpendVersionQuery } from "./people/spend.query";
+import type { Versions } from "./schema/versions";
 
 /**
  * Build a JSON object of each Conversation's tree token by id, with no entry

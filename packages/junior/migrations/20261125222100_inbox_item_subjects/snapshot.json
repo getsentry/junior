@@ -3,7 +3,7 @@
   "version": "10",
   "dialect": "postgres",
   "id": "98c44f12-b0fc-48dd-ab52-83d230e4f31b",
-  "prevIds": ["453e2def-765a-4fb8-8b61-982131badb8b"],
+  "prevIds": ["df7b3240-6223-4c94-ab4c-da5347b0d335"],
   "footprints": [],
   "deltas": []
 }

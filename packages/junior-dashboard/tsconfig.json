@@ -46,6 +46,7 @@
     "e2e/composer-skill-menu.spec.ts",
     "e2e/composer-live-markdown.spec.ts",
     "e2e/conversation-object-attach.spec.ts",
+    "e2e/conversation-participants.spec.ts",
     "e2e/conversation-rename.spec.ts",
     "e2e/conversation-watches.spec.ts",
     "e2e/spaces.spec.ts",

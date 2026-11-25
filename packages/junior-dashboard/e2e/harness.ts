@@ -7,12 +7,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  expect,
-  type Page,
-  type Request as PageRequest,
-  type Route,
-} from "@playwright/test";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 import { mockSearchRows } from "./search-fixture";
 import type * as DashboardApp from "../src/app";
@@ -76,46 +71,6 @@ export async function routeConversationVersion(
 }
 
 /**
- * Reads that the dashboard starts or repeats in the background, so one can be
- * open whenever a test ends. Only GET reads belong here: a test must await
- * every write that it causes, or the server may never see it.
- */
-const BACKGROUND_READS: readonly RegExp[] = [
-  // The versions poll runs for the whole visit (`useVersionsPoll`).
-  /^\/api\/versions$/,
-  // A live Conversation polls its detail. When idle, the versions poll
-  // refreshes it.
-  /^\/api\/conversations\/[^/]+$/,
-  // A detail with a new ETag refreshes its side reads
-  // (`refreshSideReadsOnChange`).
-  /^\/api\/conversations\/[^/]+\/(agents|todos|watches)$/,
-  /^\/api\/memory\/conversations\/[^/]+\/memories$/,
-  // A moved versions token refreshes the feeds, every Inbox item read (the
-  // lists, the count, the waiting Conversations, and each item), and the
-  // viewer's spend (`refreshChangedReads`).
-  /^\/api\/conversations$/,
-  /^\/api\/inbox-items(\/[^/]+)?$/,
-  /^\/api\/people\/me\/spend$/,
-  // A pointer that rests on an Automation row prefetches its page
-  // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
-  /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
-];
-
-/**
- * Wait until `count` versions checks are answered, then let the page finish
- * the work that the last answer started. A test that controls timers moves
- * the clock only after that, so the next poll timer is already set.
- */
-export async function waitForVersionChecks(
-  page: Page,
-  checks: () => number,
-  count: number,
-) {
-  await expect.poll(checks).toBe(count);
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
-}
-
-/**
  * Wait for the next outline read of a Conversation. Each visit to its page
  * reads the outline once, so a test that ends on the page waits for it.
  */
@@ -175,13 +130,32 @@ export async function dragScrollbarToTop(page: Page): Promise<void> {
   });
 }
 
-/** Whether a request is a background read that may outlive a test. */
-function isBackgroundRead(request: PageRequest): boolean {
-  const { pathname } = new URL(request.url());
-  return (
-    request.method() === "GET" &&
-    BACKGROUND_READS.some((path) => path.test(pathname))
-  );
+/** The requests that each page holds unanswered on purpose. */
+const heldRoutes = new WeakMap<Page, { released: boolean; routes: Route[] }>();
+
+/**
+ * Leave each request to `url` unanswered, such as a page that never loads.
+ * Teardown fails the held requests before the open-request check, so the
+ * check still sees every other request that the test caused.
+ */
+export async function holdRequests(
+  page: Page,
+  url: string | RegExp,
+): Promise<void> {
+  const held = heldRoutes.get(page) ?? { released: false, routes: [] };
+  heldRoutes.set(page, held);
+  await page.route(url, async (route) => {
+    if (held.released) await route.abort();
+    else held.routes.push(route);
+  });
+}
+
+/** Fail each request that a page holds, and each one that it starts after. */
+export async function releaseHeldRequests(page: Page): Promise<void> {
+  const held = heldRoutes.get(page);
+  if (!held) return;
+  held.released = true;
+  await Promise.all(held.routes.splice(0).map((route) => route.abort()));
 }
 
 // How long teardown waits for open requests to end. The requests that raced
@@ -191,61 +165,131 @@ function isBackgroundRead(request: PageRequest): boolean {
 const DRAIN_MS = 3_000;
 
 /**
+ * The open requests of each tracked page, of every kind, and a way to wait
+ * for one to end.
+ */
+const trackedPages = new WeakMap<
+  Page,
+  { loading: ReadonlySet<PageRequest>; nextEnd: () => Promise<void> }
+>();
+
+/**
  * Track the API requests of a page so a test cannot end while one that it
  * caused is open. Closing the page drops a write that the server has not
  * seen, and fails a route handler that is still running.
  */
 export function trackOpenRequests(page: Page): {
   /**
-   * Wait for each open request other than a background read to end, and fail
-   * with each one still open after `DRAIN_MS`.
+   * Wait for each open request to end, and fail with each one still open
+   * after `DRAIN_MS`.
    */
   expectNoneOpen: () => Promise<void>;
 } {
   const open = new Set<PageRequest>();
-  // Wakes the drain when a request ends.
-  let wake = () => {};
+  const loading = new Set<PageRequest>();
+  const waiters = new Set<() => void>();
+  const nextEnd = () => new Promise<void>((resolve) => waiters.add(resolve));
   const end = (request: PageRequest) => {
     open.delete(request);
-    wake();
+    loading.delete(request);
+    for (const wake of waiters) wake();
+    waiters.clear();
   };
   page.on("request", (request) => {
+    loading.add(request);
     // The app reads and writes with fetches. A page asset, such as an
     // image, can still load when the test ends with no harm.
     if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
   });
   page.on("requestfinished", end);
   page.on("requestfailed", end);
-  const unexpected = () =>
-    [...open].filter((request) => !isBackgroundRead(request));
+  trackedPages.set(page, { loading, nextEnd });
   return {
     expectNoneOpen: async () => {
       // Wait until none is open, not only for those open now: a request can
       // start another as it ends, such as a read that a write refreshes.
       const drained = async () => {
-        while (unexpected().length > 0) {
-          await new Promise<void>((resolve) => (wake = resolve));
-        }
+        while (open.size > 0) await nextEnd();
       };
       await Promise.race([
         drained(),
         delay(DRAIN_MS, undefined, { ref: false }),
       ]);
-      const stillOpen = unexpected();
-      if (stillOpen.length === 0) return;
-      const lines = stillOpen.map((request) => {
-        const { pathname, search } = new URL(request.url());
-        return `  ${request.method()} ${pathname}${search}`;
-      });
+      if (open.size === 0) return;
       throw new Error(
         [
           "The test ended while requests that it caused were open:",
-          ...lines,
+          ...requestLines(open),
           "Wait for the response or the visible result of each request.",
         ].join("\n"),
       );
     },
   };
+}
+
+function requestLines(requests: Iterable<PageRequest>): string[] {
+  return [...requests].map((request) => {
+    const { pathname, search } = new URL(request.url());
+    return `  ${request.method()} ${pathname}${search}`;
+  });
+}
+
+/**
+ * Let the page run the work that a change queued, such as a render and its
+ * effects. It posts messages, not timers: a test that controls timers stops
+ * those, and React schedules its work with messages.
+ */
+export async function waitForRender(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let task = 0; task < 3; task++) {
+      await new Promise<void>((resolve) => {
+        // A window message, not a MessageChannel: the page can collect a
+        // channel that nothing holds before its message arrives.
+        const id = `junior-e2e-render-${task}-${Math.random()}`;
+        const onMessage = (event: MessageEvent) => {
+          if (event.data !== id) return;
+          window.removeEventListener("message", onMessage);
+          resolve();
+        };
+        window.addEventListener("message", onMessage);
+        window.postMessage(id, "*");
+      });
+    }
+  });
+}
+
+/**
+ * Wait until the page has no request open, such as a fetch or a lazy code
+ * chunk, and starts none as it renders the responses. Use it to assert that
+ * the page sent no more requests, or to count all of them. Fail with each
+ * one still open after `timeoutMs`.
+ */
+export async function waitForRequestsToEnd(
+  page: Page,
+  timeoutMs = DRAIN_MS,
+): Promise<void> {
+  const tracked = trackedPages.get(page);
+  if (!tracked) throw new Error("The page fixture does not track this page.");
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    while (tracked.loading.size > 0) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(
+          [
+            `Requests were still open after ${timeoutMs}ms:`,
+            ...requestLines(tracked.loading),
+          ].join("\n"),
+        );
+      }
+      await Promise.race([
+        tracked.nextEnd(),
+        delay(remaining, undefined, { ref: false }),
+      ]);
+    }
+    await waitForRender(page);
+    if (tracked.loading.size === 0) return;
+  }
 }
 
 export type DashboardE2eServer = {

@@ -48,6 +48,13 @@ also wake a Conversation or run an Event automation.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
+- A draft stays a draft when marking it ready would ask its code owners
+  or break the repo's `AGENTS.md`, unless the requester said to mark it
+  ready. When its required checks pass, GitHub asks only the requester to
+  review it, and their Inbox item says to review it and mark it ready.
+  Junior posts no message about the draft. When the requester approves a
+  draft that Junior held, Junior marks it ready, so GitHub asks its code
+  owners only after the requester has looked.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When GitHub says that it can merge
   and no reviewer requests changes, the requester gets a "Ready to merge"
@@ -57,19 +64,16 @@ also wake a Conversation or run an Event automation.
   instead, even where the repo allows merging without one.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
-- GitHub is the source of truth for GitHub state. Junior reads that state
-  from GitHub through a cache, and the cache keeps the last good value for
-  when GitHub is down. Junior does not copy GitHub state into its tables,
-  unless the value is too expensive to get from GitHub.
+- GitHub is the source of truth for GitHub state. When GitHub is down,
+  Junior shows the last state that it read.
 
 ## Gaps
 
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
-- Some asks are only a reply in the Conversation: a draft PR that waits
-  for the requester's review, and a decision on a watched issue. They add
-  no Inbox item. This breaks "there is one way to ask a person"
+- A decision on a watched issue is only a reply in the Conversation. It
+  adds no Inbox item. This breaks "there is one way to ask a person"
   ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior

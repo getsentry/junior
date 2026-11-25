@@ -1,0 +1,10 @@
+id: conversation-visibility-predicate
+language: TypeScript
+severity: error
+message: "Check a Conversation's visibility with isPublicConversation from packages/junior/src/chat/conversations/sql/privacy.ts, so every query uses one rule."
+files:
+  - packages/junior/src/**/*.ts
+rule:
+  any:
+    - pattern: eq(juniorConversations.visibility, $VALUE)
+    - pattern: ne(juniorConversations.visibility, $VALUE)

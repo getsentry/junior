@@ -1,0 +1,7 @@
+id: conversation-visibility-predicate
+valid:
+  - "const where = isPublicConversation(juniorConversations);"
+  - 'const where = eq(juniorSpaces.visibility, "private");'
+invalid:
+  - 'const where = eq(juniorConversations.visibility, "public");'
+  - 'const where = ne(juniorConversations.visibility, "private");'

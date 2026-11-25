@@ -10,7 +10,6 @@ import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
   juniorConversationMetrics,
   juniorConversations,
-  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -118,12 +117,12 @@ function channelExpression(table: typeof turnRoot) {
 function locationLabel(row: {
   channel: string;
   channelName: string | null;
-  destinationVisibility: string | null;
   surface: string;
+  visibility: string | null;
 }): string {
   if (row.surface !== "slack")
     return surfaceLabel(row.surface as "api" | "internal" | "scheduler");
-  if (row.destinationVisibility !== "public") return "Private Conversation";
+  if (row.visibility !== "public") return "Private Conversation";
   return (
     slackLocationLabel({
       channel: row.channel || undefined,
@@ -278,22 +277,13 @@ export async function readPeopleProfileFromSql(
         .select({
           channel,
           channelName: turnRoot.channelName,
-          destinationVisibility: juniorDestinations.visibility,
           surface,
+          visibility: turnRoot.visibility,
           ...aggregate,
         })
         .from(roots)
         .innerJoin(turnRoot, personRootJoin(roots))
-        .leftJoin(
-          juniorDestinations,
-          eq(juniorDestinations.id, turnRoot.destinationId),
-        )
-        .groupBy(
-          channel,
-          turnRoot.channelName,
-          juniorDestinations.visibility,
-          surface,
-        ),
+        .groupBy(channel, turnRoot.channelName, turnRoot.visibility, surface),
       getDb()
         .select({ surface, ...aggregate })
         .from(roots)

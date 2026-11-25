@@ -31,6 +31,7 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -106,11 +107,15 @@ interface BaseToolRuntimeContext {
   locationId?: string;
   /** Stored Conversation visibility used by tools. */
   conversationPrivacy?: ConversationPrivacy | undefined;
+  /** The Space of the Conversation's root, read when the Turn starts. */
+  spaceId?: string | undefined;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
 
   actor?: Actor | undefined;
+  /** The Actor is an app or bot, not a person. From `AgentRun.actorIsApp`. */
+  actorIsApp?: boolean | undefined;
   resolveActorIdentity?:
     | (() => Promise<{ identity: Identity; user?: User } | undefined>)
     | undefined;
@@ -120,6 +125,8 @@ interface BaseToolRuntimeContext {
   surface?: AgentTurnSurface;
   userText?: string;
   configuration?: Record<string, unknown>;
+  /** The Slack channel's configuration, when the Run has a channel. */
+  locationConfiguration?: LocationConfigurationService | undefined;
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
   workspace: SandboxWorkspace;

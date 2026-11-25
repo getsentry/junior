@@ -3,11 +3,7 @@ import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { rootVisibleToViewer } from "@/api/conversations/membership";
 import { getDb } from "@/chat/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorTodos,
-} from "@/db/schema";
+import { juniorConversations, juniorTodos } from "@/db/schema";
 import { todoFuzzyTitle, todoSearchDocument } from "@/db/schema/todos";
 import { rankSearchMatches, scoredSearchMatches } from "@/search/match-ranking";
 import {
@@ -46,8 +42,8 @@ export async function searchTodosForViewer(
   const db = getDb();
   const todos = juniorTodos;
   const conversation = alias(juniorConversations, "todo_conversation");
-  // `rootVisibleToViewer` reads the root as `juniorConversations` and its
-  // Destination as `juniorDestinations`. The joins keep only a valid tree:
+  // `rootVisibleToViewer` reads the root as `juniorConversations`. The joins
+  // keep only a valid tree:
   // the root is its own root, and the Conversation is the root or a child.
   const candidates = db
     .select({ conversationId: todos.conversationId, id: todos.id })
@@ -66,10 +62,6 @@ export async function searchTodosForViewer(
         ),
         isNull(juniorConversations.parentConversationId),
       ),
-    )
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
     )
     .where(
       and(

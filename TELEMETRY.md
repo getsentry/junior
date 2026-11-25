@@ -77,6 +77,7 @@ attributes. Nested logs and spans inherit them.
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tool-support/catalog-search-rerank.ts`                    |
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
 | History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
+| History search floor per result     | `app.event_search.meaning.candidates` (`seq:distance` pairs), `app.event_search.conversation.id`     | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
 | Related conversations missing/noisy | span `plugin.hook userPrompt` (`related-conversations`), `app.related-conversations.*`, `related_conversations_provider_failed`, `plugin.user_prompt.hook.failed` | `chat/related-conversations/find.ts` |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
@@ -107,7 +108,6 @@ attributes. Nested logs and spans inherit them.
 | Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
-| Dashboard update late with push on  | `versions_stream.listener_lost`, `versions_stream.read_failed`; Postgres `application_name` `junior-versions-listen` | `api/versions/` |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by topic         | `app.feedback.topic` (`agent`, `new_ui`)                                                            | `packages/junior-dashboard/src/client/sentry.ts`                |
 | Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
