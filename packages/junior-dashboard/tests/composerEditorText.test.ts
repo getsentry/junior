@@ -1,6 +1,7 @@
 import { $getRoot, $isElementNode, createEditor } from "lexical";
 import { expect, it } from "vitest";
 
+import { ComposerMarkerNode } from "../src/client/conversations/composer-editor/ComposerMarkerNode";
 import { ComposerMentionNode } from "../src/client/conversations/composer-editor/ComposerMentionNode";
 import { ComposerReferenceNode } from "../src/client/conversations/composer-editor/ComposerReferenceNode";
 import {
@@ -8,6 +9,7 @@ import {
   $writeComposerText,
   type ComposerLookup,
 } from "../src/client/conversations/composer-editor/composerEditorText";
+import { $styleComposerDraft } from "../src/client/conversations/composer-editor/composerLiveMarkdown";
 
 const ORIGIN = "https://junior.example.com";
 const lookup: ComposerLookup = {
@@ -20,12 +22,18 @@ const lookup: ComposerLookup = {
 // the nodes that it became.
 function roundTrip(text: string) {
   const editor = createEditor({
-    nodes: [ComposerMentionNode, ComposerReferenceNode],
+    nodes: [ComposerMarkerNode, ComposerMentionNode, ComposerReferenceNode],
     onError: (error) => {
       throw error;
     },
   });
-  editor.update(() => $writeComposerText(text, lookup), { discrete: true });
+  editor.update(
+    () => {
+      $writeComposerText(text);
+      $styleComposerDraft(lookup, true);
+    },
+    { discrete: true },
+  );
   return editor.getEditorState().read(() => {
     const paragraph = $getRoot().getFirstChild();
     const nodes = $isElementNode(paragraph) ? paragraph.getChildren() : [];
@@ -60,6 +68,18 @@ it("reads mentions and references back as chips with the same text", () => {
       "<#C123|proj-junior>",
     ],
   });
+});
+
+it("reads styled Markdown back exactly, with tokens in code as text", () => {
+  const text = [
+    "**bold** _it_ `<@U1>` ~~gone~~ [docs](https://example.com/a_b_c)",
+    "- item with <@U2> and snake_case_name",
+    "> quote",
+    "```",
+    "**not bold** <@U3>",
+    "```",
+  ].join("\n");
+  expect(roundTrip(text)).toEqual({ text, chips: ["<@U2>"] });
 });
 
 it("keeps skill references as the exact plain text", () => {

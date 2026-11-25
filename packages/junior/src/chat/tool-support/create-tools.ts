@@ -25,7 +25,7 @@ import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createReplyTool } from "@/chat/tools/runtime/reply";
@@ -307,9 +307,9 @@ const STATIC_TOOL_BINDERS = {
         (await run.context.resolveActorIdentity?.())?.user?.id ??
         (await readLeadUser(run.context.conversationId))?.id,
     }),
-  spawnAgent: (run) =>
+  startAgent: (run) =>
     run.context.spawnAgent
-      ? createSpawnAgentTool(run.context.spawnAgent, run.modelCost)
+      ? createStartAgentTool(run.context.spawnAgent, run.modelCost)
       : undefined,
   stopAgent: (run) =>
     run.context.spawnAgent
@@ -319,21 +319,27 @@ const STATIC_TOOL_BINDERS = {
     run.context.spawnAgent
       ? createArchiveAgentTool(run.context.conversationId)
       : undefined,
-  // A child agent that is too deep to start child agents can still find its
-  // parent and siblings.
+  // Every Turn but a Lead's finds the Conversations it may read, also a
+  // child agent that is too deep to start child agents.
   listAgents: (run) =>
-    run.context.spawnAgent || run.context.messageAgent
-      ? createListAgentsTool({
+    createListAgentsTool({
+      conversationId: run.context.conversationId,
+      embedder: createConversationEmbedder({
+        cost: {
           conversationId: run.context.conversationId,
-          parentConversationId: run.context.parentConversationId,
-        })
-      : undefined,
+          ...(run.context.turnId ? { turnId: run.context.turnId } : undefined),
+        },
+        operation: "conversation_search_embedding",
+      }),
+      parentConversationId: run.context.parentConversationId,
+      resolvePersonUserId: async () =>
+        (await run.context.resolveActorIdentity?.())?.user?.id,
+    }),
   messageAgent: (run) =>
     run.context.messageAgent
       ? createMessageAgentTool(run.context.messageAgent)
       : undefined,
-  [REPLY_TOOL_NAME]: (run) =>
-    createReplyTool(enabledMode(run.listedTools.reply)),
+  [REPLY_TOOL_NAME]: () => createReplyTool(),
   [REPORT_BLOCKED_TOOL_NAME]: (run) =>
     createReportBlockedTool(enabledMode(run.listedTools.reportBlocked)),
   [NO_REPLY_TOOL_NAME]: () => createNoReplyTool(),
@@ -407,17 +413,16 @@ const INBOX_LIMIT = (turnTools: TurnTools) =>
 const TURN_TOOL_LIMITS: Partial<
   Record<StaticToolName, (turnTools: TurnTools) => string | undefined>
 > = {
-  spawnAgent: AGENT_TOOL_LIMIT,
+  startAgent: AGENT_TOOL_LIMIT,
   stopAgent: AGENT_TOOL_LIMIT,
   archiveAgent: AGENT_TOOL_LIMIT,
-  listAgents: AGENT_TOOL_LIMIT,
   messageAgent: AGENT_TOOL_LIMIT,
   // The system prompt says why for each sender: a person's Turn ends with a
   // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
-    turnTools.reply === "none"
-      ? `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`
-      : undefined,
+    turnTools.reply
+      ? undefined
+      : `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`,
   [REPORT_BLOCKED_TOOL_NAME]: (turnTools) =>
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."

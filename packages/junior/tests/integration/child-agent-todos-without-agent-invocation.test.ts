@@ -73,7 +73,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         async (run) =>
           await finishRun(
             run,
-            { reply: { text: "Deploy is green.", toolCallId: "reply-1" } },
+            { finalText: "Deploy is green." },
             "Deploy is green.",
           ),
       );

@@ -46,6 +46,7 @@
     "packages/junior-evals/fixtures/**"
   ],
   "rules": {
+    "junior/no-value-switch": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -131,8 +132,7 @@
         "junior/no-raw-sql-queries": "error",
         "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
-        "junior/no-split-url-query": "error",
-        "junior/no-value-switch": "error"
+        "junior/no-split-url-query": "error"
       }
     },
     {

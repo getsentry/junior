@@ -1,16 +1,7 @@
-import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
-import { useCodeOverviewData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { PageRouteLoading } from "../../components/PageRouteLoading";
-import {
-  timeRangeBucketUnit,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
 import {
   Table,
   TableBody,
@@ -19,67 +10,9 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { CodeActivityChart } from "./CodeActivityChart";
-import { CodeChangeRow } from "./CodeChangeRow";
-import {
-  CodeSummaryCards,
-  formatCodeCost,
-  formatMergeRate,
-} from "./CodeSummaryCards";
+import { CodeChangeRows } from "./CodeChangeRow";
+import { formatCodeCost, formatMergeRate } from "./CodeSummaryCards";
 import { codeRepositoryPath } from "./codeRepositoryRoutes";
-import { codeActivity } from "./RepositorySections";
-import { getDashboardAgentName } from "../../agentName";
-
-/** Render code analytics and recent code changes. */
-export function CodePage() {
-  const [range, setRange] = useState<TimeRangeDays>(30);
-  const query = useCodeOverviewData();
-  if (!query.data && !query.error) {
-    return (
-      <PageRouteLoading
-        description={`Repositories and code changes created by ${getDashboardAgentName()}.`}
-        label="Loading code activity"
-        title="Code"
-        variant="stats"
-      />
-    );
-  }
-  return (
-    <PageLayout>
-      <PageHeader
-        description={`Repositories and code changes created by ${getDashboardAgentName()}.`}
-        onRangeChange={setRange}
-        range={range}
-        title="Code"
-      />
-      {query.error ? (
-        <EmptyTelemetry>
-          Code activity is unavailable. Try refreshing the dashboard.
-        </EmptyTelemetry>
-      ) : null}
-      {query.data ? <CodeOverview data={query.data} range={range} /> : null}
-    </PageLayout>
-  );
-}
-
-function CodeOverview(props: {
-  data: CodeOverviewReport;
-  range: TimeRangeDays;
-}) {
-  const data = props.data;
-  return (
-    <>
-      <CodeSummaryCards summary={data.summary} />
-      <CodeActivityChart
-        bucketUnit={timeRangeBucketUnit(props.range)}
-        days={codeActivity(data, props.range)}
-        range={props.range}
-      />
-      <CodeRepositoriesCard repositories={data.repositories} />
-      <CodeRecentChanges changes={data.changes} />
-    </>
-  );
-}
 
 /** Every repository with code changes, with its numbers. */
 export function CodeRepositoriesCard(props: {
@@ -157,9 +90,7 @@ export function CodeRecentChanges(props: {
         Recent changes
       </div>
       <div>
-        {props.changes.map((change) => (
-          <CodeChangeRow change={change} key={change.id} />
-        ))}
+        <CodeChangeRows changes={props.changes} />
       </div>
     </Card>
   );

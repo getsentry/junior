@@ -175,7 +175,9 @@ describe("plugin task Vercel queue integration", () => {
     process.env["JUNIOR_SECRET"] = "plugin-task-secret";
     const signedMessage = signPluginTaskQueueMessage(message);
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
-    expect(mocks.processPluginTask).toHaveBeenCalledWith(message);
+    expect(mocks.processPluginTask).toHaveBeenCalledWith(message, {
+      deliveryCount: 1,
+    });
 
     await expect(
       handler({ ...signedMessage, unexpected: true }, metadata),
@@ -186,7 +188,6 @@ describe("plugin task Vercel queue integration", () => {
     await expect(handler(signedMessage, metadata)).rejects.toThrow(
       "task failed",
     );
-    expect(retry(new Error("still failing"), metadata)).toBeUndefined();
     expect(
       retry(new Error("still failing"), { ...metadata, deliveryCount: 5 }),
     ).toEqual({ acknowledge: true });

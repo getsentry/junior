@@ -16,11 +16,11 @@ describe("Child Agent Results", () => {
     });
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
+        'Use startAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
       ),
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
@@ -38,7 +38,7 @@ function postedTurns(turns: Turn[]) {
   return turns.filter((turn) => turn.replies.length > 0);
 }
 
-// The user never names spawnAgent or asks for updates. These cases measure
+// The user never names startAgent or asks for updates. These cases measure
 // whether Junior decides on its own which child agent updates people need.
 describe("Child Agent Updates", () => {
   test("when delegated research is the only outcome of the first turn, post a short status and then only the answer", async ({
@@ -56,7 +56,7 @@ describe("Child Agent Updates", () => {
 
     const [first, ...later] = conversation.turns;
     expect(
-      first?.toolCalls.filter((call) => call.name === "spawnAgent").length,
+      first?.toolCalls.filter((call) => call.name === "startAgent").length,
     ).toBeGreaterThanOrEqual(2);
     // Without a status, the thread looks finished while children still work.
     expect(first?.replies).toHaveLength(1);

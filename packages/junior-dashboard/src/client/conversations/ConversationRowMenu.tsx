@@ -29,7 +29,7 @@ export type ConversationRowMenuProps = Omit<
  * List the row menu groups. Mount it only while a menu is open: it reads the
  * detail from the cache that the row prefetch fills.
  */
-export function useConversationRowMenuGroups(props: ConversationRowMenuProps) {
+function useConversationRowMenuGroups(props: ConversationRowMenuProps) {
   const detail = useQuery({
     ...conversationDetailQueryOptions(props.conversationId),
     enabled: false,

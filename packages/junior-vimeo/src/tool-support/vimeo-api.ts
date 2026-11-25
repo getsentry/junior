@@ -13,7 +13,7 @@ import {
 import * as z from "zod";
 
 const API = "https://api.vimeo.com";
-/** Videos per page of a folder listing. */
+/** Videos or folders per page of a listing. */
 export const PAGE_SIZE = 100;
 /** Most embed domains one video may have. */
 export const MAX_EMBED_DOMAINS = 10;
@@ -25,6 +25,7 @@ export const VIMEO_OPERATIONS = {
   setThumbnail: "vimeo.set_thumbnail",
   status: "vimeo.status",
   listFolder: "vimeo.list_folder",
+  listFolders: "vimeo.list_folders",
 } as const;
 type Operation = (typeof VIMEO_OPERATIONS)[keyof typeof VIMEO_OPERATIONS];
 
@@ -40,7 +41,6 @@ export const VIDEO_FIELDS = [
   "transcode.status",
   "duration",
   "pictures.base_link",
-  "parent_folder.uri",
 ].join(",");
 
 const HOSTNAME_RE =
@@ -50,6 +50,10 @@ const HASH_RE = /^[0-9a-f]{6,}$/i;
 // A team folder lives under the team owner: `/users/<owner>/projects/<id>`.
 // The API also calls folders `folders`.
 const FOLDER_URI_RE = /^\/users\/(\d{1,20})\/(?:projects|folders)\/(\d{1,20})$/;
+// The web link of the same folder: `https://vimeo.com/user/<owner>/folder/<id>`.
+const FOLDER_PATH_RE = /^\/user\/(\d{1,20})\/folders?\/(\d{1,20})\/?$/;
+const FOLDER_FORMS =
+  "/users/<owner id>/projects/<folder id> or https://vimeo.com/user/<owner id>/folder/<folder id>";
 
 const videoSchema = z
   .object({
@@ -66,7 +70,6 @@ const videoSchema = z
     transcode: z.object({ status: z.string().nullish() }).nullish(),
     duration: z.number().nullish(),
     pictures: z.object({ base_link: z.string().nullish() }).nullish(),
-    parent_folder: z.object({ uri: z.string().nullish() }).nullish(),
   })
   .passthrough();
 
@@ -76,6 +79,25 @@ export type Video = z.output<typeof videoSchema>;
 /** One page of videos in a folder. */
 export const folderPageSchema = z.object({
   data: z.array(videoSchema).max(PAGE_SIZE),
+  paging: z.object({ next: z.string().nullish() }).nullish(),
+});
+
+/** Fields that the tools read from a Vimeo folder. */
+export const FOLDER_FIELDS = "uri,name,link,manage_link,user.name";
+
+/** One page of folders. */
+export const folderListSchema = z.object({
+  data: z
+    .array(
+      z.object({
+        uri: z.string().regex(FOLDER_URI_RE),
+        name: z.string().nullish(),
+        link: z.string().nullish(),
+        manage_link: z.string().nullish(),
+        user: z.object({ name: z.string().nullish() }).nullish(),
+      }),
+    )
+    .max(PAGE_SIZE),
   paging: z.object({ next: z.string().nullish() }).nullish(),
 });
 
@@ -121,34 +143,37 @@ export const embedDomainSchema = z
 export const sandboxPathSchema = (what: string) =>
   z.string().trim().min(1).describe(`Sandbox path of the ${what}.`);
 
-/** Owner and canonical URI of a Vimeo folder URI, or undefined. */
+/** Owner and canonical URI of a Vimeo folder URI or web link, or undefined. */
 export function parseFolder(
   value: string,
 ): { owner: string; uri: string } | undefined {
-  const match = FOLDER_URI_RE.exec(value);
+  const match = FOLDER_URI_RE.exec(value) ?? folderPathMatch(value);
   if (!match) return undefined;
   return { owner: match[1]!, uri: `/users/${match[1]}/projects/${match[2]}` };
 }
 
-/** Validated install settings that every Vimeo tool reads. */
-export interface VimeoSettings {
-  folder: { owner: string; uri: string };
-  embedDomains: string[];
+function folderPathMatch(value: string): RegExpExecArray | null {
+  if (!URL.canParse(value)) return null;
+  const url = new URL(value);
+  if (url.protocol !== "https:") return null;
+  if (url.hostname !== "vimeo.com" && url.hostname !== "www.vimeo.com") {
+    return null;
+  }
+  return FOLDER_PATH_RE.exec(url.pathname);
 }
 
-/**
- * Fail unless the video is in the install's folder. The Vimeo account is
- * shared by every requester, so the tools never reach other videos that the
- * account can read or edit.
- */
-export function assertInFolder(video: Video, settings: VimeoSettings): void {
-  const { uri } = settings.folder;
-  const parent = video.parent_folder?.uri;
-  if (!parent || parseFolder(parent)?.uri !== uri) {
-    throw new PluginToolInputError(
-      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${uri}. The Vimeo tools use only videos in that folder; use vimeo_listFolder to find them.`,
-    );
-  }
+/** A Vimeo folder that a tool call names. */
+export const folderSchema = z
+  .string()
+  .trim()
+  .refine((value) => parseFolder(value) !== undefined, `Use ${FOLDER_FORMS}`)
+  .describe(
+    `Vimeo folder, as ${FOLDER_FORMS}. vimeo_listFolders lists the folders the account can reach.`,
+  );
+
+/** Validated install settings that every Vimeo tool reads. */
+export interface VimeoSettings {
+  embedDomains: string[];
 }
 
 /** Embed domains from input, else the install's default domains. */

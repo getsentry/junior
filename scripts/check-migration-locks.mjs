@@ -187,9 +187,9 @@ async function migrationFiles(root) {
         throw error;
       });
     for (const name of names
-      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .filter((folder) => /^\d{14}_.+$/.test(folder))
       .sort()) {
-      const filePath = path.join(directory, name);
+      const filePath = path.join(directory, name, "migration.sql");
       files.push([
         filePath,
         await fs.readFile(path.join(root, filePath), "utf8"),
@@ -208,7 +208,7 @@ export async function run({ root }) {
   const errors = await checkMigrationLocks(files, JSON.parse(baselineText));
   const squawk = spawnSync(
     path.join(root, "node_modules/.bin/squawk"),
-    ["--reporter", "gcc", "packages/*/migrations/*.sql"],
+    ["--reporter", "gcc", "packages/*/migrations/*/migration.sql"],
     { cwd: root, encoding: "utf8" },
   );
   if (squawk.error) throw squawk.error;

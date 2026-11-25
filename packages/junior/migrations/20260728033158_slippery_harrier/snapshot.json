@@ -1,0 +1,191 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a28495fc-55ba-423b-b4ab-a5e16a85444f",
+  "prevIds": ["000fd8df-3f20-485a-8669-ef5e66d7177c"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversation_annotations"],
+      "writes": [
+        "s|tbl|public.junior_conversation_annotations",
+        "n|tbl|public.junior_conversation_annotations",
+        "e|tbl|public.junior_conversation_annotations",
+        "n|rel|public.junior_conversation_annotations",
+        "n|type|public.junior_conversation_annotations",
+        "n|rel|public.junior_conversation_annotations_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_annotations"],
+      "writes": [
+        "s|fk|public.junior_conversation_annotations.junior_conversation_annotations_conversation_id_fk",
+        "n|fk|public.junior_conversation_annotations.junior_conversation_annotations_conversation_id_fk",
+        "e|fk|public.junior_conversation_annotations.junior_conversation_annotations_conversation_id_fk",
+        "n|con|public.junior_conversation_annotations.junior_conversation_annotations_conversation_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_annotations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_annotations.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_annotations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "plugin",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "annotation_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "junior_conversation_annotations_conversation_id_fk",
+        "nameExplicit": true,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "junior_conversation_annotations_pk",
+        "columns": ["conversation_id", "plugin", "kind", "key"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

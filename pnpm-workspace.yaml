@@ -7,18 +7,18 @@ dedupePeerDependents: false
 catalog:
   "@earendil-works/pi-agent-core": 1.5.2
   "@earendil-works/pi-ai": 1.5.2
-  "@sentry/browser": 11.14.0
-  "@sentry/nitro": 11.14.0
-  "@sentry/node": 11.14.0
-  "@sentry/server-utils": 11.14.0
+  "@sentry/browser": 11.16.0
+  "@sentry/nitro": 11.16.0
+  "@sentry/node": 11.16.0
+  "@sentry/server-utils": 11.16.0
   "@sentry/starlight-theme": ^0.9.1
   # Markdown parsing, shared by the plugin API helpers and the plugins.
   "@types/mdast": ^4.0.4
   # Node 24 is the supported runtime in development, CI, and deployments.
   "@types/node": ^24.19.2
   "@vitest/coverage-v8": 4.1.12
-  drizzle-kit: ^0.31.8
-  drizzle-orm: ^0.45.4
+  drizzle-kit: 1.0.0-rc.6
+  drizzle-orm: 1.0.0-rc.6
   mdast-util-from-markdown: ^2.1.0
   mdast-util-gfm: ^3.1.0
   micromark-extension-gfm: ^3.0.0
@@ -30,6 +30,7 @@ catalog:
 overrides:
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
+  "@slack/types": 3.3.0
   ai: 7.0.153
   "astro>vite": 8.0.14
   "@swc/core": 1.15.33
@@ -56,18 +57,18 @@ minimumReleaseAgeExclude:
   - "@vitest-evals/core@0.16.1"
   - "@vitest-evals/report-ui@0.16.1"
   - "vitest-evals@0.16.1"
-  - "@sentry/browser@11.14.0"
-  - "@sentry/browser-utils@11.14.0"
-  - "@sentry/bundler-plugins@11.14.0"
-  - "@sentry/core@11.14.0"
-  - "@sentry/feedback@11.14.0"
-  - "@sentry/nitro@11.14.0"
-  - "@sentry/node@11.14.0"
-  - "@sentry/opentelemetry@11.14.0"
-  - "@sentry/replay@11.14.0"
-  - "@sentry/replay-canvas@11.14.0"
-  - "@sentry/server-runtime-injection@11.14.0"
-  - "@sentry/server-utils@11.14.0"
+  - "@sentry/browser@11.16.0"
+  - "@sentry/browser-utils@11.16.0"
+  - "@sentry/bundler-plugins@11.16.0"
+  - "@sentry/core@11.16.0"
+  - "@sentry/feedback@11.16.0"
+  - "@sentry/nitro@11.16.0"
+  - "@sentry/node@11.16.0"
+  - "@sentry/opentelemetry@11.16.0"
+  - "@sentry/replay@11.16.0"
+  - "@sentry/replay-canvas@11.16.0"
+  - "@sentry/server-runtime-injection@11.16.0"
+  - "@sentry/server-utils@11.16.0"
   # Sentry publishes @sentry/api, so a new release is trusted.
   - "@sentry/api@2.16.0"
   - "@earendil-works/pi-agent-core"
@@ -89,4 +90,4 @@ allowBuilds:
 patchedDependencies:
   # Backports getsentry/sentry-javascript#26666 (`db.response.returned_rows` on pg and Neon
   # query spans). Drop this patch when Junior bumps to an SDK release that includes it.
-  "@sentry/server-utils@11.14.0": patches/@sentry__server-utils@11.14.0.patch
+  "@sentry/server-utils@11.16.0": patches/@sentry__server-utils@11.16.0.patch

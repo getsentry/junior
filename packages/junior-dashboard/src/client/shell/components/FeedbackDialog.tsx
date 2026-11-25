@@ -40,7 +40,7 @@ export function FeedbackDialog(props: {
   const text = comment.trim();
   const topics: [FeedbackTopic, string][] = [
     ["agent", `${getDashboardAgentName()} in general`],
-    ["new_ui", "The new UI"],
+    ["new_ui", "The dashboard"],
   ];
   return (
     <Dialog {...sheet.rootProps}>

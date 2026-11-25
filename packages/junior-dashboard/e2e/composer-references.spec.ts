@@ -96,11 +96,19 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     /Investigate checkout latency/,
   );
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
+  const nested = conversationUrl(dashboard.baseURL, NESTED_THREAD_ID);
+  // The sent message reads the cards of its links.
+  const cardRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/objects" &&
+      url.searchParams.getAll("url").includes(checkout)
+    );
+  });
   await composer.press("Enter");
   await composer.press("Enter");
 
-  const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
-  const nested = conversationUrl(dashboard.baseURL, NESTED_THREAD_ID);
   await expect
     .poll(() => sent)
     .toEqual([
@@ -115,18 +123,11 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     /Investigate checkout latency/,
   );
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
-  // The sent message reads the card of its link.
-  const cardRead = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      url.pathname === "/api/objects" &&
-      url.searchParams.getAll("url").join() === checkout
-    );
-  });
   await composer.press("Enter");
   await composer.press("Enter");
   await expect.poll(() => sent).toHaveLength(2);
   expect(linked).toHaveLength(2);
+  // The page read the card of this link for the first message.
   await cardRead;
 });
 
@@ -259,6 +260,42 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
     ]);
   await expect.poll(() => linked).toEqual([PULL_REQUEST]);
   await readSaved;
+});
+
+test("# inserts a pull request only once its card says whether it is a draft", async ({
+  page,
+  dashboard,
+}) => {
+  // Hold the live cards until the test lets them through.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/objects",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+  );
+  const composer = await openThread(page, dashboard.baseURL);
+  const references = page.getByRole("listbox", { name: "References" });
+  await composer.pressSequentially("See #3838");
+  const option = references
+    .getByRole("group", { name: "Pull requests" })
+    .getByRole("option", { name: /getsentry\/junior#3838/ });
+  await expect(option).toHaveAttribute("aria-selected", "true");
+  await expect(references).not.toHaveAttribute("aria-busy", "true");
+  // Without its card, the row does not know that it is a draft.
+  await composer.press("Enter");
+  await expect(references).toBeVisible();
+  const chip = composer.getByTitle("getsentry/junior#3838");
+  await expect(chip).toHaveCount(0);
+
+  release();
+  await expect(page.getByText("getsentry/junior#3838 · Draft")).toBeVisible();
+  await composer.press("Enter");
+  await expect(chip).toHaveText("junior#3838");
 });
 
 test("a draft keeps the kind of a chip inserted last", async ({

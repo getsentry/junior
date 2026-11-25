@@ -16,7 +16,7 @@ export function parentRun(turnId = "parent-turn"): AgentRun {
   });
 }
 
-/** Spawn a child from the parent's Turn with `spawnAgent`. */
+/** Spawn a child from the parent's Turn with `startAgent`. */
 export async function spawn(
   harness: Harness,
   toolCallId: string,

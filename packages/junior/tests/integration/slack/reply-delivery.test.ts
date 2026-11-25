@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import { SLACK_MAX_TEXT_OBJECT_CHARS } from "@/chat/slack/limits";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   type CapturedSlackApiCall,
@@ -327,6 +328,48 @@ describe("sendSlackReply", () => {
     expect(JSON.stringify(posts.at(-1)?.params["blocks"])).toContain(
       "修正".repeat(80),
     );
+  });
+
+  it("posts a card longer than one block as more sections", async () => {
+    const warning = "Canary failed on p95 latency. ".repeat(33).trim();
+    const description = "Rollout notes for the web tier. ".repeat(15).trim();
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: "The deploy needs attention.",
+      threadTs: "1700000000.000100",
+      cards: [
+        {
+          kind: "object",
+          plugin: "objects",
+          key: "deploy#1",
+          label: "web@abc123",
+          objectType: "deployment",
+          title: "Deploy web",
+          // Too large for Slack metadata, so the card posts as text.
+          url: `https://example.com/deploys/${"step/".repeat(400)}1`,
+          description,
+          warning,
+        },
+      ],
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post?.params).not.toHaveProperty("metadata");
+    const blocks = (post?.params["blocks"] ?? []) as Array<{
+      type: string;
+      text: { text: string };
+    }>;
+    const sections = blocks.filter((block) => block.type === "section");
+    expect(sections.length).toBeGreaterThan(1);
+    for (const section of sections) {
+      expect(section.text.text.length).toBeLessThanOrEqual(
+        SLACK_MAX_TEXT_OBJECT_CHARS,
+      );
+    }
+    const card = sections.map((section) => section.text.text).join("\n");
+    expect(card).toContain(description);
+    expect(card).toContain(`Needs attention: ${warning}`);
   });
 
   it("does not post empty text", async () => {

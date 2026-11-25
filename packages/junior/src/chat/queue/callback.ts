@@ -20,6 +20,8 @@ export interface QueueCallbackOptions<Message> {
     error?: unknown,
   ): void;
   permanentError?: (error: unknown) => string | undefined;
+  /** Seconds to wait before the next delivery of a failed message. */
+  retryDelaySeconds?: (deliveryCount: number) => number;
   run(message: Message, metadata: QueueMessageMetadata): Promise<void>;
   /**
    * Acknowledge without checking or running the message.
@@ -90,7 +92,9 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     ) {
       return { acknowledge: true };
     }
-    return undefined;
+    return options.retryDelaySeconds
+      ? { afterSeconds: options.retryDelaySeconds(metadata.deliveryCount) }
+      : undefined;
   };
 
   const consumer: QueueConsumer = {

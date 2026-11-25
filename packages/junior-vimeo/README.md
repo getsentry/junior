@@ -1,6 +1,6 @@
 # @sentry/junior-vimeo
 
-Private Vimeo uploads for Junior: upload sandbox videos into a Vimeo folder, replace their files and thumbnails, and check their processing. One shared Vimeo account, connected by an admin.
+Private Vimeo uploads for Junior: list the Vimeo folders the account can reach, upload sandbox videos into the folder that each call names, replace their files and thumbnails, and check their processing. One shared Vimeo account, connected by an admin.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-vimeo
@@ -11,10 +11,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { vimeoPlugin } from "@sentry/junior-vimeo";
 
 export const plugins = defineJuniorPlugins([
-  vimeoPlugin({
-    folderUri: "/users/<owner id>/projects/<folder id>",
-    embedDomains: ["www.example.com"],
-  }),
+  vimeoPlugin({ embedDomains: ["www.example.com"] }),
 ]);
 ```
 

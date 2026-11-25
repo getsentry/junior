@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "1880d763-2db8-4b02-931d-e59c0840186a",
+  "prevIds": ["0841b571-f89e-4038-a529-b2c840c32e76"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_users", "preferences"],
+      "writes": [
+        "s|col|public.junior_users.preferences",
+        "n|col|public.junior_users.preferences",
+        "e|col|public.junior_users.preferences"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "preferences",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'{}'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

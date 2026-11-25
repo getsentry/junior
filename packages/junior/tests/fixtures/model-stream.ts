@@ -25,8 +25,8 @@ type FixedModelOutput =
   | {
       type: "text";
       text: string;
-      /** `length`: the reply hit the output token limit. */
-      stopReason?: "length";
+      /** A stop before the model finished its message. */
+      stopReason?: "length" | "aborted";
       onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown> | "abort";
     }
@@ -65,7 +65,10 @@ export function createAssistantMessage(
   output: FixedModelOutput,
 ): AssistantMessage {
   if (output.type === "text") {
-    return fauxAssistantMessage(output.text, { stopReason: output.stopReason });
+    return fauxAssistantMessage(
+      output.text,
+      output.stopReason ? { stopReason: output.stopReason } : undefined,
+    );
   }
   if (output.type === "toolCall") {
     return createAssistantMessage({ type: "toolCalls", calls: [output] });

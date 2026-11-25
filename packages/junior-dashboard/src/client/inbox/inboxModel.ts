@@ -3,9 +3,6 @@ import type {
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { parsePath } from "react-router";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
-
-import type { Conversation } from "../types";
 
 import {
   type InboxBundle,
@@ -360,17 +357,13 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would dismiss in some rows: notices (FYI) only. Every
- * action item stays, including one assigned to Everyone, and so does every
- * item of a pinned Conversation. An Automation alert is an action item, so
- * it stays too.
+ * What a sweep would dismiss in some rows: the notices (FYI) that the
+ * viewer can dismiss. Every action item stays, including one assigned to
+ * Everyone. An Automation alert is an action item, so it stays too. A pin
+ * keeps its Conversation, not its notices.
  */
-export function sweepOf(
-  rows: readonly InboxBundle[],
-  isPinned: (conversationId: string | undefined) => boolean,
-): InboxItemPayload[] {
+export function sweepOf(rows: readonly InboxBundle[]): InboxItemPayload[] {
   return rows
-    .filter((row) => !isPinned(row.conversationId))
     .flatMap((row) => row.items)
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
@@ -403,21 +396,6 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-/**
- * The size of the code change that an item is about, as its Conversation's
- * linked work saved it. Undefined when that work has no size.
- */
-export function subjectSize(
-  item: Pick<InboxItemPayload, "subject">,
-  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
-): CodeChangeSize | undefined {
-  const url = item.subject?.url;
-  if (!url) return undefined;
-  return conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.size;
 }
 
 /**

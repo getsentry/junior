@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { findUserByEmail } from "@/chat/plugins/viewer";
 import { readPersonCodeOverview } from "../code/overview";
 import type { CodePersonReport } from "../schema/code";
@@ -5,7 +6,8 @@ import type { CodePersonReport } from "../schema/code";
 /** Read person-scoped native code activity for one People profile. */
 export async function readPeopleCode(
   email: string,
-  cursor?: string,
+  cursor: string | undefined,
+  viewer: User | undefined,
 ): Promise<CodePersonReport> {
   const subject = await findUserByEmail(email);
   if (!subject) {
@@ -27,5 +29,9 @@ export async function readPeopleCode(
       ).toISOString(),
     };
   }
-  return await readPersonCodeOverview({ cursor, userId: subject.id });
+  return await readPersonCodeOverview({
+    cursor,
+    userId: subject.id,
+    viewer,
+  });
 }

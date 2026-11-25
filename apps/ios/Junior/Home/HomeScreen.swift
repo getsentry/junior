@@ -229,9 +229,6 @@ struct ConversationCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
             trailing
           }
-          if row.turnActive {
-            Text("Working…").type(.sm).foregroundStyle(Tokens.textMuted).frame(minHeight: 20)
-          }
           tags
         }
       }
@@ -261,18 +258,28 @@ struct ConversationCard: View {
   private var accessibilityText: String {
     var parts = [row.title]
     if row.pinnedAt != nil { parts.append("Pinned") }
-    // A running Turn can also need input, so say both.
-    if row.status == .needsInput { parts.append("Needs input") }
-    if row.turnActive {
-      parts.append("Working")
-    } else if let date = row.lastSeenAt.date {
-      parts.append(app.clock.activityDay(date))
-    }
-    if let location = row.locationLabel { parts.append(location) }
+    if let state = stateLabel { parts.append(state) }
+    if let date = row.lastSeenAt.date { parts.append(app.clock.activityDay(date)) }
+    if let location { parts.append(location) }
     return parts.joined(separator: ", ")
   }
 
-  private var hasBody: Bool { row.turnActive || row.locationLabel != nil }
+  // Like the web's Conversation rows, a row shows the viewer state over its
+  // tree, so a working child agent also counts.
+  private var stateLabel: String? {
+    switch row.treeState {
+    case .needsYou: return "Waiting on you"
+    case .working: return "Working"
+    default: return nil
+    }
+  }
+
+  private var location: String? {
+    guard let label = row.locationLabel, label != row.title else { return nil }
+    return label
+  }
+
+  private var hasBody: Bool { stateLabel != nil || location != nil }
 
   private var route: Route { .conversation(row.conversationId) }
 
@@ -286,25 +293,14 @@ struct ConversationCard: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    // A running Turn can also need input, so the spinner takes only the
-    // date's place.
-    HStack(spacing: 12) {
-      if row.status == .needsInput {
-        Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
-      }
-      if row.turnActive {
-        Spinner()
-          .foregroundStyle(Tokens.textMuted)
-          .frame(minWidth: 56, alignment: .trailing)
-          .accessibilityElement()
-          .accessibilityLabel("Working")
-      } else if let date = row.lastSeenAt.date {
-        Text(app.clock.activityDay(date))
-          .type(.xs)
-          .monospacedDigit()
-          .foregroundStyle(Tokens.textMuted)
-          .frame(minWidth: 56, alignment: .trailing)
-      }
+    if let date = row.lastSeenAt.date {
+      Text(app.clock.activityDay(date))
+        .type(.xs)
+        .monospacedDigit()
+        .foregroundStyle(Tokens.textMuted)
+        .lineLimit(1)
+        .fixedSize()
+        .frame(minWidth: 56, alignment: .trailing)
     }
     Button(action: onArchive) {
       Icon(row.archivedAt == nil ? "archive" : "archive-restore", size: 15)
@@ -317,14 +313,28 @@ struct ConversationCard: View {
     .accessibilityLabel(row.archivedAt == nil ? "Archive" : "Restore")
   }
 
+  // The state sits in a tag next to the location, so the title line keeps
+  // its room and the time never wraps.
   @ViewBuilder private var tags: some View {
-    if let location = row.locationLabel, location != row.title {
+    if hasBody {
       HStack(spacing: 6) {
-        TagChip(label: location, outbound: row.locationUrl != nil) {
-          if row.surface == "slack" {
-            PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
-          } else {
-            Icon("clock", size: 12).foregroundStyle(Tokens.textMuted)
+        if let stateLabel {
+          TagChip(label: stateLabel) {
+            if row.treeState == .working {
+              Spinner(size: 12).foregroundStyle(Tokens.textMuted)
+            } else {
+              Icon("circle-question-mark", size: 12, stroke: 2.2).foregroundStyle(Tokens.accent)
+            }
+          }
+          .layoutPriority(1)
+        }
+        if let location {
+          TagChip(label: location, outbound: row.locationUrl != nil) {
+            if row.surface == "slack" {
+              PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
+            } else {
+              Icon("clock", size: 12).foregroundStyle(Tokens.textMuted)
+            }
           }
         }
       }

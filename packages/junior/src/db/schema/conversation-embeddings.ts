@@ -13,8 +13,6 @@ export const juniorConversationEmbeddings = pgTable(
   "junior_conversation_embeddings",
   {
     conversationId: text("conversation_id").primaryKey(),
-    // TODO(dcramer): Drop brief_version after no deployed worker writes it.
-    legacyBriefVersion: integer("brief_version"),
     /** The `metadata_through_seq` of the embedded Conversation metadata. */
     throughSeq: integer("through_seq"),
     provider: text("provider").notNull(),

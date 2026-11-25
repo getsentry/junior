@@ -4,7 +4,7 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 
 const DESCRIPTIONS = {
   parent: {
-    tool: "End this delegated task as blocked. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
+    tool: "End this Turn as blocked, not with a final text reply. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
     missing:
       "What the task needs and who can give it. Add the work you already did, so the parent does not repeat it.",
   },

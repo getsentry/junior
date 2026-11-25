@@ -6,7 +6,7 @@ Create requested synthetic narration with a reusable original Junior voice. Use 
 
 ## Scope and Contract
 
-The manifest owns credentials and the approved domain. `scripts/speech.mjs` owns request validation, the REST protocol, audio decoding, and output files. `assets/junior-v1.json` owns the playful voice identity. `assets/sample.txt` is a non-sensitive sample script. `SKILL.md` owns narration scope, delivery mode, retries, and sharing.
+The manifest owns credentials and the approved domain. `scripts/speech.mjs` owns request validation, the REST protocol, audio decoding, and output files. `assets/junior-v2.json` owns the voice identity. `assets/sample.txt` is a non-sensitive sample script. `SKILL.md` owns narration scope, delivery mode, retries, and sharing.
 
 Out of scope: voice cloning, per-user key storage, OIDC support, transcription, video rendering, automatic retries, deployment changes, and alternate providers.
 

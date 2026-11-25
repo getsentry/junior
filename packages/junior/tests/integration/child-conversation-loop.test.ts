@@ -67,7 +67,7 @@ async function createDeployWatch(harness: Harness, conversationId: string) {
   );
 }
 
-/** Spawn one helper agent of a child, as the child's `spawnAgent` does. */
+/** Spawn one helper agent of a child, as the child's `startAgent` does. */
 async function createHelper(
   harness: Harness,
   childId: string,
@@ -99,8 +99,8 @@ async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
     nowMs: Date.now(),
     queue: harness.queue,
     result: {
-      kind: "reply",
-      reply: { text: "Helper fact.", toolCallId: "helper-reply" },
+      kind: "completed",
+      text: "Helper fact.",
     },
     sender,
     turnId: "turn_helper",

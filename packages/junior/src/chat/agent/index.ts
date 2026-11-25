@@ -77,7 +77,10 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  isCutOffStopReason,
+} from "@/chat/services/turn-result";
 import {
   isAnswerToolName,
   readTurnAnswer,
@@ -869,7 +872,7 @@ async function executeAgentRunInPrivacyContext(
     const summaryStreamFn = createTracedStreamFn({
       conversationPrivacy,
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
-      ...(streamFn ? { base: streamFn } : undefined),
+      base: streamFn,
     });
     const nextInputAfterReplacement = createNextInputTracker();
     /**
@@ -1340,8 +1343,11 @@ async function executeAgentRunInPrivacyContext(
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         const message = event.message;
+        // Text that the output limit or an abort cut off is not a reply.
+        // The Turn fails, and only its failure is delivered.
         const delivery =
-          message.stopReason === "error" || message.stopReason === "aborted"
+          message.stopReason === "error" ||
+          isCutOffStopReason(message.stopReason)
             ? undefined
             : deliverAssistantMessage(message);
         // Record after delivery, so the reply is not late. Record also when
@@ -1777,7 +1783,7 @@ async function executeAgentRunInPrivacyContext(
             // answer, so the run history shows it.
             missingAnswerError: run.dispatch
               ? "Automation run ended without an answer."
-              : behavior.missingAnswerError,
+              : undefined,
           }
         : undefined),
     });

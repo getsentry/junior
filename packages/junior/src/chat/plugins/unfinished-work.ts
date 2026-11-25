@@ -2,6 +2,7 @@ import {
   type ConversationTreeNode,
   readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
@@ -100,6 +101,7 @@ export async function listConversationWork(
     if (!hook) return;
     try {
       const result = await hook({
+        codeChanges: createPluginCodeChanges(plugin.manifest.name),
         conversationIds: queriedIds,
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),

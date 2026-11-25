@@ -4,6 +4,7 @@ import { vimeoPlugin } from "../src";
 
 const OWNER = "111";
 const FOLDER = `/users/${OWNER}/projects/222`;
+const FOLDER_LINK = `https://vimeo.com/user/${OWNER}/folder/222`;
 const TUS = "https://us-files.tus.vimeo.com/files/abc";
 const PICTURE_UPLOAD = "https://i.cloud.vimeo.com/video/333";
 const SIZE = 20 * 1024 * 1024 + 123;
@@ -35,16 +36,12 @@ const storedVideo = {
   status: "transcoding",
   upload: { status: "complete" },
   transcode: { status: "in_progress" },
-  parent_folder: { uri: FOLDER },
 };
 
 type ApiCall = { operation: string; method: string; url: URL; body: unknown };
 
 const DEFAULT_DOMAINS = ["www.example.com", "docs.example.com"];
-const plugin = vimeoPlugin({
-  folderUri: FOLDER,
-  embedDomains: DEFAULT_DOMAINS,
-});
+const plugin = vimeoPlugin({ embedDomains: DEFAULT_DOMAINS });
 const listedOperations =
   plugin.manifest?.accounts?.serviceAccount?.operations ?? [];
 
@@ -115,25 +112,29 @@ function fakeVimeo(registration = plugin) {
         ? new Response("busy", { status: 503 })
         : Response.json(storedVideo);
     }
-    if (route === "GET /videos/555") {
-      // A video that the shared account can edit, outside the folder.
+    if (route === "GET /videos/777") {
       return Response.json({
-        uri: "/videos/555",
-        parent_folder: { uri: `/users/${OWNER}/projects/999` },
+        uri: "/videos/777",
         privacy: { view: "disable", embed: "whitelist" },
         status: "available",
         transcode: { status: "complete" },
         duration: 72,
       });
     }
-    if (route === "GET /videos/777") {
+    if (
+      route === "GET /me/projects" ||
+      route === `GET /users/${OWNER}/projects`
+    ) {
       return Response.json({
-        uri: "/videos/777",
-        parent_folder: { uri: FOLDER },
-        privacy: { view: "disable", embed: "whitelist" },
-        status: "available",
-        transcode: { status: "complete" },
-        duration: 72,
+        data: [
+          {
+            uri: FOLDER,
+            name: "Blog videos",
+            manage_link: FOLDER_LINK,
+            user: { name: "Sentry" },
+          },
+        ],
+        paging: { next: null },
       });
     }
     if (route === `GET ${FOLDER}/videos`) {
@@ -226,6 +227,7 @@ describe("Vimeo tools", () => {
     state.dropSecondChunk = true;
     const out = await run("upload", {
       path: "out/clip.mp4",
+      folder: FOLDER,
       title: "Release notes",
       view: "unlisted",
       embed_domains: ["www.example.com", "example.com"],
@@ -263,24 +265,35 @@ describe("Vimeo tools", () => {
     const { state, run } = fakeVimeo();
     // Two drops on each of the three chunks: six in all, two per chunk.
     state.dropsPerChunk = 2;
-    await run("upload", { path: "out/clip.mp4", title: "t" });
+    await run("upload", { path: "out/clip.mp4", folder: FOLDER, title: "t" });
     expect(Buffer.compare(state.received, video)).toBe(0);
   });
 
   it("succeeds with a status error when only the lookup after the bytes fails", async () => {
     const { state, run } = fakeVimeo();
     state.failLookup = true;
-    const out = await run("upload", { path: "out/clip.mp4", title: "t" });
+    const out = await run("upload", {
+      path: "out/clip.mp4",
+      folder: FOLDER,
+      title: "t",
+    });
     expect(out).toMatchObject({ video_id: "987654", ready: false });
     expect(String(out["status_error"])).toMatch(/do not upload again/);
     expect(Buffer.compare(state.received, video)).toBe(0);
   });
 
-  it("defaults to an embed-only video on the install's embed domains", async () => {
+  it("uploads into a folder link as an embed-only video on the default domains", async () => {
     const { state, run } = fakeVimeo();
-    await run("upload", { path: "/vercel/sandbox/out/clip.mp4", title: "t" });
+    const out = await run("upload", {
+      path: "/vercel/sandbox/out/clip.mp4",
+      folder: `${FOLDER_LINK}/`,
+      title: "t",
+    });
+    expect(state.apiCalls[0]!.url.pathname).toBe(`/users/${OWNER}/videos`);
+    expect(out["folder_uri"]).toBe(FOLDER);
     expect(state.apiCalls[0]!.body).toMatchObject({
-      privacy: { view: "disable" },
+      folder_uri: FOLDER,
+      privacy: { view: "disable", embed: "whitelist", download: false },
       embed_domains: ["www.example.com", "docs.example.com"],
     });
   });
@@ -289,33 +302,44 @@ describe("Vimeo tools", () => {
     const { state, tools, run } = fakeVimeo();
     const upload = tools["upload"]!;
     for (const input of [
-      { path: "x", title: "t", view: "anybody" },
-      { path: "x", title: "t", embed_domains: ["https://evil.com/x"] },
-      { path: "x", title: "t", folder_uri: "/me/videos" },
+      { path: "x", folder: FOLDER, title: "t", view: "anybody" },
+      {
+        path: "x",
+        folder: FOLDER,
+        title: "t",
+        embed_domains: ["https://evil.com/x"],
+      },
+      { path: "x", title: "t" },
+      { path: "x", folder: "/me/videos", title: "t" },
+      { path: "x", folder: "https://evil.com/user/1/folder/2", title: "t" },
     ]) {
       expect(() => upload.prepareArguments!(input)).toThrow(/./);
     }
+    expect(() =>
+      tools["listFolder"]!.prepareArguments!({ folder: "222" }),
+    ).toThrow(/vimeo\.com\/user/);
     await expect(
-      run("upload", { path: "secret.txt", title: "t" }),
+      run("upload", { path: "secret.txt", folder: FOLDER, title: "t" }),
     ).rejects.toThrow(/not an MP4/);
     await expect(
-      run("upload", { path: "nope.mp4", title: "t" }),
+      run("upload", { path: "nope.mp4", folder: FOLDER, title: "t" }),
     ).rejects.toThrow(/does not exist/);
-    const noDefaults = fakeVimeo(vimeoPlugin({ folderUri: FOLDER }));
+    const noDefaults = fakeVimeo(vimeoPlugin());
     await expect(
-      noDefaults.run("upload", { path: "out/clip.mp4", title: "t" }),
+      noDefaults.run("upload", {
+        path: "out/clip.mp4",
+        folder: FOLDER,
+        title: "t",
+      }),
     ).rejects.toThrow(/no default embed domains/);
     expect(state.apiCalls).toHaveLength(0);
     expect(noDefaults.state.apiCalls).toHaveLength(0);
   });
 
-  it("rejects a bad folder or embed domain when the app registers the plugin", () => {
-    expect(() => vimeoPlugin({ folderUri: "/me/videos" })).toThrow(
-      /not a Vimeo folder URI/,
+  it("rejects a bad embed domain when the app registers the plugin", () => {
+    expect(() => vimeoPlugin({ embedDomains: ["https://evil.com/x"] })).toThrow(
+      /bare hostnames/,
     );
-    expect(() =>
-      vimeoPlugin({ folderUri: FOLDER, embedDomains: ["https://evil.com/x"] }),
-    ).toThrow(/bare hostnames/);
   });
 
   it("replaces a file with a new version and keeps the video", async () => {
@@ -324,8 +348,7 @@ describe("Vimeo tools", () => {
       video_id: "987654",
       path: "out/clip.mp4",
     });
-    expect(state.apiCalls[0]!.method).toBe("GET");
-    const version = state.apiCalls[1]!;
+    const version = state.apiCalls[0]!;
     expect(version.operation).toBe("vimeo.replace_file");
     expect(version.url.toString()).toBe(
       "https://api.vimeo.com/videos/987654/versions?fields=upload",
@@ -347,7 +370,6 @@ describe("Vimeo tools", () => {
     const put = state.uploads.find((call) => call.url === PICTURE_UPLOAD)!;
     expect(put.headers.get("Content-Type")).toBe("image/jpeg");
     expect(state.apiCalls.map((call) => call.method)).toEqual([
-      "GET",
       "POST",
       "PATCH",
     ]);
@@ -360,36 +382,31 @@ describe("Vimeo tools", () => {
     ).rejects.toThrow(/not a JPEG or PNG/);
   });
 
-  it("uses no video or folder outside the install's folder", async () => {
-    const { state, tools, run } = fakeVimeo();
-    expect(() =>
-      tools["upload"]!.prepareArguments!({
-        path: "x",
-        title: "t",
-        folder_uri: `/users/${OWNER}/projects/999`,
-      }),
-    ).toThrow(/folder_uri/);
-    expect(() =>
-      tools["listFolder"]!.prepareArguments!({
-        folder_uri: `/users/${OWNER}/projects/999`,
-      }),
-    ).toThrow(/folder_uri/);
-    await expect(run("status", { video_id: "555" })).rejects.toThrow(
-      /not in \/users\/111\/projects\/222/,
-    );
-    await expect(
-      run("replaceFile", { video_id: "555", path: "out/clip.mp4" }),
-    ).rejects.toThrow(/not in \/users\/111\/projects\/222/);
-    await expect(
-      run("setThumbnail", { video_id: "555", path: "out/poster.jpg" }),
-    ).rejects.toThrow(/not in \/users\/111\/projects\/222/);
-    expect(state.apiCalls.every((call) => call.method === "GET")).toBe(true);
-    expect(state.uploads).toHaveLength(0);
+  it("lists the account's own and team folders", async () => {
+    const { state, run } = fakeVimeo();
+    const own = await run("listFolders", {});
+    const team = await run("listFolders", { team_owner_id: OWNER, page: 2 });
+    const [ownCall, teamCall] = state.apiCalls;
+    expect(ownCall!.operation).toBe("vimeo.list_folders");
+    expect(ownCall!.url.pathname).toBe("/me/projects");
+    expect(ownCall!.url.searchParams.get("sort")).toBe("name");
+    expect(teamCall!.url.pathname).toBe(`/users/${OWNER}/projects`);
+    expect(teamCall!.url.searchParams.get("page")).toBe("2");
+    const folder = {
+      folder_uri: FOLDER,
+      name: "Blog videos",
+      owner_id: OWNER,
+      owner_name: "Sentry",
+      link: FOLDER_LINK,
+    };
+    expect(own).toMatchObject({ folders: [folder] });
+    expect(team).toMatchObject({ folders: [folder] });
+    expect(own["next_page"]).toBeUndefined();
   });
 
-  it("lists the install's folder newest first and reports the next page", async () => {
+  it("lists a folder newest first and reports the next page", async () => {
     const { state, run } = fakeVimeo();
-    const out = await run("listFolder", {});
+    const out = await run("listFolder", { folder: FOLDER_LINK });
     const list = state.apiCalls[0]!;
     expect(list.operation).toBe("vimeo.list_folder");
     expect(list.url.pathname).toBe(`${FOLDER}/videos`);
@@ -397,6 +414,7 @@ describe("Vimeo tools", () => {
     expect(list.url.searchParams.get("sort")).toBe("date");
     expect(list.url.searchParams.get("direction")).toBe("desc");
     expect(out).toMatchObject({
+      folder_uri: FOLDER,
       videos: [{ name: "Release notes", video_id: "987654" }],
       next_page: 2,
     });
@@ -426,7 +444,8 @@ describe("Vimeo tools", () => {
   it("uses only the service account, with one operation per tool", () => {
     const manifest = plugin.manifest!;
     expect(manifest.accounts?.userOAuth).toBe(false);
-    expect(manifest.credentials?.authTokenEnv).toBeUndefined();
+    expect(manifest.credentials).toMatchObject({ type: "oauth-bearer" });
+    expect(manifest.credentials).not.toHaveProperty("authTokenEnv");
     expect(manifest.oauth).toMatchObject({
       authorizeEndpoint: "https://api.vimeo.com/oauth/authorize",
       tokenEndpoint: "https://api.vimeo.com/oauth/access_token",

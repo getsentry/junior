@@ -8,14 +8,13 @@ import {
   inArray,
   isNotNull,
   isNull,
-  ne,
   not,
   or,
   sql,
   type SQL,
   type SQLWrapper,
 } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
@@ -30,11 +29,9 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import {
-  inboxItemForUser,
   inboxItemNeedsInput,
   inboxItemOwnedByConversation,
 } from "@/chat/inbox-items/access";
-import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -57,9 +54,7 @@ import {
 } from "./record";
 import {
   conversationIsActiveSql,
-  conversationStatusSql,
   conversationTurnFailedSql,
-  conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
 import {
@@ -77,7 +72,10 @@ import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
 import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
-import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
+import {
+  hasUnexpiredAuthorizationRequest,
+  treeAwaitsAuthorization,
+} from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
@@ -332,20 +330,23 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * for each feed-row input as `name:token`, separated by spaces, so the
  * dashboard can record which inputs moved it.
  *
- * The token holds only what a feed row shows, so a Task moves it only when
- * the tree state moves. Watches and Timers live outside SQL. A Turn makes
- * or cancels one, and the end of that Turn moves the status or the tree's
- * work, so a read after it sees the change. A Timer that fires starts a
- * Turn. A stop anywhere in the tree moves it too, since a stopped
- * Conversation's Watches start no Turn. A Watch that expires on its own
- * moves nothing, so its row shows `watching` until the feed reads again. Every Event of a live Turn moves `last_activity_at`, but
- * a running row shows its running state in place of the age, so the token
- * holds no activity for it. Other rows show an age in whole minutes, so the
- * token holds its minute. The end of the Turn moves the status.
+ * Status and tree state come from stored watermarks, not from the rules
+ * that derive them, so a poll reads no Events or read positions.
+ * Each write that a status or the tree state reads moves `detail_version` on
+ * its Conversation, so the token holds that version for each idle row and
+ * tree member. Every Event of a live Turn moves it too, and a running row
+ * shows its running state, so a running Conversation adds only that it runs
+ * and the open Inbox items that it added. The end of the Turn writes
+ * the row. Watches and Timers live outside SQL. A Turn makes or cancels one,
+ * and the end of that Turn moves the version, so a read after it sees the
+ * change. A Watch that expires on its own moves nothing, so its row shows
+ * `watching` until the feed reads again. An authorization request expires
+ * with no write, so the token counts the live ones.
+ * Idle rows show an age in whole minutes, so the token holds that minute.
  * The rows are in feed order, so a move that reorders them moves the token.
- * The newest Message of each role stands for the preview and participants.
- * Threads and annotations show from the whole tree. Waiting roots outside
- * the page move the Inbox items token.
+ * The newest Message of each role stands for the preview and participants,
+ * and moves the token during a live Turn. Waiting roots outside the page,
+ * and the viewer's own Inbox items, move the Inbox items token.
  */
 export function conversationFeedVersionQuery(
   db: JuniorDatabase,
@@ -353,27 +354,39 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
-  // The fields of each nested Thread row, and the tree state inputs that
-  // SQL holds, over the root and its tree. An archive anywhere in the tree
-  // can hide Threads under it.
+  // The open Inbox items that a running Conversation added. A take or a
+  // reassign writes `updated_at`, and it changes whom the item waits on.
+  const ownedItemsVersion = (conversation: AnyPgColumn) =>
+    sql`(select concat(count(*), '/', max(${juniorInboxItems.updatedAt})) from ${juniorInboxItems} where ${and(
+      inboxItemOwnedByConversation(conversation),
+      inboxItemNeedsInput(),
+    )})`;
+  const rowState = (row: typeof juniorConversations) =>
+    sql`case
+      when ${conversationIsActiveSql(row)}
+      then concat('active:', ${ownedItemsVersion(row.conversationId)})
+      else ${row.detailVersion}::text
+    end`;
+  // The tree's members, and the state of each one but the root, which its
+  // row holds. The tree counts the root's live authorization requests too.
+  // A running Thread hides its version, but its row shows its title, which
+  // a Turn can set, and an archive hides it, so the tree holds both.
+  const child = sql`${feedTree.conversationId} <> ${conversationId}`;
+  const active = conversationIsActiveSql(feedTree);
   const tree = db
     .select({
       version: sql<string>`concat_ws(':',
-        count(*) filter (where ${feedTree.archivedAt} is not null),
-        count(*) filter (where ${feedTree.stoppedAt} is not null),
-        coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
-        bool_or(exists (select 1 from ${juniorInboxItems} where ${and(
-          inboxItemOwnedByConversation(feedTree.conversationId),
-          inboxItemNeedsInput(),
-          inboxItemForUser(userId),
-        )}) or ${awaitsAuthorizationFrom(feedTree.conversationId, userId)}),
-        string_agg(concat_ws('/',
-          ${feedTree.conversationId}, ${feedTree.title},
-          ${conversationStatusSql(feedTree)},
-          ${shownActivityMinute(feedTree.executionStatus, feedTree.lastActivityAt)}
-        ), ',' order by ${feedTree.conversationId}) filter (
-          where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
-        )
+        count(*),
+        sum(${feedTree.detailVersion}) filter (where ${child} and not ${active}),
+        count(*) filter (where ${child} and ${active}),
+        md5(string_agg(${ownedItemsVersion(feedTree.conversationId)}, ',' order by ${feedTree.conversationId}) filter (
+          where ${child} and ${active}
+        )),
+        count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
+        md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
+          where ${child} and ${active} and ${feedTree.kind} = 'thread'
+        )),
+        count(*) filter (where ${hasUnexpiredAuthorizationRequest(feedTree.conversationId)})
       )`,
     })
     .from(feedTree)
@@ -405,12 +418,7 @@ export function conversationFeedVersionQuery(
       lastActivityAt: juniorConversations.lastActivityAt,
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
-      status: conversationStatusSql(juniorConversations).as("status"),
-      // The root's own wait on the viewer can start while its status
-      // already reads `needs_input` for someone else.
-      waitsOnViewer: conversationWaitsOnUserSql(juniorConversations, userId).as(
-        "waits_on_viewer",
-      ),
+      state: rowState(juniorConversations).as("state"),
       title: juniorConversations.title,
       activity: shownActivityMinute(
         juniorConversations.executionStatus,
@@ -456,7 +464,7 @@ export function conversationFeedVersionQuery(
     order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
     pin: byRow(page.pinnedAt, page.pinPosition),
     title: byRow(page.title, page.channelName),
-    status: byRow(page.status, page.waitsOnViewer),
+    status: byRow(page.state),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
     threads: byRow(page.threads),
@@ -687,6 +695,7 @@ export async function readConversationFeedFromSql(
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
       const tenantId = conversationSlackTenantId({
+        provider: row.location?.provider,
         providerTenantId: row.location?.providerTenantId,
         sessionSource: row.conversation.sessionSource,
       });

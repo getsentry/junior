@@ -62,7 +62,6 @@ import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations
 import { fetchDashboardJson } from "./http";
 import { readRevalidated, revalidatedJsonQuery } from "./revalidation";
 import { readResponseJson } from "./sentry";
-import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemPluginsData } from "./types";
 
 declare global {
@@ -135,9 +134,9 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
-  // Only the new UI's rows show files and link cards, which cost the server
-  // a query, so only it asks for them.
-  const include = useInboxUi() && !search ? "links,media" : "";
+  // The rows show files and link cards, which cost the server a query.
+  // A search asks for neither.
+  const include = search ? "" : "links,media";
   return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
@@ -283,8 +282,8 @@ export function useAutomationsData(enabled: boolean, search: string) {
 }
 
 /**
- * Page through the Automation list by `sort=activity`, as the new UI's
- * list scrolls. `automations` holds the rows of every loaded page.
+ * Page through the Automation list by `sort=activity`, as the list
+ * scrolls. `automations` holds the rows of every loaded page.
  */
 export function useAutomationPagesData(enabled: boolean, search: string) {
   const query = useInfiniteQuery({

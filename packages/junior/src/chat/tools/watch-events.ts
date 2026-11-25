@@ -132,7 +132,7 @@ async function requireWatchableConversation(
     !(await canReadConversation(getDb(), watcherConversationId, conversationId))
   ) {
     throw new ToolInputError(
-      `Conversation is not accessible: ${conversationId}. Check identifier, or use searchConversations to find a Conversation that you can read.`,
+      `Conversation is not accessible: ${conversationId}. Check identifier, or search Conversations to find one that you can read.`,
     );
   }
   const target = await getConversationStore().get({ conversationId });

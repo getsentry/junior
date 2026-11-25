@@ -12,21 +12,15 @@ import { latestSnapshots } from "./lib/drizzle-snapshots.mjs";
  * - In any package, a column with a provider state name, such as `state` or
  *   `title`, on a table that holds provider ids must be listed too.
  *
- * Each file maps a table to a reason for the whole table, or to a reason for
- * each column.
- *
- * - `EXCEPTIONS` holds the values that Junior keeps. A reason says the value
- *   is Junior-owned (a fact that Junior decides or records, or a key for one)
- *   or too expensive to derive (a value that a read needs for many objects
- *   at once, which GitHub cannot give at that cost). It grows only through
- *   a PR that the owner reviews.
- * - `BASELINE` holds the copies of GitHub state that a cleanup removes. It
- *   may only shrink (`baseline-growth:check`). Delete it, and the code that
- *   reads it, with its last entry.
+ * `EXCEPTIONS` holds the values that Junior keeps. It maps a table to a
+ * reason for the whole table, or to a reason for each column. A reason says
+ * the value is Junior-owned (a fact that Junior decides or records, or a key
+ * for one) or too expensive to derive (a value that a read needs for many
+ * objects at once, which GitHub cannot give at that cost). It grows only
+ * through a PR that the owner reviews.
  */
 
 const EXCEPTIONS = "scripts/github-state-exceptions.json";
-const BASELINE = "scripts/github-state-baseline.json";
 
 const GITHUB_PACKAGE = "junior-github";
 const STATE_NAME =
@@ -40,7 +34,7 @@ function failure(snapshotPath, key) {
 
 /**
  * Report the columns of one package's Drizzle snapshot that may copy
- * provider state and are not in `listed`, the tables of both files.
+ * provider state and are not in `listed`, the tables of `EXCEPTIONS`.
  */
 export function checkSnapshot(packageName, snapshotPath, snapshot, listed) {
   const errors = [];
@@ -68,28 +62,10 @@ function readTables(root, file) {
   return JSON.parse(fs.readFileSync(path.join(root, file), "utf8")).tables;
 }
 
-/**
- * Join the tables of two files. A table reason covers the whole table, so it
- * wins over column reasons.
- */
-export function joinTables(first, second) {
-  const tables = { ...first };
-  for (const [name, reasons] of Object.entries(second)) {
-    const current = tables[name];
-    if (typeof current === "string") continue;
-    tables[name] =
-      typeof reasons === "string" ? reasons : { ...current, ...reasons };
-  }
-  return tables;
-}
-
-/** Check the latest snapshot of every package that has migrations. */
-export function run({ root }) {
-  const listed = joinTables(
-    readTables(root, EXCEPTIONS),
-    readTables(root, BASELINE),
-  );
-  return latestSnapshots(root).flatMap(
+/** Check the migrated schema of every package that has migrations. */
+export async function run({ root }) {
+  const listed = readTables(root, EXCEPTIONS);
+  return (await latestSnapshots(root)).flatMap(
     ({ packageName, snapshotPath, snapshot }) =>
       checkSnapshot(packageName, snapshotPath, snapshot, listed),
   );

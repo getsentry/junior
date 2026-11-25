@@ -8,6 +8,10 @@ import {
 } from "../components/ui/dropdown-menu";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 
+/** The bordered box of the conversation menu button, so it reads as a button. */
+export const CONVERSATION_MENU_BUTTON_CLASS =
+  "border border-dashboard-border-strong text-dashboard-text hover:border-dashboard-border-heavy";
+
 /**
  * Show the conversation `⋯` button and its menu. `children` are the menu
  * rows. The menu returns focus to the button when it closes.
@@ -24,6 +28,7 @@ export function ConversationOverflowMenu(props: {
         ref={props.buttonRef}
         render={
           <HeaderIconButton
+            className={CONVERSATION_MENU_BUTTON_CLASS}
             label={open ? "Close conversation menu" : "Conversation menu"}
             tooltipDisabled={open}
           >
