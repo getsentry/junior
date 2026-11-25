@@ -531,11 +531,6 @@ export interface GitHubPullRequestMergeState {
    * returns the latest 100 comments and review requests.
    */
   activity: GitHubPullRequestActivity[];
-  /**
-   * At least one approval, and no reviewer still requests changes. Read
-   * only when GitHub says the pull request can merge cleanly.
-   */
-  approved: boolean;
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
   /**
@@ -558,6 +553,13 @@ export interface GitHubPullRequestMergeState {
    * and not a draft.
    */
   reviewedBy: string[];
+  /**
+   * `approved` with at least one approval and no reviewer who still
+   * requests changes. `changesRequested` while a reviewer still requests
+   * changes. Undefined with neither. Read only when GitHub says the pull
+   * request can merge cleanly and auto-merge is off.
+   */
+  reviewOutcome?: "approved" | "changesRequested";
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -657,7 +659,6 @@ export async function loadPullRequestMergeState(
     : pull.mergeStateStatus.toLowerCase();
   const state: GitHubPullRequestMergeState = {
     activity,
-    approved: false,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
     draft: pull.isDraft,
@@ -704,9 +705,11 @@ export async function loadPullRequestMergeState(
   );
   const reviewStates = [...latest.values()].map((review) => review.state);
   if (!state.autoMerge && state.mergeableState === "clean") {
-    state.approved =
-      reviewStates.includes("APPROVED") &&
-      !reviewStates.includes("CHANGES_REQUESTED");
+    if (reviewStates.includes("CHANGES_REQUESTED")) {
+      state.reviewOutcome = "changesRequested";
+    } else if (reviewStates.includes("APPROVED")) {
+      state.reviewOutcome = "approved";
+    }
   }
   const login = requesterLogin?.toLowerCase();
   const requesterReview = login ? latest.get(login) : undefined;
