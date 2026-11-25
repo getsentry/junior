@@ -8,7 +8,10 @@
 import { timingSafeEqual } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { escapeHtml, requestHasSameOrigin } from "@/api/html";
-import { issueIosSessionCode } from "@/api/ios-sign-in/routes";
+import {
+  appSessionClient,
+  issueClientSessionCode,
+} from "@/api/client-sign-in/routes";
 import {
   authorizationRedirect,
   bindMcpConsent,
@@ -163,9 +166,12 @@ export async function handleMcpConsentPage(args: {
     scope: authorization.scope,
     state: args.state,
   });
+  const sessionClient = appSessionClient(authorization.clientId);
   const sessionCode =
     authorization.sessionCodeChallenge &&
-    (await issueIosSessionCode({
+    sessionClient &&
+    (await issueClientSessionCode({
+      client: sessionClient,
       codeChallenge: authorization.sessionCodeChallenge,
       state: args.state,
       user: args.user,

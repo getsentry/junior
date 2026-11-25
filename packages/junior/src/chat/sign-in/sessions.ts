@@ -11,8 +11,8 @@ import { juniorSignInSessions } from "@/db/schema";
 
 // The prefix lets secret scanners find a leaked token. It carries no authority.
 const TOKEN_PREFIX = "jr_ses_";
-/** The iOS app signs in again after this, the same as its MCP grant. */
-export const IOS_SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+/** An app client signs in again after this, the same as its MCP grant. */
+export const CLIENT_SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 // Write `last_used_at` at most this often, so each request is one read.
 const LAST_USED_WRITE_INTERVAL_MS = 60 * 60 * 1000;
 

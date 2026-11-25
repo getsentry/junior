@@ -149,12 +149,12 @@ import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
 import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
-  handleIosSignInToken,
-  handleIosSignOut,
-  IOS_SIGN_IN_PUBLIC_PATHS,
-  IOS_SIGN_IN_TOKEN_PATH,
-  IOS_SIGN_OUT_PATH,
-} from "@/api/ios-sign-in/routes";
+  handleClientSignInToken,
+  handleClientSignOut,
+  CLIENT_SIGN_IN_PUBLIC_PATHS,
+  CLIENT_SIGN_IN_TOKEN_PATH,
+  CLIENT_SIGN_OUT_PATH,
+} from "@/api/client-sign-in/routes";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -713,7 +713,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
       coreRoutePaths: mcpEnabled
-        ? [...MCP_ROUTE_PATHS, ...IOS_SIGN_IN_PUBLIC_PATHS]
+        ? [...MCP_ROUTE_PATHS, ...CLIENT_SIGN_IN_PUBLIC_PATHS]
         : [],
       dashboard,
       routes: pluginRoutes,
@@ -764,10 +764,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
       return handleMcpRequest(c.req.raw);
     });
-    app.post(IOS_SIGN_IN_TOKEN_PATH, (c) =>
-      handleIosSignInToken({ request: c.req.raw, state: getMcpState() }),
+    app.post(CLIENT_SIGN_IN_TOKEN_PATH, (c) =>
+      handleClientSignInToken({ request: c.req.raw, state: getMcpState() }),
     );
-    app.post(IOS_SIGN_OUT_PATH, (c) => handleIosSignOut(c.req.raw));
+    app.post(CLIENT_SIGN_OUT_PATH, (c) => handleClientSignOut(c.req.raw));
   }
   mountRoutes(app, pluginRoutes);
   mountRoutes(

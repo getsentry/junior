@@ -25,14 +25,14 @@ async function exchange(
   code: string,
   verifier: string,
 ): Promise<Response> {
-  return await app.request(`${MCP_TEST_ORIGIN}/api/ios/sign-in/token`, {
+  return await app.request(`${MCP_TEST_ORIGIN}/api/client/sign-in/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ code, code_verifier: verifier }),
   });
 }
 
-describe("iOS sign-in", () => {
+describe("client sign-in", () => {
   it("gives the app an MCP code and a 30-day session code from one consent", async () => {
     const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const mcp = createPkce();
@@ -80,15 +80,18 @@ describe("iOS sign-in", () => {
     // Each code works once.
     expect((await exchange(app, code, session.verifier)).status).toBe(400);
 
-    const signedOut = await app.request(`${MCP_TEST_ORIGIN}/api/ios/sign-out`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${body.token}` },
-    });
+    const signedOut = await app.request(
+      `${MCP_TEST_ORIGIN}/api/client/sign-out`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${body.token}` },
+      },
+    );
     expect(signedOut.status).toBe(204);
     expect(await authenticateSignInSession(body.token)).toBeUndefined();
   });
 
-  it("asks only Junior's iOS app for a session", async () => {
+  it("gives a session only to Junior's own apps", async () => {
     const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
     const authorize = await app.request(
       mcpAuthorizeUrl({
