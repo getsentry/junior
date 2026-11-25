@@ -1,4 +1,5 @@
 import type {
+  AnnotationPrefix,
   ConversationSidebarAnnotation,
   LiveAnnotation,
   ObjectAnnotation,
@@ -57,9 +58,35 @@ export function githubSidebarAnnotations(
     .map(({ annotation }) => annotation);
 }
 
+// The start of the Annotation key and the link of each issue and pull
+// request of one repository.
+function repositoryPrefix(repo: string): AnnotationPrefix {
+  return { key: `${repo.toLowerCase()}#`, url: `https://github.com/${repo}/` };
+}
+
 /** Return the Annotation key of a GitHub issue or pull request. */
 export function githubObjectKey(repo: string, number: number): string {
-  return `${repo.toLowerCase()}#${number}`;
+  return `${repositoryPrefix(repo).key}${number}`;
+}
+
+/**
+ * Return the move of the Annotations of each issue and pull request of a
+ * repository that GitHub renamed or transferred, by its full names.
+ */
+export function githubRepositoryMove(from: string, to: string) {
+  return { from: repositoryPrefix(from), to: repositoryPrefix(to) };
+}
+
+// GitHub answers a renamed repository's old name, and its link names the
+// repository now. So the key follows the link, and a tool call by the old
+// name keeps the Annotation on the new key.
+function currentRepository(url: string, repo: string): string {
+  const parsed = URL.parse(url);
+  const [owner, name] =
+    parsed?.hostname === "github.com"
+      ? parsed.pathname.split("/").filter(Boolean)
+      : [];
+  return owner && name ? `${owner}/${name}` : repo;
 }
 
 /** Build the Annotation that GitHub create and update tools return. */
@@ -77,7 +104,10 @@ export function githubAnnotatedObject(input: {
 }): SavedObjectAnnotation {
   return {
     kind: "object",
-    key: githubObjectKey(input.repo, input.number),
+    key: githubObjectKey(
+      currentRepository(input.url, input.repo),
+      input.number,
+    ),
     ...(input.id
       ? {
           subject: {
@@ -99,6 +129,8 @@ export function githubAnnotatedObject(input: {
 export function githubObjectCard(input: {
   repo: string;
   number: number;
+  /** GitHub's id of the object (`databaseId`), as in `githubAnnotatedObject`. */
+  id?: number | undefined;
   title: string;
   url: string;
   objectType: "task" | "code_change";
@@ -110,6 +142,17 @@ export function githubObjectCard(input: {
   return {
     kind: "object",
     key: githubObjectKey(input.repo, input.number),
+    ...(input.id
+      ? {
+          subject: {
+            id: String(input.id),
+            kind:
+              input.objectType === "code_change"
+                ? GITHUB_INBOX_SUBJECTS.pullRequest
+                : GITHUB_INBOX_SUBJECTS.issue,
+          },
+        }
+      : undefined),
     label: `${input.repo}#${input.number}`,
     title: input.title.slice(0, 512),
     url: input.url,

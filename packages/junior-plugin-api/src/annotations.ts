@@ -84,8 +84,55 @@ export interface PluginAnnotations {
   remove(kind: ConversationAnnotationInput["kind"], key: string): Promise<void>;
   list(): Promise<ConversationAnnotation[]>;
 }
+
+/**
+ * The Annotations of one plugin that share a key. `url` is the link of one
+ * of them, if it has one.
+ */
+export interface ListedAnnotation {
+  key: string;
+  url: string | null;
+}
+
+/** The start of the keys and the links of a plugin's moved objects. */
+export interface AnnotationPrefix {
+  key: string;
+  url: string;
+}
+
 export interface PluginConversationAnnotations {
   forConversation(conversationId: string): PluginAnnotations;
+  /**
+   * List the keys of this plugin's Annotations in key order after `after`,
+   * at most `limit`. With `named`, list the keys whose Annotations name a
+   * provider id of their object. Else list the keys whose Annotations name
+   * none; once `nameObject` names the object of a key, it is not listed.
+   */
+  listObjects(input: {
+    after?: string | undefined;
+    limit: number;
+    named: boolean;
+  }): Promise<ListedAnnotation[]>;
+  /**
+   * Save the subject and the current link of the object of each Annotation
+   * of this plugin with this key that names no provider id.
+   */
+  nameObject(
+    key: string,
+    object: { subject: ObjectSubject; url: string },
+  ): Promise<void>;
+  /**
+   * Tell Junior that the provider moved objects of this plugin, such as by
+   * a repository rename. Each Annotation whose key starts with `from.key`
+   * gets `to.key` in place of it, and a link that starts with `from.url`
+   * gets `to.url` in place of it. Links compare without case. An
+   * Annotation keeps its key when its Conversation already has one with
+   * the new key.
+   */
+  objectsMoved(move: {
+    from: AnnotationPrefix;
+    to: AnnotationPrefix;
+  }): Promise<void>;
   /**
    * Tell Junior that the provider changed one object, such as a merge.
    * Junior marks each Conversation that annotates the object as changed, so
