@@ -99,6 +99,10 @@ describe("inbox item subject migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, owner_id, created_at, updated_at, closed_at, request) VALUES ('shipped', 'action', 'done', 'public', 'Ship the site?', 'It is live.', 'shipped:site', 'https://Example.com', 'slack:C123:1.000005', now(), now(), now(), '{"question":"Ship the site?","fields":[],"evidence":[{"label":"Site","url":"https://Example.com"}]}')`,
       );
+      // A notice had no request, only its subject link.
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, subject_title, owner_id, created_at, updated_at) VALUES ('heads-up', 'notice', 'open', 'public', 'Docs moved', 'The guide has a new home.', 'docs:moved', 'https://Docs.Example.com/guide', 'New guide', 'slack:C123:1.000006', now(), now())`,
+      );
 
       for (const statement of migration.sql.slice(start, end + 1)) {
         await fixture.sql.execute(statement);
@@ -110,6 +114,7 @@ describe("inbox item subject migration", () => {
         ),
       ).toEqual([
         { id: "deploy", status: "open" },
+        { id: "heads-up", status: "open" },
         { id: "hold", status: "open" },
         { id: "merge", status: "open" },
         { id: "review", status: "dismissed" },
@@ -124,6 +129,11 @@ describe("inbox item subject migration", () => {
         ),
       ).toEqual([
         { id: "deploy", subject_id: "deploy:947", subject_kind: "question" },
+        {
+          id: "heads-up",
+          subject_id: "docs:moved",
+          subject_kind: "question",
+        },
         { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
         { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
         { id: "ship", subject_id: "ship:946", subject_kind: "question" },
@@ -164,6 +174,21 @@ describe("inbox item subject migration", () => {
             },
             { label: "Dashboard", url: "https://dash.example.com/" },
           ],
+        },
+      ]);
+      // A notice gets a request with only its old subject link, so its card
+      // still shows what it is about.
+      expect(
+        await fixture.sql.query(
+          `SELECT request FROM junior_inbox_items WHERE id = 'heads-up'`,
+        ),
+      ).toEqual([
+        {
+          request: {
+            evidence: [
+              { label: "New guide", url: "https://docs.example.com/guide" },
+            ],
+          },
         },
       ]);
       // A closed item's links get the same form, so its subject link is no

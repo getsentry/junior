@@ -93,12 +93,13 @@ BEGIN
     NEW."request" := jsonb_set(NEW."request", '{evidence}', (SELECT coalesce(jsonb_agg(CASE WHEN entry->>'url' ~* '^https?://' THEN jsonb_set(entry, '{url}', to_jsonb("junior_inbox_items_web_link"(entry->>'url'))) ELSE entry END ORDER BY position), '[]'::jsonb) FROM jsonb_array_elements(NEW."request"->'evidence') WITH ORDINALITY AS evidence(entry, position)));
   END IF;
   -- A question reads what it is about from its evidence links, so its old
-  -- subject link becomes its first evidence link. A notice has no request.
-  IF NEW."subject_kind" = 'question' AND NEW."request" IS NOT NULL
+  -- subject link becomes its first evidence link. A notice had no request,
+  -- so it gets one with only that link.
+  IF NEW."subject_kind" = 'question'
     AND legacy_link IS NOT NULL
     AND NOT coalesce(NEW."request"->'evidence', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('url', legacy_link))
   THEN
-    NEW."request" := jsonb_set(NEW."request", '{evidence}', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), legacy_link), 120), 'url', legacy_link)) || coalesce(NEW."request"->'evidence', '[]'::jsonb));
+    NEW."request" := jsonb_set(coalesce(NEW."request", '{}'::jsonb), '{evidence}', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), legacy_link), 120), 'url', legacy_link)) || coalesce(NEW."request"->'evidence', '[]'::jsonb));
   END IF;
   RETURN NEW;
 END;
