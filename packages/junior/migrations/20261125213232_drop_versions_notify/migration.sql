@@ -15,4 +15,5 @@ DROP TRIGGER IF EXISTS "junior_notify_versions" ON "junior_users";--> statement-
 DROP TRIGGER IF EXISTS "junior_notify_versions" ON "junior_destinations";--> statement-breakpoint
 DROP TRIGGER IF EXISTS "junior_notify_versions" ON "junior_inbox_snoozes";--> statement-breakpoint
 DROP TRIGGER IF EXISTS "junior_notify_versions" ON "junior_conversation_events";--> statement-breakpoint
+-- squawk-ignore ban-drop-function -- unused since 0.315.0
 DROP FUNCTION IF EXISTS "junior_notify_versions"();
