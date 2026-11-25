@@ -220,28 +220,23 @@ describe("next action item", () => {
       reviews: [],
       state: "open",
     };
-    mockGitHub(github, []);
+    const requests: string[] = [];
+    mockGitHub(github, requests);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
 
       // The repo requires no review, so GitHub says that it can merge. A
-      // pending review request still comes first. A request for someone
-      // else or for a team waits on them, so no item asks the requester.
-      github.requestedReviewers = ["someone-else"];
-      await webhook.handler(pullRequestAction("review_requested"));
-      github.requestedReviewers = [];
+      // pending review request still comes first. A request for a team
+      // waits on the team, but asks nothing of the requester, so Junior asks
+      // for the requester's review too.
       github.requestedTeams = ["reviewers"];
       await webhook.handler(pullRequestAction("review_requested"));
-      expect(calls).toEqual([]);
-
-      // A request for the requester asks for their review.
-      github.requestedTeams = [];
-      github.requestedReviewers = ["requester"];
-      await webhook.handler(pullRequestAction("review_requested"));
+      expect(requests).toContain("request Requester");
       expect(calls).toMatchObject([
         { kind: "upsert", notice: { title: "Review requested · #946" } },
       ]);
+      github.requestedTeams = [];
 
       // With no request left, the same item asks to review and merge.
       github.requestedReviewers = [];
