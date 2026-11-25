@@ -312,6 +312,11 @@ export function createPluginHarness(
         payload: task.payload.parse(started.payload),
         plugin: { name: "github" },
         state,
+        tasks: {
+          async start(input) {
+            recorded.startedTasks.push(input);
+          },
+        },
         users,
       });
     }

@@ -81,6 +81,16 @@ function demoPlugin(store: DemoStore) {
           await store.write(ctx.payload.value);
         },
       },
+      handOff: {
+        payload: z.object({ value: z.string() }).strict(),
+        async run(ctx: PluginStartedTaskContext<{ value: string }>) {
+          await ctx.tasks.start({
+            key: `hand-off:${ctx.payload.value}`,
+            name: "applyWrite",
+            payload: { value: ctx.payload.value },
+          });
+        },
+      },
     },
     hooks: {
       routes(ctx) {
@@ -89,10 +99,11 @@ function demoPlugin(store: DemoStore) {
             method: "POST",
             path: "/api/webhooks/demo",
             async handler(request) {
-              const { delaySeconds, key, value } = z
+              const { delaySeconds, key, task, value } = z
                 .object({
                   delaySeconds: z.number().optional(),
                   key: z.string(),
+                  task: z.enum(["applyWrite", "handOff"]).optional(),
                   value: z.string(),
                 })
                 .parse(await request.json());
@@ -102,7 +113,7 @@ function demoPlugin(store: DemoStore) {
                 await ctx.tasks.start({
                   delaySeconds,
                   key,
-                  name: "applyWrite",
+                  name: task ?? "applyWrite",
                   payload: { value },
                 });
               }
@@ -117,7 +128,12 @@ function demoPlugin(store: DemoStore) {
 
 async function deliverWebhook(
   app: Awaited<ReturnType<typeof createApp>>,
-  body: { delaySeconds?: number; key: string; value: string },
+  body: {
+    delaySeconds?: number;
+    key: string;
+    task?: "applyWrite" | "handOff";
+    value: string;
+  },
 ): Promise<void> {
   const response = await app.request("/api/webhooks/demo", {
     body: JSON.stringify(body),
@@ -246,5 +262,18 @@ describe("plugin tasks that a route starts", () => {
     expect(sentDelays).toEqual(["2"]);
     expect(Date.now() - sentAt).toBeGreaterThanOrEqual(2_000);
     expect(store.lastDeliveries).toEqual([false]);
+  }, 30_000);
+
+  it("lets a started task start another task", async () => {
+    const store = createDemoStore();
+    const app = await startQueuedApp(store);
+
+    // Injected fault: the provider store fails the inline write.
+    store.failuresLeft = 1;
+    await deliverWebhook(app, { key: "change-4", task: "handOff", value: "b" });
+    await waitFor(() => store.applied.length > 0);
+
+    expect(store.applied).toEqual(["b"]);
+    expect(store.writes).toBe(2);
   }, 30_000);
 });

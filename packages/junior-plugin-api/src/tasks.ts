@@ -139,6 +139,11 @@ export interface PluginStartedTaskContext<
   /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
   payload: Payload;
   state: PluginState;
+  /**
+   * Starts this plugin's tasks, as from a plugin route. A task that must
+   * wait longer than its retries cover can start itself again.
+   */
+  tasks: PluginTaskStarter;
   /** Stored identities and their users, as from a plugin route. */
   users: RouteRegistrationHookContext["users"];
 }

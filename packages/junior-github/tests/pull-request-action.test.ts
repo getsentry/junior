@@ -613,10 +613,14 @@ describe("next action item", () => {
         {
           delaySeconds: expect.any(Number),
           key: expect.stringMatching(
-            /^pull-request-action-sync:getsentry\/junior#946:\d+$/,
+            /^pull-request-action-sync:getsentry\/junior#946:\d+:0$/,
           ),
           name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
-          payload: { number: 946, repositoryFullName: "getsentry/junior" },
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 0,
+          },
         },
       ]);
       const delaySeconds = h.startedTasks[0]?.delaySeconds ?? 0;
@@ -638,7 +642,7 @@ describe("next action item", () => {
     }
   });
 
-  it("starts the sync task within the queue signature lifetime when the rate limit resets later", async () => {
+  it("starts a new sync task when the task hits the rate limit again, because the queue drops a task an hour after it starts", async () => {
     const fixture = await createGitHubFixture();
     const github: GitHubState = {
       draft: false,
@@ -649,7 +653,7 @@ describe("next action item", () => {
       state: "open",
     };
     mockGitHub(github, []);
-    mswServer.use(
+    const rateLimited = () =>
       http.post(
         "https://api.github.com/graphql",
         () =>
@@ -659,7 +663,10 @@ describe("next action item", () => {
             ],
           }),
         { once: true },
-      ),
+      );
+    mswServer.use(
+      rateLimited(),
+      rateLimited(),
       http.get("https://api.github.com/rate_limit", () =>
         HttpResponse.json({
           resources: {
@@ -679,9 +686,36 @@ describe("next action item", () => {
       await h.deliver(
         reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
       );
+      // A task message expires 60 minutes after it starts.
       expect(h.startedTasks.map((task) => task.delaySeconds)).toEqual([
         55 * 60,
       ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([]);
+      expect(h.startedTasks).toEqual([
+        expect.objectContaining({
+          delaySeconds: 55 * 60,
+          key: expect.stringMatching(/:1$/),
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 1,
+          },
+        }),
+      ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+      expect(h.startedTasks).toEqual([]);
     } finally {
       await fixture.close();
     }

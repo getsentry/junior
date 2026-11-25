@@ -775,8 +775,13 @@ const syncTaskPayloadSchema = z
   .object({
     number: z.number().int().positive(),
     repositoryFullName: z.string().min(1),
+    /** Tasks that ran before this one and hit the rate limit again. */
+    restarts: z.number().int().nonnegative(),
   })
   .strict();
+
+// A rate limit that lasts this many hours stops the restarts.
+const MAX_SYNC_TASK_RESTARTS = 3;
 
 // The queue can deliver a task a little before the rate limit resets.
 const RATE_LIMIT_RESET_MARGIN_SECONDS = 5;
@@ -872,22 +877,32 @@ export async function syncGitHubPullRequestActions(
             errorType: error instanceof Error ? error.name : "UnknownError",
           },
         );
-        // Failures that start their task in the same minute share it, so a
-        // burst of webhooks during a rate limit syncs again once.
-        const startsAt = Date.now() + (retry.delaySeconds ?? 0) * 1000;
-        await args.tasks.start({
-          ...retry,
-          key: `pull-request-action-sync:${itemName(target)}:${Math.floor(startsAt / 60_000)}`,
-          name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
-          payload: {
-            number: target.number,
-            repositoryFullName: target.repositoryFullName,
-          },
-        });
+        await startSyncTask(args.tasks, target, retry, 0);
       }
     },
   );
   return busy;
+}
+
+async function startSyncTask(
+  tasks: PluginTaskStarter,
+  target: GitHubPullRequestTarget,
+  retry: { delaySeconds?: number },
+  restarts: number,
+): Promise<void> {
+  // Failures that start their task in the same minute share it, so a burst
+  // of webhooks during a rate limit syncs again once.
+  const startsAt = Date.now() + (retry.delaySeconds ?? 0) * 1000;
+  await tasks.start({
+    ...retry,
+    key: `pull-request-action-sync:${itemName(target)}:${Math.floor(startsAt / 60_000)}:${restarts}`,
+    name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+    payload: {
+      number: target.number,
+      repositoryFullName: target.repositoryFullName,
+      restarts,
+    },
+  });
 }
 
 /** The sync context of a started task, with fresh installation tokens. */
@@ -912,8 +927,11 @@ export function startedTaskSyncContext(
 }
 
 /**
- * Sync the next action of one pull request again. A failure throws, so the
- * task queue runs it again after its backoff, a bounded number of times.
+ * Sync the next action of one pull request again. A rate limit starts a new
+ * task that waits for the reset: the queue rejects a task message an hour
+ * after it starts, so the backoff of this one can end before the reset.
+ * Other failures throw, so the task queue runs it again after its backoff,
+ * a bounded number of times.
  */
 export function githubPullRequestActionSyncTask(options: {
   botEmail: () => string | undefined;
@@ -922,13 +940,31 @@ export function githubPullRequestActionSyncTask(options: {
   return {
     payload: syncTaskPayloadSchema,
     async run(ctx) {
-      await syncOne(
-        startedTaskSyncContext(ctx, {
-          botEmail: options.botEmail(),
-          env: options.env,
-        }),
-        ctx.payload,
-      );
+      const context = startedTaskSyncContext(ctx, {
+        botEmail: options.botEmail(),
+        env: options.env,
+      });
+      const { restarts } = ctx.payload;
+      try {
+        await syncOne(context, ctx.payload);
+      } catch (error) {
+        const retry = await retryAfterFailure(context.env, ctx.payload, error);
+        if (
+          retry?.delaySeconds === undefined ||
+          restarts >= MAX_SYNC_TASK_RESTARTS
+        ) {
+          throw error;
+        }
+        ctx.log.warn(
+          "GitHub pull request action sync task hit the rate limit",
+          {
+            number: ctx.payload.number,
+            repository: ctx.payload.repositoryFullName,
+            restarts,
+          },
+        );
+        await startSyncTask(ctx.tasks, ctx.payload, retry, restarts + 1);
+      }
     },
   };
 }
