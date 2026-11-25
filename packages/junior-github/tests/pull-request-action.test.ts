@@ -1,6 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK } from "../src/pull-request-action-backfill";
+import {
+  claimGitHubPullRequestReadySync,
+  releaseGitHubPullRequestReadySync,
+} from "../src/pull-request-outcomes/store";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { createPluginHarness } from "./plugin-harness";
@@ -650,6 +654,56 @@ describe("next action item", () => {
           message.includes("pull request action"),
         ),
       ).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills a page again when a webhook was checking one of its pull requests", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      // A webhook checks the pull request while the backfill runs. It checks
+      // again for the backfill's request, but does not ask in limbo.
+      const claim = await claimGitHubPullRequestReadySync(
+        fixture.db(),
+        "1001",
+        { now: new Date(), staleMs: 60_000 },
+      );
+      if (!claim) throw new Error("expected the webhook's claim");
+      const h = createPluginHarness(fixture, requesterUsers);
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+      await h.heartbeat(now);
+      await h.runStartedTasks();
+      expect(requests).toEqual([]);
+      let held: number | undefined = claim.requests;
+      while (held !== undefined) {
+        held = await releaseGitHubPullRequestReadySync(fixture.db(), "1001", {
+          id: claim.id,
+          requests: held,
+        });
+      }
+
+      // The next heartbeat runs the page again, and it asks.
+      await h.heartbeat(now + 60_000);
+      await h.runStartedTasks();
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+      expect(h.notices.map(({ notice }) => notice.title)).toEqual([
+        "Review requested · #946",
+      ]);
     } finally {
       await fixture.close();
     }

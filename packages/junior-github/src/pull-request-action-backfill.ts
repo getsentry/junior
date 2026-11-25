@@ -11,7 +11,9 @@
  * person dismissed. A pull request in limbo, which waits on nobody, gets a
  * review request for its requester on GitHub, and so a review item.
  *
- * The heartbeat starts one page at a time until the last page is done. Bump
+ * The heartbeat starts one page at a time until the last page is done. A
+ * page with a pull request that a webhook was checking runs again, because
+ * that webhook does not ask in limbo. Bump
  * `VERSION` when a new derivation rule must reach pull requests that went
  * quiet before it.
  */
@@ -32,6 +34,8 @@ export const GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK =
 const VERSION = "v1";
 const CURSOR_KEY = `pull-request-action-backfill:${VERSION}:cursor`;
 const DONE_KEY = `pull-request-action-backfill:${VERSION}:done`;
+// How often a page ran again, so its next run has a new task key.
+const RERUNS_KEY = `pull-request-action-backfill:${VERSION}:reruns`;
 
 /**
  * Pull requests per task run. Most need no GitHub read, because no person
@@ -50,8 +54,9 @@ export async function startGitHubPullRequestActionBackfill(args: {
   if (await args.state.get(DONE_KEY)) return;
   // One key per page, so a page that is done does not hold back the next.
   const after = await args.state.get<number>(CURSOR_KEY);
+  const reruns = await args.state.get<number>(RERUNS_KEY);
   await args.tasks.start({
-    key: `pull-request-action-backfill:${VERSION}:${after ?? 0}`,
+    key: `pull-request-action-backfill:${VERSION}:${after ?? 0}:${reruns ?? 0}`,
     name: GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
     payload: {},
   });
@@ -76,7 +81,7 @@ export function githubPullRequestActionBackfillTask(args: {
         .filter(({ id }) => id > after)
         .sort((a, b) => a.id - b.id)
         .slice(0, PAGE_SIZE);
-      await syncGitHubPullRequestActions({
+      const busy = await syncGitHubPullRequestActions({
         askInLimbo: true,
         botEmail: args.botEmail(),
         codeChanges: ctx.codeChanges,
@@ -94,7 +99,13 @@ export function githubPullRequestActionBackfillTask(args: {
         })),
       });
       const last = page.at(-1);
-      if (!last || page.length < PAGE_SIZE) {
+      if (busy.length > 0) {
+        // A page that syncs again changes only what is not saved yet.
+        await ctx.state.set(
+          RERUNS_KEY,
+          ((await ctx.state.get<number>(RERUNS_KEY)) ?? 0) + 1,
+        );
+      } else if (!last || page.length < PAGE_SIZE) {
         await ctx.state.set(DONE_KEY, true);
       } else {
         await ctx.state.set(CURSOR_KEY, last.id);

@@ -601,7 +601,7 @@ async function syncOne(
     state: PluginState;
   },
   target: GitHubPullRequestActionTarget,
-): Promise<void> {
+): Promise<"busy" | undefined> {
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [target.number],
@@ -632,7 +632,7 @@ async function syncOne(
     now: new Date(),
     staleMs: READY_SYNC_STALE_MS,
   });
-  if (!claim) return;
+  if (!claim) return "busy";
   const { id } = claim;
   let saved = claim.action;
   let requests: number | undefined = claim.requests;
@@ -746,12 +746,15 @@ async function syncOne(
     });
   }
   if (failure !== undefined) throw failure;
+  return undefined;
 }
 
 /**
  * Add, change, or close the next-action item of each Junior pull request that
  * a webhook delivery can change. The item is optional, so a failure is logged
- * and does not fail the delivery.
+ * and does not fail the delivery. Return the pull requests that another
+ * webhook was checking. That webhook checks them again, but without
+ * `askInLimbo`.
  */
 export async function syncGitHubPullRequestActions(args: {
   /**
@@ -772,12 +775,13 @@ export async function syncGitHubPullRequestActions(args: {
   /** Holds the review asks that wait for the required checks. */
   state: PluginState;
   targets: GitHubPullRequestActionTarget[];
-}): Promise<void> {
+}): Promise<GitHubPullRequestActionTarget[]> {
+  const busy: GitHubPullRequestActionTarget[] = [];
   await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(
     args.targets,
     async (target) => {
       try {
-        await syncOne(args, target);
+        if ((await syncOne(args, target)) === "busy") busy.push(target);
       } catch (error) {
         logFailOpenFailure(
           args.log,
@@ -792,4 +796,5 @@ export async function syncGitHubPullRequestActions(args: {
       }
     },
   );
+  return busy;
 }
