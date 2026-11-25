@@ -23,6 +23,7 @@ import {
   viewportBounds,
 } from "./transcriptScrollRoot";
 import {
+  captureRowAnchor,
   captureScrollAnchor,
   scrollAnchorShift,
   type ScrollAnchor,
@@ -450,14 +451,19 @@ export function usePinnedTranscriptBottom(input: {
     const shift = anchor
       ? scrollAnchorShift(content, viewportBounds(root), anchor)
       : null;
-    if (shift !== null && Math.abs(shift) >= 1) {
+    // Keep the anchor while its row exists, so the row that a jump showed
+    // stays put through later changes, such as a search that clears.
+    if (shift === null) {
+      rememberPlace();
+      return;
+    }
+    if (Math.abs(shift) >= 1) {
       const scrollTop = scrollSnapshot(root).scrollTop + shift;
       setScrollTop(root, scrollTop);
       const restored = scrollSnapshot(root).scrollTop;
       previousScrollTopRef.current = restored;
       restoredScrollTopRef.current = restored;
     }
-    rememberPlace();
   }, [rememberPlace]);
 
   const stopFollowing = useCallback(() => {
@@ -604,10 +610,11 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       previousScrollTopRef.current = snapshot.scrollTop;
       restoredScrollTopRef.current = snapshot.scrollTop;
-      rememberPlace();
+      // Hold the place on the shown row, not the first row in view.
+      scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
       return true;
     },
-    [leaveBottom, rememberPlace, stopFollowing],
+    [leaveBottom, stopFollowing],
   );
 
   /** Scroll to the "New" marker, if the transcript has one. */

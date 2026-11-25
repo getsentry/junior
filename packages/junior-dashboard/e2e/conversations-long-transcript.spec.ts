@@ -305,6 +305,40 @@ test("keeps the current search match while earlier pages load", async ({
   await mock.pageReadsLanded();
 });
 
+test("keeps the last search match in view when the search clears", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  // Every tenth message matches, so the matches sit far apart once the
+  // search clears.
+  await search.fill("9 with");
+  await expect(page.getByText("1/200", { exact: true })).toBeVisible();
+  for (let step = 0; step < 10; step++) await search.press("Enter");
+  await expect(page.getByText("11/200", { exact: true })).toBeVisible();
+  const match = transcript.getByText("Transcript message 109 ");
+  await expect(match).toBeInViewport();
+
+  await search.fill("");
+  // Rows that do not match come back.
+  await expect(
+    transcript.getByText(/^Transcript message \d+[0-8] with/).first(),
+  ).toBeAttached();
+  await expect(match).toBeInViewport();
+});
+
 test("opens far behind at the marker and jumps to the latest", async ({
   page,
   dashboard,
