@@ -6,18 +6,17 @@ import { DetailsPanel } from "../../../components/DetailsPanel";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { conversationPath } from "../../../conversations/conversationRoutes";
-import { newestFirst } from "../../../conversations/conversationSections";
+import { attentionOrder } from "../../../conversations/conversationSections";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../../../conversations/ConversationStateIcon";
 import {
   DetailsCard,
   DetailsList,
   DetailsRow,
 } from "../../../conversations/DetailsList";
 import { buildConversations, conversationDisplayTitle } from "../../../format";
-import {
-  useWaitingConversations,
-  useWaitingConversationsSettled,
-} from "../../../inbox/queries";
-import { leadWorkState, type LeadWorkState } from "../../../lead/leadWork";
 import { leadWorkStatus } from "../../../lead/LeadWorkStatus";
 import {
   useSpaceConversationsData,
@@ -26,6 +25,7 @@ import {
 } from "../../../spaces/queries";
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
+import type { Conversation } from "../../../types";
 
 // The form opens only after a click, so it loads with the first open
 // instead of with every Space page.
@@ -89,10 +89,7 @@ export function SpaceOverview(props: { space: SpaceReport }) {
 
 function SpaceConversations(props: { spaceId: string }) {
   const feed = useSpaceConversationsData(props.spaceId);
-  const waitingMap = useWaitingConversations();
-  // Until the Inbox items load, no row reads as Done before Needs you.
-  const waiting = useWaitingConversationsSettled() ? waitingMap : undefined;
-  const conversations = newestFirst(
+  const conversations = attentionOrder(
     buildConversations(feed.data?.conversations ?? []),
   );
   return (
@@ -113,18 +110,7 @@ function SpaceConversations(props: { spaceId: string }) {
           items={conversations}
           renderItem={(conversation) => (
             <DetailsRow
-              icon={
-                <StateIcon
-                  state={
-                    waiting
-                      ? leadWorkState(
-                          conversation,
-                          waiting.get(conversation.id),
-                        )
-                      : undefined
-                  }
-                />
-              }
+              icon={<RowStateIcon conversation={conversation} />}
               meta={formatCompactAge(conversation.lastSeenAt)}
               title={conversationDisplayTitle(conversation)}
               to={conversationPath(conversation.id)}
@@ -136,19 +122,26 @@ function SpaceConversations(props: { spaceId: string }) {
   );
 }
 
-/** A Conversation's state as the Lead shows it, or a blank before it loads. */
-function StateIcon(props: { state: LeadWorkState | undefined }) {
-  if (!props.state) return <span aria-hidden="true" className="size-4" />;
-  const status = leadWorkStatus[props.state];
-  const Icon = status.icon;
-  return (
-    <Icon
-      aria-label={status.label}
-      className={cn("size-4", status.text)}
-      role="img"
-      strokeWidth={2}
-    />
-  );
+/**
+ * A row's state icon, as In flight shows it. A failed latest Turn shows over
+ * a pin, since the Space's own row points here to find it. An idle row
+ * keeps a blank, so titles line up.
+ */
+function RowStateIcon(props: { conversation: Conversation }) {
+  const state = conversationDisplayState(props.conversation);
+  if (props.conversation.latestTurnFailed && (!state || state === "pinned")) {
+    const { icon: Icon, label, text } = leadWorkStatus.failed;
+    return (
+      <Icon
+        aria-label={label}
+        className={cn("size-4", text)}
+        role="img"
+        strokeWidth={2}
+      />
+    );
+  }
+  if (!state) return <span aria-hidden="true" className="size-4" />;
+  return <ConversationStateIcon className="size-4" state={state} />;
 }
 
 function SpaceMembers(props: { space: SpaceReport }) {

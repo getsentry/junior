@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attentionOrder,
   buildTimeSections,
-  pinnedFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
@@ -116,22 +116,64 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("moves pinned conversations before paging, the rest by last Message", () => {
+  it("orders pins, then what waits on the viewer, then the rest, then done", () => {
+    const feed: Conversation[] = [
+      conversation("done-recent", "2026-08-03T11:40:00-07:00"),
+      {
+        ...conversation("working", "2026-08-03T11:00:00-07:00"),
+        treeState: "working",
+      },
+      {
+        ...conversation("needs-you-old", "2026-08-01T10:00:00-07:00"),
+        treeState: "needs_you",
+      },
+      {
+        ...conversation("failed", "2026-08-03T11:30:00-07:00"),
+        latestTurnFailed: true,
+        treeState: "done",
+      },
+      {
+        ...conversation("watching", "2026-08-02T10:00:00-07:00"),
+        treeState: "done",
+        watching: true,
+      },
+      {
+        ...conversation("pin-first", "2026-07-01T10:00:00-07:00"),
+        pinnedAt: "2026-08-01T08:00:00-07:00",
+        pinPosition: 0,
+      },
+      {
+        ...conversation("pin-second", "2026-08-03T11:50:00-07:00"),
+        pinnedAt: "2026-08-03T08:00:00-07:00",
+        pinPosition: 1,
+        treeState: "needs_you",
+      },
+      conversation("done-old", "2026-07-30T10:00:00-07:00"),
+    ];
+
+    expect(attentionOrder(feed).map((item) => item.id)).toEqual([
+      "pin-first",
+      "pin-second",
+      "needs-you-old",
+      "failed",
+      "working",
+      "watching",
+      "done-recent",
+      "done-old",
+    ]);
+  });
+
+  it("sorts each group by last Message, not by later tool or status events", () => {
     const feed = [
       conversation("recent", "2026-08-03T11:00:00-07:00"),
       {
         ...conversation("tool-only", "2026-08-03T11:30:00-07:00"),
         lastMessageAt: "2026-08-01T11:00:00-07:00",
       },
-      {
-        ...conversation("pinned", "2026-08-01T10:00:00-07:00"),
-        pinnedAt: "2026-08-03T08:00:00-07:00",
-      },
       conversation("older", "2026-08-02T10:00:00-07:00"),
     ];
 
-    expect(pinnedFirst(feed).map((item) => item.id)).toEqual([
-      "pinned",
+    expect(attentionOrder(feed).map((item) => item.id)).toEqual([
       "recent",
       "older",
       "tool-only",

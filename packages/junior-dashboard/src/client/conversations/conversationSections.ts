@@ -1,4 +1,5 @@
 import type { Conversation } from "../types";
+import { conversationDisplayState } from "./ConversationStateIcon";
 import {
   calendarDay,
   calendarDaysAgo,
@@ -38,18 +39,34 @@ function groupSections(
 }
 
 /**
- * Sort pinned conversations to the front: pins in the viewer's order, then
- * the newest Message first. Paginated lists call this before paging, so
- * page 1 holds every pin.
+ * Order conversations by what they need from the viewer. In flight and a
+ * Space's Conversation list both use this order:
+ *
+ * 1. Pins, in the viewer's order.
+ * 2. Conversations that wait on the viewer: an open action Inbox item or a
+ *    sign-in in their tree.
+ * 3. The rest that are not done: working, watching for an Event or Timer,
+ *    or with a failed latest Turn.
+ * 4. Done.
+ *
+ * Each group after the pins runs newest Message first.
  */
-export function pinnedFirst(conversations: Conversation[]): Conversation[] {
+export function attentionOrder(conversations: Conversation[]): Conversation[] {
   return newestFirst(conversations).sort((left, right) => {
-    const leftRank = left.pinnedAt ? 0 : 1;
+    const leftRank = attentionRank(left);
     return (
-      leftRank - (right.pinnedAt ? 0 : 1) ||
+      leftRank - attentionRank(right) ||
       (leftRank === 0 ? comparePinOrder(left, right) : 0)
     );
   });
+}
+
+function attentionRank(conversation: Conversation): number {
+  if (conversation.pinnedAt) return 0;
+  const state = conversationDisplayState(conversation);
+  if (state === "needs_you") return 1;
+  if (state || conversation.latestTurnFailed) return 2;
+  return 3;
 }
 
 /** Sort conversations by their last Message, newest first. */

@@ -1,8 +1,11 @@
+import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+
 import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
-const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
+const BILLING_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
+const BILLING = `/spaces/${BILLING_ID}`;
 const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
 const MOBILE_APP_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22";
 // A private Space that the viewer and Avery are in.
@@ -76,7 +79,7 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
-test("each pane row shows what its Space's Conversations need", async ({
+test("each pane row shows what its Space's Conversations need, and the Space's page lists them in order", async ({
   dashboard,
   page,
 }) => {
@@ -127,6 +130,113 @@ test("each pane row shows what its Space's Conversations need", async ({
   await page.setViewportSize(mobile);
   await expectStates();
   await screenshot(page, "spaces-pane-states", {
+    lightTheme: true,
+    view: "mobile",
+  });
+
+  // The Space's page lists its Conversations in In flight's order: pins,
+  // then what waits on the viewer, then the rest, then done. Each group
+  // runs newest Message first.
+  await page.route(
+    (url) =>
+      url.pathname === "/api/conversations" &&
+      url.searchParams.get("spaceId") === BILLING_ID,
+    async (route) => {
+      const response = await route.fetch();
+      const feed = await response.json();
+      // Row `index` had its last Message `index` hours before the first.
+      const newest = Date.parse(feed.conversations[0].lastSeenAt);
+      const row = (
+        index: number,
+        displayTitle: string,
+        fields: Partial<ConversationSummaryReport>,
+      ) => {
+        const at = new Date(newest - index * 3_600_000).toISOString();
+        return {
+          ...feed.conversations[0],
+          conversationId: `internal:space-order-${index}`,
+          displayTitle,
+          lastMessageAt: at,
+          lastSeenAt: at,
+          latestTurnFailed: false,
+          pinnedAt: null,
+          status: "done",
+          threads: undefined,
+          treeState: "done",
+          turnActive: false,
+          watching: false,
+          ...fields,
+        };
+      };
+      await route.fulfill({
+        json: {
+          ...feed,
+          conversations: [
+            row(0, "Done recently", {}),
+            row(1, "Running", {
+              status: "working",
+              treeState: "working",
+              turnActive: true,
+            }),
+            row(2, "Failed", { latestTurnFailed: true }),
+            row(3, "Asks you", {
+              status: "needs_input",
+              treeState: "needs_you",
+            }),
+            row(4, "Pinned", { pinnedAt: "2026-08-01T10:00:00.000Z" }),
+            row(5, "Done earlier", {}),
+          ],
+          nextCursor: undefined,
+        },
+        response,
+      });
+    },
+  );
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  const conversations = page
+    .getByRole("complementary", { name: "Space details" })
+    .getByRole("region", { exact: true, name: "Conversations" });
+  await conversations.getByRole("button", { name: "Show 3 more" }).click();
+  const rows = conversations.getByRole("listitem");
+  await expect(rows).toHaveText([
+    /Pinned/,
+    /Asks you/,
+    /Running/,
+    /Failed/,
+    /Done recently/,
+    /Done earlier/,
+    /Show fewer/,
+  ]);
+  // Rows carry In flight's icons, and a failed Turn. Done rows show none.
+  await expect(rows.nth(0).getByRole("img", { name: "Pinned" })).toBeVisible();
+  await expect(
+    rows.nth(1).getByRole("img", { name: "Waiting on you" }),
+  ).toBeVisible();
+  await expect(
+    rows.nth(2).getByRole("status", { name: "Working" }),
+  ).toBeVisible();
+  await expect(rows.nth(3).getByRole("img", { name: "Failed" })).toBeVisible();
+  await expect(rows.nth(4).getByRole("img")).toHaveCount(0);
+  // No row shows its hover fill in the shot.
+  await page.mouse.move(0, 0);
+  await screenshot(page, "space-page-conversations", {
+    lightTheme: true,
+    target: conversations,
+    view: "desktop",
+  });
+
+  // A phone shows the same order in the details sheet.
+  await page.setViewportSize(mobile);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  await page.getByRole("button", { name: "Space details" }).click();
+  const sheet = page.getByRole("dialog", { name: "Space details" });
+  await expect(
+    sheet
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("listitem"),
+  ).toHaveText([/Pinned/, /Asks you/, /Running/, /Show 3 more/]);
+  await screenshot(page, "space-page-conversations", {
     lightTheme: true,
     view: "mobile",
   });

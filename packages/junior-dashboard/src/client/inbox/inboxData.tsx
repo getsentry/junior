@@ -11,8 +11,8 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import {
+  attentionOrder,
   newestFirst,
-  pinnedFirst,
 } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -342,18 +342,16 @@ function useBuildInboxData(input: {
   const conversationRows = rowsByTime(inboxBundles(awake));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Pins come first,
-  // busy or not, in the viewer's order, then the busy Conversations.
-  // Collapsed, every pin shows, each one click away, and busy Conversations
-  // fill the rows left, up to IN_FLIGHT_LIMIT.
-  const pinned = pinnedFirst(
-    conversations.filter((conversation) => conversation.pinnedAt),
-  );
+  // the viewer, works, or watches for an Event or Timer, in
+  // `attentionOrder`. Collapsed, every pin shows, each one click away, and
+  // busy Conversations fill the rows left, up to IN_FLIGHT_LIMIT.
+  const ordered = attentionOrder(conversations);
+  const pinned = ordered.filter((conversation) => conversation.pinnedAt);
   const busy = (conversation: Conversation) => {
     const state = conversationDisplayState(conversation);
     return state !== undefined && state !== "pinned";
   };
-  const busyRows = conversations.filter(
+  const busyRows = ordered.filter(
     (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedBusy: Conversation[]) => [
