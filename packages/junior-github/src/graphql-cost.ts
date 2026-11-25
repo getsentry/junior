@@ -34,7 +34,7 @@ function githubGraphqlCost(connectionRequests: number): number {
  * small, so the cap skips them. A request that carries its own credential
  * spends its own budget, so the cap skips it too. A `rateLimit(dryRun: true)`
  * query only predicts a cost, so it is allowed. A query whose cost the host
- * could not count is allowed and logged.
+ * cannot count is denied.
  */
 export function assertGitHubGraphqlCostAllowed(ctx: EgressHookContext): void {
   const { graphql, operation, withoutCredential } = ctx.request;
@@ -56,10 +56,11 @@ export function assertGitHubGraphqlCostAllowed(ctx: EgressHookContext): void {
     return;
   }
   if (query.connectionRequests === undefined) {
-    ctx.log.warn("github.egress.graphql_cost.unknown", {
-      "app.github.graphql.operation_name": query.name,
-    });
-    return;
+    // An unset page size, such as a null variable, hides the cost of the
+    // whole query, so the cap cannot prove that it is small.
+    throw new EgressPolicyDenied(
+      "GitHub GraphQL query denied: its cost cannot be predicted, because a `first`/`last` page size is not an integer. Set each `first`/`last` to an integer literal, or to a variable that the request gives an integer value.",
+    );
   }
   const cost = githubGraphqlCost(query.connectionRequests);
   if (cost <= GITHUB_SANDBOX_GRAPHQL_COST_LIMIT) {

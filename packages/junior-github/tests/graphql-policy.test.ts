@@ -4,7 +4,7 @@ import type {
   PluginGraphqlRequest,
   PluginGraphqlUnreadableReason,
 } from "@sentry/junior-plugin-api";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/index";
 
 const GRAPHQL_URL = "https://api.github.com/graphql";
@@ -20,9 +20,8 @@ function operation(
   },
 ): PluginGraphqlOperation {
   return {
-    ...(input?.connectionRequests !== undefined
-      ? { connectionRequests: input.connectionRequests }
-      : undefined),
+    // Core counts 0 for an operation with no connections.
+    connectionRequests: input?.connectionRequests ?? 0,
     fields:
       input?.fields ?? rootFields.map((name) => ({ arguments: [], name })),
     ...(input?.name ? { name: input.name } : undefined),
@@ -45,12 +44,11 @@ async function grantForGraphql(input: {
   graphql?: PluginGraphqlRequest;
   method?: string;
   operation?: string;
-  warn?: (message: string) => void;
   withoutCredential?: true;
 }) {
   return await githubPlugin().hooks?.grantForEgress?.({
     db: undefined,
-    log: { error() {}, info() {}, warn: input.warn ?? (() => {}) },
+    log: { error() {}, info() {}, warn() {} },
     plugin: { name: "github" },
     request: {
       ...(input.graphql ? { graphql: input.graphql } : undefined),
@@ -66,18 +64,17 @@ function costedQuery(
   connectionRequests: number | undefined,
   fields: PluginGraphqlField[] = [{ arguments: ["first"], name: "search" }],
 ): PluginGraphqlRequest {
-  return single(
-    operation(
-      "query",
-      fields.map((field) => field.name),
-      {
-        ...(connectionRequests !== undefined
-          ? { connectionRequests }
-          : undefined),
-        fields,
-      },
-    ),
+  const query = operation(
+    "query",
+    fields.map((field) => field.name),
+    { fields },
   );
+  if (connectionRequests === undefined) {
+    // Core leaves the count unset when a page size is not an integer.
+    const { connectionRequests: _uncounted, ...uncounted } = query;
+    return single(uncounted);
+  }
+  return single({ ...query, connectionRequests });
 }
 
 const HOST_MUTATIONS = [
@@ -361,14 +358,9 @@ describe("GitHub GraphQL policy", () => {
     ).rejects.toThrow("GitHub GraphQL query denied");
   });
 
-  it("allows and logs a query whose cost was not counted", async () => {
-    const warn = vi.fn();
+  it("denies a query whose cost was not counted", async () => {
     await expect(
-      grantForGraphql({ graphql: costedQuery(undefined), warn }),
-    ).resolves.toMatchObject({ access: "read" });
-    expect(warn).toHaveBeenCalledWith(
-      "github.egress.graphql_cost.unknown",
-      expect.anything(),
-    );
+      grantForGraphql({ graphql: costedQuery(undefined) }),
+    ).rejects.toThrow("its cost cannot be predicted");
   });
 });
