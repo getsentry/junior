@@ -1,11 +1,18 @@
 import {
   type PluginEgress,
   type PluginToolOutput,
+  type ToolRegistrationHookContext,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { gitHubDbSchema } from "../db/database.js";
+import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  linkedGitHubLogin,
+  requesterPerson,
+} from "../tool-support/attribution.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -26,6 +33,12 @@ const inputSchema = z
       .describe(
         "Inline review comment id. Set it to reply in that comment's thread. Omit it to comment on the pull request.",
       ),
+    asks_requester: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when the comment asks the person who asked for this pull request to answer or decide. Also asks them for a review on GitHub, so the pull request waits on them in their Inbox. Omit it otherwise.",
+      ),
   })
   .strict();
 
@@ -35,6 +48,7 @@ const outputSchema = pluginToolOutputSchema.extend({
   number: z.number(),
   comment_id: z.number(),
   url: z.string(),
+  requester_asked: z.boolean().optional(),
 });
 interface Result extends PluginToolOutput {
   target: "commentOnPullRequest";
@@ -42,6 +56,12 @@ interface Result extends PluginToolOutput {
   number: number;
   comment_id: number;
   url: string;
+  /**
+   * Set when the comment asks the requester. False when Junior did not open
+   * the pull request for the person this Turn works for, that person has no
+   * linked GitHub account, or GitHub did not take the review request.
+   */
+  requester_asked?: boolean;
 }
 
 /**
@@ -72,6 +92,64 @@ async function threadRootId(
   return comment.in_reply_to_id ?? commentId;
 }
 
+type CommentContext = Pick<
+  ToolRegistrationHookContext,
+  "db" | "egress" | "log" | "resolveWorkOwner"
+>;
+
+/**
+ * Ask the person who asked Junior for the pull request to review it on
+ * GitHub, and return whether GitHub took the request. The review request
+ * makes the pull request's next action "review" (`pull-request-action.ts`),
+ * so its one Inbox item waits on them, and GitHub notifies them. The comment
+ * is already posted, so a failure is logged and returned, not thrown.
+ */
+async function askRequester(
+  ctx: CommentContext,
+  target: { number: number; prefix: string; repo: string },
+): Promise<boolean> {
+  const [opener, owner] = await Promise.all([
+    listGitHubPullRequestOpeners(gitHubDbSchema.parse(ctx.db), {
+      numbers: [target.number],
+      repositoryFullName: target.repo,
+    }).then((openers) => openers.get(target.number)),
+    ctx.resolveWorkOwner().then(requesterPerson),
+  ]);
+  // The opener row stores the work owner's identity when Junior opened the
+  // pull request, so only that person, in their own work, is asked.
+  const login =
+    opener && owner?.identity?.id === opener.identityId
+      ? linkedGitHubLogin(owner.user)
+      : undefined;
+  if (!login) return false;
+  const fields = { number: target.number, repo: target.repo };
+  try {
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.request_reviewers",
+      method: "POST",
+      path: `${target.prefix}/pulls/${target.number}/requested_reviewers`,
+      body: { reviewers: [login] },
+    });
+    if (response.ok) return true;
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_question.rejected",
+      {
+        ...fields,
+        status: response.status,
+      },
+    );
+  } catch (error) {
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_question.failed",
+      {
+        ...fields,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+    );
+  }
+  return false;
+}
+
 /**
  * Post a pull request comment as the App bot, or reply in an inline review
  * thread. GitHub keeps conversation comments under the issues endpoint and
@@ -85,14 +163,11 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
     readOnlyHint: false,
   },
   description:
-    "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
+    "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL, and whether the requester was asked.",
   inputSchema,
   outputSchema,
-  async execute(
-    input,
-    _options,
-    { egress }: { egress: PluginEgress },
-  ): Promise<Result> {
+  async execute(input, _options, ctx: CommentContext): Promise<Result> {
+    const { egress } = ctx;
     const repo = parseRepo(input.repo);
     const prefix = repoPath(repo);
     const path =
@@ -124,6 +199,15 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
       comment_id: comment.id,
       reply: { text: input.body, url: comment.html_url },
       url: comment.html_url,
+      ...(input.asks_requester
+        ? {
+            requester_asked: await askRequester(ctx, {
+              number: input.pull_request,
+              prefix,
+              repo: repo.ref,
+            }),
+          }
+        : undefined),
     };
   },
 });

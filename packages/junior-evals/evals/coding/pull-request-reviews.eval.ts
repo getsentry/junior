@@ -130,6 +130,59 @@ describe("Watches", () => {
     );
   });
 
+  test.for([
+    {
+      asks: true,
+      body: "What do we lose if the gate retries forever instead of giving up after three tries? Lay out the trade-off and I'll pick one.",
+      outcome: "ask the person who asked to decide",
+    },
+    {
+      asks: false,
+      body: "Where does the gate read its retry limit from?",
+      outcome: "answer without asking them",
+    },
+  ])(
+    "when the person who asked leaves a comment-only review, $outcome",
+    async ({ asks, body }, { run }) => {
+      const conversation = await run(
+        slackMention(
+          `${pullRequest} adds a retry loop to the Python deploy gate script. It reads its limit from GATE_MAX_RETRIES and gives up after three tries by default.`,
+        ),
+      );
+      await insertLinkedGitHubIdentity(requesterOnGitHub);
+      await insertGitHubPullRequestWatch({
+        conversation,
+        draft: false,
+        pullRequest,
+      });
+
+      // A comment-only review ends GitHub's review request. Only a comment
+      // that asks them puts the PR back in their Inbox.
+      const delivery = await conversation.continue(
+        githubWebhook("pull_request_review", {
+          action: "submitted",
+          pull_request: { number: 691 },
+          repository,
+          review: {
+            body,
+            id: 9_004,
+            state: "commented",
+            user: { login: requesterOnGitHub.login },
+          },
+          sender: { ...requesterOnGitHub, type: "User" },
+        }),
+      );
+
+      const comments = toolCallsOf("github_commentOnPullRequest", delivery).map(
+        (call) => call.input as { asks_requester?: boolean } | undefined,
+      );
+      expect(comments).not.toHaveLength(0);
+      expect(comments.some((input) => input?.asks_requester === true)).toBe(
+        asks,
+      );
+    },
+  );
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {
