@@ -473,7 +473,7 @@ export function assertRunConsistency(
         case "local": {
           // A person's Turn in a Thread replies in the Thread. Its
           // Destination is the Thread's own copy of its root's.
-          if (conversation?.kind === "root" && conversation.hasParent) {
+          if (conversation?.kind === "thread" && conversation.hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

@@ -23,10 +23,9 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
-import { childAgentKind } from "@/chat/conversations/kind-behavior";
 import type { ChildAgent } from "./types";
 
-const childConversationKindSchema = z.enum(["root", "task"]);
+const childConversationKindSchema = z.enum(["thread", "task"]);
 
 /** Bound the child agents that one listing reads. */
 const CHILD_AGENT_LIST_LIMIT = 200;
@@ -88,7 +87,7 @@ export async function listChildAgents(
   const children = await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // Every child agent stores its kind.
-      const kind = childAgentKind(childConversationKindSchema.parse(row.kind));
+      const kind = childConversationKindSchema.parse(row.kind);
       const stoppedAtMs = row.stoppedAt?.getTime();
       const running =
         stoppedAtMs === undefined &&

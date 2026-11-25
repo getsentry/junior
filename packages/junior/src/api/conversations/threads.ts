@@ -54,8 +54,8 @@ export async function readFeedThreadRecords(
     .where(
       and(
         inArray(juniorConversations.rootConversationId, rootIds),
-        // A Thread: a `root` with a parent.
-        eq(juniorConversations.kind, "root"),
+        // A child Thread: a `thread` with a parent.
+        eq(juniorConversations.kind, "thread"),
         isNotNull(juniorConversations.parentConversationId),
         isNull(juniorConversations.archivedAt),
       ),

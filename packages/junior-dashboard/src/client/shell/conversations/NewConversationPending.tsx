@@ -95,7 +95,7 @@ export function NewConversationPending(props: {
       events: [],
       generatedAt: pending.createdAt,
       isParticipant: true,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: pending.createdAt,
       lastSeenAt: pending.createdAt,
       startedAt: pending.createdAt,

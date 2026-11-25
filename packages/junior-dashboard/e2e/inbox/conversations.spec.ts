@@ -440,7 +440,7 @@ test.describe("new UI", () => {
       conversationId: `long-${index}`,
       cumulativeDurationMs: 1_000 + index,
       displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,

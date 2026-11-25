@@ -32,7 +32,7 @@ function context(
     },
     workspace: {} as ToolRuntimeContext["workspace"],
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
       hasParent: false,
       personInput: true,
     }).tools,

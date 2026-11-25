@@ -92,7 +92,7 @@ describe("searchConversations", () => {
           channel_name: "archive",
           conversation_id: conversationId,
           excerpt: expect.stringContaining("**launch**"),
-          kind: "root",
+          kind: "thread",
           links: [
             {
               label: "getsentry/junior#1805",
@@ -136,7 +136,7 @@ describe("searchConversations", () => {
     const childId = "agent:launch-child";
     await getConversationStore().createChild({
       childConversationId: childId,
-      kind: "root",
+      kind: "thread",
       parentConversationId: conversationId,
       nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
       source: "slack",

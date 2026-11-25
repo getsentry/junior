@@ -411,7 +411,7 @@ describe("Conversation metadata task", () => {
     // A Thread's Turns come from its parent agent, and it gets a summary.
     const threadConversationId = `agent:metadata-thread:${idSuffix}`;
     await getConversationStore().createChild({
-      kind: "root",
+      kind: "thread",
       childConversationId: threadConversationId,
       parentConversationId: conversationId,
       nowMs: 11,

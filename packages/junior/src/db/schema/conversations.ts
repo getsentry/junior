@@ -85,11 +85,14 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     // Set once at create. A `task` always has a parent, an `automation` or a
-    // `lead` never does, and a `root` with a parent is a Thread.
-    // The checks below enforce this. A writer of an older deploy leaves it null.
-    // TODO(dcramer): After every deployed writer sets kind, rerun the
-    // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
-    // arm of junior_conversations_kind_parent_check.
+    // `lead` never does, and a `thread` may have one.
+    // The checks below enforce this. A writer of an older deploy leaves it
+    // null, or writes the retired `root`, which the
+    // `junior_conversations_kind_root_to_thread` trigger stores as `thread`.
+    // TODO(dcramer): After every deployed writer sets `thread`, drop that
+    // trigger and `root` from the checks below. After every writer sets
+    // kind, rerun the `kind IS NULL` backfill, add NOT NULL, and drop the
+    // `kind is null or` arm.
     kind: text("kind").$type<ConversationKind>(),
     // The agent settings that every Turn keeps, typed as `AgentConfig` for
     // every kind. Set once at create. Today only a spawn writes it, so a
@@ -149,11 +152,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'automation', 'lead', 'task')`,
+      sql`${table.kind} in ('root', 'thread', 'automation', 'lead', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ${table.kind} = 'root' or ((${table.kind} in ('automation', 'lead')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ${table.kind} in ('root', 'thread') or ((${table.kind} in ('automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     check(
       "junior_conversations_space_root_check",

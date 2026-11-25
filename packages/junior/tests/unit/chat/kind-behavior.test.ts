@@ -88,9 +88,9 @@ const automationTurn = {
 
 describe("turnBehavior", () => {
   it.each([
-    { kind: "root", hasParent: false, personInput: true, expected: rootTurn },
+    { kind: "thread", hasParent: false, personInput: true, expected: rootTurn },
     {
-      kind: "root",
+      kind: "thread",
       hasParent: false,
       personInput: false,
       expected: {
@@ -118,15 +118,15 @@ describe("turnBehavior", () => {
       personInput: false,
       expected: automationTurn,
     },
-    // A `root` with a parent is a Thread.
+    // A `thread` with a parent is a child Thread.
     {
-      kind: "root",
+      kind: "thread",
       hasParent: true,
       personInput: true,
       expected: personInThreadTurn,
     },
     {
-      kind: "root",
+      kind: "thread",
       hasParent: true,
       personInput: false,
       expected: agentInThreadTurn,

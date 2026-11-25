@@ -290,7 +290,7 @@ export function addMockConversationSpaceRoute(
     if (!conversation?.isParticipant)
       return errorResponse("Conversation not found.", 404);
     if (
-      (conversation.kind !== "root" && conversation.kind !== "automation") ||
+      (conversation.kind !== "thread" && conversation.kind !== "automation") ||
       conversation.parentConversationId
     )
       return errorResponse(

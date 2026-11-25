@@ -137,7 +137,7 @@ async function endTurn(conversationId: string, requestContext = context) {
     {
       userActor: true,
       idleNeedsPendingWork: turnBehavior({
-        kind: "root",
+        kind: "thread",
         hasParent: false,
         personInput: true,
       }).idleNeedsPendingWork,

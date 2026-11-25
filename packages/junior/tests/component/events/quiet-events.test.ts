@@ -16,7 +16,7 @@ import {
 } from "../../fixtures/conversation-work";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

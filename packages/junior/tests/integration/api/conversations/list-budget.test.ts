@@ -53,7 +53,7 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
   for (let index = 0; index < 3; index += 1) {
     await fixture.conversationStore.createChild({
       childConversationId: `agent:${conversationId}:thread-${index}`,
-      kind: "root",
+      kind: "thread",
       parentConversationId: conversationId,
       title: text(200, "h"),
     });
@@ -215,13 +215,13 @@ describe("conversation list API response budget", () => {
     for (let index = 0; index < CONVERSATION_FEED_THREAD_LIMIT; index += 1) {
       await fixture.conversationStore.createChild({
         childConversationId: `agent:${rootId}:thread-${index}`,
-        kind: "root",
+        kind: "thread",
         parentConversationId: rootId,
       });
     }
     await fixture.conversationStore.createChild({
       childConversationId: `agent:${rootId}:nested`,
-      kind: "root",
+      kind: "thread",
       parentConversationId: `agent:${rootId}:thread-0`,
     });
 

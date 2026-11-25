@@ -19,7 +19,7 @@ import {
 import { seedLinkedPerson } from "../../fixtures/slack-user";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

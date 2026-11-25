@@ -299,12 +299,12 @@ export async function executeAgentRun(
         await executeAgentRunInPrivacyContext(
           run,
           {
-            // TODO(dcramer): Remove the `root` case one release after #3060
+            // TODO(dcramer): Remove the `thread` case one release after #3060
             // step 3. An Automation run in progress at deploy is stored as
-            // `root`.
+            // `thread`.
             kind: run.dispatch?.declaresResult
               ? "automation"
-              : (conversation?.kind ?? "root"),
+              : (conversation?.kind ?? "thread"),
             hasParent: Boolean(conversation?.parentConversationId),
           },
           conversationPrivacy,

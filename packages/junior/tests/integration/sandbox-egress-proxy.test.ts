@@ -25,7 +25,7 @@ import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

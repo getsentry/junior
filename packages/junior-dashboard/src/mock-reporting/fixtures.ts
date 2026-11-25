@@ -418,7 +418,7 @@ function detail(
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
     isParticipant: options.isParticipant ?? false,
-    kind: options.kind ?? "root",
+    kind: options.kind ?? "thread",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
     status: options.status ?? "done",
@@ -1314,7 +1314,7 @@ function threadConversation(
   return detail(nowMs, {
     conversationId,
     displayTitle,
-    kind: "root",
+    kind: "thread",
     // The viewer takes part, so QA shows that a person can message a Thread.
     isParticipant: true,
     parentConversationId,
@@ -2530,7 +2530,7 @@ function mockThreadPlacement(
       return placement ?? ancestor.conversationId;
     }
     if (ancestor.archivedAt) return undefined;
-    if (ancestor.kind === "root") placement ??= ancestor.conversationId;
+    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
   return undefined;
 }
@@ -2559,7 +2559,7 @@ function mockThreadsByPlacement(
   const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
   for (const thread of conversations) {
     if (
-      thread.kind !== "root" ||
+      thread.kind !== "thread" ||
       !thread.parentConversationId ||
       thread.archivedAt
     ) {
@@ -2592,7 +2592,7 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     conversations: conversations
       .filter(
         (conversation) =>
-          conversation.kind === "root" &&
+          conversation.kind === "thread" &&
           !conversation.parentConversationId &&
           !isUnlistedMockConversation(conversation.conversationId),
       )
@@ -2611,7 +2611,7 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
   return mockConversations(nowMs)
     .filter(
       (conversation) =>
-        conversation.kind === "root" &&
+        conversation.kind === "thread" &&
         !conversation.parentConversationId &&
         !isUnlistedMockConversation(conversation.conversationId),
     )
@@ -3003,7 +3003,7 @@ export function setMockConversationArchived(
     mockArchivedAt.delete(id);
   }
   // Match the API: a manual root restore turns auto-archive off.
-  if (conversation.kind === "root" && !conversation.parentConversationId) {
+  if (conversation.kind === "thread" && !conversation.parentConversationId) {
     mockAutoArchiveByConversationId.set(conversationId, false);
   }
   return { archivedAt: null };
@@ -3396,7 +3396,7 @@ function mockAgentTree(
     if (!item.parentConversationId) {
       return {
         conversationId: item.conversationId,
-        kind: "root" as const,
+        kind: "thread" as const,
         label: item.displayTitle,
       };
     }
@@ -3409,7 +3409,7 @@ function mockAgentTree(
       label:
         agent?.title ??
         agent?.name ??
-        (item.kind === "root" ? "Thread" : "Task"),
+        (item.kind === "thread" ? "Thread" : "Task"),
       ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });

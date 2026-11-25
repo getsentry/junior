@@ -257,7 +257,7 @@ describe("static tool registry", () => {
       const [person, agent] = await Promise.all(
         [true, false].map((personInput) =>
           sentTurn(
-            turnBehavior({ kind: "root", hasParent: true, personInput }),
+            turnBehavior({ kind: "thread", hasParent: true, personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
               kind: "parent_message",
             }),

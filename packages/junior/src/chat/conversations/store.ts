@@ -17,16 +17,19 @@ export type ConversationSource =
 
 /**
  * What a Conversation is. An Automation run and a Lead have no parent. A Task
- * is a child that only its parent messages. A `root` with a parent is a
- * Thread: a child that people can message. A Conversation never changes kind.
+ * is a child that only its parent messages. A `thread` is one that people
+ * can message, with or without a parent. A Conversation never changes kind.
  */
-export type ConversationKind = "root" | "automation" | "lead" | "task";
+export type ConversationKind = "thread" | "automation" | "lead" | "task";
 
 /** The kind of a Conversation that has no parent. */
 export type TopLevelConversationKind = Exclude<ConversationKind, "task">;
 
-/** The kind of a Conversation that has a parent. `root` is a Thread. */
-export type ChildConversationKind = Extract<ConversationKind, "root" | "task">;
+/** The kind of a Conversation that has a parent. */
+export type ChildConversationKind = Extract<
+  ConversationKind,
+  "thread" | "task"
+>;
 
 export type ConversationStatus =
   | "paused"
@@ -216,7 +219,7 @@ export interface ConversationStore {
     sessionSource?: Source;
     title?: string;
     /**
-     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * Kind of a new Conversation. Default `thread`. An existing Conversation
      * keeps its kind.
      */
     kind?: TopLevelConversationKind;

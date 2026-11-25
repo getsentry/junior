@@ -40,7 +40,7 @@ describe("a running Thread row that needs input", () => {
   it("shows both on a Thread row", () => {
     const markup = render(
       <ConversationSidebarThreadRow
-        conversation={runningNeedsInput("root")}
+        conversation={runningNeedsInput("thread")}
         depth={0}
         onArchiveError={() => {}}
         onArchived={() => {}}
@@ -54,7 +54,7 @@ describe("a running Thread row that needs input", () => {
   it("shows one spinner on a working Thread row", () => {
     const markup = render(
       <ConversationSidebarThreadRow
-        conversation={{ ...runningNeedsInput("root"), status: "working" }}
+        conversation={{ ...runningNeedsInput("thread"), status: "working" }}
         depth={0}
         onArchiveError={() => {}}
         onArchived={() => {}}

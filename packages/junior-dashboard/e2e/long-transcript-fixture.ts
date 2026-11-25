@@ -31,7 +31,7 @@ export async function mockLongConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Long transcript",
     isParticipant: true,
-    kind: "root",
+    kind: "thread",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,

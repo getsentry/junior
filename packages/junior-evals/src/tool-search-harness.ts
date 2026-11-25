@@ -107,7 +107,7 @@ async function buildAgentTools(): Promise<AgentTools> {
       {},
       {
         turnTools: turnBehavior({
-          kind: "root",
+          kind: "thread",
           hasParent: false,
           personInput: true,
         }).tools,

@@ -6,7 +6,6 @@ import {
   type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
-import { toolConversationKind } from "@/chat/conversations/kind-behavior";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -38,10 +37,10 @@ const conversationMatchSchema = z
         "Pass it to searchConversationEvents to read its history. For a root conversation, pass it to messageAgent to message its agent.",
       ),
     kind: z
-      .enum(["root", "automation", "lead", "thread", "task"])
+      .enum(["thread", "automation", "lead", "task"])
       .optional()
       .describe(
-        "root, automation, or lead: a top-level conversation. thread or task: a child agent.",
+        "automation or lead: a top-level conversation. task: a child agent. thread: a top-level conversation, or a child agent when it has a root_conversation_id.",
       ),
     root_conversation_id: z
       .string()
@@ -107,14 +106,7 @@ async function conversationMatch(
     : undefined;
   return {
     conversation_id: match.conversationId,
-    ...(match.kind
-      ? {
-          kind: toolConversationKind(
-            match.kind,
-            match.rootConversationId !== match.conversationId,
-          ),
-        }
-      : undefined),
+    ...(match.kind ? { kind: match.kind } : undefined),
     // Only a child agent has a different root.
     ...(match.rootConversationId !== match.conversationId
       ? { root_conversation_id: match.rootConversationId }

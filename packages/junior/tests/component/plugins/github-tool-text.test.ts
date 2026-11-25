@@ -44,7 +44,7 @@ describe("GitHub tool text", () => {
     const sent: unknown[] = [];
     const tools = getPluginTools({
       turnTools: turnBehavior({
-        kind: "root",
+        kind: "thread",
         hasParent: false,
         personInput: true,
       }).tools,

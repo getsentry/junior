@@ -1,8 +1,6 @@
 import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
-import type { ChildAgentKind } from "@/chat/agent-invocations/types";
 import type {
-  ChildConversationKind,
   Conversation,
   ConversationKind,
 } from "@/chat/conversations/store";
@@ -278,8 +276,8 @@ const LEAD: TurnBehavior = {
 };
 
 /**
- * Return the behavior of one Turn. A `root` with a parent is a Thread: it
- * runs like a root, and also reports to its parent.
+ * Return the behavior of one Turn. A `thread` with a parent runs like a
+ * top-level `thread`, and also reports to its parent.
  */
 export function turnBehavior(args: {
   kind: ConversationKind;
@@ -287,7 +285,7 @@ export function turnBehavior(args: {
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
-    case "root":
+    case "thread":
       if (args.hasParent) {
         return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
       }
@@ -368,7 +366,7 @@ export function isTopLevel(
 
 /**
  * Return whether a Conversation of this kind may have this parent edge. A
- * `root` may have a parent, a Task must, and an Automation run or a Lead
+ * `thread` may have a parent, a Task must, and an Automation run or a Lead
  * never does.
  */
 export function kindAllowsParent(
@@ -376,7 +374,7 @@ export function kindAllowsParent(
   hasParent: boolean,
 ): boolean {
   switch (kind) {
-    case "root":
+    case "thread":
       return true;
     case "task":
       return hasParent;
@@ -386,34 +384,11 @@ export function kindAllowsParent(
   }
 }
 
-/** Return the stored Conversation kind of a new child agent. */
-export function childConversationKind(
-  kind: ChildAgentKind,
-): ChildConversationKind {
-  return kind === "thread" ? "root" : "task";
-}
-
-/** Return the child agent kind of a stored child Conversation kind. */
-export function childAgentKind(kind: ChildConversationKind): ChildAgentKind {
-  return kind === "root" ? "thread" : "task";
-}
-
-/**
- * Return the kind that a tool shows for a Conversation. A `root` with a
- * parent shows as `thread`, the word that `startAgent` uses.
- */
-export function toolConversationKind(
-  kind: ConversationKind,
-  hasParent: boolean,
-): ConversationKind | "thread" {
-  return kind === "root" && hasParent ? "thread" : kind;
-}
-
-/** Return whether a Conversation is a Thread: a `root` with a parent. */
+/** Return whether a Conversation is a child Thread: a `thread` with a parent. */
 export function isThread(
   conversation: Pick<Conversation, "kind" | "parentConversationId">,
 ): boolean {
-  return conversation.kind === "root" && !isTopLevel(conversation);
+  return conversation.kind === "thread" && !isTopLevel(conversation);
 }
 
 /**

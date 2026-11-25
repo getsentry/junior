@@ -523,7 +523,7 @@ export function conversationDetailTitle(
 ): string | undefined {
   const title = detail?.displayTitle?.trim() || undefined;
   const label = detail?.agentTree?.at(-1)?.label;
-  return detail?.kind === "root" ? (title ?? label) : (label ?? title);
+  return detail?.kind === "thread" ? (title ?? label) : (label ?? title);
 }
 
 /** Return the display title prepared by the reporting API. */

@@ -129,7 +129,7 @@ describe("Event author trust", () => {
         visibility: "public",
       }),
       turnTools: turnBehavior({
-        kind: "root",
+        kind: "thread",
         hasParent: false,
         personInput: true,
       }).tools,

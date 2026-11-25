@@ -32,7 +32,7 @@ export async function ensureConversationRow(
     updatedAt: at,
     executionStatus: "idle",
     // A first-contact row has no parent, and a parent cannot be added later.
-    kind: "root",
+    kind: "thread",
   });
   if (options.activity === "preserve") {
     await insert.onConflictDoNothing({
@@ -52,7 +52,7 @@ export async function ensureConversationRow(
 }
 
 const CONVERSATION_KINDS: ReadonlySet<string> = new Set<ConversationKind>([
-  "root",
+  "thread",
   "automation",
   "lead",
   "task",
@@ -67,7 +67,7 @@ export function conversationKindFromRow(row: {
   parentConversationId: string | null;
 }): ConversationKind {
   // Keep this fallback the same as `conversationKindSql`.
-  const kind = row.kind ?? (row.parentConversationId ? "task" : "root");
+  const kind = row.kind ?? (row.parentConversationId ? "task" : "thread");
   if (!CONVERSATION_KINDS.has(kind)) {
     throw new Error("Conversation record kind is invalid");
   }
@@ -79,5 +79,5 @@ export function conversationKindSql(conversation: {
   kind: AnyPgColumn;
   parentConversationId: AnyPgColumn;
 }): SQL<ConversationKind> {
-  return sql<ConversationKind>`coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'root' else 'task' end)`;
+  return sql<ConversationKind>`coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'thread' else 'task' end)`;
 }

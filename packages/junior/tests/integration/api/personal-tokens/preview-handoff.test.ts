@@ -50,7 +50,7 @@ async function createPreviewAs(
       resolveActorIdentity,
       source: createLocalSource(CONVERSATION_ID),
       turnTools: turnBehavior({
-        kind: "root",
+        kind: "thread",
         hasParent: false,
         personInput: true,
       }).tools,

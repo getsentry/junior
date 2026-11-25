@@ -15,7 +15,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

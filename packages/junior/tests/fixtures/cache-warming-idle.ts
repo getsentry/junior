@@ -73,7 +73,7 @@ export function turnOf(
       ? "automation"
       : mode === "child_agent"
         ? "task"
-        : "root";
+        : "thread";
   return {
     userActor,
     idleNeedsPendingWork: turnBehavior({

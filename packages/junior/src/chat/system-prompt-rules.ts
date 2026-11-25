@@ -46,7 +46,7 @@ import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 /**
  * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
  * interactive conversation rules. `thread` and `automation` are for every
- * Turn of a Thread (a `root` with a parent) and of an Automation
+ * Turn of a child Thread (a `thread` with a parent) and of an Automation
  * Conversation. Each holds the `conversation` rules for a person's input and
  * the rules for its other sender, so the Conversation keeps one system
  * prompt. `lead` is for every Turn of a Lead.

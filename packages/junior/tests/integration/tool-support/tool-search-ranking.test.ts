@@ -18,7 +18,7 @@ import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

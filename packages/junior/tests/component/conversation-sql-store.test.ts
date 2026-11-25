@@ -194,14 +194,14 @@ describe("conversation SQL store", () => {
 
       await expect(
         store.get({ conversationId: "kind-root" }),
-      ).resolves.toMatchObject({ kind: "root" });
+      ).resolves.toMatchObject({ kind: "thread" });
       await expect(
         store.get({ conversationId: "agent:kind-task" }),
       ).resolves.toMatchObject({ kind: "task" });
       await expect(
         store.createChild({
           childConversationId: "agent:kind-task",
-          kind: "root",
+          kind: "thread",
           parentConversationId: "kind-root",
         }),
       ).rejects.toThrow("Conversation kind changed for agent:kind-task");

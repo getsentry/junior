@@ -95,7 +95,7 @@ describe("spawn and messageAgent", () => {
       ).resolves.toMatchObject({ childConversationId: childId });
       await expect(
         harness.conversationStore.get({ conversationId: childId }),
-      ).resolves.toMatchObject({ kind: "root", title: "Deploy check" });
+      ).resolves.toMatchObject({ kind: "thread", title: "Deploy check" });
       const run = harness.runs.at(-1)!;
       expect(run).toMatchObject({
         actor: slackInvocationInput.actor,

@@ -155,8 +155,8 @@ async function readThreadIds(
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
-        // Every id is a child, so a `root` is a Thread.
-        eq(juniorConversations.kind, "root"),
+        // Every id is a child, so a `thread` is a child Thread.
+        eq(juniorConversations.kind, "thread"),
       ),
     );
   return new Set(rows.map((row) => row.conversationId));

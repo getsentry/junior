@@ -82,7 +82,7 @@ function ConversationDrawerContent(
   const label =
     props.target.label ??
     conversationDetailTitle(detail) ??
-    (detail?.kind === "root" ? "Thread" : "Task");
+    (detail?.kind === "thread" ? "Thread" : "Task");
   const status = statusLabel(props.target.status, detail?.status);
   const agentName =
     props.target.agentName && props.target.agentName !== label

@@ -14,9 +14,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `automation`, `lead`, or `task`, and
-  never changes. `automation` is a top-level Conversation for an Automation
-  run. A `root` with a parent is a Thread.
+  from Location. Its `kind` is `thread`, `automation`, `lead`, or `task`,
+  and never changes. `automation` is a top-level Conversation for an
+  Automation run. A `thread` may have a parent.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
 - **Visibility**: `public` or `private`, stored on each Conversation. Anyone
@@ -28,8 +28,8 @@ Canonical words for Junior code and docs. One concept, one word.
   the Space for the Member who asked.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
-- **Thread**: a child Conversation that people can message like a root. It
-  is stored as a `root` with a parent; `startAgent` calls it `thread`. Say
+- **Thread**: a Conversation of kind `thread`, which people can message. It
+  is a root, or a child agent that `startAgent` starts as a `thread`. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket

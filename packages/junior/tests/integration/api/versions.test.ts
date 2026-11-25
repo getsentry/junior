@@ -396,7 +396,7 @@ describe("versions API", () => {
     const threadId = `${OWN}:thread`;
     await createChild({
       childConversationId: threadId,
-      kind: "root",
+      kind: "thread",
       parentConversationId: OWN,
     });
     const withThread = await read();

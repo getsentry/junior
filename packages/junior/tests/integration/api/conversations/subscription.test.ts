@@ -23,7 +23,7 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

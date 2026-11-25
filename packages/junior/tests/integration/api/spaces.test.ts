@@ -142,7 +142,7 @@ async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
 async function startThread(parentConversationId: string, id: string) {
   await getConversationStore().createChild({
     childConversationId: id,
-    kind: "root",
+    kind: "thread",
     parentConversationId,
   });
   return id;

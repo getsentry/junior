@@ -10,7 +10,7 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

@@ -99,7 +99,7 @@ const context: ToolRuntimeContext = {
   messageAgent: unavailable,
   spawnAgent: unavailable,
   turnTools: turnBehavior({
-    kind: "root",
+    kind: "thread",
     hasParent: false,
     personInput: true,
   }).tools,

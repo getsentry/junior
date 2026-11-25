@@ -14,7 +14,7 @@ function thread(
     displayTitle: id,
     id,
     isParticipant: true,
-    kind: "root",
+    kind: "thread",
     lastProgressAt: at,
     lastSeenAt: at,
     startedAt: at,

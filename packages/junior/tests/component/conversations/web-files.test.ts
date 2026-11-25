@@ -16,7 +16,7 @@ import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import { signedInViewer } from "../../fixtures/user";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

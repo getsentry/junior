@@ -158,13 +158,13 @@ describe("conversation archive API", () => {
     });
     // Only startAgent creates children today.
     for (const [childConversationId, parentConversationId, kind, nowMs] of [
-      [threadId, rootId, "root", 2_000],
+      [threadId, rootId, "thread", 2_000],
       [taskId, rootId, "task", 3_000],
       ...taskChain.map(
         (id, index) =>
           [id, taskChain[index - 1] ?? taskId, "task", 3_000] as const,
       ),
-      [taskThreadId, deepTaskId, "root", 4_000],
+      [taskThreadId, deepTaskId, "thread", 4_000],
       [taskThreadTaskId, taskThreadId, "task", 4_000],
     ] as const) {
       await getConversationStore().createChild({
@@ -216,13 +216,13 @@ describe("conversation archive API", () => {
     const visibleThreads = [
       {
         conversationId: taskThreadId,
-        kind: "root",
+        kind: "thread",
         parentConversationId: deepTaskId,
         archivedAt: null,
       },
       {
         conversationId: threadId,
-        kind: "root",
+        kind: "thread",
         parentConversationId: rootId,
         archivedAt: null,
       },
@@ -331,7 +331,7 @@ describe("conversation archive API", () => {
       ),
     ).toMatchObject({
       archivedAt: threadArchivedAt,
-      kind: "root",
+      kind: "thread",
       parentConversationId: rootId,
     });
 
@@ -511,7 +511,7 @@ describe("conversation archive API", () => {
     ).toBe(200);
     await getConversationStore().createChild({
       childConversationId: "agent:thread-archive-late-thread",
-      kind: "root",
+      kind: "thread",
       nowMs: 8_000,
       parentConversationId: lateTaskId,
     });

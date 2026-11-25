@@ -36,7 +36,6 @@ import {
   buildParentMessage,
   type ParentMessageDelivery,
 } from "./parent-message";
-import { childConversationKind } from "@/chat/conversations/kind-behavior";
 import { spawnChildAgentInputSchema, type SpawnChildAgentInput } from "./types";
 
 /** Cap concurrent active children one parent can keep in flight. */
@@ -109,7 +108,7 @@ async function createChildAgentConversation(
   );
   await getConversationStore().createChild({
     childConversationId,
-    kind: childConversationKind(input.kind),
+    kind: input.kind,
     parentConversationId: input.parentConversationId,
     nowMs,
     source: "internal",
@@ -249,7 +248,7 @@ async function assertSameSpawn(
   ]);
   const expected = spawnAgentConfig(input);
   if (
-    child.kind !== childConversationKind(input.kind) ||
+    child.kind !== input.kind ||
     sender?.agentName !== input.agentName ||
     config?.agentType !== expected.agentType ||
     config?.fork !== expected.fork ||

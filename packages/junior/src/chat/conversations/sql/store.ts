@@ -269,7 +269,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: args.kind ?? "root",
+    kind: args.kind ?? "thread",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -536,7 +536,7 @@ export class SqlStore implements ConversationStore {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
-          kind: existing?.kind ?? "root",
+          kind: existing?.kind ?? "thread",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId

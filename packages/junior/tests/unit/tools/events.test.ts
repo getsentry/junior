@@ -20,7 +20,7 @@ import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;

@@ -414,7 +414,7 @@ export function conversationFeedVersionQuery(
         )),
         count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
         md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
-          where ${child} and ${active} and ${feedTree.kind} = 'root'
+          where ${child} and ${active} and ${feedTree.kind} = 'thread'
         )),
         count(*) filter (where ${hasUnexpiredAuthorizationRequest(feedTree.conversationId)})
       )`,

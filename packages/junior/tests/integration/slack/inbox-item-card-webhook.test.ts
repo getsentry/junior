@@ -354,7 +354,7 @@ describe("Slack webhook: Inbox item cards", () => {
     const child = "agent:card-child";
     await getConversationStore().createChild({
       childConversationId: child,
-      kind: "root",
+      kind: "thread",
       nowMs: 1,
       parentConversationId: THREAD,
       source: "internal",
@@ -401,7 +401,7 @@ describe("Slack webhook: Inbox item cards", () => {
     const child = "agent:detached-child";
     await getConversationStore().createChild({
       childConversationId: child,
-      kind: "root",
+      kind: "thread",
       nowMs: 1,
       parentConversationId: THREAD,
       source: "internal",

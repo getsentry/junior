@@ -502,7 +502,7 @@ describe("conversation auto-archive API", () => {
     }
     await getConversationStore().createChild({
       childConversationId: `${childConnectingId}:child`,
-      kind: "root",
+      kind: "thread",
       nowMs: nowMs - 3 * hour,
       parentConversationId: childConnectingId,
     });
@@ -654,7 +654,7 @@ describe("conversation auto-archive API", () => {
     ]) {
       await getConversationStore().createChild({
         childConversationId: `${parentConversationId}:child`,
-        kind: "root",
+        kind: "thread",
         nowMs: quietMs,
         parentConversationId,
       });

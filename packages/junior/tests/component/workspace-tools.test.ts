@@ -31,7 +31,7 @@ import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;
