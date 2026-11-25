@@ -50,7 +50,10 @@ function withoutReview(
   return rest;
 }
 const checkPullRequestsSchema = z.array(
-  z.object({ number: z.number().int().positive() }),
+  z.object({
+    id: z.number().int().positive().optional(),
+    number: z.number().int().positive(),
+  }),
 );
 const checkSuiteEventSchema = z.object({
   check_suite: z.object({
@@ -165,21 +168,27 @@ async function refreshPullRequest(
 // pending until a patch counts them.
 async function refreshChecks(
   args: RefreshArgs,
-  keys: string[],
+  pulls: Array<{ key: string; subject?: ObjectSubject }>,
   sha: string,
 ): Promise<void> {
-  for (const key of keys) {
+  for (const { key, subject } of pulls) {
     let patch = false;
+    let changed = false;
     // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
     await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
       if (current?.state !== "open" || current.head?.sha !== sha)
         return undefined;
       patch = true;
+      changed = current.checks !== "pending";
       return {
         ...GITHUB_PULL_REQUEST_CACHE,
         value: { ...current, checks: "pending" },
       };
     });
+    if (changed && subject) {
+      // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
+      await args.objectChanged(subject);
+    }
     if (patch) {
       // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
       await startGitHubPullRequestPatch({
@@ -195,7 +204,9 @@ async function refreshChecks(
 function checkEventTarget(
   body: unknown,
   eventName: string,
-): { keys: string[]; sha: string } | undefined {
+):
+  | { pulls: Array<{ key: string; subject?: ObjectSubject }>; sha: string }
+  | undefined {
   const event =
     eventName === "check_suite"
       ? checkSuiteEventSchema.safeParse(body)
@@ -207,9 +218,15 @@ function checkEventTarget(
   const check =
     "check_suite" in event.data ? event.data.check_suite : event.data.check_run;
   return {
-    keys: check.pull_requests.map((pull) =>
-      githubObjectCacheKey("pulls", repository.full_name, pull.number),
-    ),
+    pulls: check.pull_requests.map((pull) => ({
+      key: githubObjectCacheKey("pulls", repository.full_name, pull.number),
+      ...(pull.id && {
+        subject: {
+          id: String(pull.id),
+          kind: GITHUB_INBOX_SUBJECTS.pullRequest,
+        },
+      }),
+    })),
     sha: check.head_sha,
   };
 }
@@ -220,7 +237,8 @@ function checkEventTarget(
  * call. A webhook that can change the review decision clears it, so the
  * next page read asks GitHub. A `check_suite` or `check_run` webhook marks the checks
  * of its pull requests pending. Merge state and checks that turn pending
- * get a patch (`pull-request-patches.ts`).
+ * get a patch (`pull-request-patches.ts`). Each write that changes an
+ * entry tells `objectChanged`, so an open page reads the card again.
  */
 export async function refreshGitHubObjectCache(
   args: RefreshArgs & { eventName: string },
@@ -241,11 +259,14 @@ export async function refreshGitHubObjectCache(
       event.data.repository.full_name,
       event.data.pull_request.number,
     );
-    await args.cache.update<GitHubPullRequestFields | null>(key, (current) =>
-      current?.review === undefined
-        ? undefined
-        : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutReview(current) },
-    );
+    let changed = false;
+    await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+      if (current?.review === undefined) return undefined;
+      changed = true;
+      return { ...GITHUB_PULL_REQUEST_CACHE, value: withoutReview(current) };
+    });
+    const subject = webhookSubject(args.body, "pull_request");
+    if (changed && subject) await args.objectChanged(subject);
     return;
   }
   if (args.eventName === "issues") {
@@ -284,5 +305,5 @@ export async function refreshGitHubObjectCache(
     return;
   }
   const target = checkEventTarget(args.body, args.eventName);
-  if (target) await refreshChecks(args, target.keys, target.sha);
+  if (target) await refreshChecks(args, target.pulls, target.sha);
 }

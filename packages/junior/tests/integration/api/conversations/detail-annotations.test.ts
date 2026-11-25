@@ -17,6 +17,7 @@ import { decodeImageId } from "@/chat/images/ids";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import {
+  checkRuns,
   createGitHubApp,
   GITHUB_API,
   GITHUB_REPO,
@@ -24,7 +25,10 @@ import {
   pullRequest,
   sendGitHubWebhook,
   stubGitHubApp,
+  stubGraphql,
+  T0,
 } from "../../../fixtures/github-objects";
+import { createPluginTaskQueueTestAdapter } from "../../../fixtures/plugin-task-queue";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
 
@@ -213,47 +217,11 @@ describe("conversation detail annotations", () => {
       ),
     );
     const github = await createGitHubApp();
-    await linkGitHubMember();
-    const conversationId = "local:test:provider-change";
-    await getConversationStore().recordActivity({
-      destination: { platform: "local" as const, conversationId },
-      conversationId,
-      nowMs: 1,
-      source: "internal",
-      title: "Pull request that merges",
-      visibility: "public",
-    });
-    await createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "github",
-    }).upsert({
-      kind: "object",
-      objectType: "code_change",
-      key: "getsentry/junior#36",
-      label: "getsentry/junior#36",
-      subject: { id: "36000", kind: "pull_request" },
-      title: "Cache GitHub objects",
-      url: `${GITHUB_REPO}/pull/36`,
-    });
-    const viewer = await signedInViewer("alice@example.com");
-    const api = new Hono<JuniorApiEnv>();
-    api.use("*", async (context, next) => {
-      context.set("viewer", viewer);
-      await next();
-    });
-    api.route("/", createJuniorApi());
-    const poll = (etag: string) =>
-      api.request(`http://localhost/api/conversations/${conversationId}`, {
-        headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: etag },
-      });
-    const statusOf = async (response: Response) =>
-      conversationDetailReportSchema.parse(await response.json())
-        .annotations?.[0]?.status;
+    const { poll, annotation } = await annotatedPullRequestPage(36);
 
     try {
       const open = await poll("none");
-      expect(await statusOf(open)).toBe("open");
+      expect((await annotation(open)).status).toBe("open");
       const openEtag = open.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
       const openVersion = open.headers.get(CONVERSATION_VERSION_HEADER);
       expect((await poll(openEtag)).status).toBe(304);
@@ -276,7 +244,7 @@ describe("conversation detail annotations", () => {
       expect(refreshed.headers.get(CONVERSATION_VERSION_HEADER)).not.toBe(
         openVersion,
       );
-      expect(await statusOf(refreshed)).toBe("merged");
+      expect((await annotation(refreshed)).status).toBe("merged");
 
       // A redelivery changes nothing, so the page stays as it is.
       const mergedEtag = refreshed.headers.get(
@@ -291,4 +259,114 @@ describe("conversation detail annotations", () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it("refreshes an open page when a check event and its patch change the checks", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/37`, () =>
+        HttpResponse.json(pullRequest(37)),
+      ),
+    );
+    stubGraphql({
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 3 }),
+            headRefOid: "aaa111",
+            mergeable: "MERGEABLE",
+            number: 37,
+            updatedAt: T0,
+          },
+        ],
+      ],
+    });
+    const tasks = createPluginTaskQueueTestAdapter();
+    const github = await createGitHubApp(tasks);
+    const { poll, annotation } = await annotatedPullRequestPage(37);
+
+    try {
+      const open = await poll("none");
+      const openEtag = open.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
+      expect((await poll(openEtag)).status).toBe(304);
+
+      // A check event marks the checks pending, and the page reads that.
+      await sendGitHubWebhook(github, "check_suite", {
+        action: "completed",
+        check_suite: {
+          conclusion: "success",
+          head_branch: "feat/object-cache",
+          head_sha: "aaa111",
+          id: 7001,
+          pull_requests: [{ id: 37000, number: 37 }],
+          status: "completed",
+        },
+      });
+      const pending = await poll(openEtag);
+      expect(pending.status).toBe(200);
+      expect((await annotation(pending)).facts).toMatchObject({
+        checks: "pending",
+      });
+
+      // Its patch counts the checks, and the page reads the counts.
+      const pendingEtag = pending.headers.get(
+        CONVERSATION_DETAIL_VERSION_HEADER,
+      )!;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 60_000);
+      await tasks.deliver();
+      vi.useRealTimers();
+      const counted = await poll(pendingEtag);
+      expect(counted.status).toBe(200);
+      expect((await annotation(counted)).facts).toMatchObject({
+        checks: { failed: 0, passed: 3, pending: 0 },
+      });
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
 });
+
+// A public Conversation that annotates pull request `number`, and a poll
+// of its detail page as a GitHub-linked viewer.
+async function annotatedPullRequestPage(number: number) {
+  await linkGitHubMember();
+  const conversationId = `local:test:provider-change-${number}`;
+  await getConversationStore().recordActivity({
+    destination: { platform: "local" as const, conversationId },
+    conversationId,
+    nowMs: 1,
+    source: "internal",
+    title: "Pull request that changes",
+    visibility: "public",
+  });
+  await createPluginAnnotations({
+    conversationId,
+    db: getDb(),
+    plugin: "github",
+  }).upsert({
+    kind: "object",
+    objectType: "code_change",
+    key: `getsentry/junior#${number}`,
+    label: `getsentry/junior#${number}`,
+    subject: { id: String(number * 1000), kind: "pull_request" },
+    title: "Cache GitHub objects",
+    url: `${GITHUB_REPO}/pull/${number}`,
+  });
+  const viewer = await signedInViewer("alice@example.com");
+  const api = new Hono<JuniorApiEnv>();
+  api.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  api.route("/", createJuniorApi());
+  return {
+    poll: (etag: string) =>
+      api.request(`http://localhost/api/conversations/${conversationId}`, {
+        headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: etag },
+      }),
+    annotation: async (response: Response) =>
+      conversationDetailReportSchema.parse(await response.json())
+        .annotations?.[0] as { facts?: unknown; status?: string },
+  };
+}
