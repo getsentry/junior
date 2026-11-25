@@ -15,6 +15,7 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
 import { useSpaceActions } from "./SpaceActions";
 import { spacePath } from "./spaceRoutes";
+import { SpaceStateIcon, spaceDisplayState } from "./SpaceStateIcon";
 import { SpaceTile } from "./SpaceTile";
 
 // The dialog opens only after a click, so it loads with the first open
@@ -56,6 +57,7 @@ function SpaceNavRow(props: {
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {space.name}
           </span>
+          <SpaceStateIcon state={spaceDisplayState(space)} />
         </Link>
       </ContextMenuTrigger>
       <ContextMenuContent>{actions.rows}</ContextMenuContent>
@@ -66,8 +68,8 @@ function SpaceNavRow(props: {
 
 /**
  * The pane's Spaces: each Space that the viewer is a member of, one click
- * away, and a way to create one. A Space's context menu edits, archives, or
- * leaves it.
+ * away, with the state of its Conversations, and a way to create one. A
+ * Space's context menu edits, archives, or leaves it.
  */
 export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
   const { pathname } = useLocation();
