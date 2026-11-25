@@ -243,14 +243,6 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   relatedConversations: false,
 };
 
-// An Automation Conversation lists the tools of the run and of a person who
-// replies, so its tool list stays the same. The run's own Turns keep the
-// Space tool disabled.
-const AUTOMATION_TOOLS: TurnBehavior["tools"] = {
-  ...AUTOMATION_RUN.tools,
-  spaces: PERSON_IN_AUTOMATION.tools.spaces,
-};
-
 // A Lead finds, starts, and steers its person's other Conversations, and
 // never does their work. So it gets only the tools for that, and no sandbox,
 // skills, MCP, provider, or child-agent tools. Automation tools stay out
@@ -329,7 +321,7 @@ export function turnBehavior(args: {
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   switch (mode) {
     case "automation":
-      return AUTOMATION_TOOLS;
+      return AUTOMATION_RUN.tools;
     case "child_agent":
       return CHILD_AGENT_TURN.tools;
     case "thread":

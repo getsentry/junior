@@ -267,7 +267,15 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
-  setSpaceConfiguration: (run) => createSetSpaceConfigurationTool(run.context),
+  // The Turn keeps the tool listed, so its tool list stays the same, but only
+  // a Conversation in a Space can use it.
+  setSpaceConfiguration: (run) =>
+    withDisabledReason(
+      createSetSpaceConfigurationTool(run.context, run.context.spaceId),
+      run.context.spaceId
+        ? undefined
+        : "This conversation is in no Space, so it has no Space settings to change.",
+    ),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
       run.context,

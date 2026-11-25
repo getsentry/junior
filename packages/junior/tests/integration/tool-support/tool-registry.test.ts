@@ -418,7 +418,8 @@ describe("static tool registry", () => {
         "watchTimer",
       ].sort(),
     );
-    expect(person.disabled).toEqual([]);
+    // This Lead is in no Space, so it cannot change Space settings.
+    expect(person.disabled).toEqual(["setSpaceConfiguration"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

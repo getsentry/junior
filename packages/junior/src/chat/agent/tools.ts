@@ -218,6 +218,7 @@ interface ToolWiringArgs {
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
   conversationPrivacy?: ConversationPrivacy | undefined;
+  spaceId?: string | undefined;
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
@@ -466,6 +467,7 @@ export async function wireAgentTools(
         }
       : undefined),
     conversationPrivacy: args.conversationPrivacy,
+    spaceId: args.spaceId,
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
