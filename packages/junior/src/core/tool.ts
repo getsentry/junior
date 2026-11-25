@@ -4,6 +4,7 @@ import type {
   JsonValue,
   TextContent,
   Tool,
+  ToolCall,
 } from "@earendil-works/pi-ai";
 
 /**
@@ -46,8 +47,24 @@ export type ToolExecutionContext = {
  */
 export type StepTools = {
   definitions: ToolDefinition[];
+  /**
+   * Runs once per tool batch, before any of its calls runs, with every call
+   * that would run. It sees the whole batch, so it can decide calls together,
+   * such as an action review. A throw fails the step.
+   */
+  beforeCalls?(
+    calls: ToolCall[],
+    signal: AbortSignal,
+  ): Promise<Map<string, ToolCallChange>>;
   close(): void;
 };
+
+/**
+ * What `beforeCalls` does to one call, by call id. `result`: the call does
+ * not run, and the model sees this result. `args`: the call runs with these
+ * arguments. A call with no entry runs as the model asked.
+ */
+export type ToolCallChange = { result: ToolResult } | { args: JsonObject };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */
 export type ToolResult<TDetails extends JsonValue = JsonValue> = {

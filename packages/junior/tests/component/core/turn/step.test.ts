@@ -410,4 +410,76 @@ describe("runStep", () => {
     await expect(modelStep).rejects.toBe(stopped);
     await expect(toolStep).rejects.toBe(stopped);
   });
+
+  it("gives beforeCalls every call that would run, once, before any of them runs", async () => {
+    const executed: Array<{ name: string; args: unknown }> = [];
+    const record = (name: string): ToolDefinition =>
+      tool(name, {
+        replay: "safe",
+        execute: (args) => {
+          executed.push({ name, args });
+          return Promise.resolve({ content: [{ type: "text", text: name }] });
+        },
+      });
+    const batches: Array<{ ids: string[]; executedBefore: number }> = [];
+    const denied = {
+      content: [{ type: "text" as const, text: "Rejected." }],
+      isError: true,
+    };
+
+    const { result } = await runStep(
+      stepInput({
+        history: [user, replyWithCalls("lookup", "send", "missing")],
+        tools: [record("lookup"), record("send")],
+        beforeCalls: (calls) => {
+          batches.push({
+            ids: calls.map((call) => call.id),
+            executedBefore: executed.length,
+          });
+          return Promise.resolve(
+            new Map([
+              ["call-lookup", { args: { query: "turns" } }],
+              ["call-send", { result: denied }],
+            ]),
+          );
+        },
+      }),
+    );
+
+    // A call with no tool fails before the batch reaches the host.
+    expect(batches).toEqual([
+      { ids: ["call-lookup", "call-send"], executedBefore: 0 },
+    ]);
+    expect(executed).toEqual([{ name: "lookup", args: { query: "turns" } }]);
+    expect(result).toMatchObject({
+      outcome: "continue",
+      messages: [
+        { toolCallId: "call-lookup", isError: false },
+        { toolCallId: "call-send", content: denied.content, isError: true },
+        { toolCallId: "call-missing", isError: true },
+      ],
+    });
+  });
+
+  it("fails the step and runs no call when beforeCalls throws", async () => {
+    const executed: string[] = [];
+    const send = tool("send", {
+      replay: "never",
+      execute: () => {
+        executed.push("send");
+        return Promise.resolve({ content: [] });
+      },
+    });
+
+    await expect(
+      runStep(
+        stepInput({
+          history: [user, replyWithCalls("send")],
+          tools: [send],
+          beforeCalls: () => Promise.reject(new Error("Review unavailable")),
+        }),
+      ),
+    ).rejects.toThrow("Review unavailable");
+    expect(executed).toEqual([]);
+  });
 });
