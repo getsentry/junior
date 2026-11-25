@@ -5,6 +5,7 @@ import {
   claimGitHubPullRequestReadySync,
   releaseGitHubPullRequestReadySync,
 } from "../src/pull-request-outcomes/store";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { createPluginHarness } from "./plugin-harness";
@@ -681,7 +682,9 @@ describe("next action item", () => {
         "1001",
         { now: new Date(), staleMs: 60_000 },
       );
-      if (!claim) throw new Error("expected the webhook's claim");
+      if (!claim || claim === "held") {
+        throw new Error("expected the webhook's claim");
+      }
       const h = createPluginHarness(fixture, requesterUsers);
       const now = Date.parse("2026-07-03T12:00:00.000Z");
       await h.heartbeat(now);
@@ -704,6 +707,56 @@ describe("next action item", () => {
       expect(h.notices.map(({ notice }) => notice.title)).toEqual([
         "Review requested · #946",
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("finishes the backfill past a pull request that Junior does not track", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      // The code index and the requester know the pull request, but Junior
+      // has no row for it, so no webhook can hold its check.
+      const at = new Date("2026-07-01T12:00:00.000Z");
+      fixture.codeIndex.seed({
+        conversationIds: ["slack:C123:1712345.0001"],
+        number: 946,
+        openedAt: at,
+        providerId: "1001",
+        repository: { name: "getsentry/junior", providerId: "2001" },
+        state: "open",
+        updatedAt: at,
+      });
+      await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
+        conversationId: "slack:C123:1712345.0001",
+        createdAt: at,
+        identityId: "identity-requester",
+        number: 946,
+        repositoryFullName: "getsentry/junior",
+        updatedAt: at,
+      });
+      const h = createPluginHarness(fixture, requesterUsers);
+      const backfills = () =>
+        h.startedTasks.filter(
+          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
+        );
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+      await h.heartbeat(now);
+      await h.runStartedTasks();
+      await h.heartbeat(now + 60_000);
+      expect(backfills()).toEqual([]);
+      expect(requests).toEqual([]);
     } finally {
       await fixture.close();
     }

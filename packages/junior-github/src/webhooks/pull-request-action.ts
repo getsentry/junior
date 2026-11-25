@@ -632,7 +632,8 @@ async function syncOne(
     now: new Date(),
     staleMs: READY_SYNC_STALE_MS,
   });
-  if (!claim) return "busy";
+  if (claim === "held") return "busy";
+  if (!claim) return;
   const { id } = claim;
   let saved = claim.action;
   let requests: number | undefined = claim.requests;
