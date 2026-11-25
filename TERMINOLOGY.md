@@ -129,8 +129,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Trusted author**: an Event author with `trusted` Author trust. Like a
   Slack author, a linked person writes the Event's Message. Any other author
   is an Untrusted author: the Event runs as system context, and the task
-  input says the account is not verified. Either way, the author's own text
-  is context for the Watch or Automation task, never an instruction.
+  input says the account is not verified. Text from the person's own linked
+  account counts as their message. Any other author's text is context for
+  the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents, and drops the Parent messages that wait
@@ -197,8 +198,10 @@ Canonical words for Junior code and docs. One concept, one word.
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: a Parent message that starts work or steers a running
   Turn.
-  To a parent or a top-level agent it is an Event Inbound message, and it
-  gives no user approval.
+  To a parent or a top-level agent it is an Event Inbound message. The
+  agent's own text gives no user approval. A person's own words that it
+  passes on, linked to where the person wrote them, count as that person's
+  lines.
 - **Agent type**: a `startAgent` preset for a child agent: when to pick it,
   whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
