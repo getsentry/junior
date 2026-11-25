@@ -218,10 +218,17 @@ export function useAddSpaceMember(spaceId: string) {
   return useMutation({
     mutationFn: (email: string) =>
       post(spaceSchema, `${spaceApiPath(spaceId)}/members`, { email }),
-    onSuccess: (space) =>
+    // The people picker adds several people at once, and their responses
+    // can arrive in any order. So refetch the Space instead of storing a
+    // response, which can hold an older member count.
+    onSuccess: () =>
       Promise.all([
-        storeSpace(queryClient, space),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: spaceKey(spaceId),
+        }),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
+        queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
       ]),
   });
 }
