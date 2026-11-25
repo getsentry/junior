@@ -1,6 +1,8 @@
 import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
+import type { ChildAgentKind } from "@/chat/agent-invocations/types";
 import type {
+  ChildConversationKind,
   Conversation,
   ConversationKind,
 } from "@/chat/conversations/store";
@@ -275,18 +277,23 @@ const LEAD: TurnBehavior = {
   },
 };
 
-/** Return the behavior of one Turn. */
+/**
+ * Return the behavior of one Turn. A `root` with a parent is a Thread: it
+ * runs like a root, and also reports to its parent.
+ */
 export function turnBehavior(args: {
   kind: ConversationKind;
+  hasParent: boolean;
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
     case "root":
+      if (args.hasParent) {
+        return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+      }
       return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
-    case "thread":
-      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
       if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
@@ -335,11 +342,13 @@ export function canMoveToSpace(
 }
 
 /**
- * Return whether a Conversation of this kind copies its root's visibility.
- * A root takes the visibility of its Destination or Space.
+ * Return whether a Conversation copies its root's visibility: it has a
+ * parent. A root takes the visibility of its Destination or Space.
  */
-export function copiesRootVisibility(kind: ConversationKind): boolean {
-  return !isTopLevelKind(kind);
+export function copiesRootVisibility(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !isTopLevel(conversation);
 }
 
 /**
@@ -357,9 +366,54 @@ export function isTopLevel(
   return !conversation.parentConversationId;
 }
 
-/** Return whether a Conversation of this kind has no parent. */
-export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation" || kind === "lead";
+/**
+ * Return whether a Conversation of this kind may have this parent edge. A
+ * `root` may have a parent, a Task must, and an Automation run or a Lead
+ * never does.
+ */
+export function kindAllowsParent(
+  kind: ConversationKind,
+  hasParent: boolean,
+): boolean {
+  switch (kind) {
+    case "root":
+      return true;
+    case "task":
+      return hasParent;
+    case "automation":
+    case "lead":
+      return !hasParent;
+  }
+}
+
+/** Return the stored Conversation kind of a new child agent. */
+export function childConversationKind(
+  kind: ChildAgentKind,
+): ChildConversationKind {
+  return kind === "thread" ? "root" : "task";
+}
+
+/** Return the child agent kind of a stored child Conversation kind. */
+export function childAgentKind(kind: ChildConversationKind): ChildAgentKind {
+  return kind === "root" ? "thread" : "task";
+}
+
+/**
+ * Return the kind that a tool shows for a Conversation. A `root` with a
+ * parent shows as `thread`, the word that `startAgent` uses.
+ */
+export function toolConversationKind(
+  kind: ConversationKind,
+  hasParent: boolean,
+): ConversationKind | "thread" {
+  return kind === "root" && hasParent ? "thread" : kind;
+}
+
+/** Return whether a Conversation is a Thread: a `root` with a parent. */
+export function isThread(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): boolean {
+  return conversation.kind === "root" && !isTopLevel(conversation);
 }
 
 /**

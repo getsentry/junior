@@ -5,6 +5,5 @@ export const conversationKindSchema = z.enum([
   "root",
   "automation",
   "lead",
-  "thread",
   "task",
 ]);

@@ -172,7 +172,7 @@ describe("Thread spawn and archive", () => {
           conversationId: thread.conversation_id,
         }),
       ).resolves.toMatchObject({
-        kind: "thread",
+        kind: "root",
         parentConversationId: slackParentConversationId,
         title: "Rollout plan",
       });
@@ -198,7 +198,7 @@ describe("Thread spawn and archive", () => {
           conversationId: untitled.conversation_id,
         }),
       ).resolves.toMatchObject({
-        kind: "thread",
+        kind: "root",
         title: "Generated rollout title",
       });
       // A child never changes kind: a replay of the same spawn as a Task

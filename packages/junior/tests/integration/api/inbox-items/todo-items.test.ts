@@ -463,7 +463,7 @@ describe("To-dos for a person in the Inbox", () => {
   async function conversationThread() {
     await getConversationStore().createChild({
       childConversationId: THREAD,
-      kind: "thread",
+      kind: "root",
       nowMs: NOW_MS,
       parentConversationId: ROOT,
       title: "Check the copy",

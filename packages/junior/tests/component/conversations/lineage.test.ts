@@ -42,7 +42,7 @@ describe("Conversation lineage", () => {
     });
     await store.createChild({
       childConversationId: GRANDCHILD_ID,
-      kind: "thread",
+      kind: "root",
       parentConversationId: CHILD_ID,
       nowMs: 3_000,
     });
@@ -58,7 +58,7 @@ describe("Conversation lineage", () => {
       { conversationId: CHILD_ID, kind: "task", parentConversationId: ROOT_ID },
       {
         conversationId: GRANDCHILD_ID,
-        kind: "thread",
+        kind: "root",
         parentConversationId: CHILD_ID,
       },
     ]);

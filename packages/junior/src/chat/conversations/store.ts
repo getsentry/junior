@@ -16,26 +16,17 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root, an Automation run, and a
- * Lead have no parent. A Thread is a child that people can message. A Task
- * is a child that only its parent messages. A Conversation never changes
- * kind.
+ * What a Conversation is. An Automation run and a Lead have no parent. A Task
+ * is a child that only its parent messages. A `root` with a parent is a
+ * Thread: a child that people can message. A Conversation never changes kind.
  */
-export type ConversationKind =
-  | "root"
-  | "automation"
-  | "lead"
-  | "thread"
-  | "task";
+export type ConversationKind = "root" | "automation" | "lead" | "task";
 
 /** The kind of a Conversation that has no parent. */
-export type TopLevelConversationKind = Exclude<
-  ConversationKind,
-  ChildConversationKind
->;
+export type TopLevelConversationKind = Exclude<ConversationKind, "task">;
 
-/** The kind of a Conversation that has a parent. */
-export type ChildConversationKind = "thread" | "task";
+/** The kind of a Conversation that has a parent. `root` is a Thread. */
+export type ChildConversationKind = Extract<ConversationKind, "root" | "task">;
 
 export type ConversationStatus =
   | "paused"

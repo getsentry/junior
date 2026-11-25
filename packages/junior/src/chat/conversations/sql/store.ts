@@ -54,7 +54,7 @@ import {
 import { nextDetailVersion } from "./detail-version";
 import {
   copiesRootVisibility,
-  isTopLevelKind,
+  kindAllowsParent,
 } from "@/chat/conversations/kind-behavior";
 import {
   fillMissingTreeVisibility,
@@ -748,7 +748,7 @@ export class SqlStore implements ConversationStore {
   }): Promise<void> {
     const { conversation } = args;
     if (
-      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+      !kindAllowsParent(conversation.kind, !!conversation.parentConversationId)
     ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
@@ -785,7 +785,7 @@ export class SqlStore implements ConversationStore {
     const destinationId = upsertedDestination?.id ?? args.destinationId;
     // A root takes the visibility of its Destination. A child copies its
     // root's, under the lock that `setConversationVisibility` waits on.
-    const visibility = copiesRootVisibility(conversation.kind)
+    const visibility = copiesRootVisibility(conversation)
       ? (
           await resolveRootVisibility(
             this.executor,
@@ -910,7 +910,7 @@ export class SqlStore implements ConversationStore {
       throw new Error("Conversation parent is missing its persisted root");
     }
     if (
-      !copiesRootVisibility(conversation.kind) &&
+      !copiesRootVisibility(conversation) &&
       row.visibility &&
       row.filledVisibility
     ) {

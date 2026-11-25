@@ -1,3 +1,4 @@
+import { toolConversationKind } from "@/chat/conversations/kind-behavior";
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -362,7 +363,7 @@ export function createEndStoppedChildWork(options: {
         ),
         update: async () => ({
           status: "failed",
-          text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,
+          text: `This ${toolConversationKind(conversation.kind, true)} stopped because its worker failed repeatedly.`,
         }),
       },
     );

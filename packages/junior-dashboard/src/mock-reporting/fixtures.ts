@@ -1314,7 +1314,7 @@ function threadConversation(
   return detail(nowMs, {
     conversationId,
     displayTitle,
-    kind: "thread",
+    kind: "root",
     // The viewer takes part, so QA shows that a person can message a Thread.
     isParticipant: true,
     parentConversationId,
@@ -2526,9 +2526,11 @@ function mockThreadPlacement(
     ancestor;
     ancestor = byId.get(ancestor.parentConversationId ?? "")
   ) {
-    if (ancestor.kind === "root") return placement ?? ancestor.conversationId;
+    if (!ancestor.parentConversationId) {
+      return placement ?? ancestor.conversationId;
+    }
     if (ancestor.archivedAt) return undefined;
-    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
+    if (ancestor.kind === "root") placement ??= ancestor.conversationId;
   }
   return undefined;
 }
@@ -2556,7 +2558,13 @@ function mockThreadsByPlacement(
   );
   const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
   for (const thread of conversations) {
-    if (thread.kind !== "thread" || thread.archivedAt) continue;
+    if (
+      thread.kind !== "root" ||
+      !thread.parentConversationId ||
+      thread.archivedAt
+    ) {
+      continue;
+    }
     const placement = mockThreadPlacement(byId, thread);
     if (!placement) continue;
     threadsByPlacement.set(placement, [
@@ -2585,6 +2593,7 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
       .filter(
         (conversation) =>
           conversation.kind === "root" &&
+          !conversation.parentConversationId &&
           !isUnlistedMockConversation(conversation.conversationId),
       )
       .map((root) => {
@@ -2603,6 +2612,7 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
     .filter(
       (conversation) =>
         conversation.kind === "root" &&
+        !conversation.parentConversationId &&
         !isUnlistedMockConversation(conversation.conversationId),
     )
     .map(summaryFromConversation)
@@ -2993,7 +3003,7 @@ export function setMockConversationArchived(
     mockArchivedAt.delete(id);
   }
   // Match the API: a manual root restore turns auto-archive off.
-  if (conversation.kind === "root") {
+  if (conversation.kind === "root" && !conversation.parentConversationId) {
     mockAutoArchiveByConversationId.set(conversationId, false);
   }
   return { archivedAt: null };
@@ -3399,7 +3409,7 @@ function mockAgentTree(
       label:
         agent?.title ??
         agent?.name ??
-        (item.kind === "thread" ? "Thread" : "Task"),
+        (item.kind === "root" ? "Thread" : "Task"),
       ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });

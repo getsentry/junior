@@ -177,6 +177,7 @@ export function useConversationMenuItems(
   if (
     actions.moveToSpace &&
     (conversation?.kind === "root" || conversation?.kind === "automation") &&
+    !conversation.parentConversationId &&
     conversation.visibility === "public"
   ) {
     actItems.push({

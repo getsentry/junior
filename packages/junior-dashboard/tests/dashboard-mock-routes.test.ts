@@ -489,9 +489,9 @@ describe("dashboard canonical-event mock routes", () => {
       expect(archivedThread).toMatchObject({
         agentTree: [
           { conversationId: DASHBOARD_QA_CONVERSATION_ID, kind: "root" },
-          { conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID, kind: "thread" },
+          { conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID, kind: "root" },
         ],
-        kind: "thread",
+        kind: "root",
         parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
         archivedAt: expect.any(String),
       });

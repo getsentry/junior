@@ -19,6 +19,7 @@ import { planToolExposure } from "@/chat/tool-exposure";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
+  hasParent: false,
   personInput: true,
 }).tools;
 

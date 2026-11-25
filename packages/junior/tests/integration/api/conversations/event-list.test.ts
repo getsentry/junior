@@ -491,7 +491,7 @@ describe("conversation event list API", () => {
     // its start is on an older page.
     await getConversationStore().createChild({
       childConversationId: "child-before-page",
-      kind: "thread",
+      kind: "root",
       nowMs: 2,
       parentConversationId: conversationId,
     });

@@ -265,7 +265,7 @@ describe("conversation tree state", () => {
     const threadId = "agent:tree-answer-thread";
     await fixture.conversationStore.createChild({
       childConversationId: threadId,
-      kind: "thread",
+      kind: "root",
       parentConversationId: conversationId,
     });
     // A Thread's unread answer waits on the starter in the Thread only.
@@ -385,7 +385,7 @@ describe("conversation tree state", () => {
     const grandchildConversationId = "agent:tree-archived-grandchild";
     await fixture.conversationStore.createChild({
       childConversationId,
-      kind: "thread",
+      kind: "root",
       parentConversationId: conversationId,
     });
     await fixture.conversationStore.createChild({

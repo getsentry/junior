@@ -479,7 +479,7 @@ describe("inbox item actions API", () => {
     await slackConversation("slack:CPUB:1.000005");
     await getConversationStore().createChild({
       childConversationId: "agent:thread-of-5",
-      kind: "thread",
+      kind: "root",
       nowMs,
       parentConversationId: "slack:CPUB:1.000005",
       title: "Check the release notes",
@@ -501,7 +501,7 @@ describe("inbox item actions API", () => {
     });
     await getConversationStore().createChild({
       childConversationId: "agent:thread-of-6",
-      kind: "thread",
+      kind: "root",
       nowMs,
       parentConversationId: "slack:CPRIV:1.000006",
       title: "Rotate the private key",

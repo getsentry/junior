@@ -84,8 +84,8 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root`, `automation`, or `lead` exactly when parent_conversation_id is
-    // null. Set once at create.
+    // Set once at create. A `task` always has a parent, an `automation` or a
+    // `lead` never does, and a `root` with a parent is a Thread.
     // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
@@ -149,11 +149,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'automation', 'lead', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'automation', 'lead', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ${table.kind} = 'root' or ((${table.kind} in ('automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     check(
       "junior_conversations_space_root_check",

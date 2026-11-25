@@ -209,7 +209,7 @@ describe("Thread input", () => {
       });
       expect(thread).toMatchObject({
         destination: slackDestination,
-        kind: "thread",
+        kind: "root",
       });
       // The parent task's Turn ended its work with `noReply`, so the parent
       // has its result. The person's Turn sends the parent nothing.

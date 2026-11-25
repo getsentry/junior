@@ -271,8 +271,8 @@ export async function appendVisibleHistory(
 /** Create a child conversation under a recorded root for reporting tests. */
 export async function createChild(args: {
   childConversationId: string;
-  /** Defaults to a Task. */
-  kind?: "task" | "thread";
+  /** Defaults to a Task. `root` makes a Thread. */
+  kind?: "task" | "root";
   parentConversationId: string;
 }): Promise<void> {
   const { getConversationEventStore, getDb } = await import("@/chat/db");

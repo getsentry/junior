@@ -289,7 +289,10 @@ export function addMockConversationSpaceRoute(
     const conversation = readMockConversationDetail(conversationId, 1);
     if (!conversation?.isParticipant)
       return errorResponse("Conversation not found.", 404);
-    if (conversation.kind !== "root" && conversation.kind !== "automation")
+    if (
+      (conversation.kind !== "root" && conversation.kind !== "automation") ||
+      conversation.parentConversationId
+    )
       return errorResponse(
         "Only a top-level conversation moves. A child is in the Space of its root.",
         409,

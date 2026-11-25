@@ -201,7 +201,7 @@ describe("conversation SQL store", () => {
       await expect(
         store.createChild({
           childConversationId: "agent:kind-task",
-          kind: "thread",
+          kind: "root",
           parentConversationId: "kind-root",
         }),
       ).rejects.toThrow("Conversation kind changed for agent:kind-task");
@@ -219,8 +219,8 @@ describe("conversation SQL store", () => {
           .insert(juniorConversations)
           .values({
             ...row,
-            conversationId: "agent:kind-root-child",
-            kind: "root",
+            conversationId: "agent:kind-lead-child",
+            kind: "lead",
             parentConversationId: "kind-root",
           }),
       ).rejects.toMatchObject({

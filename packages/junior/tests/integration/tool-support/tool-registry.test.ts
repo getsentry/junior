@@ -257,7 +257,7 @@ describe("static tool registry", () => {
       const [person, agent] = await Promise.all(
         [true, false].map((personInput) =>
           sentTurn(
-            turnBehavior({ kind: "thread", personInput }),
+            turnBehavior({ kind: "root", hasParent: true, personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
               kind: "parent_message",
             }),
@@ -339,7 +339,7 @@ describe("static tool registry", () => {
     const [person, automation] = await Promise.all(
       [true, false].map((personInput) =>
         sentTurn(
-          turnBehavior({ kind: "automation", personInput }),
+          turnBehavior({ kind: "automation", hasParent: false, personInput }),
           turnRun(conversationId, personInput, runSource),
         ),
       ),
@@ -347,7 +347,11 @@ describe("static tool registry", () => {
     // An Automation with no outcomes posts nothing.
     const silentRun = turnRun(conversationId, false, runSource);
     const silent = await sentTurn(
-      turnBehavior({ kind: "automation", personInput: false }),
+      turnBehavior({
+        kind: "automation",
+        hasParent: false,
+        personInput: false,
+      }),
       {
         ...silentRun,
         run: { ...silentRun.run, dispatch: { id: "dispatch-1", outcomes: [] } },
@@ -389,7 +393,7 @@ describe("static tool registry", () => {
     const [person, watch] = await Promise.all(
       [true, false].map((personInput) =>
         sentTurn(
-          turnBehavior({ kind: "lead", personInput }),
+          turnBehavior({ kind: "lead", hasParent: false, personInput }),
           turnRun(
             conversationId,
             personInput,

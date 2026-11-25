@@ -1,6 +1,5 @@
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
@@ -14,13 +13,10 @@ const exactStringSchema = z
 export const agentNameSchema = exactStringSchema.max(64);
 
 /**
- * Kind of a new child Conversation. A Thread is a child that people can
- * message; a Task is one that only its parent messages.
+ * Kind of a child agent. A Thread is a child that people can message, stored
+ * as a `root` with a parent; a Task is one that only its parent messages.
  */
-export const CHILD_AGENT_KINDS = [
-  "thread",
-  "task",
-] as const satisfies readonly ChildConversationKind[];
+export const CHILD_AGENT_KINDS = ["thread", "task"] as const;
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
 /** `messageAgent` target for the parent of a child agent. */

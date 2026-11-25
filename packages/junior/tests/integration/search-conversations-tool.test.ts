@@ -136,7 +136,7 @@ describe("searchConversations", () => {
     const childId = "agent:launch-child";
     await getConversationStore().createChild({
       childConversationId: childId,
-      kind: "thread",
+      kind: "root",
       parentConversationId: conversationId,
       nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
       source: "slack",

@@ -100,7 +100,7 @@ describe("related conversations", () => {
     // A Thread has its spawn title before its first Turn completes.
     await getConversationStore().createChild({
       childConversationId: LINKS_THREAD_ID,
-      kind: "thread",
+      kind: "root",
       parentConversationId: INBOX_CONVERSATION_ID,
       nowMs: Date.now(),
       title: "Open external links in new tabs",

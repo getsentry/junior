@@ -28,7 +28,7 @@ export function ConversationBreadcrumb(props: {
   const items = props.nodes.slice(0, -1).map((node) => ({
     conversationId: node.conversationId,
     label:
-      (node.kind === "thread"
+      (node.kind === "root"
         ? feedThreads.get(node.conversationId)?.displayTitle
         : undefined) ?? node.label,
   }));

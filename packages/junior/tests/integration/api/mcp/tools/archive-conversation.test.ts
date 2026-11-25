@@ -64,7 +64,7 @@ describe("archiveConversation MCP tool", () => {
     });
     await getConversationStore().createChild({
       childConversationId: threadId,
-      kind: "thread",
+      kind: "root",
       parentConversationId: CONVERSATION_ID,
     });
     await getConversationStore().createChild({

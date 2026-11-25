@@ -1,3 +1,4 @@
+import { toolConversationKind } from "@/chat/conversations/kind-behavior";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
@@ -277,7 +278,7 @@ export async function reportPersonStopToParent(
       state: options.state,
       update: async () => ({
         status: "stopped",
-        text: `A person stopped this ${conversation.kind}.`,
+        text: `A person stopped this ${toolConversationKind(conversation.kind, true)}.`,
       }),
     },
   );

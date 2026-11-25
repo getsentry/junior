@@ -6,6 +6,7 @@ import {
   type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
+import { toolConversationKind } from "@/chat/conversations/kind-behavior";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -106,7 +107,14 @@ async function conversationMatch(
     : undefined;
   return {
     conversation_id: match.conversationId,
-    ...(match.kind ? { kind: match.kind } : undefined),
+    ...(match.kind
+      ? {
+          kind: toolConversationKind(
+            match.kind,
+            match.rootConversationId !== match.conversationId,
+          ),
+        }
+      : undefined),
     // Only a child agent has a different root.
     ...(match.rootConversationId !== match.conversationId
       ? { root_conversation_id: match.rootConversationId }

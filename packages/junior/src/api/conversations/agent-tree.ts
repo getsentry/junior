@@ -15,7 +15,7 @@ const MAX_AGENT_TREE_DEPTH = 16;
 
 /** Name a child the viewer cannot read, or one with no agent label. */
 function childLabel(kind: ConversationKind): string {
-  return kind === "thread" ? "Thread" : "Task";
+  return kind === "root" ? "Thread" : "Task";
 }
 
 /**

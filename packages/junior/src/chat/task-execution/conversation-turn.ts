@@ -388,6 +388,9 @@ export function createConversationTurnWorker(
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const behavior = turnBehavior({
       kind,
+      hasParent: !isTopLevel({
+        parentConversationId: storedConversation?.parentConversationId,
+      }),
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
