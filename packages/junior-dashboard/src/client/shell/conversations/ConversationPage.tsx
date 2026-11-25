@@ -307,7 +307,7 @@ export function ConversationPage(props: {
   const [confirmLeave, setConfirmLeave] = useState(false);
   // Leaving removes access, so go back to the list once it is done.
   const leave = useLeaveConversation(conversationId, {
-    onSuccess: () => void navigate(props.listPath ?? "/"),
+    onSuccess: () => void navigate(props.listPath ?? "/", { replace: true }),
   });
   const delivery = useConversationDelivery(conversationId);
   const rename = useRenameConversation(conversationId);

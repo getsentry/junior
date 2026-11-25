@@ -3,6 +3,7 @@ import { conversationLeaveResponseSchema } from "@sentry/junior/api/schema";
 
 import { post } from "../http";
 import { invalidateConversationFeeds } from "./conversationFeedCache";
+import { conversationDetailQueryKey } from "./queries";
 
 /**
  * Leave one private conversation. The viewer loses access, so the caller
@@ -20,7 +21,13 @@ export function useLeaveConversation(
         `/api/conversations/${encodeURIComponent(conversationId)}/leave`,
         {},
       ),
-    onSuccess: () => options?.onSuccess?.(),
+    onSuccess: () => {
+      options?.onSuccess?.();
+      // Drop the cached detail, so Back cannot show the transcript.
+      queryClient.removeQueries({
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+    },
     onSettled: () => invalidateConversationFeeds(queryClient),
   });
 }
