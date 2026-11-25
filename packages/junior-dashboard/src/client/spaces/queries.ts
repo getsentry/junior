@@ -264,6 +264,8 @@ export function useMoveConversationToSpace(conversationId: string) {
     onSuccess: () =>
       Promise.all([
         invalidateConversationFeeds(queryClient),
+        // The roll-up of the Space it left and the one it joined.
+        invalidateMemberSpaces(queryClient),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(conversationId),
         }),
