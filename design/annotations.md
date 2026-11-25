@@ -31,6 +31,4 @@ on the Conversation row, as a Message card, and in search.
 
 ## Gaps
 
-- A GitHub Annotation names its object by the repository name. After a
-  rename, search and updates do not find it.
 - A Linear Ticket has no live card.
