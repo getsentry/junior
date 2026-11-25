@@ -21,8 +21,6 @@ and facts about their world. Plugins add guidance.
 
 - Core rules win over operator voice, operator facts, and plugin guidance.
 - Core behavior works the same with no `SOUL.md` and no `WORLD.md`.
-- Plugin guidance in the system prompt is the same in every request. Text
-  that changes goes in the context of the request.
 - Tags only help the model tell sources apart. They grant nothing. Junior
   takes approval from the stored record of who asked, and from Guardian.
 - The words of a person never share a block with text from another source.

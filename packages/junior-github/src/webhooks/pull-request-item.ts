@@ -106,7 +106,11 @@ export async function showPullRequestItem(
   const review = `GitHub asks you to review #${number}.`;
   const lines = [
     ...(action === "merge"
-      ? [`#${number} is approved, and GitHub says that it can merge.`]
+      ? [
+          state.reviewOutcome === "approved"
+            ? `#${number} is approved, and GitHub says that it can merge.`
+            : `GitHub says that #${number} can merge with no review. Review it, then merge it.`,
+        ]
       : []),
     ...(action === "review"
       ? [args.reason ? REVIEW_AGAIN_TEXT[args.reason] : review]

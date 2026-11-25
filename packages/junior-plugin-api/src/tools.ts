@@ -10,6 +10,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import type { PluginCodeChanges } from "./code";
 import { annotatedObjectSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
@@ -843,6 +844,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    * started the root. Returns nothing when nobody did.
    */
   resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+  /** The plugin's code changes in Junior's code records. */
+  codeChanges: PluginCodeChanges;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Absent when the install has no artifact storage or public base URL. */

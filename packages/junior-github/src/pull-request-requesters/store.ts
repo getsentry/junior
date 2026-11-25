@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -178,4 +178,69 @@ export async function wasGitHubPullRequestOpenedIn(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * Load every requester of each pull request: the person who asked Junior to
+ * open it and each person who asked Junior to update it.
+ */
+export async function listGitHubPullRequestRequesters(
+  db: GitHubDb,
+  input: { numbers: number[]; repositoryFullName: string },
+): Promise<Map<number, string[]>> {
+  const requesters = new Map<number, string[]>();
+  if (input.numbers.length === 0) return requesters;
+  const rows = await db
+    .select({ identityId: table.identityId, number: table.number })
+    .from(table)
+    .where(
+      and(
+        eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
+        inArray(table.number, [...new Set(input.numbers)]),
+      ),
+    );
+  for (const row of rows) {
+    requesters.set(row.number, [
+      ...(requesters.get(row.number) ?? []),
+      row.identityId,
+    ]);
+  }
+  return requesters;
+}
+
+/** One pull request that has saved requesters. */
+export interface GitHubPullRequestRef {
+  number: number;
+  /** Lowercase `owner/name`. */
+  repositoryFullName: string;
+}
+
+/**
+ * Load the next pull requests that have saved requesters, after `after`, in
+ * the order of their repository name and number.
+ */
+export async function listGitHubPullRequestsWithRequesters(
+  db: GitHubDb,
+  input: { after?: GitHubPullRequestRef | undefined; limit: number },
+): Promise<GitHubPullRequestRef[]> {
+  const { after } = input;
+  return await db
+    .selectDistinct({
+      number: table.number,
+      repositoryFullName: table.repositoryFullName,
+    })
+    .from(table)
+    .where(
+      after
+        ? or(
+            gt(table.repositoryFullName, after.repositoryFullName),
+            and(
+              eq(table.repositoryFullName, after.repositoryFullName),
+              gt(table.number, after.number),
+            ),
+          )
+        : undefined,
+    )
+    .orderBy(asc(table.repositoryFullName), asc(table.number))
+    .limit(input.limit);
 }

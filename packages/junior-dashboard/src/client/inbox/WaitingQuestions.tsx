@@ -10,7 +10,7 @@ import {
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
-import { scrollRootFor } from "../conversations/transcriptBottomPinning";
+import { scrollRootFor } from "../conversations/transcriptScrollRoot";
 import { useInboxItemsData, useWaitingConversations } from "./queries";
 import { itemConversationId, inboxItemWaitsForAnswer } from "./inboxItemFormat";
 

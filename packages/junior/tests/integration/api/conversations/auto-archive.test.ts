@@ -397,6 +397,7 @@ describe("conversation auto-archive API", () => {
       space: await createSpace({
         creatorUserId: viewer.id,
         description: null,
+        visibility: "public",
         name: "Follow-ups",
       }),
     });

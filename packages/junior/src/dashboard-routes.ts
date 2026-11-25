@@ -239,6 +239,7 @@ function dashboardHostRoutePaths(
     "/api/objects",
     "/api/stats",
     "/api/versions",
+    "/api/versions/*",
     "/api/conversations",
     "/api/conversations/*",
     "/api/locations",
