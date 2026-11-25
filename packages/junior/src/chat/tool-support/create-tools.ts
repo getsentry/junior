@@ -425,6 +425,10 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."
       : undefined,
+  [NO_REPLY_TOOL_NAME]: (turnTools) =>
+    turnTools.noReply
+      ? undefined
+      : "An agent's Turn in a Thread reports to its parent with its final text.",
   updateUserCustomization: (turnTools) =>
     turnTools.userCustomization
       ? undefined

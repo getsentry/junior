@@ -107,7 +107,6 @@ describe("child agent worker crash", () => {
   it.each([
     { kind: "task" as const, notices: 1, replied: "no" },
     { kind: "task" as const, notices: 0, replied: "this Turn" },
-    { kind: "task" as const, notices: 0, replied: "this Turn quietly" },
     { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
     { kind: "thread" as const, notices: 1, replied: "no" },
     { kind: "thread" as const, notices: 1, replied: "no", person: true },
@@ -188,17 +187,12 @@ describe("child agent worker crash", () => {
             turnId: buildDeterministicTurnId(earlier),
           });
         }
-        if (replied === "this Turn" || replied === "this Turn quietly") {
-          // The Turn sent its `reply`, or a quiet note, and then its worker
-          // was lost.
+        if (replied === "this Turn") {
+          // The Turn sent its `reply`, and then its worker was lost.
           await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
-            update: {
-              quiet: replied === "this Turn quietly",
-              status: "done",
-              text: "Answer.",
-            },
+            update: { status: "done", text: "Answer." },
             turnId: buildDeterministicTurnId(
               getAgentReplyMessageId(helperId, "helper-reply"),
             ),

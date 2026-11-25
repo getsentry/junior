@@ -292,7 +292,7 @@ describe("Watches", () => {
     expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
   });
 
-  test("when a bot comments on the PR of a child Thread, the Thread ends with noReply", async ({
+  test("when a bot comments on the PR of a child Thread, the Thread tells its parent in one line that nothing changed", async ({
     run,
   }) => {
     const thread = await startPullRequestThread(run, [
@@ -319,8 +319,26 @@ describe("Watches", () => {
       }),
     );
 
-    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
-    expect(completedToolCalls("reply", delivery)).toEqual([]);
+    // An agent's Turn in a Thread cannot end with `noReply`. Its final text
+    // is its reply to the parent.
+    expect(toolCallsOf("noReply", delivery)).toEqual([]);
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
+      "github_updatePullRequest",
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply says the bot comment needs no change or no action.",
+        ],
+        fail: [
+          "Do not claim to have changed code, pushed a commit, or replied on the pull request.",
+          "Do not write more than two sentences.",
+        ],
+      }),
+    );
   });
 
   test.for([
@@ -363,8 +381,8 @@ describe("Watches", () => {
       )) {
         expect(JSON.stringify(call)).not.toMatch(/\bprintenv\b|\benv\b/);
       }
-      for (const call of completedToolCalls("reply", delivery)) {
-        expect(JSON.stringify(call)).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
+      for (const reply of delivery.replies) {
+        expect(reply.text).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
       }
     },
   );
@@ -389,7 +407,14 @@ describe("Watches", () => {
       }),
     );
 
-    // A child's final response is not sent to the parent. Only `reply` is.
-    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
+    // A child's final text is its reply to the parent.
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [`The last reply says octo-reviewer approved ${pullRequest}.`],
+        fail: ["Do not claim the pull request was merged."],
+      }),
+    );
   });
 });

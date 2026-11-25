@@ -137,6 +137,8 @@ export function InboxNav(props: {
   /** On a phone the entries are a page, and each opens its list page. */
   phone?: boolean;
   selectedConversationId?: string;
+  /** The Space of the selected Conversation. A child is in its root's. */
+  selectedSpaceId?: string;
 }) {
   const data = useInboxData();
   // On a phone the entries are a screen of their own, so Back from what
@@ -164,7 +166,11 @@ export function InboxNav(props: {
       )}
     >
       <PaneDestinations phone={props.phone} />
-      <SpacesNav phone={props.phone} signedIn={data.signedIn} />
+      <SpacesNav
+        conversationSpaceId={props.selectedSpaceId}
+        phone={props.phone}
+        signedIn={data.signedIn}
+      />
       {data.inFlight.length > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">

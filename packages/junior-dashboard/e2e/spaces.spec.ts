@@ -77,6 +77,63 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
+test("the pane marks the Space of an open Conversation", async ({
+  dashboard,
+  page,
+}) => {
+  const BILLING_ID = BILLING.slice("/spaces/".length);
+  // No seeded child is in a Space, so this one reports its root's Space, as
+  // the API does for a child.
+  await page.route(
+    (url) =>
+      decodeURIComponent(url.pathname) === `/api/conversations/${CHILD_ID}`,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const response = await route.fetch();
+      if (response.status() !== 200) return route.fulfill({ response });
+      const body = await response.json();
+      await route.fulfill({
+        json: { ...body, space: { id: BILLING_ID, name: "Billing migration" } },
+        response,
+      });
+    },
+  );
+  const spaces = page.getByRole("list", { name: "Spaces" });
+  // Only the open Conversation's Space, if any, is the current row.
+  const expectCurrentSpace = async (current?: string) => {
+    for (const name of ["Billing migration", "Mobile app", "Pricing launch"]) {
+      const row = spaces.getByRole("link", { name });
+      if (name === current)
+        await expect(row).toHaveAttribute("aria-current", "page");
+      else await expect(row).not.toHaveAttribute("aria-current");
+    }
+  };
+  // The page heading shows the detail, which names the Space.
+  const open = async (conversationId: string, title: string) => {
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  };
+  // A phone shows no pane beside a Conversation, so only the desktop pane
+  // marks its Space.
+  await page.setViewportSize(desktop);
+  await open("internal:questions-qa", "Plan the billing migration");
+  await expectCurrentSpace("Billing migration");
+  await screenshot(page, "space-conversation-pane", {
+    lightTheme: true,
+    target: page.getByRole("navigation", { name: "Primary" }),
+    view: "desktop",
+  });
+
+  await open(CHILD_ID, "Review the dashboard plan");
+  await expectCurrentSpace("Billing migration");
+
+  // A one-off is in no Space.
+  await open(NON_PUBLIC_ID, "Flaky test triage 2");
+  await expectCurrentSpace();
+});
+
 test("each pane row shows what its Space's Conversations need", async ({
   dashboard,
   page,
