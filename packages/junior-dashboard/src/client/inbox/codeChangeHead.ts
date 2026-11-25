@@ -49,14 +49,19 @@ function hostName(url: string): string | undefined {
   return hostname === "github.com" ? "GitHub" : hostname;
 }
 
-// The repo part of a linked work key such as "getsentry/payments#91".
+// The repo part of a linked work key such as "getsentry/payments#91". With
+// no Conversation, such as one that the viewer cannot see, the key comes
+// from the subject's card.
 function shortRepo(
   url: string,
   conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
+  objectKey: string,
 ): string | undefined {
-  const key = conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.key;
+  const key = conversation
+    ? conversation.sidebarAnnotations?.find(
+        (annotation) => annotation.url === url,
+      )?.key
+    : objectKey;
   return key ? /^[\w.-]+\/([\w.-]+)#\d+$/.exec(key)?.[1] : undefined;
 }
 
@@ -83,7 +88,7 @@ export function codeChangeHead(
   }
   const host = hostName(url);
   if (!host) return undefined;
-  const repo = shortRepo(url, conversation);
+  const repo = shortRepo(url, conversation, object.key);
   const openText = kind === "Review requested" ? "Review" : "Open";
   return {
     kind,
