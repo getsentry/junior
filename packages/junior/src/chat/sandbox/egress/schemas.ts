@@ -18,10 +18,7 @@ export const sandboxEgressGrantSchema = pluginGrantSchema;
 export const sandboxEgressCredentialContextSchema = z
   .object({
     credentials: credentialContextSchema,
-    /**
-     * Conversation that the credentials act for. Telemetry and per-Conversation
-     * limits only; it grants nothing.
-     */
+    /** Conversation that the credentials act for. Telemetry only; it grants nothing. */
     conversationId: z.string().min(1).optional(),
     egressId: z.string().min(1),
     expiresAtMs: finiteNumberSchema,

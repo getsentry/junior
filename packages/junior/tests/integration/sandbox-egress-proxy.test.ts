@@ -1192,63 +1192,6 @@ describe("sandbox egress proxy integration", () => {
     },
   );
 
-  it("keeps the host reserve of the installation's GraphQL budget", async () => {
-    configureGitHubAppEnv();
-    mockGitHubInstallationToken();
-    await registerGitHubPlugin();
-    const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      conversationId: "slack:C123:1700000000.000100",
-      credentials: { actor: { type: "user", userId: ACTOR_ID } },
-      egressId: EGRESS_ID,
-      ttlMs: 60_000,
-    });
-    const forwardURL = forwardUrlFor(
-      buildVercelNetworkPolicy({ credentialToken }),
-      GITHUB_API_HOST,
-    );
-    const resetAtSeconds = Math.floor(Date.now() / 1000) + 30 * 60;
-    const upstreamFetch = vi.fn(async () =>
-      HttpResponse.json(
-        { data: {} },
-        {
-          headers: {
-            "x-ratelimit-remaining": "2010",
-            "x-ratelimit-reset": String(resetAtSeconds),
-            "x-ratelimit-resource": "graphql",
-          },
-        },
-      ),
-    );
-    // 2,001 connection requests: 20 points.
-    const query =
-      '{ search(query: "is:pr", type: ISSUE, first: 100) { nodes { ... on PullRequest { commits(first: 19) { nodes { commit { checkSuites(first: 1) { nodes { id } } } } } } } } }';
-    const send = () =>
-      modules.vercel.proxyVercelSandboxEgressRequest(
-        proxiedRequest({
-          body: JSON.stringify({ query }),
-          forwardURL,
-          method: "POST",
-          upstreamHost: GITHUB_API_HOST,
-          upstreamPath: "/graphql",
-        }),
-        {
-          fetch: upstreamFetch as typeof fetch,
-          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-        },
-      );
-
-    expect((await send()).status).toBe(200);
-    const denied = await send();
-
-    expect(denied.status).toBe(403);
-    await expect(denied.json()).resolves.toEqual({
-      error: expect.stringContaining(
-        "the App installation has 2010 GraphQL points left this hour, and Sandbox requests leave 2000 for host calls",
-      ),
-    });
-    expect(upstreamFetch).toHaveBeenCalledTimes(1);
-  });
-
   it("uploads GitHub user attachments with the requesting user's credential", async () => {
     await registerGitHubPlugin({ additionalUserScopes: ["repo"] });
     const tokenStore = new StateAdapterTokenStore(

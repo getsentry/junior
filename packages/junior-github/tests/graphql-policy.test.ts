@@ -1,5 +1,4 @@
 import type {
-  PluginCache,
   PluginGraphqlField,
   PluginGraphqlOperation,
   PluginGraphqlRequest,
@@ -42,31 +41,7 @@ function unreadable(
   return { kind: "unreadable", reason };
 }
 
-function memoryCache(): PluginCache {
-  const values = new Map<string, unknown>();
-  return {
-    async get<T>(key: string) {
-      return values.get(key) as T | undefined;
-    },
-    async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
-      return (await load()).value;
-    },
-    async update<T>(
-      key: string,
-      next: (current: T | undefined) => { value: T } | undefined,
-    ) {
-      const entry = next(values.get(key) as T | undefined);
-      if (entry) values.set(key, entry.value);
-    },
-    async delete(key: string) {
-      values.delete(key);
-    },
-  };
-}
-
 async function grantForGraphql(input: {
-  cache?: PluginCache;
-  conversationId?: string;
   graphql?: PluginGraphqlRequest;
   method?: string;
   operation?: string;
@@ -74,14 +49,10 @@ async function grantForGraphql(input: {
   withoutCredential?: true;
 }) {
   return await githubPlugin().hooks?.grantForEgress?.({
-    cache: input.cache ?? memoryCache(),
     db: undefined,
     log: { error() {}, info() {}, warn: input.warn ?? (() => {}) },
     plugin: { name: "github" },
     request: {
-      ...(input.conversationId
-        ? { conversationId: input.conversationId }
-        : undefined),
       ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method ?? "POST",
       ...(input.operation ? { operation: input.operation } : undefined),
@@ -384,32 +355,5 @@ describe("GitHub GraphQL policy", () => {
       "github.egress.graphql_cost.unknown",
       expect.anything(),
     );
-  });
-
-  it("denies a Conversation's Sandbox queries once its hourly budget is spent", async () => {
-    vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
-    try {
-      const cache = memoryCache();
-      // 2,001 connection requests cost 20 points; 100 of them spend 2,000.
-      const graphql = costedQuery(2001);
-      for (let call = 0; call < 100; call++) {
-        // oxlint-disable-next-line no-await-in-loop -- Each call spends the budget that the next call reads.
-        await grantForGraphql({ cache, conversationId: "c1", graphql });
-      }
-      await expect(
-        grantForGraphql({ cache, conversationId: "c1", graphql }),
-      ).rejects.toThrow(
-        "this Conversation has used 2000 of its 2000 Sandbox GraphQL points for this hour, and this query can cost 20. The budget resets at 11:00 UTC (in 45 min).",
-      );
-      await expect(
-        grantForGraphql({ cache, conversationId: "c2", graphql }),
-      ).resolves.toMatchObject({ access: "read" });
-      vi.setSystemTime(new Date("2026-11-25T11:00:00Z"));
-      await expect(
-        grantForGraphql({ cache, conversationId: "c1", graphql }),
-      ).resolves.toMatchObject({ access: "read" });
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

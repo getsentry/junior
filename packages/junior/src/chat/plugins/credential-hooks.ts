@@ -107,7 +107,6 @@ function parseCredentialResult(
 
 export interface EgressGrantInput {
   bodyText?: string;
-  conversationId?: string;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
   method: string;
@@ -131,9 +130,6 @@ export async function selectPluginGrant(
     request: {
       ...(input.bodyText !== undefined
         ? { bodyText: input.bodyText }
-        : undefined),
-      ...(input.conversationId
-        ? { conversationId: input.conversationId }
         : undefined),
       ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
       ...(input.graphql ? { graphql: input.graphql } : undefined),

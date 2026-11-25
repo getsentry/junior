@@ -28,25 +28,22 @@ function githubGraphqlCost(connectionRequests: number): number {
 }
 
 /**
- * Return the points that a Sandbox GitHub GraphQL query can cost, and deny
- * it when that is above the cap.
+ * Deny a Sandbox GitHub GraphQL query whose predicted cost is above the cap.
  *
- * Returns undefined for requests that spend no Sandbox budget: host tool
- * requests, which name an egress operation and send small documents, and
- * requests that carry their own credential. A `rateLimit(dryRun:)` query
- * only predicts a cost, so it costs 1 point. A query whose cost the host
- * could not count is allowed, logged, and costs 1 point.
+ * Host tool requests name an egress operation, and their documents are
+ * small, so the cap skips them. A request that carries its own credential
+ * spends its own budget, so the cap skips it too. A `rateLimit(dryRun:)`
+ * query only predicts a cost, so it is allowed. A query whose cost the host
+ * could not count is allowed and logged.
  */
-export function githubSandboxGraphqlCost(
-  ctx: EgressHookContext,
-): number | undefined {
+export function assertGitHubGraphqlCostAllowed(ctx: EgressHookContext): void {
   const { graphql, operation, withoutCredential } = ctx.request;
   if (operation || withoutCredential || graphql?.kind !== "operation") {
-    return undefined;
+    return;
   }
   const query = graphql.operation;
   if (query.type !== "query") {
-    return undefined;
+    return;
   }
   const isDryRun =
     query.rootFields.includes("rateLimit") &&
@@ -55,17 +52,17 @@ export function githubSandboxGraphqlCost(
         field.name === "rateLimit" && field.arguments.includes("dryRun"),
     );
   if (isDryRun) {
-    return 1;
+    return;
   }
   if (query.connectionRequests === undefined) {
     ctx.log.warn("github.egress.graphql_cost.unknown", {
       "app.github.graphql.operation_name": query.name,
     });
-    return 1;
+    return;
   }
   const cost = githubGraphqlCost(query.connectionRequests);
   if (cost <= GITHUB_SANDBOX_GRAPHQL_COST_LIMIT) {
-    return cost;
+    return;
   }
   throw new EgressPolicyDenied(
     `GitHub GraphQL query denied: it can cost about ${cost} points, and the Sandbox limit is ${GITHUB_SANDBOX_GRAPHQL_COST_LIMIT} points a query. All Conversations share one hourly GraphQL budget. Use smaller \`first\`/\`last\` page sizes, fewer nested connections, or REST endpoints such as \`gh api repos/{owner}/{repo}/commits/{ref}/check-runs\`. Do not retry this query unchanged.`,
