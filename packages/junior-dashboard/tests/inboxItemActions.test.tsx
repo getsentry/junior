@@ -69,4 +69,21 @@ describe("inbox item actions", () => {
       "Only an assignee can act on this item.",
     );
   });
+
+  it("shows a notice's related links to a person who cannot act on it", () => {
+    const shown = render(
+      {},
+      {
+        ...item,
+        canAct: false,
+        canAnswer: false,
+        canTake: false,
+        request: {
+          related: [{ label: "Deploy log", url: "https://example.com/log" }],
+        },
+      },
+    );
+    expect(shown).toContain("Only an assignee can act on this item.");
+    expect(shown).toContain("Deploy log");
+  });
 });
