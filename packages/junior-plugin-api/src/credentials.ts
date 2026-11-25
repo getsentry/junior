@@ -201,7 +201,8 @@ export interface PluginGraphqlField {
   name: string;
   /**
    * Names of the arguments whose value is `true`: a literal, or a variable
-   * whose value or default is `true`. Unset when there are none.
+   * whose value or default is `true`. Unset when there are none, and on a
+   * field that `@skip` or `@include` can drop.
    */
   trueArguments?: string[];
 }

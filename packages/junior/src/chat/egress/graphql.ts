@@ -21,6 +21,7 @@ import type {
   FieldNode,
   InlineFragmentNode,
   OperationDefinitionNode,
+  SelectionNode,
   SelectionSetNode,
 } from "graphql";
 
@@ -143,6 +144,7 @@ async function readOperation(
       values,
       new Set(),
       fields,
+      true,
     ) ||
     !collectRootFields(operation.selectionSet, fragments, new Set(), rootFields)
   ) {
@@ -162,20 +164,27 @@ async function readOperation(
   };
 }
 
-/** Add each distinct field at any depth. Each fragment is read once. */
+/**
+ * Add each distinct field at any depth. Each fragment is read once. `runs` is
+ * false below a selection that `@skip` or `@include` can drop.
+ */
 function collectFields(
   selectionSet: SelectionSetNode,
   fragments: Fragments,
   values: VariableValues,
   seen: Set<string>,
   fields: Map<string, PluginGraphqlField>,
+  runs: boolean,
 ): boolean {
   for (const selection of selectionSet.selections) {
+    const selectionRuns = runs && runsForCertain(selection, values);
     if (selection.kind === "Field") {
       const name = selection.name.value;
       const args = selection.arguments ?? [];
       const argNames = args.map((arg) => arg.name.value);
-      const trueArguments = args
+      // A provider can trust a `true` argument, such as a dry run, only on a
+      // field that runs.
+      const trueArguments = (selectionRuns ? args : [])
         .filter((arg) =>
           arg.value.kind === "Variable"
             ? values.get(arg.value.name.value) === true
@@ -194,7 +203,14 @@ function collectFields(
       }
       if (
         selection.selectionSet &&
-        !collectFields(selection.selectionSet, fragments, values, seen, fields)
+        !collectFields(
+          selection.selectionSet,
+          fragments,
+          values,
+          seen,
+          fields,
+          selectionRuns,
+        )
       ) {
         return false;
       }
@@ -204,7 +220,34 @@ function collectFields(
     if (inner === false) {
       return false;
     }
-    if (inner && !collectFields(inner, fragments, values, seen, fields)) {
+    if (
+      inner &&
+      !collectFields(inner, fragments, values, seen, fields, selectionRuns)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Whether `@skip` and `@include` keep the selection for certain. */
+function runsForCertain(
+  selection: SelectionNode,
+  values: VariableValues,
+): boolean {
+  for (const directive of selection.directives ?? []) {
+    const name = directive.name.value;
+    if (name !== "skip" && name !== "include") continue;
+    const condition = directive.arguments?.find(
+      (arg) => arg.name.value === "if",
+    )?.value;
+    const value =
+      condition?.kind === "Variable"
+        ? values.get(condition.name.value)
+        : condition?.kind === "BooleanValue"
+          ? condition.value
+          : undefined;
+    if (value !== (name === "include")) {
       return false;
     }
   }

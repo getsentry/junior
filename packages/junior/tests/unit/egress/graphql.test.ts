@@ -252,6 +252,30 @@ describe("readGraphqlRequest", () => {
       { dry: false },
       false,
     ],
+    [
+      "a field that @include can drop",
+      "query { rateLimit(dryRun: true) @include(if: false) { cost } }",
+      undefined,
+      false,
+    ],
+    [
+      "a field that @skip can drop through a variable",
+      "query($s: Boolean!) { rateLimit(dryRun: true) @skip(if: $s) { cost } }",
+      { s: true },
+      false,
+    ],
+    [
+      "a fragment that @skip can drop",
+      "query { ... @skip(if: true) { rateLimit(dryRun: true) { cost } } }",
+      undefined,
+      false,
+    ],
+    [
+      "a field that @skip keeps",
+      "query { rateLimit(dryRun: true) @skip(if: false) { cost } }",
+      undefined,
+      true,
+    ],
   ])(
     "reads a true argument from %s",
     async (_name, query, variables, isTrue) => {
