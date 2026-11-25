@@ -62,19 +62,15 @@ groups and acts on its rows.
 - The first answer or dismiss closes the item for everyone, and the item
   records who closed it and when. A dismiss is not a decision, so it does
   not continue the work.
-- A person who does not care, but wants someone else to act, snoozes it.
-  Snooze is per person.
-- A person who wants someone else to answer snoozes it until it closes.
-  It then waits in their Snoozed view, where they can still answer it,
-  dismiss it, or wake it.
+- A person who wants someone else to act snoozes it until it closes.
+  Snooze is per person. The item then waits in their Snoozed view, where
+  they can still answer it, dismiss it, or wake it.
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
 - Every item has at least one assignee: a User, or Everyone. When no
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's active Participants.
-- An item from a private Conversation stays private and cannot go to
-  Everyone.
 - A Slack thread that its Conversation detached from gets no new item card.
 - An Inbox item stores only its subject, a `{ kind, id }` pair, and the
   fields that every item uses: assignees, status, and who closed it and
