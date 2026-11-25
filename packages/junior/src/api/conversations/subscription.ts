@@ -395,9 +395,6 @@ async function addInvitedParticipants(
     if (options.refuseArchived && root.archivedAt) {
       throwApiError(409, "Conversation is archived.");
     }
-    // The detail ETag and the feed version read the subscription on each
-    // request.
-    // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
     const added = await db
       .insert(juniorConversationParticipants)
       .values(
@@ -410,6 +407,10 @@ async function addInvitedParticipants(
       )
       .onConflictDoNothing()
       .returning({ userId: juniorConversationParticipants.userId });
+    // The root's detail lists its Participants.
+    if (added.length > 0) {
+      await touchConversationDetail(db, [rootConversationId]);
+    }
     return added.length;
   });
 }

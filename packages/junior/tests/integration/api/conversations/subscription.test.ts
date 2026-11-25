@@ -5,6 +5,7 @@ import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
@@ -420,6 +421,9 @@ async function privateDashboardConversation() {
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json());
     },
+    /** The version token that this person's detail polls compare. */
+    version: async () =>
+      (await someone.api(path)).headers.get(CONVERSATION_VERSION_HEADER),
     /** Whether this person can read the Conversation's private content. */
     reads: async () => {
       const detail = await as(someone).open();
@@ -447,10 +451,13 @@ describe("private conversation membership", () => {
     // Someone outside cannot add themselves or anyone else.
     expect((await as(ben).invite("cleo")).status).toBe(404);
 
+    const before = await as(ana).version();
     expect(await (await as(ana).invite("ben")).json()).toEqual({
       added: true,
     });
     expect(await as(ben).reads()).toBe(true);
+    // Ana's open page polls the version, and the Participants changed.
+    expect(await as(ana).version()).not.toBe(before);
     expect(await (await as(ben).invite("cleo")).json()).toEqual({
       added: true,
     });
