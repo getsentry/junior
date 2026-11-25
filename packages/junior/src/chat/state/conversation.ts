@@ -3,6 +3,7 @@ import * as z from "zod";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { RelayedPersonMessages } from "@/chat/agent-invocations/relayed-person-messages";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -57,6 +58,11 @@ export interface ConversationMessageMeta {
   /** Quiet message from older history: stored, but not delivered. */
   quiet?: true;
   replied?: boolean;
+  /**
+   * Runtime copies of a person's own messages that came with an agent
+   * message from another top-level Conversation. Only the runtime writes it.
+   */
+  relayedPersonMessages?: RelayedPersonMessages[];
   /**
    * The request words of an Event or parent agent Message's inputs, such
    * as a parent agent's task, so a resumed Turn recalls from them as the first did.

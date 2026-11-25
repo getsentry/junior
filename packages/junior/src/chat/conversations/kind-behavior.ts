@@ -348,6 +348,19 @@ export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
   return kind === "lead";
 }
 
+/**
+ * Return whose messages authorize a Turn that no person runs, such as an
+ * Event Turn: the parent agent of a child, or the person who started a root.
+ * A Lead serves every member of its Space and an Automation acts for its
+ * creator's stored instruction, so they follow nobody.
+ */
+export function systemTurnRequester(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): "parent_agent" | "root_person" | "none" {
+  if (!isTopLevel(conversation)) return "parent_agent";
+  return conversation.kind === "root" ? "root_person" : "none";
+}
+
 /** Return whether a Conversation has no parent. */
 export function isTopLevel(
   conversation: Pick<Conversation, "parentConversationId">,

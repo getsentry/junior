@@ -23,6 +23,7 @@ import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID, eventBotAuthorId } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { relayedPersonMessagesSchema } from "@/chat/agent-invocations/relayed-person-messages";
 import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
   credentialSubjectSchema,
@@ -340,6 +341,7 @@ export function eventBatchMessageMeta(
   | "eventType"
   | "eventWatchId"
   | "events"
+  | "relayedPersonMessages"
   | "reviewItemChanges"
   | "trustedSummary"
 > {
@@ -351,6 +353,15 @@ export function eventBatchMessageMeta(
   const primary = watched[0] ?? own[0];
   const metadata = (primary ?? messages[0])?.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return {};
+  // Each agent message of the batch keeps the copy that the runtime made.
+  const relayedPersonMessages = messages.flatMap((message) => {
+    const metadata = message.input.metadata;
+    if (!isEventMailboxMetadata(metadata)) return [];
+    const parsed = relayedPersonMessagesSchema.safeParse(
+      metadata["relayedPersonMessages"],
+    );
+    return parsed.success ? [parsed.data] : [];
+  });
   const events =
     watched.length > 1
       ? watched.flatMap(messageEvent)
@@ -372,6 +383,7 @@ export function eventBatchMessageMeta(
       ? { trustedSummary: metadata.event.trustedSummary }
       : undefined),
     ...(events.length ? { events } : undefined),
+    ...(relayedPersonMessages.length ? { relayedPersonMessages } : undefined),
     ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
   };
 }

@@ -17,6 +17,14 @@
  * parent sent with startAgent or messageAgent count as the user there, and no
  * person's message does. Each other message keeps its real author as a label
  * and is only context. Nothing is copied into the Run.
+ *
+ * A Turn that no person runs, such as a Watch Event or another agent's
+ * message, does the work of its Conversation: of the person who started the
+ * root, or of the parent agent in a child. So that person's or parent's
+ * messages count as the user there. A Lead and an Automation have no such
+ * person. A message from another top-level agent can carry the runtime's
+ * copy of a person's own messages (`relayed-person-messages.ts`). Each copy
+ * counts like a message that its author wrote here.
  */
 import * as z from "zod";
 import type { Actor } from "@/chat/actor";
@@ -29,8 +37,15 @@ import {
   type RootConversation,
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
-import { readActorIdentity } from "@/chat/plugins/viewer";
+import { systemTurnRequester } from "@/chat/conversations/kind-behavior";
+import { readConversationRoot } from "@/chat/conversations/root";
+import { readIdentityById } from "@/chat/plugins/viewer";
 import { isParentMessageAuthor } from "./parent-message";
+import {
+  identityIdsOf,
+  personIdentityIds,
+  relayedPersonMessagesSchema,
+} from "./relayed-person-messages";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -84,15 +99,91 @@ function messageAuthor(
 }
 
 /**
- * Return the Identity ids of the person behind `actor`: every Identity of
- * their User, or only the Actor's own Identity when it has no User. A system
- * or local Actor has no user Identity, so this set is empty for it.
+ * Resolve whose messages authorize in the Run: `actor` when a person or
+ * agent writes the instructions. A system Actor, such as the one of an Event
+ * Turn, does its Conversation's work: a child follows its parent agent, and
+ * a root follows the person who started it. A Lead serves every member of
+ * its Space and an Automation has a creator, so neither gets a person here.
  */
-async function actorIdentityIds(actor: Actor): Promise<Set<string>> {
-  const resolved = await readActorIdentity(actor);
-  const identities =
-    resolved?.user?.identities ?? (resolved ? [resolved.identity] : []);
-  return new Set(identities.map((identity) => identity.id));
+async function readRequester(
+  root: Conversation,
+  actor: Actor | undefined,
+): Promise<{ actor: Actor | undefined; identityIds: Set<string> }> {
+  if (actor?.platform !== "system") {
+    return {
+      actor,
+      identityIds: actor ? await personIdentityIds(actor) : new Set(),
+    };
+  }
+  const follows = systemTurnRequester(root);
+  if (follows === "parent_agent") {
+    return { actor: undefined, identityIds: new Set() };
+  }
+  if (follows === "none") {
+    return { actor, identityIds: new Set() };
+  }
+  const rootActorIdentityId = (await readConversationRoot(root.conversationId))
+    ?.actorIdentityId;
+  // The read by id returns only user Identities, so a root that the system
+  // started gives nobody.
+  const person = rootActorIdentityId
+    ? await readIdentityById(rootActorIdentityId)
+    : undefined;
+  return { actor, identityIds: identityIdsOf(person) };
+}
+
+/**
+ * Return the runtime copies that came with one message, each labeled with
+ * its real author. The question before them is the sender's reply, so it is
+ * only context. A message that is copied twice appears once.
+ */
+function relayedMessages(
+  data: MessageData,
+  personIdentityIds: ReadonlySet<string>,
+  seen: Set<string>,
+): Array<RootConversationMessage & { messageId: string }> {
+  const parsed = z
+    .array(relayedPersonMessagesSchema)
+    .safeParse(data.meta?.["relayedPersonMessages"]);
+  if (!parsed.success) {
+    return [];
+  }
+  return parsed.data.flatMap((relay) => {
+    const copies = relay.messages.filter(
+      (copy) => !seen.has(`${relay.conversationId}:${copy.messageId}`),
+    );
+    if (copies.length === 0) {
+      return [];
+    }
+    const author: RootConversationMessage["author"] = personIdentityIds.has(
+      relay.authorIdentityId,
+    )
+      ? "user"
+      : "other person";
+    // The prefix says where the words were written, so a copy is not read
+    // as written here.
+    const prefix = `[Copied by the runtime from conversation ${relay.conversationId}, where this author wrote it.]`;
+    const question = relay.question
+      ? [
+          {
+            author: "assistant" as const,
+            messageId: `${data.messageId}:relayed-question:${relay.conversationId}`,
+            text: `${prefix}\n${relay.question}`,
+          },
+        ]
+      : [];
+    return [
+      ...question,
+      ...copies.map((copy) => {
+        seen.add(`${relay.conversationId}:${copy.messageId}`);
+        return {
+          author,
+          messageId: `${data.messageId}:relayed:${relay.conversationId}:${copy.messageId}`,
+          text: `${prefix}\n${copy.text}`,
+        };
+      }),
+    ];
+  });
 }
 
 /** Label one root message with its real author. */
@@ -239,10 +330,18 @@ export async function readRootConversation(args: {
     pinnedRead && openingEdit !== undefined
       ? { ...pinnedRead.data, text: openingEdit }
       : pinnedRead?.data;
-  const personIdentityIds = args.actor
-    ? await actorIdentityIds(args.actor)
-    : new Set<string>();
+  const requester = await readRequester(root, args.actor);
+  // A system Turn with nobody to follow, such as one of a Lead or an
+  // Automation, keeps only its own instructions and the unlabeled evidence.
+  if (
+    requester.actor?.platform === "system" &&
+    requester.identityIds.size === 0
+  ) {
+    return { messages: [], truncated: false };
+  }
+  const personIdentityIds = requester.identityIds;
   const all: Array<RootConversationMessage & { messageId: string }> = [];
+  const seenCopies = new Set<string>();
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
     // A message that Junior did not answer still counts. It can hold a
@@ -251,10 +350,21 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor, personIdentityIds),
+      author: messageLabel(root, data, requester.actor, personIdentityIds),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
+    // The copies keep their place after the message that brought them, so
+    // a later message here still wins over them.
+    for (const copy of relayedMessages(data, personIdentityIds, seenCopies)) {
+      all.push({
+        ...copy,
+        text: truncate(
+          normalizeLines(copy.text).trim(),
+          MAX_ROOT_MESSAGE_CHARS,
+        ),
+      });
+    }
   }
   // The opening message is not one of the newest messages, so it does not
   // count toward their number. Its characters do count.
@@ -263,7 +373,12 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(root, opening, args.actor, personIdentityIds),
+            author: messageLabel(
+              root,
+              opening,
+              requester.actor,
+              personIdentityIds,
+            ),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

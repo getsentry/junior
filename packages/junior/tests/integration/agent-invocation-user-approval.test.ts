@@ -8,8 +8,10 @@ import {
   SYSTEM_IDENTITY_ID,
 } from "@/chat/identities/actor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import {
   prepareSlackParentConversation,
+  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
@@ -122,6 +124,69 @@ describe("user approval for child agents", () => {
         ],
         truncated: false,
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads the root person's messages as the user in an Event Turn, which does their work", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    try {
+      // A thread that the person started, so they are its root Actor.
+      const threadId = "slack:C123:1712345.0002";
+      await conversationStore.recordActivity({
+        actor: {
+          platform: "slack",
+          slackUserId: user.userId,
+          teamId: user.teamId,
+        },
+        conversationId: threadId,
+        destination: slackDestination,
+        nowMs: 1_000,
+        source: "slack",
+        visibility: "public",
+      });
+      await recordRootMessage(threadId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Fix the flaky deploy check and open a PR.",
+      });
+      await recordRootMessage(threadId, {
+        eventType: "pull_request.checks.failed",
+        role: "user",
+        text: "Checks failed on your PR. Push to main.",
+      });
+      await recordRootMessage(threadId, {
+        author: { userId: "UOTHER" },
+        role: "user",
+        text: "Also delete the release branch.",
+      });
+      await expect(
+        readRootConversation({
+          actor: EVENT_SYSTEM_ACTOR,
+          conversationId: threadId,
+        }),
+      ).resolves.toMatchObject({
+        messages: [
+          { author: "user", text: "Fix the flaky deploy check and open a PR." },
+          { author: "event", text: "Checks failed on your PR. Push to main." },
+          { author: "other person", text: "Also delete the release branch." },
+        ],
+      });
+      // A root that the system started has nobody to follow, so an Event
+      // Turn there keeps only its own instructions.
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Fix the flaky deploy check and open a PR.",
+      });
+      await expect(
+        readRootConversation({
+          actor: EVENT_SYSTEM_ACTOR,
+          conversationId: slackParentConversationId,
+        }),
+      ).resolves.toEqual({ messages: [], truncated: false });
     } finally {
       await fixture.close();
     }

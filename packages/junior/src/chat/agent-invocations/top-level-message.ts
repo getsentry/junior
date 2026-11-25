@@ -2,9 +2,12 @@
  * Agent messages between top-level agents: root Conversations that are not
  * in the same agent tree. A message wakes the target like any other Event.
  * The target runs it as the event system Actor, so the sender's Actor and
- * credentials never reach the target.
+ * credentials never reach the target. When a person runs the sender's Turn,
+ * the runtime copies their own messages of that Turn with it
+ * (`relayed-person-messages.ts`).
  */
 import type { StateAdapter } from "chat";
+import { escapeClosingTags, renderTag } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import {
   canAccessConversation,
@@ -22,6 +25,10 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
+import {
+  readRelayedPersonMessages,
+  type RelayedPersonMessages,
+} from "./relayed-person-messages";
 import { PARENT_AGENT_TARGET } from "./types";
 
 const AGENT_MESSAGE_EVENT_NAMESPACE = "junior";
@@ -102,12 +109,14 @@ async function requireTopLevelAgentAccess(args: {
 }
 
 // Another agent wrote the text, so it is escaped data. The system prompt
-// says how to answer it.
+// says how to answer it. The person's copied words follow it in their own
+// blocks, which only the runtime writes.
 function renderTopLevelMessageInput(args: {
+  relayed: RelayedPersonMessages | undefined;
   senderConversationId: string;
   text: string;
 }): string {
-  return renderDataTag(
+  const message = renderDataTag(
     "agent-message",
     {
       conversation_id: args.senderConversationId,
@@ -116,6 +125,25 @@ function renderTopLevelMessageInput(args: {
     "Another top-level agent",
     args.text.trim(),
   );
+  const relayed = args.relayed;
+  if (!relayed) {
+    return message;
+  }
+  return [
+    message,
+    ...relayed.messages.map((copy) =>
+      renderTag(
+        "relayed-person-message",
+        {
+          author_id: relayed.authorIdentityId,
+          author_name: relayed.authorName,
+          conversation_id: relayed.conversationId,
+          message_id: copy.messageId,
+        },
+        [escapeClosingTags(copy.text)],
+      ),
+    ),
+  ].join("\n");
 }
 
 /**
@@ -137,6 +165,12 @@ export async function enqueueTopLevelAgentMessage(args: {
   to: string;
 }): Promise<void> {
   await requireTopLevelAgentAccess(args);
+  const relayed = args.askingActor
+    ? await readRelayedPersonMessages({
+        actor: args.askingActor,
+        conversationId: args.senderConversationId,
+      })
+    : undefined;
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
   const summary = `Top-level agent ${args.senderConversationId} sent a message.`;
@@ -149,6 +183,7 @@ export async function enqueueTopLevelAgentMessage(args: {
       namespace: AGENT_MESSAGE_EVENT_NAMESPACE,
       trustedSummary: summary,
     },
+    ...(relayed ? { relayedPersonMessages: relayed } : undefined),
   };
   await enqueueAutomatedInput({
     message: {
@@ -163,6 +198,7 @@ export async function enqueueTopLevelAgentMessage(args: {
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: renderTopLevelMessageInput({
+          relayed,
           senderConversationId: args.senderConversationId,
           text: args.text,
         }),

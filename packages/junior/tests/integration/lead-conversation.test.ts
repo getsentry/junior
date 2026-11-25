@@ -4,13 +4,15 @@ import {
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAndEnqueueConversation,
+  createConversationId,
+  recordWebConversationActivity,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
@@ -107,6 +109,7 @@ function startTool(args: {
 
 describe("Lead", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
   });
 
@@ -319,6 +322,155 @@ describe("Lead", () => {
     await expect(send(anaOutside, "call-watch", WATCH_SOURCE)).rejects.toThrow(
       "is outside this Space",
     );
+  });
+
+  it("copies the member's own words with its message, and only their own root reads them as theirs", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-relay@example.com");
+    const bo = await signedInViewer("lead-relay-other@example.com");
+    const { lead, space } = await spaceLead(ana);
+    // Each root stores its person's request, as a finished Turn leaves it.
+    const identityId = async (person: User) =>
+      (await readActorIdentity(webActorFromUser(person)))!.identity.id;
+    const said = async (
+      conversationId: string,
+      person: User,
+      messageId: string,
+      text: string,
+    ) =>
+      await getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs: Date.now(),
+          data: {
+            type: "message",
+            messageId,
+            role: "user",
+            text,
+            authorIdentityId: await identityId(person),
+          },
+        },
+      ]);
+    const start = async (person: User, key: string, message: string) => {
+      const conversationId = createConversationId({
+        actorEmail: person.email,
+        idempotencyKey: key,
+      });
+      await recordWebConversationActivity({
+        actor: webActorFromUser(person),
+        conversationId,
+        nowMs: Date.now(),
+        rootSpaceId: space.id,
+      });
+      await said(conversationId, person, `${key}:request`, message);
+      return conversationId;
+    };
+    const anaRoot = await start(ana, "lead-relay-ana", "Fix the 9px label.");
+    const boRoot = await start(bo, "lead-relay-bo", "Fix the 10px label.");
+
+    // Ana answers in the Lead, after the Lead asked her.
+    const anaIdentityId = await identityId(ana);
+    const answer = "Use text-3xs for the 9px step.";
+    await getConversationEventStore().append(lead.conversationId, [
+      {
+        createdAtMs: Date.now(),
+        data: {
+          type: "message",
+          messageId: "lead-question",
+          role: "assistant",
+          text: "Which type step should the 9px label use?",
+        },
+      },
+    ]);
+    await said(lead.conversationId, ana, "lead-answer", answer);
+    const send = async (
+      to: string,
+      toolCallId: string,
+      source: Source = createWebSource(lead.conversationId, "public"),
+    ) => {
+      const leadRun: AgentRun = {
+        actor: webActorFromUser(ana),
+        conversationId: lead.conversationId,
+        destination: lead.destination!,
+        instruction: { text: answer },
+        source,
+        turnId: "lead-relay-turn",
+      };
+      await createMessageAgentTool(
+        bindMessageAgent(leadRun, {
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+      ).execute!({ text: "David picked text-3xs.", to }, { toolCallId });
+    };
+    // The message waits out its Event window before its Turn starts.
+    const run = async (conversationId: string) => {
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.process(harness.queue.takeMessageFor(conversationId));
+      return runner.runs.at(-1)!;
+    };
+    const copied = `[Copied by the runtime from conversation ${lead.conversationId}, where this author wrote it.]\n${answer}`;
+
+    // The target's model sees her words in their own block.
+    await send(anaRoot, "call-relay-ana");
+    const anaRun = await run(anaRoot);
+    expect(anaRun.instruction.text).toContain(
+      `<relayed-person-message author_id="${anaIdentityId}"`,
+    );
+    expect(anaRun.instruction.text).toContain(
+      `message_id="lead-answer">\n${answer}`,
+    );
+    // The Event Turn does Ana's work, so her request and her copied answer
+    // authorize. The agent's retelling stays an Event.
+    const eventActor = anaRun.actor!;
+    expect(eventActor.platform).toBe("system");
+    expect(
+      (
+        await readRootConversation({
+          actor: eventActor,
+          conversationId: anaRoot,
+        })
+      ).messages,
+    ).toEqual([
+      { author: "user", text: "Fix the 9px label." },
+      {
+        author: "event",
+        text: expect.stringContaining("David picked text-3xs."),
+      },
+      {
+        author: "assistant",
+        text: expect.stringContaining(
+          "Which type step should the 9px label use?",
+        ),
+      },
+      { author: "user", text: copied },
+    ]);
+
+    // In Bo's root, Ana's words are another person's.
+    await send(boRoot, "call-relay-bo");
+    await run(boRoot);
+    expect(
+      (
+        await readRootConversation({
+          actor: eventActor,
+          conversationId: boRoot,
+        })
+      ).messages,
+    ).toContainEqual({ author: "other person", text: copied });
+
+    // A Lead Turn that no person runs copies nothing, so only the retelling
+    // arrives.
+    await send(boRoot, "call-relay-watch", WATCH_SOURCE);
+    const queued = (
+      await getConversationWorkState({
+        conversationId: boRoot,
+        state: harness.state,
+      })
+    )?.messages.at(-1);
+    expect(queued?.input.text).toContain("David picked text-3xs.");
+    expect(queued?.input.text).not.toContain("relayed-person-message");
+    expect(queued?.input.metadata).not.toHaveProperty("relayedPersonMessages");
   });
 
   it("watches only the Conversations that it may read", async () => {
