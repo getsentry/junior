@@ -79,11 +79,24 @@ jobs:
           echo "JUNIOR_IOS_REUSE_UDID=$udid" >> "$GITHUB_ENV"
       - name: Run UI tests
         run: apps/ios/scripts/sim.sh ui-test NavigationUITests
+      # The simulator's system log shows why an app launch or terminate hung,
+      # such as RunningBoard and SpringBoard messages.
+      - name: Collect the simulator log
+        if: failure() && env.JUNIOR_IOS_REUSE_UDID != ''
+        run: xcrun simctl spawn "$JUNIOR_IOS_REUSE_UDID" log collect --output "$RUNNER_TEMP/simulator.logarchive"
       - name: Delete the simulator
         if: always() && env.JUNIOR_IOS_REUSE_UDID != ''
         run: |
           xcrun simctl shutdown "$JUNIOR_IOS_REUSE_UDID" || true
           xcrun simctl delete "$JUNIOR_IOS_REUSE_UDID"
+      - name: Upload UI test results
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ui-test-results
+          path: |
+            apps/ios/.build.noindex/DerivedData/Logs/Test/*.xcresult
+            ${{ runner.temp }}/simulator.logarchive
       - name: Upload mock server log
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
