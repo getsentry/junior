@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_code_changes_requester_identity_ids_idx" ON "junior_code_changes" USING gin ("requester_identity_ids");
