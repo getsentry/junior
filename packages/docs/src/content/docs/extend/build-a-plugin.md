@@ -750,7 +750,9 @@ defineJuniorPlugin({
 
 - **Filter.** `scheme` is `https` when you omit it. `host` is an exact host
   or `*.example.com`. Give one of `path` (exact), `pathPattern` (a `*`
-  segment matches one segment), or `pathPrefix`. Junior picks an exact host
+  segment matches one segment), or `pathPrefix`. For a redirect page, such
+  as a sign-in page, `target: { param, filters }` claims the URL only when
+  that query parameter holds a URL that `filters` claim. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
   startup. An `https` URL that no link type claims gets a `web_page` card from core,
