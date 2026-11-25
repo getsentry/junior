@@ -31,7 +31,6 @@ import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
-import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -612,7 +611,7 @@ describe("Spaces API", () => {
           identity: { id: `identity:${user.id}` } as Identity,
           user,
         }),
-        spaceId: await readConversationSpaceId(conversationId),
+        conversationId,
       }).execute?.(input, {});
     };
     const read = async (app: Hono<JuniorApiEnv>) =>
@@ -689,6 +688,27 @@ describe("Spaces API", () => {
       }),
     ).toMatchObject({ space: { entries: [] } });
     expect(await read(bo)).toEqual([]);
+
+    // A move earlier in the Turn changes the Space that the tool writes.
+    const anaUser = await signedInViewer("spaces-config-ana@example.com");
+    const setInTurn = createSetConfigurationTool({
+      conversationId: outside,
+      resolveActorIdentity: async () => ({
+        identity: { id: `identity:${anaUser.id}` } as Identity,
+        user: anaUser,
+      }),
+    });
+    expect((await moveTo(ana, outside, space.id)).status).toBe(200);
+    expect(
+      await setInTurn.execute?.({ key: "github.repo", value: "a/moved" }, {}),
+    ).toMatchObject({
+      space: {
+        id: space.id,
+        entries: [{ key: "github.repo", value: "a/moved" }],
+      },
+    });
+    await setInTurn.execute?.({ key: "github.repo", value: null }, {});
+    expect((await moveTo(ana, outside, null)).status).toBe(200);
 
     // In a Slack channel and a Space, one change sets both, and a later
     // tool in the Turn reads the new value. A read prefers the Space's.

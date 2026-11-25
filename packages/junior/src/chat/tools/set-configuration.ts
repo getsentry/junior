@@ -7,6 +7,7 @@ import {
 } from "@/chat/configuration/validation";
 import {
   listSpaceConfiguration,
+  readConversationSpaceId,
   setSpaceConfiguration,
   unsetSpaceConfiguration,
 } from "@/chat/spaces/configuration";
@@ -74,7 +75,7 @@ export const setConfigurationToolDefinition = zodToolDefinition({
 /**
  * Build the tool that changes the configuration of the current
  * Conversation: its Slack channel's, read from the Run, and its Space's,
- * read when the Turn starts. It changes every one that applies, and checks
+ * read when the tool runs. It changes every one that applies, and checks
  * them all before it writes any. The actor comes from the runtime, and only
  * a member of the Space changes the Space. Contracts:
  * `chat/configuration/service.ts` and `chat/spaces/configuration.ts`.
@@ -84,9 +85,9 @@ export function createSetConfigurationTool(
     ToolRuntimeContext,
     | "actor"
     | "configuration"
+    | "conversationId"
     | "locationConfiguration"
     | "resolveActorIdentity"
-    | "spaceId"
   >,
 ) {
   return zodTool({
@@ -94,7 +95,9 @@ export function createSetConfigurationTool(
     async execute(input) {
       const { key, value } = input;
       const location = context.locationConfiguration;
-      if (!location && !context.spaceId) {
+      // A move earlier in the Turn can change the Space, so read it now.
+      const spaceId = await readConversationSpaceId(context.conversationId);
+      if (!location && !spaceId) {
         throw new ToolInputError(
           "This conversation has no Slack channel or Space, so it has no configuration to change.",
         );
@@ -103,8 +106,8 @@ export function createSetConfigurationTool(
         validateConfigKey(key) ??
         (value === null ? undefined : validateConfigValue(value));
       if (error) throw new ToolInputError(error);
-      const space = context.spaceId
-        ? await readMemberSpace(context, context.spaceId)
+      const space = spaceId
+        ? await readMemberSpace(context, spaceId)
         : undefined;
 
       if (space) {
