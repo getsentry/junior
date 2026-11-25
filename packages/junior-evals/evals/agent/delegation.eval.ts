@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mockDatabaseDocs } from "@junior-evals/fixture/database-docs";
-import { slackMention } from "@junior-evals/fixture/inputs";
+import { slackMention, webMessage } from "@junior-evals/fixture/inputs";
 import {
   completedToolCalls,
   type ToolCall,
@@ -104,5 +104,31 @@ describe("Implicit Delegation", () => {
 
     expect(completedToolCalls("startAgent", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
+  });
+
+  // A Lead's `startConversation` makes a web root whose first message is the
+  // brief, sent as the person, so this web message is that root's first
+  // Turn. A small budget keeps the build short: the case measures only
+  // whether the root hands its one work item to a child agent.
+  test("when a Conversation is asked for one long code change, do it here and do not hand it to a child agent", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
+    const conversation = await run(
+      webMessage(
+        [
+          "In acme/storefront, build one reusable coupon-code input for the cart and checkout pages. Today each page has its own copy, and neither shows why a code was rejected.",
+          "",
+          "Do this:",
+          "1. Find every place the UI takes a coupon code today.",
+          "2. Build one component on the existing design system: validation on submit, an error message from the API, and a clear button. It must work on a phone.",
+          "3. Replace both copies with it.",
+          "4. Add unit tests for the component.",
+          "5. Open a pull request and bring it to me only once it is ready for review: checks passing, not a draft.",
+        ].join("\n"),
+      ),
+    );
+
+    expect(completedToolCalls("startAgent", conversation)).toEqual([]);
   });
 });
