@@ -86,6 +86,50 @@ describe("Watches", () => {
     );
   });
 
+  test("when you push back on a change request from the person who asked, mark it declined", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `${pullRequest} keeps the Python deploy gate script on purpose. Workflow concurrency keyed on the SHA cannot replace it: it cancels one of the duplicate runs, and the gate fails on a cancelled run.`,
+      ),
+    );
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // Only the mark asks the requester to review again. A reply alone
+    // leaves the decision with them and drops the PR from their Inbox.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Can we not move this whole script into a workflow job and set workflow concurrency to the SHA instead?",
+          id: 9_003,
+          state: "changes_requested",
+          user: { login: requesterOnGitHub.login },
+        },
+        sender: { ...requesterOnGitHub, type: "User" },
+      }),
+    );
+
+    const marks = toolCallsOf("github_updatePullRequestFeedback", delivery).map(
+      (call) => call.input,
+    );
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        comment_id: 9_003,
+        comment_kind: "review_body",
+        status: "declined",
+      }),
+    );
+  });
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {
