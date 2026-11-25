@@ -1,4 +1,4 @@
-import type { Actor, ObjectType } from "@sentry/junior-plugin-api";
+import type { ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
@@ -24,12 +24,6 @@ export interface ConversationMessageEvent {
 }
 
 export interface ConversationMessageMeta {
-  /**
-   * The Actor that the Turn of an Event or parent agent Message runs as. It
-   * can differ from the author: a parent agent writes a task, and the task
-   * runs as the Actor of the parent's Turn.
-   */
-  actor?: Actor;
   cards?: MessageCard[];
   objectCards?: MessageCardRef[];
   attachments?: MessageAttachment[];

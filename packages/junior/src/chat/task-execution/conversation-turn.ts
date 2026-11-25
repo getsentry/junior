@@ -498,7 +498,6 @@ export function createConversationTurnWorker(
               author,
               ...(authorIdentityId ? { authorIdentityId } : undefined),
               meta: {
-                actor,
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,

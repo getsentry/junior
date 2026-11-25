@@ -1,6 +1,6 @@
-import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
+import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { and, asc, desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, like, sql } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -11,7 +11,6 @@ import {
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   appendInboundMessage,
   dropPendingMessages,
@@ -26,6 +25,7 @@ import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { renderParentAgentTask } from "@/chat/input-tags";
 import { agentTypeInstructions, type AgentType } from "./agent-types";
 import { readParentMessage, type ParentMessage } from "./parent-message-input";
+import { PARENT_MESSAGE_AUTHOR_PREFIX } from "./parent-message-authors";
 
 /**
  * Return the author id of every parent message from one parent. It matches
@@ -36,14 +36,14 @@ function parentMessageAuthorId(parentConversationId: string): string {
   return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
 }
 
-const PARENT_MESSAGE_AUTHOR_PREFIX = "parent-agent:";
-
 /**
  * Build the parent message that gives one task or message to a child. Its
  * mailbox id comes from the idempotency key, so a replay is a duplicate.
  */
 export function buildParentMessage(args: {
   actor: Actor;
+  /** Identity of `actor`, who gives the work, so the author of the text. */
+  authorIdentityId: string | undefined;
   childConversationId: string;
   credentialContext?: CredentialContext | undefined;
   fork?: true | undefined;
@@ -64,8 +64,9 @@ export function buildParentMessage(args: {
     inboundMessageId,
     input: {
       authorId: parentMessageAuthorId(args.parentConversationId),
-      // A parent agent wrote the text, not a person.
-      authorIdentityId: SYSTEM_IDENTITY_ID,
+      ...(args.authorIdentityId
+        ? { authorIdentityId: args.authorIdentityId }
+        : undefined),
       metadata: {
         actor: args.actor,
         ...(args.credentialContext
@@ -286,36 +287,6 @@ export function isParentMessageAuthor(
     typeof author?.userId === "string" &&
     author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
   );
-}
-
-/**
- * Read the Actors that the saved parent messages of one child ran as, oldest
- * first: the Actors of the parent's Turns that gave the child work. A
- * Message saved before Messages stored their Actor gives none.
- */
-export async function readParentMessageActors(
-  conversationId: string,
-): Promise<Actor[]> {
-  const payload = juniorConversationEvents.payload;
-  const rows = await getSqlExecutor()
-    .db()
-    .select({ actor: sql<unknown>`${payload}->'meta'->'actor'` })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, conversationId),
-        eq(juniorConversationEvents.type, "message"),
-        like(
-          sql`${payload}->'meta'->'author'->>'userId'`,
-          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
-        ),
-      ),
-    )
-    .orderBy(asc(juniorConversationEvents.seq));
-  return rows.flatMap((row) => {
-    const parsed = actorSchema.safeParse(row.actor);
-    return parsed.success ? [parsed.data] : [];
-  });
 }
 
 /**

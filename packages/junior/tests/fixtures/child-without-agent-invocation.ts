@@ -1,3 +1,4 @@
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
@@ -29,6 +30,7 @@ export async function sendParentMessage(args: {
 }): Promise<string> {
   const message = buildParentMessage({
     actor: args.actor,
+    authorIdentityId: SYSTEM_IDENTITY_ID,
     childConversationId: args.childConversationId,
     credentialContext: args.credentialContext,
     fork: args.fork,

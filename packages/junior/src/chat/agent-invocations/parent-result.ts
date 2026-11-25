@@ -1,12 +1,16 @@
 import type { Actor } from "@sentry/junior-plugin-api";
-import { sameActorIdentity } from "@/chat/conversations/provenance";
+import { getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import {
+  findActorIdentityId,
+  SYSTEM_IDENTITY_ID,
+} from "@/chat/identities/actor";
 import { listWatches } from "@/chat/events/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { readChildConversationSender } from "./child-input";
 import { listChildMessages } from "./child-message";
 import { hasWaitingParentWork } from "./list";
-import { readParentMessageActors } from "./parent-message";
+import { readParentMessageAuthorIdentityIds } from "./parent-message-authors";
 import { childAgentStillWorks } from "./store";
 
 /**
@@ -34,7 +38,7 @@ export type DeliverToParent = (args: {
  * parent, whose Turn for it runs as that Actor. A Turn that a parent message
  * started keeps the Actor of the parent's Turn. A Turn that an Event
  * started, such as a child result, keeps its Actor only when it is the
- * system or the Actor of a parent message to this child, since that Actor
+ * system or the author of a parent message to this child, since that Actor
  * came from the parent. Any other Turn, such as a person's Turn in a Thread,
  * the work of a child agent that such a Turn started, or a saved Turn with
  * no Source, reports as the Event system Actor, so the parent never gets the
@@ -47,9 +51,10 @@ export async function parentResultActor(args: {
 }): Promise<Actor> {
   if (args.source === "parent_message") return args.actor;
   if (args.source !== "event") return EVENT_SYSTEM_ACTOR;
-  if (args.actor.platform === "system") return args.actor;
-  const parentActors = await readParentMessageActors(args.conversationId);
-  return parentActors.some((actor) => sameActorIdentity(actor, args.actor))
+  const identityId = await findActorIdentityId(getDb(), args.actor);
+  if (identityId === SYSTEM_IDENTITY_ID) return args.actor;
+  const authors = await readParentMessageAuthorIdentityIds(args.conversationId);
+  return identityId !== undefined && authors.includes(identityId)
     ? args.actor
     : EVENT_SYSTEM_ACTOR;
 }

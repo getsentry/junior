@@ -93,11 +93,11 @@ Canonical words for Junior code and docs. One concept, one word.
   dashboard or Slack Message that mentions them. Access stays the same,
   because anyone can already read a public Conversation and join it by
   posting. A private Conversation refuses it.
-- **Requester**: the first person whose Turn gave a child agent work. Each
-  saved Parent message stores the Actor it runs as. The parent runs a
-  child's result as the child Turn's Actor only when a Parent message
-  started that Turn, or an Event started it and the Actor is the system or
-  the Actor of a Parent message to that child.
+- **Requester**: the first person whose Turn gave a child agent work. A
+  Parent message's author Identity is the Actor of the parent's Turn that
+  wrote it. The parent runs a child's result as the child Turn's Actor only
+  when a Parent message started that Turn, or an Event started it and the
+  Actor is the system or the author of a Parent message to that child.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the Requester if it is a person, else the
   root Actor if it is a person, else the system record that started the

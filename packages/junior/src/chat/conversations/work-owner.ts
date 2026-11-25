@@ -5,11 +5,10 @@ import type {
   User,
 } from "@sentry/junior-plugin-api";
 import { readRootAutomationRun } from "@/chat/automations/conversation-run";
-import { readParentMessageActors } from "@/chat/agent-invocations/parent-message";
+import { readParentMessageAuthorIdentityIds } from "@/chat/agent-invocations/parent-message-authors";
 import { readConversationRoot } from "@/chat/conversations/root";
-import { getDb } from "@/chat/db";
-import { findActorIdentityId } from "@/chat/identities/actor";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { readIdentityById } from "@/chat/plugins/viewer";
 
 /**
@@ -21,16 +20,11 @@ import { readIdentityById } from "@/chat/plugins/viewer";
 async function readRequesterIdentity(
   conversationId: string,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  const requester = (await readParentMessageActors(conversationId)).find(
-    (actor) => actor.platform !== "system",
-  );
-  const requesterIdentityId = requester
-    ? await findActorIdentityId(getDb(), requester)
-    : undefined;
-  const identity = requesterIdentityId
-    ? await readIdentityById(requesterIdentityId)
-    : undefined;
-  if (identity) return identity;
+  const authorId = (
+    await readParentMessageAuthorIdentityIds(conversationId)
+  ).find((id) => id !== SYSTEM_IDENTITY_ID);
+  const author = authorId ? await readIdentityById(authorId) : undefined;
+  if (author) return author;
   const root = await readConversationRoot(conversationId);
   return root?.actorIdentityId
     ? await readIdentityById(root.actorIdentityId)
