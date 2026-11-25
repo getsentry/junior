@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "85ad8e1f-cd2f-4260-9974-caee2444d632",
+  "prevIds": ["5e5f7b3c-8638-4817-a7a0-c62a5814eb20"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "last_activity_at"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.last_activity_at",
+        "n|col|public.junior_code_changes.last_activity_at",
+        "e|col|public.junior_code_changes.last_activity_at"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "last_activity_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

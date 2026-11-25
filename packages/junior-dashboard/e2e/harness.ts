@@ -162,6 +162,19 @@ export function waitForSettingsReads(page: Page) {
   );
 }
 
+/**
+ * Scroll the window to the top over a few frames with no input event, as a
+ * scrollbar drag does.
+ */
+export async function dragScrollbarToTop(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+}
+
 /** Whether a request is a background read that may outlive a test. */
 function isBackgroundRead(request: PageRequest): boolean {
   const { pathname } = new URL(request.url());

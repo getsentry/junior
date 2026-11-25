@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b3710bdd-d120-4381-ad2c-cf5cc74d1500",
+  "prevIds": ["d8bcb4fe-56ea-4a1d-ab3e-f89cdc4c43d4"],
+  "footprints": [
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|ck|public.junior_review_items.junior_review_items_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.kind",
+        "n|col|public.junior_review_items.request",
+        "n|col|public.junior_review_items.answer",
+        "n|col|public.junior_review_items.dedupe_key",
+        "e|col|public.junior_review_items.kind",
+        "e|col|public.junior_review_items.request",
+        "e|col|public.junior_review_items.answer"
+      ],
+      "sqlHash": "e75685fe528a651b"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_kind_check\"]",
+      "set": {
+        "value": "(\"junior_review_items\".\"kind\" = 'notice' and \"junior_review_items\".\"request\" is null and \"junior_review_items\".\"answer\" is null) or (\"junior_review_items\".\"kind\" = 'action' and (\"junior_review_items\".\"request\" is not null or (\"junior_review_items\".\"dedupe_key\" like 'plugin:%' and \"junior_review_items\".\"answer\" is null)))"
+      }
+    }
+  ]
+}

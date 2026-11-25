@@ -8,10 +8,7 @@ import {
   getParentMessageId,
 } from "@/chat/agent-invocations/ids";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -34,6 +31,7 @@ import {
   loadSubagentEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import {
   createConversationWorkHarness,
@@ -63,7 +61,7 @@ function readingAgentRunner() {
   return { agentRunner, runs };
 }
 
-/** Spawn one child agent of a parent, as `spawnAgent` does. */
+/** Spawn one child agent of a parent, as `startAgent` does. */
 async function spawnChild(
   options: {
     conversationStore: ConversationStore;
@@ -109,6 +107,7 @@ describe("child agent worker crash", () => {
   it.each([
     { kind: "task" as const, notices: 1, replied: "no" },
     { kind: "task" as const, notices: 0, replied: "this Turn" },
+    { kind: "task" as const, notices: 0, replied: "this Turn quietly" },
     { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
     { kind: "thread" as const, notices: 1, replied: "no" },
     { kind: "thread" as const, notices: 1, replied: "no", person: true },
@@ -148,14 +147,11 @@ describe("child agent worker crash", () => {
           );
         } else {
           // The helper's `reply` wakes the child on the Conversation loop.
-          await enqueueChildResultToParent({
+          await enqueueStarterUpdate({
             actor: invocationInput.actor,
             messageKey: "helper-reply",
             queue,
-            result: {
-              kind: "reply",
-              reply: { text: "Helper fact.", toolCallId: "helper-reply" },
-            },
+            update: { status: "done", text: "Helper fact." },
             sender: {
               childConversationId: helperId,
               parentConversationId: childId,
@@ -185,24 +181,23 @@ describe("child agent worker crash", () => {
             inboundMessageIds: [earlier],
             state,
           });
-          await createDeliverToParent({ queue, state })({
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
-            result: {
-              kind: "reply",
-              reply: { text: "Earlier answer.", toolCallId: "call-earlier" },
-            },
+            update: { status: "done", text: "Earlier answer." },
             turnId: buildDeterministicTurnId(earlier),
           });
         }
-        if (replied === "this Turn") {
-          // The Turn sent its `reply`, and then its worker was lost.
-          await createDeliverToParent({ queue, state })({
+        if (replied === "this Turn" || replied === "this Turn quietly") {
+          // The Turn sent its `reply`, or a quiet note, and then its worker
+          // was lost.
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
-            result: {
-              kind: "reply",
-              reply: { text: "Answer.", toolCallId: "call-answer" },
+            update: {
+              quiet: replied === "this Turn quietly",
+              status: "done",
+              text: "Answer.",
             },
             turnId: buildDeterministicTurnId(
               getAgentReplyMessageId(helperId, "helper-reply"),

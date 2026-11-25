@@ -73,7 +73,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         async (run) =>
           await finishRun(
             run,
-            { reply: { text: "Deploy is green.", toolCallId: "reply-1" } },
+            { finalText: "Deploy is green." },
             "Deploy is green.",
           ),
       );
@@ -92,7 +92,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
     }
   });
 
-  it("leaves the parent's To-do of a Thread open after a person's Turn there", async () => {
+  it("closes the parent's To-do of a Thread after a person's Turn there", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -119,7 +119,8 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         nowMs: Date.now(),
       });
 
-      // A person's Turn in the Thread answers the person, not the parent.
+      // A person's Turn in the Thread also reports to the parent, which
+      // closes the To-do.
       vi.setSystemTime(Date.now() + 1_000);
       await sendPersonMessage(harness, childId, "person-1");
       harness.onRun(
@@ -135,7 +136,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
       await expect(
         listTodos(getSqlExecutor(), slackParentConversationId),
       ).resolves.toEqual([
-        expect.objectContaining({ title: "Check the deploy", status: "open" }),
+        expect.objectContaining({ title: "Check the deploy", status: "done" }),
       ]);
     } finally {
       await harness.close();

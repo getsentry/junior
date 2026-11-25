@@ -78,6 +78,7 @@ import {
 } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
+import { readSpaceRefs } from "@/chat/spaces/conversations";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import {
   latestMessageSeqQuery,
@@ -154,6 +155,26 @@ function conversationCodeRepositoryFilter(
   );
 }
 
+/**
+ * Keep the roots of one Space with the status. Every Space is public, and
+ * private roots stay visible only to their members.
+ */
+function conversationSpaceFilter(
+  spaceId: string,
+  status: "active" | "archived" | "all",
+  viewerUserId: string | undefined,
+): SQL | undefined {
+  return and(
+    eq(juniorConversations.spaceId, spaceId),
+    status === "archived"
+      ? isNotNull(juniorConversations.archivedAt)
+      : status === "active"
+        ? isNull(juniorConversations.archivedAt)
+        : undefined,
+    rootVisibleToViewer(viewerUserId),
+  );
+}
+
 async function conversationRows(
   db: JuniorDatabase,
   {
@@ -166,6 +187,7 @@ async function conversationRows(
     limit,
     pinnedForUserId,
     query,
+    space,
     status,
     waitingForUserId,
   }: {
@@ -182,6 +204,8 @@ async function conversationRows(
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string | undefined;
+    /** Read only the roots of this Space, in place of membership. */
+    space?: { id: string; viewerUserId?: string };
     status: "active" | "archived" | "all";
     /** Read only the root conversations that wait on this user. */
     waitingForUserId?: string;
@@ -217,7 +241,9 @@ async function conversationRows(
     .where(
       and(
         listedConversation(),
-        conversationFeedMembershipFilter(status, filter),
+        space
+          ? conversationSpaceFilter(space.id, status, space.viewerUserId)
+          : conversationFeedMembershipFilter(status, filter),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,
@@ -528,15 +554,17 @@ export async function readConversationFeedFromSql(
     /** Receives how many waiting rows from outside the page were added. */
     onWaitingRows?: (count: number) => void;
     q?: string | undefined;
+    spaceId?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const db = getDb();
-  const filter = options.codeRepositoryId
-    ? undefined
-    : conversationFeedFilter(options);
+  const filter =
+    options.codeRepositoryId || options.spaceId
+      ? undefined
+      : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
   const status: "active" | "archived" | "all" =
     query || options.codeRepositoryId ? "all" : (options.status ?? "active");
@@ -554,6 +582,16 @@ export async function readConversationFeedFromSql(
       ? {
           codeRepository: {
             id: options.codeRepositoryId,
+            ...(options.viewer
+              ? { viewerUserId: options.viewer.id }
+              : undefined),
+          },
+        }
+      : undefined),
+    ...(options.spaceId
+      ? {
+          space: {
+            id: options.spaceId,
             ...(options.viewer
               ? { viewerUserId: options.viewer.id }
               : undefined),
@@ -637,6 +675,7 @@ export async function readConversationFeedFromSql(
     firstHumanMessageTextByConversation,
     treeStateByConversation,
     threadRecords,
+    spaceRefs,
   ] = await Promise.all([
     readConversationAccessRows(db, conversationIds),
     conversationTrees,
@@ -687,6 +726,10 @@ export async function readConversationFeedFromSql(
         .filter((conversation) => conversation.archivedAtMs === undefined)
         .map(({ conversationId }) => conversationId),
     ),
+    readSpaceRefs(
+      db,
+      conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
+    ),
   ]);
   const accessByConversation = conversationAccessFromRows(
     accessRows,
@@ -695,6 +738,7 @@ export async function readConversationFeedFromSql(
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
       const tenantId = conversationSlackTenantId({
+        provider: row.location?.provider,
         providerTenantId: row.location?.providerTenantId,
         sessionSource: row.conversation.sessionSource,
       });
@@ -752,6 +796,9 @@ export async function readConversationFeedFromSql(
         ),
         conversation,
         access,
+        space: conversation.spaceId
+          ? (spaceRefs.get(conversation.spaceId) ?? null)
+          : null,
         auxiliaryCosts: auxiliaryCosts?.total,
         ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
@@ -878,6 +925,7 @@ export async function readConversationFeed(
     include?: readonly ConversationFeedInclude[];
     onWaitingRows?: (count: number) => void;
     q?: string | undefined;
+    spaceId?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
   } = {},

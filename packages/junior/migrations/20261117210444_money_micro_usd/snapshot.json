@@ -1,0 +1,68 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "890f514c-0de9-418a-a418-88361ad62df2",
+  "prevIds": ["df594e91-f0ca-4906-8457-ba52f197ea1d"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_briefs",
+        "cost_micro_usd"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_briefs.cost_micro_usd",
+        "n|col|public.junior_conversation_briefs.cost_micro_usd",
+        "e|col|public.junior_conversation_briefs.cost_micro_usd"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_briefs", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_stats", "value"],
+      "writes": [
+        "s|col|public.junior_stats.value",
+        "n|col|public.junior_stats.value",
+        "e|col|public.junior_stats.value"
+      ],
+      "reads": ["n|tbl|public.junior_stats", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "cost_micro_usd",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_stats",
+        "name": "value",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

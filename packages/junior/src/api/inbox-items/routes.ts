@@ -435,8 +435,7 @@ export function createInboxItemRoutes(services: {
       const query = context.req.valid("query");
       const db = getDb();
       // One query counts the badge, both bundles, and the Automation alerts.
-      // The snoozed count runs only when the request asks for it, so the
-      // classic dashboard pays for one query.
+      // The snoozed count runs only when the request asks for it.
       const [subjects, snoozed] = await Promise.all([
         countInboxItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,

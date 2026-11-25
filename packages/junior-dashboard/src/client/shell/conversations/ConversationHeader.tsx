@@ -61,18 +61,26 @@ const ConversationMenuSheet = lazy(() =>
 );
 
 /**
- * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
- * bar until the page knows which it is, else the Conversation's own header.
+ * Head a Conversation page: its Space's header on a Lead, an empty bar until
+ * the page knows which it is, else the Conversation's own header.
  */
 export function ConversationHeader(
   props: ComponentProps<typeof ConversationTitleHeader> & {
-    /** Undefined until the page knows whether it shows the Lead. */
+    /** Undefined until the page knows whether it shows a Lead. */
     lead: boolean | undefined;
+    /** The Conversation's Space, which a Lead's header shows. */
+    spaceId?: string | undefined;
   },
 ) {
-  // The app bar names the Lead on a phone.
   if (props.lead)
-    return <LeadHeader mobileHidden sidebarToggle={props.sidebarToggle} />;
+    return (
+      <LeadHeader
+        detailsOpen={props.detailsOpen}
+        onDetailsClick={props.onDetailsClick}
+        sidebarToggle={props.sidebarToggle}
+        spaceId={props.spaceId}
+      />
+    );
   if (props.lead === undefined)
     return (
       <div
@@ -112,6 +120,8 @@ function ConversationTitleHeader(props: {
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
+  /** A link to the Conversation's Space, after the title. */
+  space?: ReactNode;
   /** The tree state or pin icon, before the title. */
   state?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
@@ -393,6 +403,7 @@ function ConversationTitleHeader(props: {
             )}
             {props.status}
             {childAgentTags}
+            {props.space}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}

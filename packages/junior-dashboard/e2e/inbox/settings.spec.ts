@@ -1,15 +1,42 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "../test";
 import {
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../../src/service-worker";
-import { waitForOutlineRead, waitForSettingsReads } from "../harness";
+import {
+  dragScrollbarToTop,
+  waitForOutlineRead,
+  waitForSettingsReads,
+} from "../harness";
 import { showPlainTextPush } from "../push-notification";
 import { screenshot } from "../screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../../src/mock-reporting/fixtures";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  return release;
+}
+
+test.describe("new UI", () => {
   test("updates the signed-in user's display name", async ({
     page,
     dashboard,
@@ -383,7 +410,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await expect(openAt).toBeInViewport();
     const ui = page.getByRole("region", { exact: true, name: "Interface" });
-    await expect(ui).toContainText("New dashboard");
     await expect(ui).toContainText("Open conversations at");
     await expect(ui).toContainText("Scroll conversations with");
     await expect(ui).toContainText("Message box");
@@ -467,5 +493,61 @@ test.describe("new UI", { tag: "@new" }, () => {
       "aria-current",
       "location",
     );
+  });
+
+  test("lets the reader scroll away from a linked section while it loads", async ({
+    page,
+    dashboard,
+  }) => {
+    const release = await holdTokenList(page);
+    await page.goto(`${dashboard.baseURL}/settings/mcp`);
+    await expect(
+      page.getByRole("heading", { exact: true, name: "MCP" }),
+    ).toBeInViewport();
+
+    await dragScrollbarToTop(page);
+    release();
+    await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+    await expect(
+      page.getByRole("heading", { exact: true, name: "General" }),
+    ).toBeInViewport();
+  });
+
+  test("keeps a linked section in view while the sections above load", async ({
+    page,
+    dashboard,
+  }) => {
+    const release = await holdTokenList(page);
+    await page.goto(`${dashboard.baseURL}/settings/mcp`);
+    const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+    await expect(heading).toBeInViewport();
+
+    release();
+    await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+    await expect(heading).toBeInViewport();
+  });
+
+  test("opens an old Settings page as its section and keeps the query", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(`${dashboard.baseURL}/settings/api-tokens?name=Review`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/settings?name=Review#api-tokens`,
+    );
+    await expect(
+      page.getByRole("heading", { exact: true, name: "API Tokens" }),
+    ).toBeInViewport();
+
+    // The page reads the viewer's connections.
+    const connectionsRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/connections",
+    );
+    await page.goto(`${dashboard.baseURL}/settings/connections`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+    await expect(
+      page.getByRole("heading", { exact: true, name: "Identities" }),
+    ).toBeInViewport();
+    await connectionsRead;
   });
 });

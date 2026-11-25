@@ -2,8 +2,7 @@ import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("one icon shows what each tree waits on", async ({
     dashboard,
     page,

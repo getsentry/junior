@@ -18,8 +18,7 @@ import {
 import { screenshot } from "../screenshot";
 import { mockChartPng } from "../../src/mock-reporting/chart-png";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("starts and continues conversations from the dashboard", async ({
     page,
     dashboard,

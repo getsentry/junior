@@ -190,7 +190,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Only conversations that your person takes part in: the person of this Turn, or of this Lead. Default false.",
+          "Only conversations that the person of this Turn takes part in. Default false.",
         ),
       roots_only: z
         .boolean()

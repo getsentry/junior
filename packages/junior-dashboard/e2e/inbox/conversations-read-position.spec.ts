@@ -9,8 +9,7 @@ import {
 } from "../read-position-fixture";
 import { desktop, mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** Scroll to the end of the transcript until `row` renders. */
   async function scrollDownTo(transcript: Locator, row: Locator) {
     await expect(async () => {

@@ -1,0 +1,143 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "fadf791d-b379-41a8-9e6c-15781163fa6a",
+  "prevIds": ["3409dca1-4e7e-4676-91a3-803fc442346a"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_agent_invocations"],
+      "writes": [
+        "s|tbl|public.junior_agent_invocations",
+        "n|tbl|public.junior_agent_invocations",
+        "e|tbl|public.junior_agent_invocations",
+        "n|rel|public.junior_agent_invocations",
+        "n|type|public.junior_agent_invocations"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_agent_invocations\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"invocation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"parent_conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"child_conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"agent_name\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"input\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"actor_json\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"credential_context_json\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"source_json\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"destination_json\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"destination_visibility\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"reasoning_level\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"mailbox_status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"result\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"error_message\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"updated_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"terminal_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"parent_mailbox_status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"parent_tool_call_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"agent_type\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"fork\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_agent_invocations_child_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_agent_invocations_mailbox_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_agent_invocations_parent_mailbox_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_agent_invocations\",\"junior_agent_invocations_parent_conversation_id_junior_conversa\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_agent_invocations\",\"junior_agent_invocations_child_conversation_id_junior_conversat\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_agent_invocations\",\"junior_agent_invocations_pkey\"]"
+    }
+  ]
+}

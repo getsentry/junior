@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "889f2aa7-4cb2-41c2-b326-3ef3144c5790",
+  "prevIds": ["521dd92f-bf8f-4c8f-8ace-a5dcd36d75ee"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_attachments",
+        "junior_attachments_conversation_url_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_attachments_conversation_url_idx",
+        "n|idx|public.junior_attachments_conversation_url_idx",
+        "e|idx|public.junior_attachments_conversation_url_idx",
+        "n|rel|public.junior_attachments_conversation_url_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.conversation_id",
+        "n|col|public.junior_attachments.url"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "junior_attachments_conversation_url_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "url",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_attachments\".\"url\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

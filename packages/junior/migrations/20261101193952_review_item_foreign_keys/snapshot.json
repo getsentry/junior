@@ -1,0 +1,108 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "63624186-3205-4985-b9c8-8613366e4b04",
+  "prevIds": ["ebb15719-188c-4393-85a0-eb1fa1f4c93d"],
+  "footprints": [
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_review_item_slack_cards"],
+      "writes": [
+        "s|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_conversation_id_junior_conversat",
+        "n|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_conversation_id_junior_conversat",
+        "e|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_conversation_id_junior_conversat",
+        "n|con|public.junior_review_item_slack_cards.junior_review_item_slack_cards_conversation_id_junior_conversat"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_item_slack_cards",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_review_item_slack_cards.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "n|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "e|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "n|con|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_review_items.added_by_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "recreate_fk",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|fk|public.junior_review_items.junior_review_items_closed_by_user_id_junior_users_id_fk",
+        "n|fk|public.junior_review_items.junior_review_items_closed_by_user_id_junior_users_id_fk",
+        "e|fk|public.junior_review_items.junior_review_items_closed_by_user_id_junior_users_id_fk",
+        "n|con|public.junior_review_items.junior_review_items_closed_by_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_review_items.closed_by_user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ],
+      "sqlHash": "291774d19e086347"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "junior_review_item_slack_cards_conversation_id_junior_conversat",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_added_by_conversation_id_junior_conversatio",
+        "nameExplicit": false,
+        "columns": ["added_by_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "fks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_closed_by_user_id_junior_users_id_fk\"]",
+      "set": {
+        "onDelete": "SET NULL"
+      }
+    }
+  ]
+}

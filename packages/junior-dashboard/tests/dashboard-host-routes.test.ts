@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { createDashboardApp } from "../src/app";
+import { mockBuiltSystemPrompts } from "../../junior/tests/fixtures/built-system-prompts";
 
 function concreteRoutePath(path: string): string | undefined {
   if (path === "*" || path === "/*") {
@@ -11,6 +12,7 @@ function concreteRoutePath(path: string): string | undefined {
 
 afterEach(() => {
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
 });
 
 it("forwards every dashboard route through the Junior app", async () => {
@@ -43,6 +45,7 @@ it("forwards every dashboard route through the Junior app", async () => {
     pluginSet: defineJuniorPlugins([]),
     plugins: undefined,
   }));
+  mockBuiltSystemPrompts();
   const app = await createApp();
 
   for (const route of registeredRoutes) {

@@ -1,0 +1,364 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "fd24ecea-6550-46fd-88a8-eb0ba07d356d",
+  "prevIds": ["591c4ce6-a11f-4420-9389-04358d8bfce3"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversation_briefs"],
+      "writes": [
+        "s|tbl|public.junior_conversation_briefs",
+        "n|tbl|public.junior_conversation_briefs",
+        "e|tbl|public.junior_conversation_briefs",
+        "n|rel|public.junior_conversation_briefs",
+        "n|type|public.junior_conversation_briefs",
+        "n|rel|public.junior_conversation_briefs_conversation_id_version_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_briefs",
+        "junior_conversation_briefs_conversation_turn_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_briefs_conversation_turn_idx",
+        "n|idx|public.junior_conversation_briefs_conversation_turn_idx",
+        "e|idx|public.junior_conversation_briefs_conversation_turn_idx",
+        "n|rel|public.junior_conversation_briefs_conversation_turn_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_briefs",
+        "n|sch|public",
+        "n|col|public.junior_conversation_briefs.conversation_id",
+        "n|col|public.junior_conversation_briefs.turn_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_briefs",
+        "junior_conversation_briefs_conversation_version_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_briefs_conversation_version_idx",
+        "n|idx|public.junior_conversation_briefs_conversation_version_idx",
+        "e|idx|public.junior_conversation_briefs_conversation_version_idx",
+        "n|rel|public.junior_conversation_briefs_conversation_version_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_briefs",
+        "n|sch|public",
+        "n|col|public.junior_conversation_briefs.conversation_id",
+        "n|col|public.junior_conversation_briefs.version"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_briefs",
+        "junior_conversation_briefs_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_briefs_search_idx",
+        "n|idx|public.junior_conversation_briefs_search_idx",
+        "e|idx|public.junior_conversation_briefs_search_idx",
+        "n|rel|public.junior_conversation_briefs_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_briefs", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_briefs"],
+      "writes": [
+        "s|fk|public.junior_conversation_briefs.junior_conversation_briefs_conversation_id_junior_conversations",
+        "n|fk|public.junior_conversation_briefs.junior_conversation_briefs_conversation_id_junior_conversations",
+        "e|fk|public.junior_conversation_briefs.junior_conversation_briefs_conversation_id_junior_conversations",
+        "n|con|public.junior_conversation_briefs.junior_conversation_briefs_conversation_id_junior_conversations"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_briefs",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_briefs.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_briefs",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "turn_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "through_seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "content",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "search_text",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "model_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "cost_usd",
+        "type": "double precision",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "junior_conversation_briefs_conversation_turn_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "turn_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "junior_conversation_briefs_conversation_version_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "version",
+            "isExpression": false,
+            "asc": false,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "junior_conversation_briefs_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('english', \"search_text\")",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "junior_conversation_briefs_conversation_id_junior_conversations",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "junior_conversation_briefs_conversation_id_version_pk",
+        "columns": ["conversation_id", "version"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

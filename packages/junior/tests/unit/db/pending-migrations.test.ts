@@ -11,9 +11,16 @@ const migrations = ["a", "b", "c", "d"].map((hash, index) => ({
   sql: [],
 }));
 const [a, b, c, d] = migrations;
+// A row as Drizzle 0.x wrote it, with no name.
 const row = (migration: (typeof migrations)[number]): MigrationRecord => ({
   createdAt: migration.folderMillis,
   hash: migration.hash,
+  id: 0,
+  name: null,
+});
+const named = (migration: (typeof migrations)[number]): MigrationRecord => ({
+  ...row(migration),
+  name: migration.name,
 });
 
 describe("pending migrations", () => {
@@ -36,8 +43,16 @@ describe("pending migrations", () => {
     },
     {
       name: "a row of a newer release",
-      records: [row(a!), { createdAt: 90_000, hash: "newer" }],
+      records: [
+        row(a!),
+        { createdAt: 90_000, hash: "newer", id: 0, name: null },
+      ],
       pending: [b, c, d],
+    },
+    {
+      name: "Drizzle v1 rows, which match by name only",
+      records: [named(a!), { ...named(c!), createdAt: 0, hash: "edited" }],
+      pending: [b, d],
     },
   ])("records only applied migrations for $name", ({ records, pending }) => {
     expect(pendingMigrations(migrations, records)).toEqual(pending);

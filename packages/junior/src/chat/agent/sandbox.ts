@@ -11,6 +11,7 @@ import { isUserActor, type Actor } from "@/chat/actor";
 import { withArtifactNote, type ArtifactSync } from "@/chat/artifacts/sync";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { listReferenceFiles } from "@/chat/discovery";
@@ -206,7 +207,18 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
             actorId: isUserActor(options.actor)
               ? options.actor.userId
               : undefined,
-            onConfigurationValueChanged: (key, value) => {
+            onConfigurationValueChanged: async (key, value) => {
+              // A channel change does not touch a key that the Space sets,
+              // because the Space's value wins.
+              if (
+                options.conversationId &&
+                key in
+                  (await readConversationSpaceConfiguration(
+                    options.conversationId,
+                  ))
+              ) {
+                return;
+              }
               if (value === undefined) {
                 delete options.configurationValues[key];
                 return;

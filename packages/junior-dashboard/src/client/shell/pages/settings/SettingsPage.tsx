@@ -25,6 +25,7 @@ import {
   type ConversationStartPosition,
 } from "../../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../../conversations/composerAutocorrect";
+import { useComposerLiveMarkdown } from "../../../conversations/composerLiveMarkdownSetting";
 import { useInboxTabCountSetting } from "../../../inbox/inboxTabIcon";
 import { useInboxMagnify } from "../../../inbox/inboxFocus";
 import { InlineError } from "../../../components/InlineError";
@@ -40,7 +41,6 @@ import {
 import type { DashboardCoreData } from "../../../types";
 import { AutoArchiveSettings } from "../../../pages/settings/AutoArchiveSettings";
 import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings";
-import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
 import { SettingFrame } from "../../../pages/settings/SettingFrame";
@@ -64,7 +64,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
-      <InterfaceSettings identity={identity} />
+      <InterfaceSettings />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -157,11 +157,11 @@ function GeneralSettings({ identity }: SettingsPageProps) {
 }
 
 /** Group the choices for how the dashboard looks and works. */
-function InterfaceSettings({ identity }: SettingsPageProps) {
+function InterfaceSettings() {
   return (
     <SettingsSection
       anchor="interface"
-      description="The new dashboard applies to your account. The other choices apply to this browser."
+      description="These choices apply to this browser."
       title="Interface"
     >
       <Card
@@ -169,10 +169,9 @@ function InterfaceSettings({ identity }: SettingsPageProps) {
         padding="md"
         variant="raised"
       >
-        <ExperimentalUiSetting frame="row" identity={identity} />
         <ConversationStartSetting />
         <TranscriptScrollerSetting frame="row" />
-        <ComposerAutocorrectSetting />
+        <MessageBoxSetting />
         <InboxTabCountSetting />
         <InboxMagnifySetting />
       </Card>
@@ -238,9 +237,13 @@ function ConversationStartSetting() {
   );
 }
 
-/** Let the user turn on keyboard autocorrect in the composer on this browser. */
-function ComposerAutocorrectSetting() {
+/**
+ * Let the user turn on keyboard autocorrect, and turn off live Markdown, in
+ * the composer on this browser.
+ */
+function MessageBoxSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
+  const [liveMarkdown, setLiveMarkdown] = useComposerLiveMarkdown();
   return (
     <SettingFrame anchor="message-box" frame="row" title="Message box">
       <Field className="mt-4" orientation="horizontal">
@@ -255,6 +258,22 @@ function ComposerAutocorrectSetting() {
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
             type. This can change ids, paths, and code.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+      <Field className="mt-4" orientation="horizontal">
+        <Checkbox
+          aria-describedby="composer-live-markdown-help"
+          checked={liveMarkdown}
+          id="composer-live-markdown"
+          onCheckedChange={setLiveMarkdown}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="composer-live-markdown">
+            Live Markdown preview
+          </FieldLabel>
+          <FieldDescription id="composer-live-markdown-help">
+            Style Markdown as you type, and continue lists when you press Enter.
           </FieldDescription>
         </FieldContent>
       </Field>

@@ -97,7 +97,7 @@ import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
-import { ComfortableDensityContext } from "../uiShell";
+import { ComfortableDensityContext } from "./conversationDensity";
 import { formatTime, getDashboardTimeZone } from "../time";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];

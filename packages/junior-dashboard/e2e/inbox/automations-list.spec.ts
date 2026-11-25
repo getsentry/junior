@@ -5,8 +5,7 @@ import { NOW } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("pages the Automations list as it scrolls and expands a row in place", async ({
     page,
     dashboard,

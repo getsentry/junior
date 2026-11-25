@@ -47,6 +47,7 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
+import { setSpaceConfigurationToolDefinition } from "@/chat/tools/set-space-configuration";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
@@ -61,7 +62,7 @@ import { replyToolDefinition } from "@/chat/tools/runtime/reply";
 import { reportBlockedToolDefinition } from "@/chat/tools/runtime/report-blocked";
 import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progress";
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
-import { spawnAgentToolDefinition } from "@/chat/tools/runtime/spawn-agent";
+import { startAgentToolDefinition } from "@/chat/tools/runtime/start-agent";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
 import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
@@ -133,6 +134,8 @@ const hasAgents = ({ listedTools }: ToolRegistryScope) =>
 const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents === "children" ||
   listedTools.agents === "children_and_parent";
+const isLead = ({ listedTools }: ToolRegistryScope) =>
+  listedTools.agents === "lead";
 
 // Write tools exist when the deployment has a workspace provider, and their
 // text names those providers.
@@ -196,9 +199,16 @@ const CORE_TOOLS = {
     when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
   },
+  setSpaceConfiguration: {
+    when: ({ listedTools }) => listedTools.spaces,
+    definition: () => setSpaceConfigurationToolDefinition,
+  },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
+  // A Lead finds Conversations with searchConversations, and every other
+  // Turn with listAgents.
   searchConversations: {
+    when: isLead,
     definition: ({ platform }) =>
       searchConversationsToolDefinition(
         platform === "slack" ? slackConversationSearchChannelFilter : undefined,
@@ -212,9 +222,9 @@ const CORE_TOOLS = {
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
   transcribeAudio: RUN_BUILT,
-  spawnAgent: {
+  startAgent: {
     when: hasChildAgents,
-    definition: () => spawnAgentToolDefinition,
+    definition: () => startAgentToolDefinition,
   },
   stopAgent: {
     when: hasChildAgents,
@@ -225,7 +235,7 @@ const CORE_TOOLS = {
     definition: () => archiveAgentToolDefinition,
   },
   listAgents: {
-    when: hasChildAgents,
+    when: (scope) => !isLead(scope),
     definition: () => listAgentsToolDefinition,
   },
   messageAgent: {
@@ -233,9 +243,8 @@ const CORE_TOOLS = {
     definition: () => messageAgentToolDefinition,
   },
   [REPLY_TOOL_NAME]: {
-    when: ({ listedTools }) => listedTools.reply !== "none",
-    definition: ({ listedTools }) =>
-      replyToolDefinition(enabledMode(listedTools.reply)),
+    when: ({ listedTools }) => listedTools.reply,
+    definition: () => replyToolDefinition,
   },
   [REPORT_BLOCKED_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reportBlocked !== "none",

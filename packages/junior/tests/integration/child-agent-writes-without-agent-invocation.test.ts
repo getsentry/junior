@@ -22,7 +22,7 @@ import {
 } from "@/chat/conversations/session-stop";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -306,8 +306,17 @@ describe("spawn and messageAgent", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       release.resolve();
 
-      await expect(last).resolves.toEqual(expect.any(String));
-      await expect(over).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      // Settle both at once: the over-limit spawn can reject while the last
+      // one still runs.
+      const [lastResult, overResult] = await Promise.allSettled([last, over]);
+      expect(lastResult).toEqual({
+        status: "fulfilled",
+        value: expect.any(String),
+      });
+      expect(overResult).toEqual({
+        status: "rejected",
+        reason: expect.any(AgentInvocationLimitError),
+      });
     } finally {
       await harness.close();
     }
@@ -634,7 +643,7 @@ describe("spawn and messageAgent", () => {
       await expect(spawn(harness, "call-1")).rejects.toBeInstanceOf(
         AgentStoppedError,
       );
-      const tool = createSpawnAgentTool(
+      const tool = createStartAgentTool(
         bindSpawnAgent(parentRun(), {
           conversationStore: harness.conversationStore,
           queue: harness.queue,

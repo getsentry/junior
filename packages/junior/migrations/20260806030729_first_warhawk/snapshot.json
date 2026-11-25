@@ -1,0 +1,690 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "c4c6f36f-b111-43fc-ac7c-d7175332e4bd",
+  "prevIds": ["0c1e6611-1101-44ef-9c06-e6e389a0a435"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_agent_bindings"],
+      "writes": [
+        "s|tbl|public.junior_agent_bindings",
+        "n|tbl|public.junior_agent_bindings",
+        "e|tbl|public.junior_agent_bindings",
+        "n|rel|public.junior_agent_bindings",
+        "n|type|public.junior_agent_bindings",
+        "n|rel|public.junior_agent_bindings_parent_conversation_id_name_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_agent_invocations"],
+      "writes": [
+        "s|tbl|public.junior_agent_invocations",
+        "n|tbl|public.junior_agent_invocations",
+        "e|tbl|public.junior_agent_invocations",
+        "n|rel|public.junior_agent_invocations",
+        "n|type|public.junior_agent_invocations",
+        "n|rel|public.junior_agent_invocations_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_agent_bindings",
+        "junior_agent_bindings_child_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_agent_bindings_child_idx",
+        "n|idx|public.junior_agent_bindings_child_idx",
+        "e|idx|public.junior_agent_bindings_child_idx",
+        "n|rel|public.junior_agent_bindings_child_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_bindings",
+        "n|sch|public",
+        "n|col|public.junior_agent_bindings.child_conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_agent_invocations",
+        "junior_agent_invocations_child_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_agent_invocations_child_idx",
+        "n|idx|public.junior_agent_invocations_child_idx",
+        "e|idx|public.junior_agent_invocations_child_idx",
+        "n|rel|public.junior_agent_invocations_child_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_invocations",
+        "n|sch|public",
+        "n|col|public.junior_agent_invocations.child_conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_agent_invocations",
+        "junior_agent_invocations_mailbox_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_agent_invocations_mailbox_idx",
+        "n|idx|public.junior_agent_invocations_mailbox_idx",
+        "e|idx|public.junior_agent_invocations_mailbox_idx",
+        "n|rel|public.junior_agent_invocations_mailbox_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_invocations",
+        "n|sch|public",
+        "n|col|public.junior_agent_invocations.mailbox_status",
+        "n|col|public.junior_agent_invocations.created_at"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_agent_bindings"],
+      "writes": [
+        "s|fk|public.junior_agent_bindings.junior_agent_bindings_parent_conversation_id_junior_conversatio",
+        "n|fk|public.junior_agent_bindings.junior_agent_bindings_parent_conversation_id_junior_conversatio",
+        "e|fk|public.junior_agent_bindings.junior_agent_bindings_parent_conversation_id_junior_conversatio",
+        "n|con|public.junior_agent_bindings.junior_agent_bindings_parent_conversation_id_junior_conversatio"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_bindings",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_agent_bindings.parent_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_agent_bindings"],
+      "writes": [
+        "s|fk|public.junior_agent_bindings.junior_agent_bindings_child_conversation_id_junior_conversation",
+        "n|fk|public.junior_agent_bindings.junior_agent_bindings_child_conversation_id_junior_conversation",
+        "e|fk|public.junior_agent_bindings.junior_agent_bindings_child_conversation_id_junior_conversation",
+        "n|con|public.junior_agent_bindings.junior_agent_bindings_child_conversation_id_junior_conversation"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_bindings",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_agent_bindings.child_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_agent_invocations"],
+      "writes": [
+        "s|fk|public.junior_agent_invocations.junior_agent_invocations_parent_conversation_id_junior_conversa",
+        "n|fk|public.junior_agent_invocations.junior_agent_invocations_parent_conversation_id_junior_conversa",
+        "e|fk|public.junior_agent_invocations.junior_agent_invocations_parent_conversation_id_junior_conversa",
+        "n|con|public.junior_agent_invocations.junior_agent_invocations_parent_conversation_id_junior_conversa"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_invocations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_agent_invocations.parent_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_agent_invocations"],
+      "writes": [
+        "s|fk|public.junior_agent_invocations.junior_agent_invocations_child_conversation_id_junior_conversat",
+        "n|fk|public.junior_agent_invocations.junior_agent_invocations_child_conversation_id_junior_conversat",
+        "e|fk|public.junior_agent_invocations.junior_agent_invocations_child_conversation_id_junior_conversat",
+        "n|con|public.junior_agent_invocations.junior_agent_invocations_child_conversation_id_junior_conversat"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_invocations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_agent_invocations.child_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_agent_bindings",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_agent_invocations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "parent_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "child_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "invocation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "parent_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "child_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "agent_name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "input",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "actor_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "credential_context_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "source_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "destination_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "destination_visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "reasoning_level",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "mailbox_status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "result",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "error_message",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "terminal_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "junior_agent_bindings_child_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "child_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_child_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "child_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_mailbox_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "mailbox_status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "junior_agent_bindings_parent_conversation_id_junior_conversatio",
+        "nameExplicit": false,
+        "columns": ["parent_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "junior_agent_bindings_child_conversation_id_junior_conversation",
+        "nameExplicit": false,
+        "columns": ["child_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_parent_conversation_id_junior_conversa",
+        "nameExplicit": false,
+        "columns": ["parent_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_child_conversation_id_junior_conversat",
+        "nameExplicit": false,
+        "columns": ["child_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_bindings",
+        "name": "junior_agent_bindings_parent_conversation_id_name_pk",
+        "columns": ["parent_conversation_id", "name"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_pkey",
+        "columns": ["invocation_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

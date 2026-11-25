@@ -1,0 +1,103 @@
+{
+  "type": "base",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "46c07fba-dfdc-49a7-98ee-6ab1a36022d0",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_google_accounts"],
+      "writes": [
+        "s|tbl|public.junior_google_accounts",
+        "n|tbl|public.junior_google_accounts",
+        "e|tbl|public.junior_google_accounts",
+        "n|rel|public.junior_google_accounts",
+        "n|type|public.junior_google_accounts",
+        "n|rel|public.junior_google_accounts_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "ddl": [
+    {
+      "schema": "public",
+      "name": "junior_google_accounts",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "account_email",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "refresh_token",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "scope",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "connected_by",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "connected_at_ms",
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_google_accounts",
+      "name": "junior_google_accounts_pkey",
+      "columns": ["account_email"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    }
+  ]
+}

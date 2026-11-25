@@ -268,16 +268,16 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toEqual(
         expect.arrayContaining([
-          "spawnAgent",
+          "startAgent",
           "stopAgent",
           "archiveAgent",
-          "listAgents",
           "messageAgent",
-          "reply",
           "reportBlocked",
         ]),
       );
       expect(person.disabled).not.toContain("addInboxItem");
+      // Finding agents and Conversations reports nothing to the parent.
+      expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
@@ -286,10 +286,18 @@ describe("static tool registry", () => {
           "updateInboxItem",
         ]),
       );
-      expect(agent.disabled).not.toContain("spawnAgent");
-      expect(agent.disabled).not.toContain("reply");
+      expect(agent.disabled).not.toContain("startAgent");
+      // A child agent starts child agents, so it sees their arguments.
+      expect(
+        Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
+      ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
+      // Final text is the reply of every Thread Turn, so no Turn lists
+      // `reply`.
+      for (const turn of [person, agent]) {
+        expect(turn.piTools.map((tool) => tool.name)).not.toContain("reply");
+      }
 
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
+      for (const name of ["startAgent", "messageAgent"]) {
         await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );
@@ -344,7 +352,7 @@ describe("static tool registry", () => {
     expect(person.disabled).toEqual(
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
-    expect(person.disabled).not.toContain("spawnAgent");
+    expect(person.disabled).not.toContain("startAgent");
     expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
@@ -401,6 +409,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
+        "setSpaceConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",

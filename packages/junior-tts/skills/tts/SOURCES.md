@@ -8,6 +8,7 @@ Reviewed 2026-09-28.
 - `packages/junior-datadog/plugin.yaml`: existing host-managed API-header pattern.
 - `packages/junior/src/chat/plugins/auth/api-headers-broker.ts`: host-only secret resolution and missing-key behavior.
 - `packages/junior/src/chat/pi/gateway-auth.ts`: core prefers OIDC. This plugin does not import core internals or claim that it shares that path.
+- 2026-11-24 voice change: the `Achird` voice and intern delivery picked for Junior's podcast. `junior-v2` adapts that delivery for general narration and keeps the plain-delivery cue. It replaces `junior-v1` (`Puck`).
 - Repo skill validator and skill-writer guidance: registration and artifact layout.
 
 Class: integration-documentation. Shape: script-backed workflow. Plain instructions alone were rejected because paid requests and base64 audio need consistent validation. No SDK or new core runtime contract is needed. The script requires Junior's host proxy; it is not a standalone credential client.
