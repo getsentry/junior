@@ -427,7 +427,14 @@ export async function removeIssueAssignees(
       },
     );
   } catch (error) {
-    if (error instanceof GitHubRequestError && error.status === 404) return;
+    // GitHub answers 410 for a deleted issue, and 404 when the issue or its
+    // repository is out of reach.
+    if (
+      error instanceof GitHubRequestError &&
+      (error.status === 404 || error.status === 410)
+    ) {
+      return;
+    }
     throw error;
   }
 }
