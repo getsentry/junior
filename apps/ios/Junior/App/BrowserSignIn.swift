@@ -12,6 +12,14 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
 
   func run(_ oauth: OAuthClient) async throws -> OAuthCredentials {
     let signIn = try await oauth.begin(redirectURI: "\(Self.callbackScheme)://oauth/callback")
+    #if DEBUG
+      // UI tests sign in to the mock server, which approves at once. The
+      // sheet's view service is slow to start on CI, and a relaunch while it
+      // goes away can hang, so they read the redirect without the sheet.
+      if LaunchOptions.current.signInWithoutSheet {
+        return try await oauth.finish(signIn, callback: Self.redirect(from: signIn.authorizeURL))
+      }
+    #endif
     defer { session = nil }
     let callback: URL = try await withCheckedThrowingContinuation { continuation in
       let once = ResumeOnce(continuation)
@@ -31,6 +39,18 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
     return try await oauth.finish(signIn, callback: callback)
   }
 
+  #if DEBUG
+    /// The `junior-ios` URL that the authorize page redirects to, read
+    /// without following it.
+    private static func redirect(from authorizeURL: URL) async throws -> URL {
+      let (_, response) = try await URLSession.shared.data(from: authorizeURL, delegate: StopAtRedirect())
+      guard let location = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location"),
+        let callback = URL(string: location), callback.scheme == callbackScheme
+      else { throw JuniorAPIError.signIn("The sign-in did not return to the app.") }
+      return callback
+    }
+  #endif
+
   nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
     MainActor.assumeIsolated {
       UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
@@ -38,6 +58,18 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
     }
   }
 }
+
+#if DEBUG
+  /// Ends a request at its first redirect, so the response is the redirect.
+  private final class StopAtRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+      _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+      newRequest request: URLRequest
+    ) async -> URLRequest? {
+      nil
+    }
+  }
+#endif
 
 /// Resumes a continuation at most once, for callbacks that race.
 private final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
