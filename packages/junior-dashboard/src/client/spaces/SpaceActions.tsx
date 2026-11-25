@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { Ellipsis } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import type { SpaceReport } from "@sentry/junior/api/schema";
 
@@ -20,8 +21,13 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { useToastManager } from "../components/ui/toast";
+import {
+  conversationDetailQueryKey,
+  type ConversationSnapshot,
+} from "../conversations/queries";
 import { DashboardApiError } from "../http";
 import { inboxViewPath } from "../inbox/inboxModel";
+import { conversationIdFromPath } from "../shell/inboxMobileHeader";
 import { useArchiveSpace, useSpaceMembership } from "./queries";
 import { spacePath } from "./spaceRoutes";
 
@@ -46,14 +52,27 @@ export function useSpaceActions(space: SpaceReport) {
   const archive = useArchiveSpace(space.id);
   const [editing, setEditing] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
-  const onSpacePage = pathname === spacePath(space.id);
+  const queryClient = useQueryClient();
+  // Whether the open page shows the Space or a Conversation in it. Read it
+  // before a leave, which drops the cached details of a private Space.
+  const pageInSpace = () => {
+    if (pathname === spacePath(space.id)) return true;
+    const conversationId = conversationIdFromPath(pathname);
+    return (
+      conversationId !== undefined &&
+      queryClient.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      )?.space?.id === space.id
+    );
+  };
   // Leaving hides the menu, which drops `mutate` callbacks, so this waits
   // on the promise. A private Space is not readable after the viewer leaves,
   // and the API says why the last member can't leave one.
-  const leave = () =>
-    membership.mutateAsync(false).then(
+  const leave = () => {
+    const leavesPage = space.visibility === "private" && pageInSpace();
+    return membership.mutateAsync(false).then(
       () => {
-        if (space.visibility === "private" && onSpacePage)
+        if (leavesPage)
           void navigate(inboxViewPath("inbox"), { replace: true });
       },
       (error: Error) =>
@@ -65,6 +84,7 @@ export function useSpaceActions(space: SpaceReport) {
           type: "error",
         }),
     );
+  };
   return {
     rows: (
       <>
