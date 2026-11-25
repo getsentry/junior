@@ -394,13 +394,17 @@ describe("child agent identity and concurrency", () => {
           expect.objectContaining({ relation: "child", ...failingChild }),
         ]),
       );
-      // A child agent sees itself, its parent, and its sibling.
-      await expect(
-        createListAgentsTool({
-          conversationId: successful.childConversationId,
-          parentConversationId,
-        }).execute!({}, {}),
-      ).resolves.toMatchObject({
+      // Child results arrive as new tasks, so a child offers no Watch.
+      for (const agent of listed.agents) {
+        expect(agent).not.toHaveProperty("subscribable");
+      }
+      // A child agent sees itself, its parent, and its sibling. Only the
+      // sibling's updates do not reach it, so only the sibling offers a Watch.
+      const team = await createListAgentsTool({
+        conversationId: successful.childConversationId,
+        parentConversationId,
+      }).execute!({}, {});
+      expect(team).toMatchObject({
         agents: [
           { relation: "self", ...successfulChild },
           {
@@ -409,9 +413,20 @@ describe("child agent identity and concurrency", () => {
             // Both child results wait in the parent mailbox.
             status: "pending",
           },
-          { relation: "sibling", ...failingChild },
+          {
+            relation: "sibling",
+            ...failingChild,
+            subscribable: {
+              identifier: failing.childConversationId,
+              namespace: "junior",
+              suggested_events: ["agent.update"],
+              type: "conversation",
+            },
+          },
         ],
       });
+      expect(team.agents[0]).not.toHaveProperty("subscribable");
+      expect(team.agents[1]).not.toHaveProperty("subscribable");
     } finally {
       await harness.close();
     }
