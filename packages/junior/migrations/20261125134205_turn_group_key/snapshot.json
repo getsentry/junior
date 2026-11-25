@@ -1,0 +1,75 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "cb8188fa-94eb-4816-83cf-a5b6977c7890",
+  "prevIds": ["ea6ceff2-dd47-41a2-a324-6ccf73ce5535"],
+  "footprints": [
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_turns"],
+      "writes": [
+        "s|fk|public.junior_turns.junior_turns_actor_identity_id_junior_identities_id_fkey",
+        "n|fk|public.junior_turns.junior_turns_actor_identity_id_junior_identities_id_fkey",
+        "e|fk|public.junior_turns.junior_turns_actor_identity_id_junior_identities_id_fkey",
+        "n|con|public.junior_turns.junior_turns_actor_identity_id_junior_identities_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_turns",
+        "n|sch|public",
+        "e|col|public.junior_turns.actor_identity_id"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_turn_inbox", "group_key"],
+      "writes": [
+        "s|col|public.junior_turn_inbox.group_key",
+        "n|col|public.junior_turn_inbox.group_key",
+        "e|col|public.junior_turn_inbox.group_key"
+      ],
+      "reads": ["n|tbl|public.junior_turn_inbox", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_turns",
+        "actor_identity_id"
+      ],
+      "writes": [
+        "s|col|public.junior_turns.actor_identity_id",
+        "n|col|public.junior_turns.actor_identity_id",
+        "e|col|public.junior_turns.actor_identity_id"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turn_inbox",
+        "name": "group_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_turns\",\"actor_identity_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_turns\",\"junior_turns_actor_identity_id_junior_identities_id_fkey\"]"
+    }
+  ]
+}
