@@ -148,6 +148,9 @@ function locationColumns() {
     destinationProvider: juniorDestinations.provider,
     destinationProviderId: juniorDestinations.providerDestinationId,
     destinationVisibility: juniorDestinations.visibility,
+    // A root keeps the visibility it was created with, even after its
+    // Destination changes, so a public Location can hold private roots.
+    rootVisibility: juniorConversations.visibility,
   };
 }
 
@@ -159,6 +162,7 @@ function locationGroupBy() {
     juniorDestinations.provider,
     juniorDestinations.providerDestinationId,
     juniorDestinations.visibility,
+    juniorConversations.visibility,
   ] as const;
 }
 
@@ -172,14 +176,19 @@ type LocationAggregateRow = AggregateRow & {
     | (typeof juniorDestinations.$inferSelect)["visibility"]
     | null;
   firstSeenAt: Date;
+  rootVisibility: (typeof juniorConversations.$inferSelect)["visibility"];
   lastSeenAt: Date;
 };
 
-/** Admit only complete persisted-public destinations as named locations. */
+/**
+ * Admit only public roots at complete persisted-public destinations as named
+ * locations.
+ */
 function locationFromAggregate(
   row: LocationAggregateRow,
 ): LocationSummaryReport | undefined {
   if (
+    row.rootVisibility !== "public" ||
     row.destinationVisibility !== "public" ||
     !row.destinationId ||
     !row.destinationProvider ||

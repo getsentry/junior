@@ -105,6 +105,22 @@ describe("locations API", () => {
             updatedAt: now,
           }),
         );
+      // A root keeps the visibility it was created with, so a private root
+      // at a channel that later went public stays in private activity.
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values(
+          buildJuniorSqlConversation({
+            conversationId: "slack:C1:was-private",
+            destinationId: destination?.id,
+            visibility: "private",
+            durationMs: 1_000,
+            createdAt: now,
+            lastActivityAt: now,
+            updatedAt: now,
+          }),
+        );
       await fixture.sql
         .db()
         .insert(juniorConversations)
@@ -135,13 +151,13 @@ describe("locations API", () => {
       expect(
         directory.locations.find((location) => location.label === "Dashboard"),
       ).toMatchObject({ conversations: 2, id: "dashboard", provider: "local" });
-      expect(directory.privateActivity.conversations).toBe(2);
+      expect(directory.privateActivity.conversations).toBe(3);
       expect(directory.activityDays).toHaveLength(90);
       expect(
         directory.activityDays.find((day) => day.date === "2026-06-15"),
       ).toEqual({
         date: "2026-06-15",
-        privateConversations: 2,
+        privateConversations: 3,
         publicConversations: 5_003,
       });
       expect(directory.windowStart).toBe("2026-03-18T00:00:00.000Z");
