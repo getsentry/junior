@@ -57,10 +57,8 @@ also wake a Conversation or run an Event automation.
   instead, even where the repo allows merging without one.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
-- GitHub is the source of truth for GitHub state. Junior reads that state
-  from GitHub through a cache, and the cache keeps the last good value for
-  when GitHub is down. Junior does not copy GitHub state into its tables,
-  unless the value is too expensive to get from GitHub.
+- GitHub is the source of truth for GitHub state. When GitHub is down,
+  Junior shows the last state that it read.
 
 ## Gaps
 

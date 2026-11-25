@@ -1,0 +1,20 @@
+id: conversation-visibility-one-writer
+language: TypeScript
+severity: error
+message: "Only packages/junior/src/chat/conversations/sql/privacy.ts may change a Conversation's visibility, so every row of a tree keeps its root's value. Call setConversationVisibility or fillMissingTreeVisibility."
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  - packages/junior/src/chat/conversations/sql/privacy.ts
+rule:
+  pattern: $DB.set($VALUES)
+  has:
+    stopBy: end
+    any:
+      - kind: pair
+        regex: '^visibility\s*:'
+      - kind: shorthand_property_identifier
+        regex: ^visibility$
+constraints:
+  DB:
+    regex: juniorConversations

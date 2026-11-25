@@ -45,9 +45,9 @@ its rows.
 
 **Answering**
 
-- `who-answers` Only an assignee answers a private item. Anyone who can
-  see a public question can answer it, but only an assignee dismisses or
-  takes it.
+- `who-answers` Only an assignee answers a private item that has
+  assignees. Anyone who can see a public question can answer it, but only
+  an assignee dismisses or takes it.
 - `answer-authority` An answer carries the authority of the person who
   gives it. Junior, an Event, or a trigger never answers or approves for a
   person.
@@ -182,6 +182,12 @@ its rows.
 - `todo-item`: a "To do for you" item appears only when its To-do changes.
   A person who can see the Conversation only after that gets no item until
   the To-do changes again.
+- `todo-private`: in a private Space, the Inbox lists and counts a "To do
+  for you" item by Participants and Destination, not by Space membership.
+  A Participant who is not a member sees it but cannot open it, and a
+  member who is not a Participant does not see it.
+- `never-blocks`: a typed message leaves a question for Everyone, or a
+  question with no assignees, open. Only its card or the Inbox answers it.
 - `notice-never-asks`: an agent or a plugin can add a notice that names no
   next step, and the Inbox shows it in FYI.
 - `same-asks`: an Automation alert shows only in the dashboard Inbox. For a

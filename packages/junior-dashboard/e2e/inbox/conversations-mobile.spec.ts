@@ -33,7 +33,6 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(
         "slack:CQA123:1770003600.000200",
       )}`,
-      { waitUntil: "networkidle" },
     );
     await expect(
       page.getByRole("heading", { name: "Investigate checkout latency" }),

@@ -31,7 +31,7 @@ Register `sentryPlugin()` so Junior loads the webhook route.
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
 ### Conversation defaults
 
@@ -40,7 +40,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default Sentry organization slug when a request does not name one.
 
-- **Define:** `jr-rpc config set sentry.org <organization>`
+- **Define:** ask Junior to set `sentry.org`
 - **Install-wide default:** `configDefaults["sentry.org"]`
 - **Required:** No
 - **Environment override:** None
@@ -52,7 +52,7 @@ Default Sentry organization slug when a request does not name one.
 
 Default Sentry project slug when a request does not name one. With `sentry.org`, Junior also links the issue short ids of this project in its replies, such as `JUNIOR-3ZK` for the `junior` project.
 
-- **Define:** `jr-rpc config set sentry.project <project>`
+- **Define:** ask Junior to set `sentry.project`
 - **Install-wide default:** `configDefaults["sentry.project"]`
 - **Required:** No
 - **Environment override:** None
