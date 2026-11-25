@@ -140,18 +140,19 @@ export function useSpaceMembership(spaceId: string) {
         ? put(spaceSchema, `${spaceApiPath(spaceId)}/members/me`, {})
         : del(spaceSchema, `${spaceApiPath(spaceId)}/members/me`),
     onSuccess: (space) => {
-      // A former member of a private Space can't read its Lead, so drop the
-      // cached Lead rather than keep it for a refetch that fails.
+      // A former member can't read a private Space, so drop everything
+      // cached for it. A later visit then reads it again and gets not found.
       if (space.visibility === "private" && !space.viewerIsMember) {
         const lead = queryClient.getQueryData<{ conversationId: string }>(
           spaceLeadKey(spaceId),
         );
-        queryClient.removeQueries({ queryKey: spaceLeadKey(spaceId) });
+        queryClient.removeQueries({ queryKey: spaceKey(spaceId) });
         if (lead) {
           queryClient.removeQueries({
             queryKey: conversationDetailQueryKey(lead.conversationId),
           });
         }
+        return queryClient.invalidateQueries({ queryKey: memberSpacesKey });
       }
       return Promise.all([
         storeSpace(queryClient, space),
