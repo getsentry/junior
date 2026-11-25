@@ -55,9 +55,12 @@ const ISSUES: Record<string, Record<string, unknown>> = {
  */
 function fakeLinearMcp(access: Record<string, string[]>) {
   const calls: string[] = [];
+  // While Linear is down, every MCP request fails.
+  const linear = { down: false };
   mswServer.use(
     http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
     http.post(MCP_URL, async ({ request }) => {
+      if (linear.down) return new HttpResponse(null, { status: 503 });
       const person = (request.headers.get("authorization") ?? "").replace(
         /^Bearer (\w+)-access$/,
         "$1",
@@ -123,7 +126,7 @@ function fakeLinearMcp(access: Record<string, string[]>) {
     });
   }
 
-  return { calls, connect };
+  return { calls, connect, linear };
 }
 
 function signedInApi(viewer: User) {
@@ -258,6 +261,33 @@ describe("Linear issue link cards", () => {
       { ...before, subjectId: ISSUE_UUID },
     ]);
     expect(await savedTicket(otherConversationId)).toEqual(otherBefore);
+  });
+
+  it("shows the last card with when it was fetched when Linear fails after the card's TTL", async () => {
+    const { connect, linear } = fakeLinearMcp({ alice: ["ENG-123"] });
+    const alice = testViewer("alice@example.com");
+    await connect(alice, "alice");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const start = Date.now();
+      const { objects: fresh } = await readCards(alice, [ISSUE_URL]);
+      expect(fresh.map((card) => card.object.title)).toEqual([
+        "Fix login redirect",
+      ]);
+      expect(fresh[0]?.object).not.toHaveProperty("fetchedAt");
+
+      linear.down = true;
+      vi.setSystemTime(start + 10 * 60_000);
+      const { objects: stale } = await readCards(alice, [ISSUE_URL]);
+      expect(stale.map((card) => card.object)).toMatchObject([
+        {
+          fetchedAt: new Date(start).toISOString(),
+          title: "Fix login redirect",
+        },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows a moved issue from a link with its old identifier, and rekeys Tickets saved under that identifier", async () => {
