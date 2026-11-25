@@ -399,7 +399,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
-        "setSpaceConfiguration",
+        "setConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",
@@ -408,7 +408,9 @@ describe("static tool registry", () => {
         "watchTimer",
       ].sort(),
     );
-    expect(person.disabled).toEqual([]);
+    // This Lead has no Slack channel and no Space, so it has no
+    // configuration to change.
+    expect(person.disabled).toEqual(["setConfiguration"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
