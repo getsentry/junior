@@ -16,6 +16,10 @@ import {
 } from "@/api/schema";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import {
+  getConfigDefaults,
+  setConfigDefaults,
+} from "@/chat/configuration/defaults";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type {
   ConfigEntry,
@@ -480,6 +484,26 @@ describe("Spaces API", () => {
       space: { entries: [{ key: "sentry.org", value: "getsentry" }] },
     });
     expect(configuration).toEqual({ "sentry.org": "getsentry" });
+    // Removing it brings back the install default for the rest of the Turn.
+    const previousDefaults = getConfigDefaults();
+    setConfigDefaults({ "sentry.org": "install-org" });
+    try {
+      await setting(
+        "spaces-config-ana@example.com",
+        inSpace,
+        { key: "sentry.org", value: null },
+        { configuration, locationConfiguration: channel },
+      );
+    } finally {
+      setConfigDefaults(previousDefaults);
+    }
+    expect(configuration).toEqual({ "sentry.org": "install-org" });
+    await setting(
+      "spaces-config-ana@example.com",
+      inSpace,
+      { key: "sentry.org", value: "getsentry" },
+      { configuration, locationConfiguration: channel },
+    );
     await channel.set({ key: "sentry.org", value: "channel-org" });
     const read_ = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get sentry.org",

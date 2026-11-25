@@ -10,6 +10,7 @@ import {
   setSpaceConfiguration,
   unsetSpaceConfiguration,
 } from "@/chat/spaces/configuration";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { readSpace } from "@/chat/spaces/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -131,10 +132,12 @@ export function createSetConfigurationTool(
           });
         }
       }
-      // Later tools in this Turn read the new value.
+      // Later tools in this Turn read the new value. A removed key falls
+      // back to the install default, as it does in the next Turn.
       if (context.configuration) {
-        if (value === null) delete context.configuration[key];
-        else context.configuration[key] = value;
+        const next = value ?? getConfigDefaults()[key];
+        if (next === undefined) delete context.configuration[key];
+        else context.configuration[key] = next;
       }
 
       const entries = (rows: { key: string; value: unknown }[]) =>
