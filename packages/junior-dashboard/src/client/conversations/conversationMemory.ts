@@ -3,6 +3,7 @@ import * as z from "zod";
 
 import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
+import type { ShowTranscriptRow } from "./transcriptBottomPinning";
 import { markTranscriptRow } from "./useMessageLinkJump";
 
 const conversationMemoryListSchema = z
@@ -83,7 +84,11 @@ export function conversationMemoryEntries(
  * this is the last row before it: the prompt of a recall, or the reply of a
  * capture. Matches `rowIndexBeforeSeq`, which keeps that row mounted.
  */
-export function showMemoryRow(root: Element | null, seq: number) {
+export function showMemoryRow(
+  root: Element | null,
+  seq: number,
+  showRow: ShowTranscriptRow,
+) {
   // Only the rows of this Conversation's transcript count.
   const transcript = root?.querySelector(
     '[aria-label="Conversation transcript"]',
@@ -102,7 +107,7 @@ export function showMemoryRow(root: Element | null, seq: number) {
     rowSeq = candidateSeq;
   }
   if (!row) return;
-  row.scrollIntoView({ block: "center" });
+  showRow(row, { instant: true });
   markTranscriptRow(row);
 }
 

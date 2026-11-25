@@ -424,6 +424,7 @@ function githubToolsContext(input?: {
     request: Request;
   }> = [];
   return {
+    codeChanges: dbFixture.codeIndex.codeChanges,
     db,
     log: pluginLog,
     plugin: { name: "github" },
