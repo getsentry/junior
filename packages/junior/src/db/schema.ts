@@ -48,6 +48,9 @@ import {
   juniorSpaceMembers,
   juniorSpaces,
 } from "./schema/spaces";
+import { juniorTurnInbox } from "./schema/turn-inbox";
+import { juniorTurnOutbox } from "./schema/turn-outbox";
+import { juniorTurns } from "./schema/turns";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -94,6 +97,9 @@ export {
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -141,6 +147,9 @@ export const juniorSqlSchema = {
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
