@@ -310,7 +310,13 @@ async function leavePluginItemOnDismiss(
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
   if (outcome === "last") return undefined;
-  return await readInboxItemForUser(user, item.id);
+  // Their role may have been their only way to see the item, and they just
+  // left it, so this read does not check their access again.
+  const left = await getInboxItem(getDb(), item.id);
+  if (!left) {
+    throw new InboxItemActionError("not_found", "Inbox item not found.");
+  }
+  return left;
 }
 
 /**
