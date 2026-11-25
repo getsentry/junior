@@ -6,6 +6,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import * as z from "zod";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { createAgentSandbox } from "@/chat/agent/sandbox";
+import { getDb } from "@/chat/db";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -19,6 +20,7 @@ import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { getWorkspace } from "@/chat/workspaces/store";
 import type {
   StepTools,
   ToolDefinition,
@@ -92,10 +94,15 @@ export async function turnTools(
     throw new Error(`Turn ${turn.turnId} has no inputs`);
   }
   const { actor } = turnInputPayloadSchema.parse(latest.payload);
+  const sandboxRef = getPersistedSandboxState(
+    await getPersistedThreadState(turn.conversationId),
+  );
   const sandbox = createAgentSandbox({
-    sandboxRef: getPersistedSandboxState(
-      await getPersistedThreadState(turn.conversationId),
-    ),
+    sandboxRef,
+    // A sandbox that must be made again keeps its Workspace, as main's does.
+    workspace: sandboxRef?.workspaceId
+      ? await getWorkspace(getDb(), sandboxRef.workspaceId)
+      : undefined,
     skills: [],
     traceContext: { conversationId: turn.conversationId },
     conversationId: turn.conversationId,
