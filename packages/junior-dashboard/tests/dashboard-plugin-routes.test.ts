@@ -235,10 +235,18 @@ describe("dashboard plugin routes", () => {
     // The iOS app sends its session as a bearer token, with no `Origin`.
     const ios = dashboard("bearer");
     expect((await ios.fetch(write({}))).status).toBe(204);
-    // A bearer session cannot open pages or manage personal tokens.
-    expect(
-      (await ios.fetch(new Request("http://localhost/conversations"))).status,
-    ).toBe(302);
+    // A bearer session cannot open pages or manage personal tokens. Login
+    // asks for Google sign-in instead of sending it back to the page.
+    const page = await ios.fetch(new Request("http://localhost/conversations"));
+    expect(page.status).toBe(302);
+    const login = await ios.fetch(
+      new Request(
+        new URL(page.headers.get("location") ?? "", "http://localhost"),
+      ),
+    );
+    expect(login.headers.get("location")).toMatch(
+      /^https:\/\/accounts\.google\.com\//,
+    );
     expect(
       (await ios.fetch(new Request("http://localhost/api/personal-tokens")))
         .status,

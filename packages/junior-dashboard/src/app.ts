@@ -450,8 +450,13 @@ export function createDashboardApp(
     if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
     }
+    // A bearer session cannot open pages, so sending it back would loop.
     const session = await auth.getSession(c.req.raw);
-    if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
+    if (
+      session &&
+      session.credential !== "bearer" &&
+      dashboardSessionIsAuthorized(session, allowedDomains)
+    ) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(
