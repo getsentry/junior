@@ -348,8 +348,15 @@ export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
         ? await authenticateSignInSession(token)
         : undefined;
       if (!session) return null;
+      // The transport must match the client the session was made for. A
+      // stolen app token sent as a cookie must not reach cookie-only routes,
+      // such as personal tokens.
+      const credential = cookieToken ? "cookie" : "bearer";
+      if ((session.client === "web") !== (credential === "cookie")) {
+        return null;
+      }
       return {
-        credential: cookieToken ? "cookie" : "bearer",
+        credential,
         // Only a verified Google email creates a session.
         user: { ...session.user, emailVerified: true },
       };
