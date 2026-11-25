@@ -199,6 +199,8 @@ function searchMockUsers(
   members: ReadonlySet<string>,
 ): UserSearchResult[] {
   const whole = query.q.toLowerCase().replace(/^@+/, "");
+  // Like the API, a bare "@" matches nobody.
+  if (!whole) return [];
   const rank = (user: UserSearchResult) => {
     const name = (user.fullName ?? "").toLowerCase();
     const fields = [name, user.slackUserName ?? "", user.email];

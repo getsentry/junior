@@ -67,7 +67,11 @@ export function PeoplePicker(props: {
   const [chosen, setChosen] = useState<UserSearchResult[]>([]);
   const [active, setActive] = useState(-1);
   const [adding, setAdding] = useState(false);
-  const [failed, setFailed] = useState<string[]>([]);
+  // User ids that the last add failed for. Each one stays chosen.
+  const [failedIds, setFailedIds] = useState<string[]>([]);
+  const failed = chosen
+    .filter((user) => failedIds.includes(user.userId))
+    .map(pickerName);
   const search = useUserSearch(props.target, query.trim());
   const options = pickerOptions(search.users, chosen);
   // A new result list highlights its first person who can be chosen.
@@ -89,10 +93,11 @@ export function PeoplePicker(props: {
   }, [listed, options.length]);
 
   const choose = (user: UserSearchResult) => {
-    if (user.isMember || full) return;
+    // A person chosen while an add runs would not be in that add.
+    if (user.isMember || full || adding) return;
     setChosen((current) => [...current, user]);
     setQuery("");
-    setFailed([]);
+    setFailedIds([]);
   };
   const unchoose = (userId: string) =>
     setChosen((current) => current.filter((user) => user.userId !== userId));
@@ -115,7 +120,7 @@ export function PeoplePicker(props: {
       return;
     }
     setChosen(left);
-    setFailed(left.map(pickerName));
+    setFailedIds(left.map((user) => user.userId));
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
