@@ -120,11 +120,10 @@ export function assertNoObjectLinkConflicts(
 }
 
 /** Return the link type whose most specific filter claims the URL. */
-export function findObjectLinkType(
-  linkTypes: readonly ObjectLinkType[],
-  url: URL,
-): ObjectLinkType | undefined {
-  let best: { linkType: ObjectLinkType; specificity: number[] } | undefined;
+export function findObjectLinkType<
+  T extends { filters: readonly ObjectLinkFilter[] },
+>(linkTypes: readonly T[], url: URL): T | undefined {
+  let best: { linkType: T; specificity: number[] } | undefined;
   for (const linkType of linkTypes) {
     for (const filter of linkType.filters) {
       if (!objectLinkFilterMatches(filter, url)) continue;

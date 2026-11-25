@@ -4,18 +4,20 @@ import {
   type ConversationSearch,
 } from "@/chat/conversations/search";
 import { getDb } from "@/chat/db";
+import { pluginSubjectKind } from "@/chat/inbox-items/subjects";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
 const WORKING_STATUSES = ["pending", "running", "paused"] as const;
 
 /**
- * Let a plugin tool find other Conversations by Annotation key. The current
- * Conversation is the requester, so the access rules of `searchConversations`
- * apply and its own tree is never a result.
+ * Let a plugin tool find other Conversations by the subject of an object of
+ * the plugin. The current Conversation is the requester, so the access rules
+ * of `searchConversations` apply and its own tree is never a result.
  */
 export function createPluginConversations(
   conversationId: string,
+  plugin: string,
 ): PluginConversationToolContext {
   return {
     async search(input) {
@@ -23,7 +25,15 @@ export function createPluginConversations(
       // A root is not listed for the Annotation of its child agent, so its
       // status does not stand for the child's work.
       const search: ConversationSearch = {
-        annotation: input.annotation,
+        annotation: {
+          references: [],
+          subjects: [
+            {
+              id: input.subject.id,
+              kind: pluginSubjectKind(plugin, input.subject.kind),
+            },
+          ],
+        },
         annotationOnSelf: true,
         includeArchived: false,
         limit,

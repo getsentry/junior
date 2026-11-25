@@ -57,6 +57,7 @@ function pullRequestResponse() {
       draft: false,
       head: { ref: "feat/events", sha: HEAD_SHA },
       html_url: "https://github.com/getsentry/junior/pull/691",
+      id: 2900691,
       merged: false,
       number: 691,
       state: "open",
@@ -169,8 +170,10 @@ describe("getPullRequest", () => {
 
     const result = await execute();
 
+    // GitHub's id of the pull request, so a renamed repository still finds
+    // the conversations that named it by its old name.
     expect(searches).toEqual([
-      { annotation: "getsentry/junior#691", limit: 10 },
+      { limit: 10, subject: { id: "2900691", kind: "pull_request" } },
     ]);
     expect(result.related_conversations).toEqual([
       {

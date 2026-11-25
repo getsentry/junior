@@ -10,7 +10,10 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
-import { annotatedObjectSchema } from "./object-annotations";
+import {
+  annotatedObjectSchema,
+  type ObjectSubject,
+} from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import * as z from "zod";
@@ -782,16 +785,16 @@ export interface PluginConversationMatch {
 
 export interface PluginConversationToolContext {
   /**
-   * Find other Conversations that have an Annotation with `annotation`, or a
-   * nested key that continues with `#`. A root does not match for the
-   * Annotation of its child agent. Core applies the Conversation access
-   * rules, and leaves out archived Conversations and the current tree.
-   * Working Conversations (pending, running, paused) first, then newest
-   * activity.
+   * Find other Conversations that have an Annotation of one object of this
+   * plugin, by its subject, so a renamed object still matches. A root does
+   * not match for the Annotation of its child agent. Core applies the
+   * Conversation access rules, and leaves out archived Conversations and
+   * the current tree. Working Conversations (pending, running, paused)
+   * first, then newest activity.
    */
   search(input: {
-    annotation: string;
     limit?: number;
+    subject: ObjectSubject;
   }): Promise<PluginConversationMatch[]>;
 }
 

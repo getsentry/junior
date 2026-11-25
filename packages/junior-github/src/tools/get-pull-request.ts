@@ -1,6 +1,6 @@
-import { githubObjectKey } from "../annotations.js";
 import { readDraftReadiness } from "../draft-readiness.js";
 import {
+  type ObjectSubject,
   type PluginConversationToolContext,
   type PluginEgress,
   definePluginTool,
@@ -13,6 +13,10 @@ import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
 import { checkContextState } from "../pull-request-review-again.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
@@ -220,12 +224,12 @@ function truncate(text: string, maxLength: number): string {
  */
 async function readRelatedConversations(
   conversations: PluginConversationToolContext | undefined,
-  annotation: string,
+  subject: ObjectSubject,
 ): Promise<RelatedConversation[]> {
   if (!conversations) return [];
   const matches = await conversations.search({
-    annotation,
     limit: RELATED_CONVERSATIONS_MAX,
+    subject,
   });
   return matches.map((match) => ({
     conversation_id: match.conversationId,
@@ -283,6 +287,9 @@ export const gitHubGetPullRequestTool = definePluginTool({
         draft: z.boolean(),
         head: z.object({ ref: z.string(), sha: commitShaSchema }),
         html_url: z.string(),
+        // GitHub's id of the pull request (`databaseId`), which a rename
+        // keeps.
+        id: z.number().int(),
         merged: z.boolean().optional().default(false),
         number: z.number(),
         state: z.string(),
@@ -293,7 +300,10 @@ export const gitHubGetPullRequestTool = definePluginTool({
       readPullRequestChecks(ctx.egress, repo, providerResult.number),
       readRelatedConversations(
         ctx.conversations,
-        githubObjectKey(repo.ref, providerResult.number),
+        pullRequestSubject(
+          GITHUB_INBOX_SUBJECTS.pullRequest,
+          String(providerResult.id),
+        ),
       ),
     ]);
     // Only a draft can still ask its code owners by being marked ready.

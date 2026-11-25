@@ -1,6 +1,9 @@
 import { and, desc, eq, gte, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { hasAnnotationKey } from "./annotation-filter";
+import {
+  hasMatchingAnnotation,
+  resolveAnnotationFilter,
+} from "./annotation-filter";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -80,9 +83,9 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     }
     if (args.filters.annotation) {
       conditions.push(
-        hasAnnotationKey(
+        hasMatchingAnnotation(
           juniorConversations.conversationId,
-          args.filters.annotation,
+          await resolveAnnotationFilter(db, args.filters.annotation),
         ),
       );
     }
