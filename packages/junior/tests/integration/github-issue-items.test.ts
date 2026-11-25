@@ -437,9 +437,20 @@ describe("the Inbox item of an issue that Junior created", () => {
       expect(card).not.toHaveProperty("rootConversationId");
       expect(card).not.toHaveProperty("addedByLabel");
 
+      // Pat is assigned too. Out's dismiss leaves Pat on the item, though
+      // Out can no longer see it.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["nolink", "out", "pat"], {
+          assignee: { login: "pat" },
+        }),
+      );
       expect(await dismissAs("out@example.com", item!.id)).toBe(200);
       expect(unassigned).toEqual([{ assignees: ["out"] }]);
-      expect(await issueItem()).toMatchObject({ status: "dismissed" });
+      expect(await issueItem()).toMatchObject({
+        assignees: ["pat@example.com"],
+        status: "open",
+      });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
