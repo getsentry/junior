@@ -25,9 +25,8 @@ export function parentResultActor(
 /**
  * Return whether the work of a child agent goes on after a Turn ends: one
  * of its own child agents still works, it has an active Watch or Timer, or
- * input waits to run a later Turn. Its To-dos then stay open after a `done`
- * update, until a result after its work ends. A root has no starter, so its
- * work never goes on here.
+ * input waits to run a later Turn. A `done` update from it is then not its
+ * last word. A root has no starter, so its work never goes on here.
  */
 export async function childWorkGoesOn(
   conversationId: string,
