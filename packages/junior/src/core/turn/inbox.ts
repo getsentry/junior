@@ -23,9 +23,15 @@ import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
  */
 export type TurnInput = {
   conversationId: string;
+  /** Who sent the input. Core stores it and does not read it. */
   actorIdentityId: string;
-  /** Where the input came from. Core compares only its `kind`. */
+  /** Where the input came from. Core stores it and does not read it. */
   source: Source;
+  /**
+   * Which inputs may share a Turn. The host builds it and core only compares
+   * it: an input joins a Turn only when the Turn's inputs have the same key.
+   */
+  groupKey: string;
   /**
    * Where the answer to the input goes, or null when the Conversation history
    * is the only answer. The code that sends the input decides it.
@@ -82,18 +88,32 @@ export async function findTurnDestination(
   return input?.destination ? destinationSchema.parse(input.destination) : null;
 }
 
+/** An input of a Turn, whether the history has read it or not. */
+export type TurnInputRecord = Pick<TurnInput, "payload"> & {
+  inputId: string;
+};
+
+/** Finds every input of a Turn, oldest first. */
+export async function findTurnInputs(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<TurnInputRecord[]> {
+  return executor
+    .db()
+    .select({
+      inputId: juniorTurnInbox.id,
+      payload: juniorTurnInbox.payload,
+    })
+    .from(juniorTurnInbox)
+    .where(eq(juniorTurnInbox.turnId, turnId))
+    .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
+}
+
 const INPUT_EVENT_KEY_PREFIX = "inbox:";
 
-/** The `kind` of an input's Source, read in SQL. */
-export const inputSourceKind = sql<string>`${juniorTurnInbox.source}->>'kind'`;
-
 /** An input of a Turn that no history event has read yet. */
-export type UnreadInput = Pick<
-  TurnInput,
-  "actorIdentityId" | "payload" | "sentAt"
-> & {
+export type UnreadInput = Pick<TurnInput, "groupKey" | "payload" | "sentAt"> & {
   inputId: string;
-  sourceKind: string;
   traceContext: TurnInputTraceContext | null;
   /** When an attempt of the Turn first claimed it with the input unread. */
   attemptedAt: Date | null;
@@ -128,8 +148,7 @@ export async function findUnreadInputs(
   return db
     .select({
       inputId: juniorTurnInbox.id,
-      actorIdentityId: juniorTurnInbox.actorIdentityId,
-      sourceKind: inputSourceKind,
+      groupKey: juniorTurnInbox.groupKey,
       payload: juniorTurnInbox.payload,
       sentAt: juniorTurnInbox.sentAt,
       traceContext: juniorTurnInbox.traceContext,

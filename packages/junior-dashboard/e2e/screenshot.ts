@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
 } from "@playwright/test";
+import { waitForRequestsToEnd } from "./harness";
 
 /** Default desktop browser size for route shots. */
 export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
@@ -50,6 +51,11 @@ const SETTLE_TIMEOUT_MS = 5_000;
 // still. React commits, chart resizes, and scroll restores land within a
 // frame or two of the change that causes them.
 const QUIET_FRAMES = 3;
+
+// How long the page must also stay still. React holds a Suspense boundary's
+// content for up to 300ms after it last showed a fallback, such as a lazy
+// button that loaded, so the DOM can sit still that long before it changes.
+const QUIET_MS = 350;
 
 // Resizes to the page height before a shot fails. One resize fits most
 // pages. A second fits a page that a tall viewport makes taller.
@@ -205,18 +211,13 @@ async function boxOf(target: Locator) {
 async function settle(page: Page) {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   const remaining = () => Math.max(deadline - Date.now(), 1);
-  const pending = new Set<Request>();
   let started: Request[] = [];
   const onStart = (request: Request) => {
-    pending.add(request);
     started.push(request);
   };
-  const onEnd = (request: Request) => pending.delete(request);
   const urls = (requests: Iterable<Request>) =>
     [...requests].map((request) => request.url()).join(", ") || "unknown";
   page.on("request", onStart);
-  page.on("requestfinished", onEnd);
-  page.on("requestfailed", onEnd);
   try {
     // A commit can start a fetch, such as a list that loads when it first
     // shows. Wait again for what that fetch renders.
@@ -227,20 +228,12 @@ async function settle(page: Page) {
         );
       }
       started = [];
-      await page
-        .waitForLoadState("networkidle", { timeout: remaining() })
-        .catch(() => {
-          throw new Error(
-            `Requests were still in flight after ${SETTLE_TIMEOUT_MS}ms: ${urls(pending)}`,
-          );
-        });
+      await waitForRequestsToEnd(page, remaining());
       await loadAssets(page, remaining());
       await waitForQuiet(page, remaining());
     } while (started.length > 0);
   } finally {
     page.off("request", onStart);
-    page.off("requestfinished", onEnd);
-    page.off("requestfailed", onEnd);
   }
 }
 
@@ -295,17 +288,22 @@ async function loadAssets(page: Page, timeout: number) {
 }
 
 /**
- * Wait for frames in a row with no DOM change and no scroll. Throws with the
- * element that kept changing, so the spec can wait for what moves it.
+ * Wait for frames in a row, and `QUIET_MS`, with no DOM change and no
+ * scroll. Throws with the element that kept changing, so the spec can wait
+ * for what moves it.
  */
 async function waitForQuiet(page: Page, timeout: number) {
   const busy = await page.evaluate(
-    ({ frames, timeout }) =>
+    ({ frames, quietMs, timeout }) =>
       new Promise<string | null>((resolve) => {
         let last = "";
         let quiet = 0;
+        // The frame time of the first still frame. Frame times are real
+        // even when a spec pins Date.
+        let stillSince: number | undefined;
         const changed = (target: EventTarget | null) => {
           quiet = 0;
+          stillSince = undefined;
           if (!(target instanceof Element)) return;
           last = target.id
             ? `#${target.id}`
@@ -329,14 +327,15 @@ async function waitForQuiet(page: Page, timeout: number) {
           resolve(result);
         };
         const timer = setTimeout(() => done(last || "document"), timeout);
-        const frame = () => {
+        const frame = (time: number) => {
           quiet += 1;
-          if (quiet > frames) done(null);
+          stillSince ??= time;
+          if (quiet > frames && time - stillSince >= quietMs) done(null);
           else requestAnimationFrame(frame);
         };
         requestAnimationFrame(frame);
       }),
-    { frames: QUIET_FRAMES, timeout },
+    { frames: QUIET_FRAMES, quietMs: QUIET_MS, timeout },
   );
   if (busy) {
     throw new Error(

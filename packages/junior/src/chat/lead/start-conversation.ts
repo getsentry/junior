@@ -1,9 +1,9 @@
 /**
- * Start one Conversation from a Space's Lead. The new Conversation is a
- * public web root in the Lead's Space. It runs as the member who asked, like
- * any root, and the Lead's task is its first Message. The start is not
- * reviewed. Action review judges the new root's own tool calls, as it does a
- * child agent's.
+ * Start one Conversation from a Space's Lead. The new Conversation is a web
+ * root in the Lead's Space, with the Space's visibility. It runs as the
+ * member who asked, like any root, and the Lead's task is its first Message.
+ * Action review judges the task of the `startConversation` call, then the
+ * new root's own tool calls, as it does a child agent's.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -11,7 +11,7 @@ import {
   createConversationId,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { readLeadSpaceId } from "@/chat/lead/conversation";
+import { readLeadSpace } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /**
@@ -27,8 +27,8 @@ export async function startLeadConversation(args: {
   task: string;
   title: string;
 }): Promise<{ conversationId: string }> {
-  const spaceId = await readLeadSpaceId(args.leadConversationId);
-  if (!spaceId) throw new Error("Only a Space's Lead can start a Conversation");
+  const space = await readLeadSpace(args.leadConversationId);
+  if (!space) throw new Error("Only a Space's Lead can start a Conversation");
   const idempotencyKey = `lead:${args.leadConversationId}:${args.messageKey}`;
   const conversationId = createConversationId({
     actorEmail: args.person.email,
@@ -40,9 +40,9 @@ export async function startLeadConversation(args: {
       conversationId,
       idempotencyKey,
       message: args.task,
-      rootSpaceId: spaceId,
+      rootSpaceId: space.id,
       rootTitle: args.title,
-      rootVisibility: "public",
+      rootVisibility: space.visibility,
     },
     { nowMs: Date.now(), queue: args.queue },
   );

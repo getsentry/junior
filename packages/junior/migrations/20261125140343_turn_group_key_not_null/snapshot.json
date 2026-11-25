@@ -1,0 +1,29 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "1890c20a-ff86-4792-8a28-03b7f9be82fd",
+  "prevIds": ["270eee41-00a0-4830-b036-4652274a4d0b"],
+  "footprints": [
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_turn_inbox", "group_key"],
+      "writes": ["s|colprop|public.junior_turn_inbox.group_key.notNull"],
+      "reads": [
+        "n|tbl|public.junior_turn_inbox",
+        "n|sch|public",
+        "n|col|public.junior_turn_inbox.group_key"
+      ],
+      "sqlHash": "74d519ddcdcf42ba"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_turn_inbox\",\"group_key\"]",
+      "set": {
+        "notNull": true
+      }
+    }
+  ]
+}

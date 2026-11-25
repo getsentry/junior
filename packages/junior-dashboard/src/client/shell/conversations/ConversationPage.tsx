@@ -41,8 +41,6 @@ import {
   CONVERSATION_ASK_PARAM,
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_MESSAGE_PARAM,
-  CONVERSATION_REVIEW_OPEN,
-  CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
   parseTranscriptRowHash,
@@ -65,10 +63,7 @@ import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
 import { ConversationDock } from "./ConversationDock";
-import {
-  saveDetailsOpen,
-  useDetailsStartOpen,
-} from "../../conversations/conversationSidebarLayout";
+import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
 import { useReportEventLogShown } from "../../components/paletteEventLog";
 import {
@@ -127,6 +122,7 @@ import {
   useQuickQuestionThread,
 } from "../../conversations/QuickQuestion";
 import { Transcript } from "../../conversations/TranscriptView";
+import type { ShowTranscriptRow } from "../../conversations/transcriptBottomPinning";
 import type { TranscriptAskReveal } from "../../conversations/ConversationTranscript";
 import {
   readConversationStartPosition,
@@ -169,6 +165,7 @@ export function ConversationPage(props: {
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
+  const showRowRef = useRef<ShowTranscriptRow>(null);
   const replyRef =
     useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -187,34 +184,8 @@ export function ConversationPage(props: {
     searchParams.get(CONVERSATION_MESSAGE_PARAM) ?? undefined;
   const eventOpen =
     selectedEventSeq !== undefined || linkedTurnId !== undefined;
-  // Event details and turn context show over Conversation details. Closing
-  // them shows details again when details are open. A linked event starts
-  // with details closed, so closing it does not open a panel nobody chose.
-  const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
-    eventOpen ? false : undefined,
-  );
-  // A sidebar review chip links here with the review param. It opens
-  // details at its Inbox items, even below the width where details open alone.
-  const reviewOpen =
-    searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
-  useEffect(() => {
-    if (reviewOpen) setDetailsChoice(true);
-  }, [reviewOpen]);
-  const detailsDefault = useDetailsStartOpen();
-  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
-  const closeDetails = useCallback(() => {
-    setDetailsChoice(false);
-    saveDetailsOpen(false);
-    setSearchParams(
-      (current) => {
-        if (!current.has(CONVERSATION_REVIEW_PARAM)) return current;
-        const next = new URLSearchParams(current);
-        next.delete(CONVERSATION_REVIEW_PARAM);
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
+  const { closeDetails, detailsOpen, openDetails, reviewOpen } =
+    useConversationDetailsOpen(eventOpen);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
   // A memory chosen in details waits here until its transcript row renders.
   const [memoryJumpSeq, setMemoryJumpSeq] = useState<number>();
@@ -426,10 +397,15 @@ export function ConversationPage(props: {
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
   // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it (`canAddConversationMessages` in the API).
+  // Conversation by posting in it, and a member can join one in their private
+  // Space (`canAddConversationMessages` in the API). Only a member reads a
+  // private Space's Conversations, so a readable one with a Space is theirs.
   const canReply =
     view === "rich" &&
-    (detail.data?.isParticipant || detail.data?.visibility === "public") &&
+    detail.data !== undefined &&
+    (detail.data.isParticipant ||
+      detail.data.visibility === "public" ||
+      Boolean(detail.data.space)) &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -582,7 +558,8 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (memoryJumpSeq === undefined || !transcript || holdShown) return;
     if (openLink({ event: memoryJumpSeq })) return;
-    showMemoryRow(pageRef.current, memoryJumpSeq);
+    const showRow = showRowRef.current;
+    if (showRow) showMemoryRow(pageRef.current, memoryJumpSeq, showRow);
     setMemoryJumpSeq(undefined);
   }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
@@ -740,8 +717,7 @@ export function ConversationPage(props: {
                   closeDetails();
                 } else {
                   focusDetailsOnOpen.current = true;
-                  setDetailsChoice(true);
-                  saveDetailsOpen(true);
+                  openDetails();
                 }
               }}
               forks={
@@ -900,6 +876,7 @@ export function ConversationPage(props: {
                           : linkedRowSeq
                       }
                       revealSeq={revealSeq}
+                      showRowRef={showRowRef}
                       responding={
                         !detail.error &&
                         !history.newer &&

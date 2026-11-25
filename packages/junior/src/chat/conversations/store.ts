@@ -132,7 +132,10 @@ export interface Conversation {
   stoppedAtMs?: number | undefined;
   /** Set while a root's Event Turn replies stay out of its Location. */
   deliveryPausedAtMs?: number | undefined;
-  /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
+  /**
+   * Visibility of the root. Undefined is private. As a write input, it is a
+   * live signal that replaces the visibility of the Destination row.
+   */
   visibility?: ConversationPrivacy;
 }
 
@@ -230,8 +233,9 @@ export interface ConversationStore {
     spaceId?: string | undefined;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row. Omit it for saved
-     * values, such as visibility captured when an Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
@@ -256,8 +260,9 @@ export interface ConversationStore {
     updatedAtMs: number;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row. Omit it for saved
-     * values, such as visibility captured when an Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
