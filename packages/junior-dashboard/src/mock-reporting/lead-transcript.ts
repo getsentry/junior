@@ -123,7 +123,7 @@ export function mockLeadEvents(
               intent: "Tell the person when it needs them or ends.",
               label: `Conversation ${watched.title}`,
               namespace: "junior",
-              resource_type: "conversation",
+              resource_type: "agent",
             },
           },
         ],

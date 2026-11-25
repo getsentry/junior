@@ -247,7 +247,7 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker, createDeliverToParent } =
+  const { createChildConversationWorker } =
     await import("@/chat/agent-invocations/result");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
@@ -263,11 +263,9 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const childWorker = createChildConversationWorker({
-      runTurn: createConversationTurnWorker(
-        agentRunner,
-        undefined,
-        createDeliverToParent({ queue: localConversationWork.queue }),
-      ),
+      runTurn: createConversationTurnWorker(agentRunner, undefined, {
+        queue: localConversationWork.queue,
+      }),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
