@@ -33,21 +33,6 @@ export const messageAgentToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
-  // A message to the parent is a report. The parent reads it as data, and
-  // its own actions get their own review, so the report skips review like
-  // a read. Only a message to a child or another top-level agent can start
-  // work.
-  resolveApprovalMetadata: ({ to }) =>
-    to === PARENT_AGENT_TARGET
-      ? {
-          annotations: {
-            destructiveHint: false,
-            idempotentHint: true,
-            openWorldHint: false,
-            readOnlyHint: true,
-          },
-        }
-      : undefined,
   inputSchema: z
     .object({
       to: z
@@ -79,6 +64,21 @@ export function createMessageAgentTool(
 ) {
   return zodTool({
     ...messageAgentToolDefinition,
+    // A message to the parent is a report. The parent reads it as data, and
+    // its own actions get their own review, so the report skips review like
+    // a read. Only a message to a child or another top-level agent can start
+    // work.
+    resolveApprovalMetadata: ({ to }) =>
+      to === PARENT_AGENT_TARGET
+        ? {
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: true,
+            },
+          }
+        : undefined,
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError(
