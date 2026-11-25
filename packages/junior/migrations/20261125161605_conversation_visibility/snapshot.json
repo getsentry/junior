@@ -23,18 +23,11 @@
         "n|col|public.junior_conversations.visibility",
         "e|col|public.junior_conversations.visibility"
       ],
-      "reads": [
-        "n|tbl|public.junior_conversations",
-        "n|sch|public"
-      ]
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
     },
     {
       "statementType": "add_check",
-      "statementTarget": [
-        "table",
-        "public",
-        "junior_conversations"
-      ],
+      "statementTarget": ["table", "public", "junior_conversations"],
       "writes": [
         "s|ck|public.junior_conversations.junior_conversations_visibility_check",
         "n|ck|public.junior_conversations.junior_conversations_visibility_check",
