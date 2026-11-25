@@ -27,6 +27,16 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  // The outline builds after the transcript. Its list scrolls only as far as
+  // it must to show the active item, so where the jump leaves that item
+  // depends on where the list was. Wait for the list to show the active
+  // item at the end first, as a person sees it before they jump. Its
+  // message holds the top of the transcript viewport.
+  const latest = page
+    .getByRole("navigation", { name: "Conversation outline" })
+    .getByRole("button", { name: "Transcript message 1992 " });
+  await expect(latest).toHaveAttribute("aria-current", "location");
+  await expect(latest).toBeInViewport();
 
   // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
@@ -53,6 +63,10 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     .getByRole("button", { name: "Transcript message 996 with" });
   await expect(activeItem).toHaveAttribute("aria-current", "location");
   await expect(activeItem).toBeInViewport();
+  // The jump mark goes on a timer, so the shot waits for it to go.
+  await expect(row(transcript, MEMORY_CAPTURE_SEQ - 1)).not.toHaveAttribute(
+    "data-highlighted",
+  );
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
