@@ -380,6 +380,8 @@ describe("Spaces API", () => {
     const oneOff = await startConversation(ana, "payroll-one-off");
     const spaceRef = { id: space.id, name: "Payroll audit" };
     expect(await detailSpace(bo, inSpace)).toBeNull();
+    // Its change token does not carry the Space's name either.
+    expect(await detailVersion(bo, inSpace)).not.toContain("Payroll audit");
     expect(await spaceFeed(bo, space.id)).toEqual([]);
 
     // A member adds people, and every member reads every Conversation.

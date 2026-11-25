@@ -238,14 +238,15 @@ export async function joinSpace(
 }
 
 /**
- * Remove one person from a Space. Returns false, and changes nothing, when
- * they are the last member of a private Space: nobody could read or restore
- * a private Space with no members.
+ * Remove one person from a Space, and return its visibility at the time.
+ * Returns "last_member", and changes nothing, when they are the last member
+ * of a private Space: nobody could read or restore a private Space with no
+ * members.
  */
 export async function leaveSpace(
   spaceId: string,
   userId: string,
-): Promise<boolean> {
+): Promise<SpaceVisibility | "last_member" | undefined> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
@@ -266,10 +267,12 @@ export async function leaveSpace(
         .from(juniorSpaceMembers)
         .where(eq(juniorSpaceMembers.spaceId, spaceId))
         .limit(2);
-      if (members.length === 1 && members[0]!.userId === userId) return false;
+      if (members.length === 1 && members[0]!.userId === userId) {
+        return "last_member";
+      }
     }
     await db.delete(juniorSpaceMembers).where(member);
-    return true;
+    return space?.visibility;
   });
 }
 

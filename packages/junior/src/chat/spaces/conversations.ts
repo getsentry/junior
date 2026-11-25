@@ -2,7 +2,7 @@
  * Conversations in a Space (`design/spaces.md`). Only a root stores its
  * Space. A child is in the Space of its root, so the two never disagree.
  */
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
@@ -64,35 +64,47 @@ export async function setConversationSpace(
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
+    // Lock the root, so its Space does not change during the move.
     const [root] = await db
       .select({
         locationId: juniorConversations.destinationId,
         provider: juniorDestinations.provider,
-        spaceVisibility: juniorSpaces.visibility,
+        spaceId: juniorConversations.spaceId,
       })
       .from(juniorConversations)
       .leftJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
       )
-      .leftJoin(juniorSpaces, eq(juniorSpaces.id, juniorConversations.spaceId))
       .where(
         and(
           eq(juniorConversations.conversationId, conversationId),
           isNull(juniorConversations.parentConversationId),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for("update", { of: juniorConversations });
     if (!root) return "not_found";
-    if (root.spaceVisibility === "private") return "leaves_private";
-    // Lock the Space, so its visibility does not change during the move.
-    const [target] = spaceId
-      ? await db
-          .select({ visibility: juniorSpaces.visibility })
-          .from(juniorSpaces)
-          .where(eq(juniorSpaces.id, spaceId))
-          .for("update")
-      : [];
+    // Lock the source and target Spaces in id order, so a Space that is
+    // made private during the move cannot lose or gain a root.
+    const spaceIds = [root.spaceId, spaceId].filter(
+      (id): id is string => id !== null,
+    );
+    const spaces =
+      spaceIds.length > 0
+        ? await db
+            .select({
+              id: juniorSpaces.id,
+              visibility: juniorSpaces.visibility,
+            })
+            .from(juniorSpaces)
+            .where(inArray(juniorSpaces.id, spaceIds))
+            .orderBy(asc(juniorSpaces.id))
+            .for("update")
+        : [];
+    const source = spaces.find((space) => space.id === root.spaceId);
+    if (source?.visibility === "private") return "leaves_private";
+    const target = spaces.find((space) => space.id === spaceId);
     if (target?.visibility === "private") {
       if (root.provider !== "local" || !root.locationId) {
         return "shared_location";

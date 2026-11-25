@@ -172,7 +172,7 @@ const versionSpaceRoot = alias(juniorConversations, "version_space_root");
 function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
   const space = db
     .select({
-      state: sql<string>`concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name})`,
+      state: sql<string>`md5(concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name}))`,
     })
     .from(versionSpaceConversation)
     .innerJoin(
