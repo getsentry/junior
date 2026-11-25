@@ -102,9 +102,8 @@ const HOST_MUTATIONS = [
 ] as const;
 
 describe("GitHub GraphQL policy", () => {
-  it("reads GraphQL GETs and queries with the installation", async () => {
+  it("reads GraphQL queries with the installation", async () => {
     for (const request of [
-      { method: "GET" },
       { graphql: single(operation("query", ["repository"], { name: "List" })) },
       { graphql: single(operation("query", ["viewer"])) },
     ]) {
@@ -356,6 +355,12 @@ describe("GitHub GraphQL policy", () => {
         ]),
       }),
     ).rejects.toThrow("GitHub GraphQL query denied");
+  });
+
+  it("denies a Sandbox GraphQL GET, whose query the host does not read", async () => {
+    await expect(grantForGraphql({ method: "GET" })).rejects.toThrow(
+      "send GraphQL as a POST",
+    );
   });
 
   it("denies a query whose cost was not counted", async () => {

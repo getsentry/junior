@@ -34,11 +34,22 @@ function githubGraphqlCost(connectionRequests: number): number {
  * small, so the cap skips them. A request that carries its own credential
  * spends its own budget, so the cap skips it too. A `rateLimit(dryRun: true)`
  * query only predicts a cost, so it is allowed. A query whose cost the host
- * cannot count is denied.
+ * cannot count, or that is not a POST, is denied.
  */
 export function assertGitHubGraphqlCostAllowed(ctx: EgressHookContext): void {
-  const { graphql, operation, withoutCredential } = ctx.request;
-  if (operation || withoutCredential || graphql?.kind !== "operation") {
+  const { graphql, method, operation, withoutCredential } = ctx.request;
+  if (operation || withoutCredential) {
+    return;
+  }
+  // The host reads only POST bodies, so a query sent another way, such as
+  // `GET /graphql?query=`, has no cost that the cap can check. Egress policy
+  // denies a POST that the host did not read.
+  if (!graphql && method.toUpperCase() !== "POST") {
+    throw new EgressPolicyDenied(
+      "GitHub GraphQL request denied: send GraphQL as a POST with a JSON body, so that its cost can be checked. `gh api graphql` does this.",
+    );
+  }
+  if (graphql?.kind !== "operation") {
     return;
   }
   const query = graphql.operation;
