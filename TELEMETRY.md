@@ -103,6 +103,7 @@ attributes. Nested logs and spans inherit them.
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
+| Provider rate limit spent           | `http.response.header.x-ratelimit-{used,remaining,reset,resource,limit}` on `http.client` spans; group by `x-ratelimit-reset` for one budget window | `instrumentation.ts` |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.inbox_item.push`, `notification.push.send` | `chat/notifications/`                                           |
 | Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
