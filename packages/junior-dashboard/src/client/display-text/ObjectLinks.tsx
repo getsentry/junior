@@ -13,9 +13,9 @@ import {
 import { HoverPreview } from "../components/ui/hover-preview";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
-  SavedObjectsContext,
-  savedObjectsFromAnnotations,
-} from "../conversations/savedObjects";
+  ObjectPreviewsContext,
+  objectPreviewsFromAnnotations,
+} from "../conversations/objectPreviews";
 import {
   knownObjectsFromAnnotations,
   objectUrlKey,
@@ -67,15 +67,15 @@ export function KnownObjectsProvider(props: {
     );
     return { links, objects };
   }, [props.annotations, props.cards]);
-  const saved = useMemo(
-    () => savedObjectsFromAnnotations(props.annotations),
+  const previews = useMemo(
+    () => objectPreviewsFromAnnotations(props.annotations),
     [props.annotations],
   );
   return (
     <KnownObjectsContext.Provider value={value}>
-      <SavedObjectsContext.Provider value={saved}>
+      <ObjectPreviewsContext.Provider value={previews}>
         {props.children}
-      </SavedObjectsContext.Provider>
+      </ObjectPreviewsContext.Provider>
     </KnownObjectsContext.Provider>
   );
 }

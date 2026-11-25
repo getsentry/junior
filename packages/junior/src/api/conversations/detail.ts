@@ -39,6 +39,7 @@ import { CONVERSATION_EVENT_PAGE_LIMIT } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
@@ -233,8 +234,15 @@ async function readConversationDetailFromSql(
       },
       readAccess,
     ),
-    listConversationAnnotations(getDb(), conversationId).then((saved) =>
-      saved.map((annotation) => {
+    // Only a viewer who can see private content gets the annotations, so
+    // only they read the objects.
+    (canExposePayload
+      ? listConversationAnnotations(getDb(), conversationId).then((saved) =>
+          readLiveAnnotations(options.viewer, saved),
+        )
+      : Promise.resolve([])
+    ).then((live) =>
+      live.map((annotation) => {
         const previewImages = objectPreviewImages(annotation);
         return previewImages ? { ...annotation, previewImages } : annotation;
       }),
