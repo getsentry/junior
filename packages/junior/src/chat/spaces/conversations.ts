@@ -7,11 +7,16 @@ import { alias } from "drizzle-orm/pg-core";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations, juniorSpaces } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorDestinations,
+  juniorSpaces,
+} from "@/db/schema";
 
 /** The id and name that label a Conversation's Space. */
 export interface SpaceRef {
@@ -44,16 +49,15 @@ export type SpaceMoveRefusal =
   /** The root is in a private Space, and its data stays with the members. */
   | "leaves_private"
   /**
-   * The Space is private. A root keeps the visibility it was created with,
-   * and only a public root can join a Space, so it cannot join this one.
+   * The Space is private, and the root shares its Location, such as a Slack
+   * channel, with people who are not members.
    */
-  | "private_space";
+  | "shared_location";
 
 /**
- * Put one root in a Space, or take it out of every Space with null. A root
- * joins only a public Space: a private Space holds only the roots created in
- * it. The caller checks who may move it out of `fromSpaceId`, the Space that
- * it read before the move.
+ * Put one root in a Space, or take it out of every Space with null. The root
+ * gets the Space's visibility, on itself and on its own Location. The caller checks who may
+ * move it out of `fromSpaceId`, the Space that it read before the move.
  */
 export async function setConversationSpace(
   conversationId: string,
@@ -66,8 +70,16 @@ export async function setConversationSpace(
     // Lock the root, so two moves of it run one after the other. A Space
     // keeps its visibility, so the Spaces need no lock.
     const [root] = await db
-      .select({ spaceId: juniorConversations.spaceId })
+      .select({
+        locationId: juniorConversations.destinationId,
+        provider: juniorDestinations.provider,
+        spaceId: juniorConversations.spaceId,
+      })
       .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
       .where(
         and(
           eq(juniorConversations.conversationId, conversationId),
@@ -75,7 +87,7 @@ export async function setConversationSpace(
         ),
       )
       .limit(1)
-      .for("update");
+      .for("update", { of: juniorConversations });
     if (!root) return "not_found";
     // The caller's membership check covers only the Space that it read.
     if (root.spaceId !== fromSpaceId) return "moved";
@@ -95,7 +107,16 @@ export async function setConversationSpace(
     const source = spaces.find((space) => space.id === root.spaceId);
     if (source?.visibility === "private") return "leaves_private";
     const target = spaces.find((space) => space.id === spaceId);
-    if (target?.visibility === "private") return "private_space";
+    if (target?.visibility === "private") {
+      if (root.provider !== "local" || !root.locationId) {
+        return "shared_location";
+      }
+      await db
+        .update(juniorDestinations)
+        .set({ visibility: "private", updatedAt: new Date() })
+        .where(eq(juniorDestinations.id, root.locationId));
+      await setConversationVisibility(executor, conversationId, "private");
+    }
     await db
       .update(juniorConversations)
       .set({ spaceId, detailVersion: nextDetailVersion })

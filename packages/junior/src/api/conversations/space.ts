@@ -84,11 +84,8 @@ export async function setConversationSpaceForViewer(
   if (refusal === "leaves_private") {
     throwApiError(409, "A conversation in a private Space stays in it.");
   }
-  if (refusal === "private_space") {
-    throwApiError(
-      409,
-      "A conversation can't join a private Space. Start it in the Space.",
-    );
+  if (refusal === "shared_location") {
+    throwApiError(409, "A Slack conversation can't join a private Space.");
   }
   return response;
 }

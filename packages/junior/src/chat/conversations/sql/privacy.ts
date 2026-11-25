@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { nextDetailVersion } from "./detail-version";
 
 const privacyRoot = alias(juniorConversations, "privacy_root");
 
@@ -59,8 +60,8 @@ async function readRoot(
  * Resolve a conversation's privacy authority from its persisted root.
  *
  * Missing or structurally invalid root metadata fails closed. A visibility
- * change locks the root's Destination row first (`upsertDestination`), so a
- * share lock on it gives callers that keep the transaction open a stable
+ * change locks the root's Destination row first (`setConversationVisibility`),
+ * so a share lock on it gives callers that keep the transaction open a stable
  * decision. Locking the root row instead would deadlock two child writes that
  * both update the root later in their transactions.
  */
@@ -90,4 +91,51 @@ export async function resolveRootVisibility(
     rootConversationId: root.rootConversationId,
     visibility: locked?.visibility ?? null,
   };
+}
+
+/**
+ * Make a root Conversation and its whole tree public or private
+ * (`policies/conversation-access.md`). Only the root stores visibility, and
+ * its children read it, so one write moves the tree. A Slack channel that
+ * changes does not call this. Returns false when no root has the id.
+ */
+export async function setConversationVisibility(
+  executor: Pick<JuniorSqlDatabase, "db">,
+  rootConversationId: string,
+  visibility: ConversationPrivacy,
+): Promise<boolean> {
+  const db = executor.db();
+  const [root] = await db
+    .select({ destinationId: juniorConversations.destinationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.conversationId, rootConversationId),
+        isNull(juniorConversations.parentConversationId),
+      ),
+    );
+  if (!root) return false;
+  // `resolveRootVisibility` holds a share lock on this row while it decides.
+  if (root.destinationId) {
+    await db
+      .select({ id: juniorDestinations.id })
+      .from(juniorDestinations)
+      .where(eq(juniorDestinations.id, root.destinationId))
+      .for("update");
+  }
+  await db
+    .update(juniorConversations)
+    .set({ visibility, detailVersion: nextDetailVersion })
+    .where(eq(juniorConversations.conversationId, rootConversationId));
+  // A child's detail shows its root's visibility, so its version moves too.
+  await db
+    .update(juniorConversations)
+    .set({ detailVersion: nextDetailVersion })
+    .where(
+      and(
+        eq(juniorConversations.rootConversationId, rootConversationId),
+        ne(juniorConversations.conversationId, rootConversationId),
+      ),
+    );
+  return true;
 }

@@ -308,9 +308,12 @@ export function addMockConversationSpaceRoute(
           "Only a public conversation can join a Space.",
           409,
         );
-      if (target.space.visibility === "private")
+      if (
+        target.space.visibility === "private" &&
+        conversation.surface === "slack"
+      )
         return errorResponse(
-          "A conversation can't join a private Space. Start it in the Space.",
+          "A Slack conversation can't join a private Space.",
           409,
         );
       mockConversationSpaces.set(conversationId, spaceId);

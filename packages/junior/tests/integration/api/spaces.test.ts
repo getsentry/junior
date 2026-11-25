@@ -415,19 +415,15 @@ describe("Spaces API", () => {
       (await spaceFeed(bo, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
 
-    // A Conversation keeps its visibility, so it can't join a private Space.
-    expect((await moveTo(ana, oneOff, space.id)).status).toBe(409);
-
     // Data stays in the Space: Conversations in it read each other, and a
     // Conversation outside it reads none of them.
-    const sibling = await startConversation(ana, "payroll-sibling", {
-      spaceId: space.id,
-    });
-    expect(await canReadConversation(getDb(), sibling, inSpace)).toBe(true);
+    expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
+    expect(await detail(ana, oneOff)).toMatchObject({ visibility: "private" });
+    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
     const outside = await startConversation(ana, "payroll-outside");
     expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);
     expect(await canReadConversation(getDb(), inSpace, outside)).toBe(true);
-    expect((await moveTo(ana, sibling, null)).status).toBe(409);
+    expect((await moveTo(ana, oneOff, null)).status).toBe(409);
 
     // A Space keeps the visibility it was created with.
     expect(

@@ -21,13 +21,13 @@ rule, and it does not add a surface or tenant check to public access.
 
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
-- **Visibility**: `public` or `private`, stored on the root and read from
-  it. A root keeps the first known visibility of its Destination or Space,
-  and it joins only a public Space. Children and all records of a tree use
-  the values of their root. Missing visibility is private. A direct message
-  is private. When the root is missing, rows 2, 4, and 5 do not match, and
-  row 6 denies. Limitation: a Slack channel that becomes private leaves its
-  earlier Conversations public.
+- **Visibility**: `public` or `private`, stored on the root. A root takes
+  the first known visibility of its Destination or Space. Only an explicit
+  change, such as a move into a private Space, changes it for the whole
+  tree (`setConversationVisibility`); a Slack channel that becomes private
+  does not. Children and all records use their root's value. Missing
+  visibility and direct messages are private. When the root is missing,
+  rows 2, 4, and 5 do not match, and row 6 denies.
 
 ## Rule between Conversations
 
