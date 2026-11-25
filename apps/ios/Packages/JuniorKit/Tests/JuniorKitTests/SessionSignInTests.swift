@@ -38,7 +38,7 @@ extension MCPClientTests {
     #expect(signedIn.token == "jr_ses_t1")
     #expect(signedIn.expiresAt == Date.junior("2026-12-25T08:00:00.000Z"))
     let exchange = try #require(StubServer.requests.last)
-    #expect(exchange.url.path == "/api/ios/sign-in/token")
+    #expect(exchange.url.path == "/api/client/sign-in/token")
     #expect(exchange.form["code"] == "s")
     #expect(exchange.form["code_verifier"].map(codeChallenge) == value("session_code_challenge"))
   }

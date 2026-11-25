@@ -16,7 +16,7 @@ public struct SessionCredentials: Codable, Equatable, Sendable {
 }
 
 /// Trades the session code from the MCP sign-in for a dashboard session at
-/// `/api/ios/sign-in/token`, and ends the session at sign-out.
+/// `/api/client/sign-in/token`, and ends the session at sign-out.
 public struct SessionSignInClient: Sendable {
   public let server: JuniorServer
   private let session: URLSession
@@ -41,7 +41,7 @@ public struct SessionSignInClient: Sendable {
     let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
     guard let verifier = signIn.sessionVerifier, let code = items.first(where: { $0.name == "session_code" })?.value
     else { throw JuniorAPIError.signIn("This Junior gave no dashboard session. It may need an update.") }
-    var request = URLRequest(url: server.page("/api/ios/sign-in/token")!)
+    var request = URLRequest(url: server.page("/api/client/sign-in/token")!)
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
     request.httpBody = Data(
@@ -61,7 +61,7 @@ public struct SessionSignInClient: Sendable {
   /// End the session on the server. When that fails, it still ends at its
   /// expiry.
   public func signOut(_ credentials: SessionCredentials) async {
-    var request = URLRequest(url: server.page("/api/ios/sign-out")!)
+    var request = URLRequest(url: server.page("/api/client/sign-out")!)
     request.httpMethod = "POST"
     request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
     _ = try? await load(request)

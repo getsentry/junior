@@ -713,7 +713,7 @@ function issueSessionCode(challenge) {
   return code;
 }
 
-async function handleIosSignInToken(request) {
+async function handleClientSignInToken(request) {
   const form = new URLSearchParams(await request.text());
   const record = sessionCodes.get(form.get("code") ?? "");
   sessionCodes.delete(form.get("code") ?? "");
@@ -753,8 +753,11 @@ const MOCK_ROUTES = {
   [AUTHORIZE_PATH]: { methods: ["GET"], handle: handleAuthorize },
   [TOKEN_PATH]: { methods: ["POST"], handle: handleToken },
   [MCP_PATH]: { methods: ["GET", "POST", "DELETE"], handle: handleMcp },
-  "/api/ios/sign-in/token": { methods: ["POST"], handle: handleIosSignInToken },
-  "/api/ios/sign-out": {
+  "/api/client/sign-in/token": {
+    methods: ["POST"],
+    handle: handleClientSignInToken,
+  },
+  "/api/client/sign-out": {
     methods: ["POST"],
     handle: () => new Response(null, { status: 204 }),
   },
