@@ -49,13 +49,9 @@ export function createDockerToolExecutionEnvironmentManager(options: {
       try {
         await createContainer(input, image, signal);
       } catch (error) {
-        if (isStatus(error, 404)) {
-          await pullImage(image, signal);
-          await createContainer(input, image, signal);
-        } else if (!isStatus(error, 409)) {
-          // 409 means a container with this name exists: a retried create.
-          throw error;
-        }
+        if (!isStatus(error, 404)) throw error;
+        await pullImage(image, signal);
+        await createContainer(input, image, signal);
       }
       const environment = await resume(input.id, signal);
       if (!environment) {
@@ -97,23 +93,28 @@ async function createContainer(
   image: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await dockerRequest({
-    method: "POST",
-    path: "/containers/create",
-    query: { name: input.id },
-    body: {
-      Image: image,
-      // The container stops when this ends. `docker start` runs it again,
-      // which gives a resumed container a full timeout.
-      Entrypoint: ["sleep"],
-      Cmd: [String(Math.ceil(input.timeoutMs / 1000))],
-      WorkingDir: WORKSPACE,
-      Labels: { [LABEL]: input.id },
-      // docker-init reaps killed processes, so none are left as zombies.
-      HostConfig: { Init: true },
-    },
-    signal,
-  });
+  try {
+    await dockerRequest({
+      method: "POST",
+      path: "/containers/create",
+      query: { name: input.id },
+      body: {
+        Image: image,
+        // The container stops when this ends. `docker start` runs it again,
+        // which gives a resumed container a full timeout.
+        Entrypoint: ["sleep"],
+        Cmd: [String(Math.ceil(input.timeoutMs / 1000))],
+        WorkingDir: WORKSPACE,
+        Labels: { [LABEL]: input.id },
+        // docker-init reaps killed processes, so none are left as zombies.
+        HostConfig: { Init: true },
+      },
+      signal,
+    });
+  } catch (error) {
+    // 409 means a container with this name exists: a retried create.
+    if (!isStatus(error, 409)) throw error;
+  }
 }
 
 async function pullImage(image: string, signal: AbortSignal): Promise<void> {
