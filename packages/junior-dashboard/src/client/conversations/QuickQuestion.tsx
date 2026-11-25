@@ -463,7 +463,7 @@ export function QuickQuestionPanel(props: {
     (conversationTurnIsActive(fork) && messages.at(-1)?.role === "user");
   const busy = props.pending || thinking;
   const quickQuestionConversation = useMemo(
-    () => ({ conversationId: props.conversationId, invite: false }),
+    () => ({ conversationId: props.conversationId }),
     [props.conversationId],
   );
 
@@ -570,8 +570,7 @@ export function QuickQuestionPanel(props: {
         <div className="grid gap-1.5 px-3 pt-2 pb-2" ref={footerRef}>
           <ConversationComposer
             compact
-            // Mentions find people of this Conversation's workspace. A quick
-            // question is a private side thread, so it offers no Invite.
+            // Mentions find people of this Conversation's workspace.
             conversation={quickQuestionConversation}
             disabled={busy}
             draftId={`quick-question:${props.conversationId}`}

@@ -48,7 +48,6 @@ export function ConversationDetails(props: {
   summaryMentions?: ConversationDetailReport["summaryMentions"];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
-  identity: ReactNode;
   /**
    * True when the viewer is a Participant, who can change To-dos and cancel
    * Watches.
@@ -62,6 +61,8 @@ export function ConversationDetails(props: {
   /** Show the Turn that recalled or captured one memory. */
   onSelectMemory(entry: ConversationMemoryEntry): void;
   overview: ReactNode;
+  /** The Participants card, or null when it has nothing to show. */
+  participants: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
@@ -183,9 +184,7 @@ export function ConversationDetails(props: {
             tasks={tasks}
           />
         ) : null}
-        {props.identity != null ? (
-          <DetailsCard title="Participants">{props.identity}</DetailsCard>
-        ) : null}
+        {props.participants}
         {props.usage}
         {props.overview != null ? (
           <DetailsCard>{props.overview}</DetailsCard>
