@@ -322,10 +322,10 @@ describe("Pi tool adapter integration", () => {
         messageAgent,
         parentConversationId: "local:test:parent",
         spawnAgent,
-        // Every model-only tool at once, as an agent Turn on a child loads.
+        // Every model-only tool at once.
         turnTools: {
           ...runtimeContext().turnTools,
-          reply: "parent",
+          reply: true,
           noReply: true,
           reportBlocked: "parent",
         },
@@ -340,7 +340,7 @@ describe("Pi tool adapter integration", () => {
       "noReply",
       "reply",
       "reportBlocked",
-      "spawnAgent",
+      "startAgent",
     ];
 
     expect(tools.map((candidate) => candidate.name)).toEqual(

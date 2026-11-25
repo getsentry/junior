@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
+import { juniorSpaces } from "./spaces";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -18,6 +19,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationKind,
   ConversationSource,
@@ -111,6 +113,17 @@ export const juniorConversations = pgTable(
     rootConversationId: text("root_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // The Space of a root, or null for a one-off. Only a root stores it, so
+    // a child reads the Space of its root and can never disagree with it.
+    spaceId: text("space_id").references(() => juniorSpaces.id),
+    // Who may read the Conversation (policies/conversation-access.md).
+    // Public: anyone. Private: only its root's Participants. Every row of a
+    // tree has the same value: a child copies its root's when it is created,
+    // and `setConversationVisibility` changes the whole tree at once. A root
+    // takes the first known visibility of its Destination or Space. Null
+    // reads as private: no known visibility yet, or a writer of an older
+    // deploy left it null.
+    visibility: text("visibility").$type<ConversationPrivacy>(),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     /**
      * Set while the Conversation is stopped. Its Watch Events are then saved
@@ -142,6 +155,14 @@ export const juniorConversations = pgTable(
       "junior_conversations_kind_parent_check",
       sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
+    check(
+      "junior_conversations_space_root_check",
+      sql`${table.spaceId} is null or ${table.parentConversationId} is null`,
+    ),
+    check(
+      "junior_conversations_visibility_check",
+      sql`${table.visibility} is null or ${table.visibility} in ('public', 'private')`,
+    ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
       table.conversationId,
@@ -162,6 +183,10 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
+    // The Conversation list of one Space, by activity.
+    index("junior_conversations_space_activity_idx")
+      .on(table.spaceId, table.lastActivityAt.desc())
+      .where(sql`${table.spaceId} is not null`),
     index("junior_conversations_forked_from_idx").on(
       table.forkedFromConversationId,
     ),
@@ -172,10 +197,9 @@ export const juniorConversations = pgTable(
       table.conversationId,
       table.rootConversationId,
     ),
-    // One lead per Identity. Only web creates a lead, so its root Actor is
-    // the web Identity of its User.
-    uniqueIndex("junior_conversations_lead_actor_idx")
-      .on(table.actorIdentityId)
+    // One Lead per Space.
+    uniqueIndex("junior_conversations_space_lead_idx")
+      .on(table.spaceId)
       .where(sql`${table.kind} = 'lead'`),
     // Search reads this exact expression: `conversationSearchVector`.
     index("junior_conversations_search_idx").using(

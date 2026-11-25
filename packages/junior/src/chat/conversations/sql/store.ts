@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -31,8 +30,10 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import {
+  destinationUpsertFromDestination,
+  upsertDestination,
+} from "./destination-upsert";
 import {
   bindProviderConversation,
   claimProviderConversationOwner,
@@ -45,17 +46,20 @@ import {
   resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
-import {
-  locationForWrite,
-  locationFromRow,
-  visibilityFromLocationRow,
-} from "./location";
+import { locationForWrite, locationFromRow } from "./location";
 import {
   conversationKindFromRow,
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import {
+  copiesRootVisibility,
+  isTopLevelKind,
+} from "@/chat/conversations/kind-behavior";
+import {
+  fillMissingTreeVisibility,
+  resolveRootVisibility,
+} from "@/chat/conversations/sql/privacy";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -64,17 +68,6 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
-}
-
-interface DestinationUpsert {
-  displayName?: string;
-  kind: JuniorDestinationKind;
-  metadata?: Record<string, unknown>;
-  provider: string;
-  providerDestinationId: string;
-  providerTenantId?: string | undefined;
-  refreshVisibility: boolean;
-  visibility: JuniorDestinationVisibility;
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
@@ -135,56 +128,6 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
   return undefined;
 }
 
-function localWorkspaceFromConversationId(
-  conversationId: string,
-): string | undefined {
-  const match = /^local:([^:]+):/.exec(conversationId);
-  return match?.[1];
-}
-
-function destinationUpsertFromDestination(args: {
-  channelName?: string | undefined;
-  conversationId?: string;
-  destination: Destination | undefined;
-  /** Confirmed destination visibility; omit when unavailable. */
-  visibility?: ConversationPrivacy;
-}): DestinationUpsert | undefined {
-  const { destination } = args;
-  if (!destination) {
-    return undefined;
-  }
-  if (destination.platform === "slack") {
-    const channelId = destination.channelId;
-    const channelKind = channelId.startsWith("D")
-      ? "dm"
-      : channelId.startsWith("G")
-        ? "group"
-        : "channel";
-    return {
-      kind: channelKind,
-      provider: "slack",
-      providerTenantId: destination.teamId,
-      providerDestinationId: channelId,
-      refreshVisibility: args.visibility !== undefined,
-      visibility: args.visibility ?? "unknown",
-      ...(args.channelName ? { displayName: args.channelName } : undefined),
-      metadata: { platform: "slack" },
-    };
-  }
-  return {
-    kind: "local_conversation",
-    provider: "local",
-    providerTenantId:
-      localWorkspaceFromConversationId(destination.conversationId) ??
-      localWorkspaceFromConversationId(args.conversationId ?? ""),
-    providerDestinationId: destination.conversationId,
-    // Match Slack: only refresh when a live visibility signal is present so
-    // execution-metadata writes cannot clobber public dashboard roots.
-    refreshVisibility: args.visibility !== undefined,
-    visibility: args.visibility ?? "direct",
-    metadata: { platform: "local" },
-  };
-}
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "failed" ||
@@ -220,7 +163,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = visibilityFromLocationRow(readRow.destination);
+  const visibility = row.visibility ?? undefined;
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -289,6 +232,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.rootConversationId
       ? { rootConversationId: row.rootConversationId }
       : undefined),
+    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
@@ -420,7 +364,7 @@ export class SqlStore implements ConversationStore {
             );
           }
           // A child stores its parent's Destination row and Location, so it
-          // reads visibility and Location from its own row, the same as a root.
+          // reads its Location from its own row, the same as a root.
           const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
@@ -471,6 +415,7 @@ export class SqlStore implements ConversationStore {
     title?: string;
     visibility?: ConversationPrivacy;
     kind?: TopLevelConversationKind;
+    spaceId?: string | undefined;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -498,8 +443,11 @@ export class SqlStore implements ConversationStore {
         });
       // Persist visibility only from the current event's live signal; the
       // previously stored confirmation must not be replayed as a new signal.
+      // The stored Space is not resent, so a move that commits between the
+      // read above and this write is kept.
       const {
         sessionSource: _persistedSessionSource,
+        spaceId: _persistedSpaceId,
         visibility: _persistedVisibility,
         ...currentWithoutPersistedSignals
       } = current;
@@ -519,6 +467,9 @@ export class SqlStore implements ConversationStore {
             updatedAtMs: current.execution.updatedAtMs ?? nowMs,
           },
           ...(args.visibility ? { visibility: args.visibility } : undefined),
+          ...(!existing && args.spaceId
+            ? { spaceId: args.spaceId }
+            : undefined),
         },
       });
     });
@@ -705,7 +656,8 @@ export class SqlStore implements ConversationStore {
     nowMs?: number;
     visibility: ConversationPrivacy;
   }): Promise<void> {
-    await this.upsertDestination(
+    await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination(args),
       args.nowMs ?? Date.now(),
     );
@@ -818,7 +770,8 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const upsertedDestinationId = await this.upsertDestination(
+    const upsertedDestination = await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -829,7 +782,17 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const destinationId = upsertedDestinationId ?? args.destinationId;
+    const destinationId = upsertedDestination?.id ?? args.destinationId;
+    // A root takes the visibility of its Destination. A child copies its
+    // root's, under the lock that `setConversationVisibility` waits on.
+    const visibility = copiesRootVisibility(conversation.kind)
+      ? (
+          await resolveRootVisibility(
+            this.executor,
+            conversation.parentConversationId ?? conversation.conversationId,
+          )
+        ).visibility
+      : (upsertedDestination?.visibility ?? null);
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -847,8 +810,21 @@ export class SqlStore implements ConversationStore {
           where parent.conversation_id = ${conversation.parentConversationId}
         )`
       : conversation.conversationId;
-    const rows = await this.executor
-      .db()
+    const db = this.executor.db();
+    // Reads the row as it was before this statement, so a root that first
+    // gets a visibility here knows to fill its tree.
+    const prior = db
+      .$with("prior_conversation")
+      .as(
+        db
+          .select({ visibility: juniorConversations.visibility })
+          .from(juniorConversations)
+          .where(
+            eq(juniorConversations.conversationId, conversation.conversationId),
+          ),
+      );
+    const rows = await db
+      .with(prior)
       .insert(juniorConversations)
       .values({
         conversationId: conversation.conversationId,
@@ -884,6 +860,8 @@ export class SqlStore implements ConversationStore {
         parentConversationId: conversation.parentConversationId ?? null,
         kind: conversation.kind,
         rootConversationId,
+        spaceId: conversation.spaceId ?? null,
+        visibility,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -910,6 +888,11 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
+          // Only a new root sends a Space. `setConversationSpace` moves it.
+          spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
+          // A write fills a missing visibility and never changes a known
+          // one. Only `setConversationVisibility` does.
+          visibility: sql`coalesce(${juniorConversations.visibility}, excluded.visibility)`,
           detailVersion: nextDetailVersion,
         },
       })
@@ -917,10 +900,23 @@ export class SqlStore implements ConversationStore {
         actorIdentityId: juniorConversations.actorIdentityId,
         parentConversationId: juniorConversations.parentConversationId,
         rootConversationId: juniorConversations.rootConversationId,
+        visibility: juniorConversations.visibility,
+        filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
       });
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
+    }
+    if (
+      !copiesRootVisibility(conversation.kind) &&
+      row.visibility &&
+      row.filledVisibility
+    ) {
+      await fillMissingTreeVisibility(
+        this.executor,
+        row.rootConversationId,
+        row.visibility,
+      );
     }
     // A conflict keeps the stored parent. A history append can create the row
     // first under the event lock, so a new child can find a root row here.
@@ -939,53 +935,6 @@ export class SqlStore implements ConversationStore {
         atMs: conversation.lastActivityAtMs,
       });
     }
-  }
-
-  private async upsertDestination(
-    destination: DestinationUpsert | undefined,
-    nowMs: number,
-  ): Promise<string | undefined> {
-    if (!destination) {
-      return undefined;
-    }
-    const visibilityUpdate = destination.refreshVisibility
-      ? sql`excluded.visibility`
-      : juniorDestinations.visibility;
-    const rows = await this.executor
-      .db()
-      .insert(juniorDestinations)
-      .values({
-        id: randomUUID(),
-        provider: destination.provider,
-        providerTenantId: tenantId(destination.providerTenantId),
-        providerDestinationId: destination.providerDestinationId,
-        kind: destination.kind,
-        parentDestinationId: null,
-        displayName: destination.displayName ?? null,
-        visibility: destination.visibility,
-        metadata: destination.metadata ?? null,
-        createdAt: dateFromMs(nowMs),
-        updatedAt: dateFromMs(nowMs),
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorDestinations.provider,
-          juniorDestinations.providerTenantId,
-          juniorDestinations.providerDestinationId,
-        ],
-        set: {
-          kind: sql`excluded.kind`,
-          displayName: sql`coalesce(excluded.display_name, ${juniorDestinations.displayName})`,
-          // Signal-less writes remain unknown and must not clobber an existing
-          // public/private value. Live source signals refresh this field so
-          // converted channels converge on the next message.
-          visibility: visibilityUpdate,
-          metadata: sql`coalesce(excluded.metadata_json, ${juniorDestinations.metadata})`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      })
-      .returning({ id: juniorDestinations.id });
-    return rows[0]?.id;
   }
 }
 

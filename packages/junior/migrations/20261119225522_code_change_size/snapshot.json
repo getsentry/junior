@@ -1,0 +1,104 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b191232a-5f1c-4476-ba39-f26b0e01c8bc",
+  "prevIds": ["34948016-a9a1-442a-b126-dbc8ada7eda7"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "additions"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.additions",
+        "n|col|public.junior_code_changes.additions",
+        "e|col|public.junior_code_changes.additions"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "changed_files"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.changed_files",
+        "n|col|public.junior_code_changes.changed_files",
+        "e|col|public.junior_code_changes.changed_files"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_changes",
+        "deletions"
+      ],
+      "writes": [
+        "s|col|public.junior_code_changes.deletions",
+        "n|col|public.junior_code_changes.deletions",
+        "e|col|public.junior_code_changes.deletions"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "additions",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "changed_files",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "deletions",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

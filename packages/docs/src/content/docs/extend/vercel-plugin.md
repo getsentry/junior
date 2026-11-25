@@ -34,7 +34,7 @@ Register `vercelPlugin()` so Junior loads the webhook route.
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
 ### Conversation defaults
 
@@ -43,7 +43,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default Vercel project for investigations and deployment watches when a request does not name one.
 
-- **Define:** `jr-rpc config set vercel.project <project>`
+- **Define:** ask Junior to set `vercel.project`
 - **Install-wide default:** `configDefaults["vercel.project"]`
 - **Required:** No
 - **Environment override:** None
@@ -55,7 +55,7 @@ Default Vercel project for investigations and deployment watches when a request 
 
 Default Vercel team slug or ID used to resolve projects.
 
-- **Define:** `jr-rpc config set vercel.team <team>`
+- **Define:** ask Junior to set `vercel.team`
 - **Install-wide default:** `configDefaults["vercel.team"]`
 - **Required:** No
 - **Environment override:** None

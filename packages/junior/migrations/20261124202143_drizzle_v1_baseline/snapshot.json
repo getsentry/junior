@@ -1,0 +1,2012 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "90495786-2c2c-413b-9a2c-fdec2d790fc5",
+  "prevIds": ["b13a7187-5d35-4bb0-9b1f-778c72cfb6b1"],
+  "footprints": [
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_active_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_active_idx",
+        "n|idx|public.junior_conversations_active_idx",
+        "e|idx|public.junior_conversations_active_idx",
+        "n|rel|public.junior_conversations_active_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.conversation_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "22e646d2ad51b09e"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_verified_email_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_verified_email_idx",
+        "n|idx|public.junior_identities_verified_email_idx",
+        "e|idx|public.junior_identities_verified_email_idx",
+        "n|rel|public.junior_identities_verified_email_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_identities.email_normalized"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "244890eac61b04d4"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_message_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_message_search_idx",
+        "n|idx|public.junior_conversation_events_message_search_idx",
+        "e|idx|public.junior_conversation_events_message_search_idx",
+        "n|rel|public.junior_conversation_events_message_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_events", "n|sch|public"],
+      "sharedWrites": [],
+      "sqlHash": "fca343acc42aa88f"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_snapshots",
+        "junior_snapshots_active_build_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_snapshots_active_build_uidx",
+        "n|idx|public.junior_snapshots_active_build_uidx",
+        "e|idx|public.junior_snapshots_active_build_uidx",
+        "n|rel|public.junior_snapshots_active_build_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.workspace_id",
+        "n|col|public.junior_snapshots.profile_hash"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "5c798ba1123ca35f"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_open_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_open_idx",
+        "n|idx|public.junior_code_changes_open_idx",
+        "e|idx|public.junior_code_changes_open_idx",
+        "n|rel|public.junior_code_changes_open_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "6e3f31745fc768a8"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_team_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_team_idx",
+        "n|idx|public.junior_automations_team_idx",
+        "e|idx|public.junior_automations_team_idx",
+        "n|rel|public.junior_automations_team_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.team_id",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "08100b76a026b401"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_run_now_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_run_now_due_idx",
+        "n|idx|public.junior_automations_run_now_due_idx",
+        "e|idx|public.junior_automations_run_now_due_idx",
+        "n|rel|public.junior_automations_run_now_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.run_now_at_ms",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "e41905478ca5a9c5"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_next_run_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_next_run_due_idx",
+        "n|idx|public.junior_automations_next_run_due_idx",
+        "e|idx|public.junior_automations_next_run_due_idx",
+        "n|rel|public.junior_automations_next_run_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.next_run_at_ms",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "ceb4cb285c8468cd"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_match_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_match_idx",
+        "n|idx|public.junior_automations_match_idx",
+        "e|idx|public.junior_automations_match_idx",
+        "n|rel|public.junior_automations_match_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.namespace",
+        "n|col|public.junior_automations.identifier",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "8bdbad745fc0aeec"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automation_runs",
+        "junior_automation_runs_incomplete_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automation_runs_incomplete_idx",
+        "n|idx|public.junior_automation_runs_incomplete_idx",
+        "e|idx|public.junior_automation_runs_incomplete_idx",
+        "n|rel|public.junior_automation_runs_incomplete_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.automation_id",
+        "n|col|public.junior_automation_runs.scheduled_for_ms"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "14b397cc7525b782"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_plugin_report_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_plugin_report_idx",
+        "n|idx|public.junior_conversation_events_plugin_report_idx",
+        "e|idx|public.junior_conversation_events_plugin_report_idx",
+        "n|rel|public.junior_conversation_events_plugin_report_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.created_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "2a749062c758dca0"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_auto_archive_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|idx|public.junior_conversation_participants_auto_archive_idx",
+        "e|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|rel|public.junior_conversation_participants_auto_archive_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "dd3c0043993330d4"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_plugin_conversation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "n|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "e|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "n|rel|public.junior_conversation_events_plugin_conversation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.seq"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "a172e558c061f465"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_author_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_author_idx",
+        "n|idx|public.junior_conversation_events_author_idx",
+        "e|idx|public.junior_conversation_events_author_idx",
+        "n|rel|public.junior_conversation_events_author_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.actor_identity_id",
+        "n|col|public.junior_conversation_events.seq"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "7edd742dc345f77d"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_message_role_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_message_role_idx",
+        "n|idx|public.junior_conversation_events_message_role_idx",
+        "e|idx|public.junior_conversation_events_message_role_idx",
+        "n|rel|public.junior_conversation_events_message_role_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.created_at",
+        "n|col|public.junior_conversation_events.seq"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "47f1cb1b28eb259d"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_user_message_time_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_user_message_time_idx",
+        "n|idx|public.junior_conversation_events_user_message_time_idx",
+        "e|idx|public.junior_conversation_events_user_message_time_idx",
+        "n|rel|public.junior_conversation_events_user_message_time_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.created_at",
+        "n|col|public.junior_conversation_events.seq"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "419b30cd25ec97b1"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_guardian_review_time_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_guardian_review_time_idx",
+        "n|idx|public.junior_conversation_events_guardian_review_time_idx",
+        "e|idx|public.junior_conversation_events_guardian_review_time_idx",
+        "n|rel|public.junior_conversation_events_guardian_review_time_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.created_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "45bdd39db5676395"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_unsubscribed_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "n|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "e|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "n|rel|public.junior_conversation_participants_unsubscribed_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id",
+        "n|col|public.junior_conversation_participants.root_conversation_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "221f5ae1468d3a12"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_skill_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_skill_idx",
+        "n|idx|public.junior_automations_skill_idx",
+        "e|idx|public.junior_automations_skill_idx",
+        "n|rel|public.junior_automations_skill_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.skill",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "9684728e187dc252"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_attachments",
+        "junior_attachments_conversation_url_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_attachments_conversation_url_idx",
+        "n|idx|public.junior_attachments_conversation_url_idx",
+        "e|idx|public.junior_attachments_conversation_url_idx",
+        "n|rel|public.junior_attachments_conversation_url_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.conversation_id",
+        "n|col|public.junior_attachments.url"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "756c45b6e94db5c5"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_slack_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_slack_idx",
+        "n|idx|public.junior_automations_creator_slack_idx",
+        "e|idx|public.junior_automations_creator_slack_idx",
+        "n|rel|public.junior_automations_creator_slack_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.team_id",
+        "n|col|public.junior_automations.creator_slack_user_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "8c18e412acf8138b"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_metrics",
+        "junior_conversation_metrics_turn_metric_occurred_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_metrics_turn_metric_occurred_at_idx",
+        "n|idx|public.junior_conversation_metrics_turn_metric_occurred_at_idx",
+        "e|idx|public.junior_conversation_metrics_turn_metric_occurred_at_idx",
+        "n|rel|public.junior_conversation_metrics_turn_metric_occurred_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_metrics",
+        "n|sch|public",
+        "n|col|public.junior_conversation_metrics.metric",
+        "n|col|public.junior_conversation_metrics.occurred_at",
+        "n|col|public.junior_conversation_metrics.actor_identity_id",
+        "n|col|public.junior_conversation_metrics.conversation_id",
+        "n|col|public.junior_conversation_metrics.value"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "783b9fbd20a33fdf"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_slack_person_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_slack_person_search_idx",
+        "n|idx|public.junior_identities_slack_person_search_idx",
+        "e|idx|public.junior_identities_slack_person_search_idx",
+        "n|rel|public.junior_identities_slack_person_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_identities", "n|sch|public"],
+      "sharedWrites": [],
+      "sqlHash": "a310ea3715740a81"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "e|idx|public.junior_inbox_snoozes_snoozed_uidx",
+        "n|rel|public.junior_inbox_snoozes_snoozed_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.user_id",
+        "n|col|public.junior_inbox_snoozes.inbox_item_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "b4665309a6d99e56"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_snoozes",
+        "junior_inbox_snoozes_settled_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_snoozes_settled_idx",
+        "n|idx|public.junior_inbox_snoozes_settled_idx",
+        "e|idx|public.junior_inbox_snoozes_settled_idx",
+        "n|rel|public.junior_inbox_snoozes_settled_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.created_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "eb649dfe2d171d6b"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_embeddings",
+        "junior_memory_embeddings_embedding_1024_hnsw_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "n|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "e|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "n|rel|public.junior_memory_embeddings_embedding_1024_hnsw_idx"
+      ],
+      "reads": ["n|tbl|public.junior_memory_embeddings", "n|sch|public"],
+      "sharedWrites": [],
+      "sqlHash": "997174e869678f43"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_visible_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_visible_idx",
+        "n|idx|public.junior_memory_memories_visible_idx",
+        "e|idx|public.junior_memory_memories_visible_idx",
+        "n|rel|public.junior_memory_memories_visible_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.created_at_ms",
+        "n|col|public.junior_memory_memories.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "1d2657f261e594f9"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_expiration_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_expiration_idx",
+        "n|idx|public.junior_memory_memories_expiration_idx",
+        "e|idx|public.junior_memory_memories_expiration_idx",
+        "n|rel|public.junior_memory_memories_expiration_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.expires_at_ms"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "5dc2961657a227ac"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_search_idx",
+        "n|idx|public.junior_memory_memories_search_idx",
+        "e|idx|public.junior_memory_memories_search_idx",
+        "n|rel|public.junior_memory_memories_search_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.search_vector"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "a4ee5a2d7ac8e074"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_idempotency_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_idempotency_idx",
+        "n|idx|public.junior_memory_memories_idempotency_idx",
+        "e|idx|public.junior_memory_memories_idempotency_idx",
+        "n|rel|public.junior_memory_memories_idempotency_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.idempotency_key"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "9750ac69b6a987a7"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_archived_idempotency_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "n|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "e|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "n|rel|public.junior_memory_memories_archived_idempotency_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.idempotency_key"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "739e2fb8cca814de"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_dedupe_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "n|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "e|idx|public.junior_inbox_items_open_dedupe_uidx",
+        "n|rel|public.junior_inbox_items_open_dedupe_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.dedupe_key"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "c9af53721fce608f"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_action_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|idx|public.junior_inbox_items_open_action_owner_idx",
+        "e|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|rel|public.junior_inbox_items_open_action_owner_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "9144becbfe1c2ff2"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_answered_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_answered_idx",
+        "n|idx|public.junior_inbox_items_answered_idx",
+        "e|idx|public.junior_inbox_items_answered_idx",
+        "n|rel|public.junior_inbox_items_answered_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_id",
+        "n|col|public.junior_inbox_items.closed_by_user_id",
+        "n|col|public.junior_inbox_items.closed_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "197b74fe41883f24"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_authorization_request_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_authorization_request_idx",
+        "n|idx|public.junior_conversation_events_authorization_request_idx",
+        "e|idx|public.junior_conversation_events_authorization_request_idx",
+        "n|rel|public.junior_conversation_events_authorization_request_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.created_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "9508bb7561c38189"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_artifacts",
+        "junior_artifacts_permanent_sha_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_artifacts_permanent_sha_uidx",
+        "n|idx|public.junior_artifacts_permanent_sha_uidx",
+        "e|idx|public.junior_artifacts_permanent_sha_uidx",
+        "n|rel|public.junior_artifacts_permanent_sha_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.conversation_id",
+        "n|col|public.junior_artifacts.sha256"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "96411ae4d4283f4f"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_lead_actor_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_lead_actor_idx",
+        "n|idx|public.junior_conversations_lead_actor_idx",
+        "e|idx|public.junior_conversations_lead_actor_idx",
+        "n|rel|public.junior_conversations_lead_actor_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.actor_identity_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "a0da59013cb1c641"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_search_idx",
+        "n|idx|public.junior_automations_search_idx",
+        "e|idx|public.junior_automations_search_idx",
+        "n|rel|public.junior_automations_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"],
+      "sharedWrites": [],
+      "sqlHash": "9c51ed7e0babee72"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_title_trgm_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_title_trgm_idx",
+        "n|idx|public.junior_automations_title_trgm_idx",
+        "e|idx|public.junior_automations_title_trgm_idx",
+        "n|rel|public.junior_automations_title_trgm_idx"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"],
+      "sharedWrites": [],
+      "sqlHash": "5979a8e3d51b250c"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_prefix_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_prefix_idx",
+        "n|idx|public.junior_memory_memories_prefix_idx",
+        "e|idx|public.junior_memory_memories_prefix_idx",
+        "n|rel|public.junior_memory_memories_prefix_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "81bda65b5f1fe2bb"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": ["s|ck|public.junior_snapshots.junior_snapshots_status_check"],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.status",
+        "e|col|public.junior_snapshots.status"
+      ],
+      "sqlHash": "2bb7d0e570cd103e"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_build_phase_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.build_phase",
+        "e|col|public.junior_snapshots.build_phase"
+      ],
+      "sqlHash": "ab44bca844623a63"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_ready_fields_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.status",
+        "n|col|public.junior_snapshots.snapshot_id",
+        "n|col|public.junior_snapshots.build_duration_ms",
+        "n|col|public.junior_snapshots.generated_at",
+        "e|col|public.junior_snapshots.status",
+        "e|col|public.junior_snapshots.snapshot_id",
+        "e|col|public.junior_snapshots.build_duration_ms",
+        "e|col|public.junior_snapshots.generated_at"
+      ],
+      "sqlHash": "b05031f6c22feb0f"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_build_fields_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.status",
+        "n|col|public.junior_snapshots.build_started_at",
+        "n|col|public.junior_snapshots.build_phase",
+        "e|col|public.junior_snapshots.status",
+        "e|col|public.junior_snapshots.build_started_at",
+        "e|col|public.junior_snapshots.build_phase"
+      ],
+      "sqlHash": "5fa0e537abdd05f4"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_build_duration_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.build_duration_ms",
+        "e|col|public.junior_snapshots.build_duration_ms"
+      ],
+      "sqlHash": "32ec9c7e3a544492"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_size_bytes_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.size_bytes",
+        "e|col|public.junior_snapshots.size_bytes"
+      ],
+      "sqlHash": "e51055aee2f7bf03"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.kind",
+        "e|col|public.junior_automations.kind"
+      ],
+      "sqlHash": "74b8176fc55a7b59"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.status",
+        "e|col|public.junior_automations.status"
+      ],
+      "sqlHash": "55795e99153871e2"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_record_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.record",
+        "e|col|public.junior_automations.record"
+      ],
+      "sqlHash": "1c7af327492f6c49"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_trigger_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.kind",
+        "n|col|public.junior_automations.namespace",
+        "n|col|public.junior_automations.identifier",
+        "n|col|public.junior_automations.next_run_at_ms",
+        "n|col|public.junior_automations.run_now_at_ms",
+        "n|col|public.junior_automations.status",
+        "e|col|public.junior_automations.kind",
+        "e|col|public.junior_automations.namespace",
+        "e|col|public.junior_automations.identifier",
+        "e|col|public.junior_automations.next_run_at_ms",
+        "e|col|public.junior_automations.run_now_at_ms",
+        "e|col|public.junior_automations.status"
+      ],
+      "sqlHash": "8bb2f80bf58335ca"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automation_runs"],
+      "writes": [
+        "s|ck|public.junior_automation_runs.junior_automation_runs_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.status",
+        "e|col|public.junior_automation_runs.status"
+      ],
+      "sqlHash": "6de6f22350227272"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind",
+        "e|col|public.junior_conversations.kind"
+      ],
+      "sqlHash": "c2483b82b9c09f84"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_parent_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind",
+        "n|col|public.junior_conversations.parent_conversation_id",
+        "e|col|public.junior_conversations.kind",
+        "e|col|public.junior_conversations.parent_conversation_id"
+      ],
+      "sqlHash": "b9ae1eaffde7534d"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_task_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.instruction",
+        "n|col|public.junior_automations.skill",
+        "e|col|public.junior_automations.instruction",
+        "e|col|public.junior_automations.skill"
+      ],
+      "sqlHash": "f9bd1118584f085f"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_conversation_embeddings"],
+      "writes": [
+        "s|ck|public.junior_conversation_embeddings.junior_conversation_embeddings_dimensions_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_conversation_embeddings.embedding",
+        "n|col|public.junior_conversation_embeddings.dimensions",
+        "e|col|public.junior_conversation_embeddings.embedding",
+        "e|col|public.junior_conversation_embeddings.dimensions"
+      ],
+      "sqlHash": "416ecda756b59bc4"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_event_embeddings"
+      ],
+      "writes": [
+        "s|ck|public.junior_conversation_event_embeddings.junior_conversation_event_embeddings_dimensions_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_event_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_conversation_event_embeddings.embedding",
+        "n|col|public.junior_conversation_event_embeddings.dimensions",
+        "e|col|public.junior_conversation_event_embeddings.embedding",
+        "e|col|public.junior_conversation_event_embeddings.dimensions"
+      ],
+      "sqlHash": "8011e366449ab25a"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_artifacts"],
+      "writes": [
+        "s|ck|public.junior_artifacts.junior_artifacts_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.visibility",
+        "e|col|public.junior_artifacts.visibility"
+      ],
+      "sqlHash": "f6ca39c0fd79a644"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_artifacts"],
+      "writes": [
+        "s|ck|public.junior_artifacts.junior_artifacts_path_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.path",
+        "n|col|public.junior_artifacts.visibility",
+        "e|col|public.junior_artifacts.path",
+        "e|col|public.junior_artifacts.visibility"
+      ],
+      "sqlHash": "96ca0e4659d4e44e"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_snooze_triggers"],
+      "writes": [
+        "s|ck|public.junior_inbox_snooze_triggers.junior_inbox_snooze_triggers_outcome_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snooze_triggers",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snooze_triggers.outcome",
+        "e|col|public.junior_inbox_snooze_triggers.outcome"
+      ],
+      "sqlHash": "abff866e49871938"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_snoozes"],
+      "writes": [
+        "s|ck|public.junior_inbox_snoozes.junior_inbox_snoozes_state_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_snoozes",
+        "n|sch|public",
+        "n|col|public.junior_inbox_snoozes.state",
+        "e|col|public.junior_inbox_snoozes.state"
+      ],
+      "sqlHash": "d222d94a02c1fafc"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_embeddings"],
+      "writes": [
+        "s|ck|public.junior_memory_embeddings.junior_memory_embeddings_metric_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_memory_embeddings.metric",
+        "e|col|public.junior_memory_embeddings.metric"
+      ],
+      "sqlHash": "c45b70e58de91dc1"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_embeddings"],
+      "writes": [
+        "s|ck|public.junior_memory_embeddings.junior_memory_embeddings_dimensions_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_memory_embeddings.dimensions",
+        "n|col|public.junior_memory_embeddings.embedding",
+        "e|col|public.junior_memory_embeddings.dimensions",
+        "e|col|public.junior_memory_embeddings.embedding"
+      ],
+      "sqlHash": "b796ad61fdd9bf58"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|ck|public.junior_memory_memories.junior_memory_memories_scope_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "e|col|public.junior_memory_memories.scope"
+      ],
+      "sqlHash": "8f5022caf456b58c"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|ck|public.junior_memory_memories.junior_memory_memories_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.type",
+        "e|col|public.junior_memory_memories.type"
+      ],
+      "sqlHash": "5351de01dafab133"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|ck|public.junior_memory_memories.junior_memory_memories_subject_type_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.subject_type",
+        "e|col|public.junior_memory_memories.subject_type"
+      ],
+      "sqlHash": "d3fdab19837ba569"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|ck|public.junior_memory_memories.junior_memory_memories_subject_key_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.subject_type",
+        "n|col|public.junior_memory_memories.subject_key",
+        "e|col|public.junior_memory_memories.subject_type",
+        "e|col|public.junior_memory_memories.subject_key"
+      ],
+      "sqlHash": "7adc2d1272a8fc04"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|ck|public.junior_memory_memories.junior_memory_memories_source_platform_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.source_platform",
+        "e|col|public.junior_memory_memories.source_platform"
+      ],
+      "sqlHash": "f8704f2092427bb9"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_memory_signals"],
+      "writes": [
+        "s|ck|public.junior_memory_signals.junior_memory_signals_signal_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_signals",
+        "n|sch|public",
+        "n|col|public.junior_memory_signals.signal",
+        "e|col|public.junior_memory_signals.signal"
+      ],
+      "sqlHash": "345e05e0cf2426bc"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": ["s|ck|public.junior_todos.junior_todos_status_check"],
+      "reads": [
+        "n|tbl|public.junior_todos",
+        "n|sch|public",
+        "n|col|public.junior_todos.status",
+        "e|col|public.junior_todos.status"
+      ],
+      "sqlHash": "dd314d85292c0abc"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": ["s|ck|public.junior_todos.junior_todos_assignee_check"],
+      "reads": [
+        "n|tbl|public.junior_todos",
+        "n|sch|public",
+        "n|col|public.junior_todos.assignee_conversation_id",
+        "n|col|public.junior_todos.assignee_user_id",
+        "e|col|public.junior_todos.assignee_conversation_id",
+        "e|col|public.junior_todos.assignee_user_id"
+      ],
+      "sqlHash": "09d60f9933ee4d71"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.kind",
+        "n|col|public.junior_inbox_items.request",
+        "n|col|public.junior_inbox_items.answer",
+        "n|col|public.junior_inbox_items.dedupe_key",
+        "e|col|public.junior_inbox_items.kind",
+        "e|col|public.junior_inbox_items.request",
+        "e|col|public.junior_inbox_items.answer",
+        "e|col|public.junior_inbox_items.dedupe_key"
+      ],
+      "sqlHash": "8f504387916e89c8"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_owner_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.owner_kind",
+        "n|col|public.junior_inbox_items.dedupe_key",
+        "e|col|public.junior_inbox_items.owner_kind",
+        "e|col|public.junior_inbox_items.dedupe_key"
+      ],
+      "sqlHash": "283f5e9f6cdd3cd2"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.status",
+        "n|col|public.junior_inbox_items.closed_at",
+        "e|col|public.junior_inbox_items.status",
+        "e|col|public.junior_inbox_items.closed_at"
+      ],
+      "sqlHash": "14cd2394b9f5feea"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_tenant_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.provider",
+        "n|col|public.junior_inbox_items.provider_tenant_id",
+        "e|col|public.junior_inbox_items.provider",
+        "e|col|public.junior_inbox_items.provider_tenant_id"
+      ],
+      "sqlHash": "a831d4741b02c268"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.visibility",
+        "n|col|public.junior_inbox_items.assigned_to_everyone",
+        "e|col|public.junior_inbox_items.visibility",
+        "e|col|public.junior_inbox_items.assigned_to_everyone"
+      ],
+      "sqlHash": "e1c189e27fe7858c"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversations_active_idx\"]",
+      "set": {
+        "where": "\"execution_status\" <> 'idle'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_identities_verified_email_idx\"]",
+      "set": {
+        "where": "\"email_verified\" = true AND \"email_normalized\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_message_search_idx\"]",
+      "set": {
+        "where": "\"type\" = 'message'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_snapshots_active_build_uidx\"]",
+      "set": {
+        "where": "\"status\" = 'building'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_code_changes_open_idx\"]",
+      "set": {
+        "where": "\"state\" = 'open'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_team_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_run_now_due_idx\"]",
+      "set": {
+        "where": "\"status\" = 'active' AND \"run_now_at_ms\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_next_run_due_idx\"]",
+      "set": {
+        "where": "\"status\" = 'active' AND \"next_run_at_ms\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_match_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automation_runs_incomplete_idx\"]",
+      "set": {
+        "where": "\"status\" in ('pending', 'running')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_plugin_report_idx\"]",
+      "set": {
+        "where": "\"type\" = 'structured_event'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_participants_auto_archive_idx\"]",
+      "set": {
+        "where": "\"auto_archive\""
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_plugin_conversation_idx\"]",
+      "set": {
+        "where": "\"type\" = 'structured_event'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_author_idx\"]",
+      "set": {
+        "where": "\"actor_identity_id\" is not null"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_message_role_idx\"]",
+      "set": {
+        "where": "\"type\" = 'message'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_user_message_time_idx\"]",
+      "set": {
+        "where": "\"type\" = 'user_message' and (\"payload\"->'provenance'->>'authority') = 'instruction' and (\"payload\"->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_guardian_review_time_idx\"]",
+      "set": {
+        "where": "\"type\" = 'guardian_action_reviewed'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_participants_unsubscribed_idx\"]",
+      "set": {
+        "where": "\"unsubscribed_at\" is not null"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_skill_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted' AND \"skill\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_attachments_conversation_url_idx\"]",
+      "set": {
+        "where": "\"url\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_creator_slack_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_metrics_turn_metric_occurred_at_idx\"]",
+      "set": {
+        "where": "\"metric\" IN ('duration_ms', 'total_tokens', 'cost_micro_usd')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_identities_slack_person_search_idx\"]",
+      "set": {
+        "where": "\"provider\" = 'slack' AND \"kind\" = 'user'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_snoozes_snoozed_uidx\"]",
+      "set": {
+        "where": "\"state\" = 'snoozed'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_snoozes_settled_idx\"]",
+      "set": {
+        "where": "\"state\" <> 'snoozed'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_embeddings_embedding_1024_hnsw_idx\"]",
+      "set": {
+        "where": "\"dimensions\" = 1024",
+        "with": "m=16, ef_construction=64"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_visible_idx\"]",
+      "set": {
+        "where": "\"archived_at_ms\" IS NULL AND \"superseded_at_ms\" IS NULL AND \"superseded_by_id\" IS NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_expiration_idx\"]",
+      "set": {
+        "where": "\"archived_at_ms\" IS NULL AND \"expires_at_ms\" IS NOT NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_search_idx\"]",
+      "set": {
+        "where": "\"archived_at_ms\" IS NULL AND \"superseded_at_ms\" IS NULL AND \"superseded_by_id\" IS NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_idempotency_idx\"]",
+      "set": {
+        "where": "\"idempotency_key\" IS NOT NULL AND \"archived_at_ms\" IS NULL AND \"superseded_at_ms\" IS NULL AND \"superseded_by_id\" IS NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_archived_idempotency_idx\"]",
+      "set": {
+        "where": "\"idempotency_key\" IS NOT NULL AND \"archived_at_ms\" IS NOT NULL AND \"archive_reason\" <> 'expired'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_open_dedupe_uidx\"]",
+      "set": {
+        "where": "\"status\" = 'open'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_open_action_owner_idx\"]",
+      "set": {
+        "where": "\"status\" = 'open' and \"kind\" = 'action'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_answered_idx\"]",
+      "set": {
+        "where": "\"answer\" is not null"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_authorization_request_idx\"]",
+      "set": {
+        "where": "\"type\" = 'authorization_requested'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_artifacts_permanent_sha_uidx\"]",
+      "set": {
+        "where": "\"visibility\" = 'public' and \"expires_at\" is null"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversations_lead_actor_idx\"]",
+      "set": {
+        "where": "\"kind\" = 'lead'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_search_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_automations_title_trgm_idx\"]",
+      "set": {
+        "where": "\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_memory_memories_prefix_idx\"]",
+      "set": {
+        "where": "\"archived_at_ms\" IS NULL AND \"superseded_at_ms\" IS NULL AND \"superseded_by_id\" IS NULL"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "fks\u0000[\"public\",\"junior_conversation_events\",\"junior_conversation_events_conversation_id_junior_conversations\"]",
+      "set": {
+        "nameExplicit": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "fks\u0000[\"public\",\"junior_conversation_metrics\",\"junior_conversation_metrics_conversation_id_junior_conversation\"]",
+      "set": {
+        "nameExplicit": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "pks\u0000[\"public\",\"junior_conversation_events\",\"junior_conversation_events_conversation_id_seq_pk\"]",
+      "set": {
+        "nameExplicit": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "pks\u0000[\"public\",\"junior_stats\",\"junior_stats_date_namespace_metric_name_pk\"]",
+      "set": {
+        "nameExplicit": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "pks\u0000[\"public\",\"junior_conversation_metrics\",\"junior_conversation_metrics_conversation_id_run_id_metric_pk\"]",
+      "set": {
+        "nameExplicit": true
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_status_check\"]",
+      "set": {
+        "value": "\"status\" in ('building', 'failed', 'ready')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_build_phase_check\"]",
+      "set": {
+        "value": "\"build_phase\" is null or \"build_phase\" in ('created', 'dependencies_installed', 'repositories_prepared')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_ready_fields_check\"]",
+      "set": {
+        "value": "\"status\" <> 'ready' or (\"snapshot_id\" is not null and \"build_duration_ms\" is not null and \"generated_at\" is not null)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_build_fields_check\"]",
+      "set": {
+        "value": "\"status\" = 'ready' or (\"build_started_at\" is not null and \"build_phase\" is not null)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_build_duration_check\"]",
+      "set": {
+        "value": "\"build_duration_ms\" is null or \"build_duration_ms\" >= 0"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_snapshots\",\"junior_snapshots_size_bytes_check\"]",
+      "set": {
+        "value": "\"size_bytes\" is null or \"size_bytes\" >= 0"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_kind_check\"]",
+      "set": {
+        "value": "\"kind\" in ('scheduled', 'event')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_status_check\"]",
+      "set": {
+        "value": "\"status\" in ('active', 'blocked', 'paused', 'completed', 'deleted')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_record_check\"]",
+      "set": {
+        "value": "jsonb_typeof(\"record\") = 'object'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_trigger_check\"]",
+      "set": {
+        "value": "(\"kind\" = 'scheduled' and \"namespace\" is null and \"identifier\" is null) or (\"kind\" = 'event' and \"namespace\" is not null and \"next_run_at_ms\" is null and \"run_now_at_ms\" is null and \"status\" <> 'completed')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automation_runs\",\"junior_automation_runs_status_check\"]",
+      "set": {
+        "value": "\"status\" in ('pending', 'running', 'completed', 'failed', 'blocked', 'skipped')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversations\",\"junior_conversations_kind_check\"]",
+      "set": {
+        "value": "\"kind\" in ('root', 'automation', 'lead', 'thread', 'task')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversations\",\"junior_conversations_kind_parent_check\"]",
+      "set": {
+        "value": "\"kind\" is null or ((\"kind\" in ('root', 'automation', 'lead')) = (\"parent_conversation_id\" is null))"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_task_check\"]",
+      "set": {
+        "value": "(\"instruction\" is null) <> (\"skill\" is null)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversation_embeddings\",\"junior_conversation_embeddings_dimensions_check\"]",
+      "set": {
+        "value": "vector_dims(\"embedding\") = \"dimensions\""
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversation_event_embeddings\",\"junior_conversation_event_embeddings_dimensions_check\"]",
+      "set": {
+        "value": "vector_dims(\"embedding\") = \"dimensions\""
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_artifacts\",\"junior_artifacts_visibility_check\"]",
+      "set": {
+        "value": "\"visibility\" in ('conversation', 'internal', 'public')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_artifacts\",\"junior_artifacts_path_visibility_check\"]",
+      "set": {
+        "value": "(\"path\" is null) = (\"visibility\" = 'public')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_snooze_triggers\",\"junior_inbox_snooze_triggers_outcome_check\"]",
+      "set": {
+        "value": "\"outcome\" in ('wake', 'resolve')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_snoozes\",\"junior_inbox_snoozes_state_check\"]",
+      "set": {
+        "value": "\"state\" in ('snoozed', 'woken', 'cancelled')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_embeddings\",\"junior_memory_embeddings_metric_check\"]",
+      "set": {
+        "value": "\"metric\" IN ('cosine')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_embeddings\",\"junior_memory_embeddings_dimensions_check\"]",
+      "set": {
+        "value": "\"dimensions\" IN (1024, 1536) AND vector_dims(\"embedding\") = \"dimensions\""
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_memories\",\"junior_memory_memories_scope_check\"]",
+      "set": {
+        "value": "\"scope\" IN ('private', 'public')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_memories\",\"junior_memory_memories_kind_check\"]",
+      "set": {
+        "value": "\"type\" IN (\n        'preference',\n        'procedure',\n        'knowledge'\n      )"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_memories\",\"junior_memory_memories_subject_type_check\"]",
+      "set": {
+        "value": "\"subject_type\" IN ('user', 'conversation', 'general')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_memories\",\"junior_memory_memories_subject_key_check\"]",
+      "set": {
+        "value": "(\"subject_type\" = 'general' AND \"subject_key\" IS NULL) OR (\"subject_type\" IN ('user', 'conversation') AND \"subject_key\" IS NOT NULL AND length(\"subject_key\") > 0)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_memories\",\"junior_memory_memories_source_platform_check\"]",
+      "set": {
+        "value": "\"source_platform\" IN ('slack', 'local', 'web')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_memory_signals\",\"junior_memory_signals_signal_check\"]",
+      "set": {
+        "value": "\"signal\" IN ('duplicate', 'contradicted', 'superseded')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_todos\",\"junior_todos_status_check\"]",
+      "set": {
+        "value": "\"status\" in ('open', 'in_progress', 'done', 'dropped')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_todos\",\"junior_todos_assignee_check\"]",
+      "set": {
+        "value": "\"assignee_conversation_id\" is null or \"assignee_user_id\" is null"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_kind_check\"]",
+      "set": {
+        "value": "(\"kind\" = 'notice' and \"request\" is null and \"answer\" is null) or (\"kind\" = 'action' and (\"request\" is not null or ((\"dedupe_key\" like 'plugin:%' or \"dedupe_key\" like 'automation:%' or \"dedupe_key\" like 'todo:%') and \"answer\" is null)))"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_owner_check\"]",
+      "set": {
+        "value": "(\"owner_kind\" = 'conversation' and \"dedupe_key\" not like 'automation:%') or (\"owner_kind\" = 'automation' and \"dedupe_key\" like 'automation:%')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_status_check\"]",
+      "set": {
+        "value": "(\"status\" = 'open' and \"closed_at\" is null) or (\"status\" in ('done', 'dismissed') and \"closed_at\" is not null)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_tenant_check\"]",
+      "set": {
+        "value": "(\"provider\" is null) = (\"provider_tenant_id\" is null)"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_visibility_check\"]",
+      "set": {
+        "value": "\"visibility\" = 'public' or not \"assigned_to_everyone\""
+      }
+    }
+  ]
+}

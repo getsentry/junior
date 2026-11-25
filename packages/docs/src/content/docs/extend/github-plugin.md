@@ -90,7 +90,7 @@ installation ID.
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
 
 ### Conversation defaults
 
@@ -99,7 +99,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default GitHub organization or owner when a request does not name one.
 
-- **Define:** `jr-rpc config set github.org <owner>`
+- **Define:** ask Junior to set `github.org`
 - **Install-wide default:** `configDefaults["github.org"]`
 - **Required:** No
 - **Environment override:** None
@@ -111,7 +111,7 @@ Default GitHub organization or owner when a request does not name one.
 
 Default repository in `owner/repo` form when a request does not name one.
 
-- **Define:** `jr-rpc config set github.repo <owner/repo>`
+- **Define:** ask Junior to set `github.repo`
 - **Install-wide default:** `configDefaults["github.repo"]`
 - **Required:** No
 - **Environment override:** None
@@ -559,9 +559,41 @@ The pull request was opened.
 </details>
 
 <details class="event">
+<summary><code>pull_request.reopened</code></summary>
+
+The pull request was reopened after it closed without merging.
+
+</details>
+
+<details class="event">
 <summary><code>pull_request.ready_for_review</code></summary>
 
 The pull request became ready for review.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.converted_to_draft</code></summary>
+
+The pull request was converted to a draft.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.synchronized</code></summary>
+
+The pull request got new commits: a push or a force push to its head
+branch. Each push sends this event, also a push by Junior. So it is not in the
+suggested events, and the watch that Junior creates for its own pull requests
+does not get it by default.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.review_requested</code></summary>
+
+Someone asked a person or a team to review the pull request. Each reviewer
+that GitHub adds sends one event. The summary names the reviewer.
 
 </details>
 
@@ -667,6 +699,27 @@ that Junior published for a fix count as fixes, so a merge or force push for
 work that a person asked for does not. Junior stores those, with the times
 of the latest Resume and the latest item. Each head commit publishes one
 event.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.merge_conflict.resolved</code></summary>
+
+The pull request had merge conflicts, and now GitHub can merge it cleanly.
+GitHub sends no webhook for this either. When Junior reads a conflict, it
+marks the pull request for 30 days. The reads that mark it are the merge
+conflict checks, a `pull_request` webhook, the merge state read after a push,
+and a card that shows the pull request. When a watch, event automation, or
+snooze wants this event, a comment, review, or check result on the pull
+request also reads its merge state, the same as for
+`pull_request.merge_conflict`. After each push, Junior reads the merge state
+again a few seconds later. When a read finds no conflict on a marked pull
+request, Junior publishes this event and removes the mark. A pull request that
+had no conflict sends no event. Each head commit publishes one event. A
+conflict that a change on the base branch fixes, with no push to the pull
+request, publishes at the next read: the next comment, review, check result,
+or push. For pull requests that Junior opened, a push to the default branch
+also starts that read. Trusted data includes the full head SHA.
 
 </details>
 

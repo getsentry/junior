@@ -1,17 +1,12 @@
 import { Bash, defineCommand } from "just-bash";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
-import { logInfo } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import type { Skill } from "@/chat/skills";
+import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
 
 type JrRpcDeps = {
-  activeSkill: Skill | null;
   locationConfiguration?: LocationConfigurationService | undefined;
-  actorId?: string | undefined;
-  onConfigurationValueChanged?: (
-    key: string,
-    value: unknown | undefined,
-  ) => void;
+  /** The Conversation whose Space configuration the reads include. */
+  conversationId?: string | undefined;
 };
 
 function commandResult(input: {
@@ -32,21 +27,45 @@ function commandResult(input: {
   };
 }
 
-function requireLocationConfiguration(
+type ConfigRow = {
+  key: string;
+  scope: "location" | "space";
+  value: unknown;
+  updatedAt?: string;
+  updatedBy?: string | undefined;
+  source?: string | undefined;
+};
+
+/**
+ * Read the configuration that the Conversation sets: its Slack channel's
+ * and its Space's. A key that both set lists twice, and the Space's value
+ * wins, the same as when a Turn resolves its configuration.
+ */
+async function readConfigRows(
   deps: JrRpcDeps,
-):
-  | { ok: true; configuration: LocationConfigurationService }
-  | { ok: false; result: ReturnType<typeof commandResult> } {
-  if (deps.locationConfiguration) {
-    return { ok: true, configuration: deps.locationConfiguration };
-  }
-  return {
-    ok: false,
-    result: commandResult({
-      stderr: "jr-rpc config commands require active conversation context\n",
-      exitCode: 1,
-    }),
-  };
+): Promise<ConfigRow[] | undefined> {
+  if (!deps.locationConfiguration && !deps.conversationId) return undefined;
+  const [location, space] = await Promise.all([
+    deps.locationConfiguration?.list() ?? [],
+    deps.conversationId
+      ? readConversationSpaceConfiguration(deps.conversationId)
+      : {},
+  ]);
+  return [
+    ...Object.entries(space).map(([key, value]) => ({
+      key,
+      scope: "space" as const,
+      value,
+    })),
+    ...location.map((entry) => ({
+      key: entry.key,
+      scope: entry.scope,
+      value: entry.value,
+      updatedAt: entry.updatedAt,
+      updatedBy: entry.updatedBy,
+      source: entry.source,
+    })),
+  ];
 }
 
 function parsePrefixFlag(
@@ -69,42 +88,29 @@ function parsePrefixFlag(
   };
 }
 
-/** Build a stderr warning when a config key is not declared by any installed plugin. */
-function buildUnknownKeyWarning(key: string): string {
-  const knownKeys = pluginCatalogRuntime
-    .getProviders()
-    .flatMap((plugin) => [...plugin.manifest.configKeys]);
-  if (knownKeys.includes(key)) {
-    return "";
-  }
-  // Find suggestions with the same dot-prefix (e.g. "cloudflare." for "cloudflare.worker-id")
-  const prefix = key.includes(".") ? key.slice(0, key.indexOf(".") + 1) : "";
-  const suggestions = prefix
-    ? knownKeys.filter((k) => k.startsWith(prefix))
-    : knownKeys;
-  const hint =
-    suggestions.length > 0
-      ? `Known keys with prefix "${prefix}": ${suggestions.join(", ")}`
-      : `Known config keys: ${knownKeys.join(", ")}`;
-  return `Warning: "${key}" is not a recognized config key. ${hint}\n`;
-}
-
 async function handleConfigCommand(
   args: string[],
   deps: JrRpcDeps,
 ): Promise<ReturnType<typeof commandResult>> {
   const usage = [
     "jr-rpc config get <key>",
-    "jr-rpc config set <key> <value> [--json]",
-    "jr-rpc config unset <key>",
     "jr-rpc config list [--prefix <value>]",
   ].join("\n");
   const subverb = (args[0] ?? "").trim();
-  const configurationResult = requireLocationConfiguration(deps);
-  if (!configurationResult.ok) {
-    return configurationResult.result;
+  if (subverb === "set" || subverb === "unset") {
+    return commandResult({
+      stderr:
+        "jr-rpc config only reads configuration. Change it with the setConfiguration tool.\n",
+      exitCode: 2,
+    });
   }
-  const configuration = configurationResult.configuration;
+  const rows = await readConfigRows(deps);
+  if (!rows) {
+    return commandResult({
+      stderr: "jr-rpc config commands require active conversation context\n",
+      exitCode: 1,
+    });
+  }
 
   if (subverb === "get") {
     const key = (args[1] ?? "").trim();
@@ -114,125 +120,10 @@ async function handleConfigCommand(
         exitCode: 2,
       });
     }
-    const entry = await configuration.get(key);
+    // The Space's rows come first, so its value wins.
+    const row = rows.find((entry) => entry.key === key);
     return commandResult({
-      stdout: entry
-        ? {
-            ok: true,
-            key: entry.key,
-            scope: entry.scope,
-            value: entry.value,
-            updatedAt: entry.updatedAt,
-            updatedBy: entry.updatedBy,
-            source: entry.source,
-          }
-        : {
-            ok: true,
-            key,
-            found: false,
-          },
-      exitCode: 0,
-    });
-  }
-
-  if (subverb === "set") {
-    const key = (args[1] ?? "").trim();
-    const valueArg = args[2];
-    const extras = args.slice(3);
-    if (!key || valueArg === undefined) {
-      return commandResult({
-        stderr: `Usage:\n${usage}\n`,
-        exitCode: 2,
-      });
-    }
-
-    let parseAsJson = false;
-    if (extras.length > 0) {
-      if (extras.length === 1 && extras[0] === "--json") {
-        parseAsJson = true;
-      } else {
-        return commandResult({
-          stderr: `Usage:\n${usage}\n`,
-          exitCode: 2,
-        });
-      }
-    }
-
-    let value: unknown = valueArg;
-    if (parseAsJson) {
-      try {
-        value = JSON.parse(valueArg);
-      } catch (error) {
-        return commandResult({
-          stderr: `Invalid JSON value for jr-rpc config set --json: ${error instanceof Error ? error.message : String(error)}\n`,
-          exitCode: 2,
-        });
-      }
-    }
-
-    const unknownKeyWarning = buildUnknownKeyWarning(key);
-
-    try {
-      const entry = await configuration.set({
-        key,
-        value,
-        updatedBy: deps.actorId,
-        source: "jr-rpc",
-      });
-      logInfo("jr_rpc.config.updated", {
-        "app.config.key": entry.key,
-        "app.config.scope": entry.scope,
-        "app.config.source": entry.source ?? "jr-rpc",
-        ...(deps.activeSkill?.name
-          ? { "app.skill.name": deps.activeSkill.name }
-          : undefined),
-      });
-      deps.onConfigurationValueChanged?.(entry.key, entry.value);
-      return commandResult({
-        stdout: {
-          ok: true,
-          key: entry.key,
-          scope: entry.scope,
-          value: entry.value,
-          updatedAt: entry.updatedAt,
-          updatedBy: entry.updatedBy,
-          source: entry.source,
-        },
-        stderr: unknownKeyWarning,
-        exitCode: 0,
-      });
-    } catch (error) {
-      return commandResult({
-        stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-        exitCode: 1,
-      });
-    }
-  }
-
-  if (subverb === "unset") {
-    const key = (args[1] ?? "").trim();
-    if (!key || args.length !== 2) {
-      return commandResult({
-        stderr: `Usage:\n${usage}\n`,
-        exitCode: 2,
-      });
-    }
-    const deleted = await configuration.unset(key);
-    if (deleted) {
-      logInfo("jr_rpc.config.removed", {
-        "app.config.key": key,
-        ...(deps.activeSkill?.name
-          ? { "app.skill.name": deps.activeSkill.name }
-          : undefined),
-      });
-      deps.onConfigurationValueChanged?.(key, undefined);
-    }
-    return commandResult({
-      stdout: {
-        ok: true,
-        key,
-        deleted,
-      },
+      stdout: row ? { ok: true, ...row } : { ok: true, key, found: false },
       exitCode: 0,
     });
   }
@@ -245,20 +136,13 @@ async function handleConfigCommand(
         exitCode: 2,
       });
     }
-    const entries = prefixResult.prefix
-      ? await configuration.list({ prefix: prefixResult.prefix })
-      : await configuration.list({});
+    const prefix = prefixResult.prefix;
     return commandResult({
       stdout: {
         ok: true,
-        entries: entries.map((entry) => ({
-          key: entry.key,
-          scope: entry.scope,
-          value: entry.value,
-          updatedAt: entry.updatedAt,
-          updatedBy: entry.updatedBy,
-          source: entry.source,
-        })),
+        entries: rows
+          .filter((entry) => !prefix || entry.key.startsWith(prefix))
+          .sort((left, right) => left.key.localeCompare(right.key)),
       },
       exitCode: 0,
     });
@@ -306,8 +190,6 @@ function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
     const usage = [
       "jr-rpc config get <key>",
-      "jr-rpc config set <key> <value> [--json]",
-      "jr-rpc config unset <key>",
       "jr-rpc config list [--prefix <value>]",
       "jr-rpc plugins list",
     ].join("\n");

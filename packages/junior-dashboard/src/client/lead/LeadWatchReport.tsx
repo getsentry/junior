@@ -1,45 +1,15 @@
 import { useContext } from "react";
 import { Link } from "react-router";
-import { AGENT_UPDATE_EVENT_TYPE } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
+import { TranscriptActivityNesting } from "../conversations/TranscriptRailEvent";
 import { transcriptColumnsClass } from "../conversations/TranscriptRows";
 import { cn } from "../styles";
 import { formatTime, getDashboardTimeZone } from "../time";
 import type { TranscriptViewMessage } from "../types";
 import { LeadPage } from "./leadPage";
-import type { LeadWorkState } from "./leadWork";
 import { leadWorkStatus } from "./LeadWorkStatus";
-
-type Report = { state: LeadWorkState; verb: string };
-
-const reports: Record<string, Report> = {
-  blocked: { state: "needs_you", verb: "is blocked" },
-  completed: { state: "done", verb: "finished" },
-  failed: { state: "failed", verb: "failed" },
-  stopped: { state: "done", verb: "stopped" },
-  waiting: { state: "needs_you", verb: "needs you" },
-};
-
-// Watch Events from before agent updates. Stored Lead transcripts keep them.
-const legacyReports: Record<string, Report | undefined> = {
-  "conversation.completed": reports["completed"],
-  "conversation.failed": reports["failed"],
-  "conversation.stopped": reports["stopped"],
-  "conversation.waiting": reports["waiting"],
-};
-
-function watchReport(message: TranscriptViewMessage): Report | undefined {
-  if (message.eventNamespace !== "junior" || !message.eventType) {
-    return undefined;
-  }
-  if (message.eventType === AGENT_UPDATE_EVENT_TYPE) {
-    return message.eventWatchId && message.eventStatus
-      ? reports[message.eventStatus]
-      : undefined;
-  }
-  return legacyReports[message.eventType];
-}
+import { watchReport } from "./watchReport";
 
 /** Whether a transcript message is an agent update of a watched Conversation. */
 export function isConversationWatchReport(
@@ -57,6 +27,8 @@ export function LeadWatchReport(props: {
   timestamp?: number | undefined;
 }) {
   const lead = useContext(LeadPage);
+  // In an activity group, the icon takes the narrow activity column.
+  const nested = useContext(TranscriptActivityNesting);
   const report = watchReport(props.message);
   if (!report) return null;
   const status = leadWorkStatus[report.state];
@@ -67,7 +39,9 @@ export function LeadWatchReport(props: {
     <div
       className={cn(
         "grid min-w-0 items-center py-1 font-sans text-xs",
-        transcriptColumnsClass,
+        nested
+          ? "grid-cols-[1rem_minmax(0,1fr)] gap-2"
+          : transcriptColumnsClass,
       )}
       data-lead-watch-report=""
     >

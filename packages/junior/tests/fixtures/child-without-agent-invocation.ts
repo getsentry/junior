@@ -50,7 +50,7 @@ export async function sendParentMessage(args: {
 }
 
 /**
- * Spawn a child agent as `spawnAgent` does: the child Conversation with its
+ * Spawn a child agent as `startAgent` does: the child Conversation with its
  * agent config, and its task as a parent message in its mailbox.
  */
 export async function spawnChildWithoutAgentInvocation(args: {

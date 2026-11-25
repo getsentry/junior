@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import { deleteTodos } from "@/chat/todos/store";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
@@ -9,15 +9,16 @@ import {
   juniorConversationEvents,
   juniorConversationEmbeddings,
   juniorConversations,
-  juniorDestinations,
   juniorAgentBindings,
   juniorInboxItems,
+  juniorTurnInbox,
+  juniorTurns,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
-import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 // No runtime code reads or writes Agent invocations, but the table stays in
 // the database for one release, with its rows and their foreign keys to
@@ -39,7 +40,8 @@ const juniorConversationBriefs = pgTable("junior_conversation_briefs", {
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
   conversationId: string;
-  visibility: JuniorDestinationVisibility | null;
+  /** Null is private. */
+  visibility: ConversationPrivacy | null;
 }
 
 /** Outcome of purging one conversation tree. */
@@ -108,7 +110,7 @@ export async function selectExpiredRoots(
   const privateCutoff = new Date(
     args.nowMs - args.privateWindowMs,
   ).toISOString();
-  const cutoff = sql`case when ${juniorDestinations.visibility} = 'public' then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
+  const cutoff = sql`case when ${isPublicConversation(juniorConversations)} then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
   const effectiveLastActivityAt = sql<Date>`(
     with recursive conversation_tree(conversation_id, last_activity_at) as (
       select ${juniorConversations.conversationId}, ${juniorConversations.lastActivityAt}
@@ -154,8 +156,16 @@ export async function selectExpiredRoots(
         select 1 from junior_todos todos
         where todos.conversation_id = tree.conversation_id
       )
+      or exists (
+        select 1 from junior_turns turns
+        where turns.conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_turn_inbox inbox
+        where inbox.conversation_id = tree.conversation_id
+      )
       or (
-        ${juniorDestinations.visibility} is distinct from 'public'
+        ${isPublicConversation(juniorConversations)} is not true
         and (
           exists (
             select 1 from junior_conversation_briefs briefs
@@ -196,13 +206,9 @@ export async function selectExpiredRoots(
     .db()
     .select({
       conversationId: juniorConversations.conversationId,
-      visibility: juniorDestinations.visibility,
+      visibility: juniorConversations.visibility,
     })
     .from(juniorConversations)
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
@@ -226,7 +232,8 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. To-dos go with the transcript.
+ * conversations keep only safe metadata. To-dos, Turns, and Turn inputs and
+ * deliveries go with the transcript.
  * Non-public content also loses its summary, Conversation embedding, legacy
  * Briefs, and the Inbox items that it added. The metadata rows themselves
  * survive.
@@ -284,8 +291,8 @@ export async function purgeConversationTree(
             .db()
             .select({
               conversationId: juniorConversations.conversationId,
-              destinationId: juniorConversations.destinationId,
               parentConversationId: juniorConversations.parentConversationId,
+              visibility: juniorConversations.visibility,
             })
             .from(juniorConversations)
             .where(
@@ -296,19 +303,12 @@ export async function purgeConversationTree(
           if (!root || (args.retention && root.parentConversationId !== null)) {
             return { purged: false, conversations: 0 };
           }
+          // The root row lock keeps its visibility stable. Only a root stores
+          // visibility, so a row that is not a root reads as private.
+          const isPublic = root.visibility === "public";
           const resolvedScrubMetadata = args.scrubMetadataFromRootVisibility
-            ? (await resolveRootVisibility(executor, args.rootConversationId))
-                .visibility !== "public"
+            ? !isPublic
             : args.scrubMetadata;
-          const destinations = root.destinationId
-            ? await executor
-                .db()
-                .select({ visibility: juniorDestinations.visibility })
-                .from(juniorDestinations)
-                .where(eq(juniorDestinations.id, root.destinationId))
-                .for("share")
-            : [];
-          const isPublic = destinations[0]?.visibility === "public";
           const ids = tree.map((conversation) => conversation.conversationId);
           if (args.retention) {
             const currentActivity = await executor
@@ -334,11 +334,21 @@ export async function purgeConversationTree(
               return { purged: false, conversations: 0 };
             }
           }
+          // The outbox rows go with their events.
           await executor
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
           await deleteMessageLinks(executor, ids);
+          // Inbox rows hold message text. They refer to Turns, so they go first.
+          await executor
+            .db()
+            .delete(juniorTurnInbox)
+            .where(inArray(juniorTurnInbox.conversationId, ids));
+          await executor
+            .db()
+            .delete(juniorTurns)
+            .where(inArray(juniorTurns.conversationId, ids));
           await executor
             .db()
             .delete(juniorAgentInvocations)

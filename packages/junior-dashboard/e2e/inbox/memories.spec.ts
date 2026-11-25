@@ -3,8 +3,7 @@ import { screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 import { mockSearchRows } from "../search-fixture";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("opens a registered plugin page from the profile menu", async ({
     page,
     dashboard,

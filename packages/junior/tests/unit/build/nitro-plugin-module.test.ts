@@ -9,6 +9,8 @@ import {
   DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
   PLUGIN_TASK_QUEUE_TOPIC,
 } from "@/chat/queue/topics";
+import { DELIVERY_TOPIC } from "@/core/delivery/topic";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
@@ -20,6 +22,8 @@ import {
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
   JUNIOR_AUTO_ARCHIVE_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
+  JUNIOR_DELIVERY_CALLBACK_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -157,6 +161,24 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: BACKGROUND_COMPACTION_QUEUE_TOPIC,
+        },
+      ],
+    });
+    expect(vercel.functionRules?.[JUNIOR_TURN_STEP_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: TURN_STEP_TOPIC,
+        },
+      ],
+    });
+    expect(vercel.functionRules?.[JUNIOR_DELIVERY_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: DELIVERY_TOPIC,
         },
       ],
     });

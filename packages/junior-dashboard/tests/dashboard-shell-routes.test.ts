@@ -13,7 +13,6 @@ const { readUserSettings, readViewerAvatarUrl, resolveViewerUser } = vi.hoisted(
     readUserSettings: vi.fn(async (_userId: string) => ({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 6,
-      experimentalUi: false,
     })),
     readViewerAvatarUrl: vi.fn(
       async (): Promise<string | undefined> => undefined,
@@ -69,14 +68,12 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
     const client = readDashboardClientManifest();
-    const classic = client.shells.classic;
-    expect(html).toContain(`src="/_junior/dashboard/assets/${classic.entry}"`);
-    for (const file of classic.imports) {
+    expect(html).toContain(`src="/_junior/dashboard/assets/${client.entry}"`);
+    for (const file of client.imports) {
       expect(html).toContain(
         `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
       );
     }
-    expect(html).not.toContain(client.shells.inbox.entry);
     expect(html).toContain(
       `<link rel="stylesheet" href="/_junior/dashboard/assets/${client.stylesheet}" />`,
     );
@@ -95,33 +92,6 @@ describe("dashboard shell routes", () => {
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
     expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
-  });
-
-  it("loads only the new UI shell for a viewer who turned it on", async () => {
-    readUserSettings.mockResolvedValueOnce({
-      autoArchiveDefault: false,
-      autoArchiveGraceHours: 24,
-      experimentalUi: true,
-    });
-    const app = dashboard({
-      user: { email: "person@sentry.io", emailVerified: true },
-    });
-
-    const html = await (
-      await app.fetch(new Request("http://localhost/"))
-    ).text();
-
-    const { classic, inbox } = readDashboardClientManifest().shells;
-    expect(html).toContain(`src="/_junior/dashboard/assets/${inbox.entry}"`);
-    for (const file of inbox.imports) {
-      expect(html).toContain(
-        `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
-      );
-    }
-    expect(html).not.toContain(classic.entry);
-    expect(embeddedBootstrap(html)).toMatchObject({
-      me: { experimentalUi: true },
-    });
   });
 
   it("embeds the same core data that /api/me and /api/config return", async () => {
@@ -234,6 +204,7 @@ describe("dashboard shell routes", () => {
       "/memories/memory-1",
       "/settings",
       "/settings/api-tokens",
+      "/spaces/22222222-2222-4222-8222-222222222222",
       "/system/workspaces",
       "/system/workspaces/new",
       "/system/workspaces/11111111-1111-4111-8111-111111111111",
@@ -270,9 +241,7 @@ describe("dashboard shell routes", () => {
         new Request(`http://localhost/_junior/dashboard/assets/${file}`),
       );
 
-    const client = await assetResponse(
-      readDashboardClientManifest().shells.classic.entry,
-    );
+    const client = await assetResponse(readDashboardClientManifest().entry);
     expect(client.status).toBe(200);
     expect(client.headers.get("cache-control")).toBe(
       "public, max-age=31536000, immutable",

@@ -28,7 +28,8 @@ import {
   type LogContext,
   type SetSpanAttributes,
 } from "@/chat/logging";
-import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -77,7 +78,10 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  isCutOffStopReason,
+} from "@/chat/services/turn-result";
 import {
   isAnswerToolName,
   readTurnAnswer,
@@ -247,7 +251,7 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // A child reads visibility from its own Destination row, the same as a root.
+  // A child reads the visibility of its root.
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
@@ -626,14 +630,14 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const persistedConfigurationValues = policy.locationConfiguration
-      ? await policy.locationConfiguration.resolveValues()
-      : {};
-    const configurationValues: Record<string, unknown> = {
-      ...getConfigDefaults(),
-      ...(policy.configuration ?? {}),
-      ...persistedConfigurationValues,
-    };
+    const [configurationValues, spaceId] = await Promise.all([
+      resolveConversationConfiguration({
+        configuration: policy.configuration,
+        conversationId,
+        locationConfiguration: policy.locationConfiguration,
+      }),
+      readConversationSpaceId(conversationId),
+    ]);
 
     // Match the history source the agent will actually receive so crash retries
     // do not let an unstripped running record suppress fresh turn context.
@@ -758,6 +762,7 @@ async function executeAgentRunInPrivacyContext(
       configurationValues,
       connectedMcpProviders,
       conversationPrivacy,
+      spaceId,
       durability,
       authorization,
       generatedFiles,
@@ -1340,8 +1345,11 @@ async function executeAgentRunInPrivacyContext(
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         const message = event.message;
+        // Text that the output limit or an abort cut off is not a reply.
+        // The Turn fails, and only its failure is delivered.
         const delivery =
-          message.stopReason === "error" || message.stopReason === "aborted"
+          message.stopReason === "error" ||
+          isCutOffStopReason(message.stopReason)
             ? undefined
             : deliverAssistantMessage(message);
         // Record after delivery, so the reply is not late. Record also when
@@ -1777,7 +1785,7 @@ async function executeAgentRunInPrivacyContext(
             // answer, so the run history shows it.
             missingAnswerError: run.dispatch
               ? "Automation run ended without an answer."
-              : behavior.missingAnswerError,
+              : undefined,
           }
         : undefined),
     });

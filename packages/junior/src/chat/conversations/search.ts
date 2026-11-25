@@ -13,7 +13,6 @@ import {
   gte,
   ilike,
   inArray,
-  isNotNull,
   isNull,
   lt,
   ne,
@@ -44,7 +43,9 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaces,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
@@ -124,19 +125,26 @@ export interface ConversationSearch {
   limit: number;
   /** Words or meaning to match in the title or summary. */
   query?: string;
-  /** Return only root Conversations, not their child agents. */
+  /**
+   * Return only root Conversations, not their child agents. With `team`,
+   * the requester's own tree still returns its child agents.
+   */
   rootsOnly: boolean;
+  /**
+   * Also search the requester's own tree, except the requester, and rank
+   * it first. Then rank the Conversations where this person is a
+   * Participant.
+   */
+  team?: { personUserId?: string | undefined };
   /** Only Conversations whose root has this User as a Participant. */
   participantUserId?: string;
   /** Only Conversations whose agent has one of these statuses. */
   statuses?: readonly ConversationStatus[];
-  /** Only Conversations with a summary: a completed first Turn. */
-  summarizedOnly?: boolean;
 }
 
 /**
- * Search the Conversations, outside the requester's own tree, that the
- * requester may find. Newest activity first, or best match for a query.
+ * Search the Conversations, outside the requester's own tree unless
+ * `team` is set, that the requester may find. Newest activity first, or best match for a query.
  * With an embedder, a query also matches by the meaning of the Conversation
  * metadata, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
  */
@@ -172,23 +180,61 @@ export async function searchConversations(
     .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
+  const ownTree = eq(conversations.rootConversationId, requesterRootId);
+  const participates = (userId: string) =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(juniorConversationParticipants)
+        .where(
+          and(
+            eq(
+              juniorConversationParticipants.rootConversationId,
+              roots.conversationId,
+            ),
+            eq(juniorConversationParticipants.userId, userId),
+          ),
+        ),
+    );
+  const { team } = search;
   const conditions: (SQL | undefined)[] = [
-    // The root decides visibility. Lists hide an unkept Quick question and
-    // its children.
+    // Lists hide an unkept Quick question and its children.
     isNull(roots.quickQuestionAt),
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
-      ? eq(conversations.conversationId, conversations.rootConversationId)
+      ? or(
+          eq(conversations.conversationId, conversations.rootConversationId),
+          team ? ownTree : undefined,
+        )
       : undefined,
-    ne(conversations.rootConversationId, requesterRootId),
+    team
+      ? ne(conversations.conversationId, requesterConversationId)
+      : ne(conversations.rootConversationId, requesterRootId),
     or(
-      eq(juniorDestinations.visibility, "public"),
+      isPublicConversation(conversations),
       // Conversations share a Destination only when they share an audience.
       eq(
         roots.destinationId,
         db
           .select({ destinationId: requesterRoot.destinationId })
           .from(requesterRoot)
+          .where(eq(requesterRoot.conversationId, requesterRootId)),
+      ),
+      // The Conversations of a private Space share one audience, the members.
+      // A private Space's roots have their own Destinations, so only this
+      // match reaches them.
+      eq(
+        roots.spaceId,
+        db
+          .select({ id: juniorSpaces.id })
+          .from(requesterRoot)
+          .innerJoin(
+            juniorSpaces,
+            and(
+              eq(juniorSpaces.id, requesterRoot.spaceId),
+              eq(juniorSpaces.visibility, "private"),
+            ),
+          )
           .where(eq(requesterRoot.conversationId, requesterRootId)),
       ),
     ),
@@ -208,25 +254,8 @@ export async function searchConversations(
       ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
     search.participantUserId
-      ? exists(
-          db
-            .select({ one: sql`1` })
-            .from(juniorConversationParticipants)
-            .where(
-              and(
-                eq(
-                  juniorConversationParticipants.rootConversationId,
-                  roots.conversationId,
-                ),
-                eq(
-                  juniorConversationParticipants.userId,
-                  search.participantUserId,
-                ),
-              ),
-            ),
-        )
+      ? participates(search.participantUserId)
       : undefined,
-    search.summarizedOnly ? isNotNull(conversations.summary) : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
@@ -258,14 +287,22 @@ export async function searchConversations(
   // Normalization 32 maps the word rank to [0, 1), next to the similarity,
   // so a Conversation that matches both ways ranks first.
   const wordRank = sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}, 32), 0)`;
+  const teamRank = team
+    ? [
+        desc(
+          sql`case when ${ownTree} then 2 when ${team.personUserId ? participates(team.personUserId) : sql`false`} then 1 else 0 end`,
+        ),
+      ]
+    : [];
   const order = query
     ? [
+        ...teamRank,
         desc(
           similarity ? sql`${wordRank} + coalesce(${similarity}, 0)` : wordRank,
         ),
         newestFirst,
       ]
-    : [newestFirst];
+    : [...teamRank, newestFirst];
   const excerpt = query
     ? sql<
         string | null

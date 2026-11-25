@@ -1,17 +1,5 @@
-import {
-  AlarmClockOff,
-  Archive,
-  ArchiveRestore,
-  Pin,
-  PinOff,
-} from "lucide-react";
-import {
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { AlarmClockOff, Archive, ArchiveRestore, Pin } from "lucide-react";
+import { useMemo, useState, type ReactNode, type RefCallback } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
@@ -47,8 +35,11 @@ import {
 } from "../conversations/ConversationSidebarThreadRow";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
-import { usePinConversation } from "../conversations/usePinConversation";
-import { DisplayText } from "../display-text/DisplayText";
+import {
+  DisplayText,
+  NearScreenObjects,
+  useNearScreen,
+} from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
@@ -93,6 +84,7 @@ import {
   type InboxCardActions,
 } from "./RowHoverActions";
 import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { ExpandedPin } from "./ExpandedPin";
 import {
   ReplyNoticeLink,
   RowOwnerLink,
@@ -104,6 +96,7 @@ import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
@@ -214,9 +207,10 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
+  // A row reads the live cards of its links once it comes near the screen.
+  const card = useNearScreen<HTMLLIElement>();
   // The rows below move with the row as it opens and closes.
-  const cardRef = useRef<HTMLLIElement>(null);
-  useAnimatedHeight(cardRef, String(props.expanded));
+  useAnimatedHeight(card.element, String(props.expanded));
   const open = props.bundle?.items.filter((item) => item.status === "open");
   const quickActions =
     props.itemActions && open?.length === 1 && props.cardActions ? (
@@ -231,22 +225,26 @@ export function InboxRow(props: InboxRowProps) {
         onExpand={props.onToggle}
       />
     ) : undefined;
-  return props.conversation ? (
-    <ConversationInboxRow
-      {...props}
-      cardRef={cardRef}
-      conversation={props.conversation}
-      quickActions={quickActions}
-    />
-  ) : (
-    <li
-      className={cn(inboxCardClass(props.expanded), "group")}
-      data-expanded={props.expanded || undefined}
-      data-inbox-row={props.rowKey}
-      ref={cardRef}
-    >
-      <InboxRowBody {...props} hoverActions={quickActions} />
-    </li>
+  return (
+    <NearScreenObjects near={card.near}>
+      {props.conversation ? (
+        <ConversationInboxRow
+          {...props}
+          cardRef={card.ref}
+          conversation={props.conversation}
+          quickActions={quickActions}
+        />
+      ) : (
+        <li
+          className={cn(inboxCardClass(props.expanded), "group")}
+          data-expanded={props.expanded || undefined}
+          data-inbox-row={props.rowKey}
+          ref={card.ref}
+        >
+          <InboxRowBody {...props} hoverActions={quickActions} />
+        </li>
+      )}
+    </NearScreenObjects>
   );
 }
 
@@ -257,7 +255,7 @@ function rowRegionId(rowKey: string): string {
 
 function ConversationInboxRow(
   props: InboxRowProps & {
-    cardRef: RefObject<HTMLLIElement | null>;
+    cardRef: RefCallback<HTMLLIElement>;
     conversation: Conversation;
     /** A row with one ask acts on it instead of pinning or archiving. */
     quickActions?: ReactNode;
@@ -566,6 +564,7 @@ function InboxRowBody(
     comfortable &&
     (images || work.length > 0 || files.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
+  const space = conversation?.space;
   const cast =
     comfortable && conversation ? (
       // The Threads list below counts the Threads, so the cast doesn't.
@@ -720,10 +719,13 @@ function InboxRowBody(
             ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
-            {cast || hasChips ? (
+            {space || cast || hasChips ? (
               // No wrap: the pills and the linked work fit to one shared
               // line, and wrapping would let each one's fit move the other.
               <span className="col-span-2 flex min-w-0 items-center gap-2">
+                {space ? (
+                  <SpaceChip className="shrink-0" space={space} />
+                ) : null}
                 {cast}
                 {pills.length > 0 ? (
                   // One line of pills: those that do not fit become +N.
@@ -956,39 +958,5 @@ function ExpandedActions(props: {
     <div className="flex flex-wrap items-center justify-end gap-1">
       {actions}
     </div>
-  );
-}
-
-/** Pin the Conversation from the open row. There is one pin: its own. */
-function ExpandedPin(props: {
-  conversation: Conversation;
-  look?: ButtonLook | undefined;
-}) {
-  const { clearActionError, showActionError } = useConversationActionToasts();
-  const pin = usePinConversation(props.conversation.id, {
-    onError: (pinning) =>
-      showActionError(
-        props.conversation,
-        pinning ? "Could not pin" : "Could not unpin",
-        () => pin.mutate(pinning),
-      ),
-    onSuccess: () => clearActionError(props.conversation),
-  });
-  const pinned = Boolean(props.conversation.pinnedAt);
-  return (
-    <Button
-      aria-pressed={pinned}
-      className={props.look && LOOK_CLASSES[props.look]}
-      disabled={pin.isPending}
-      onClick={() => pin.mutate(!pinned)}
-      variant="ghost"
-    >
-      {pinned ? (
-        <PinOff aria-hidden="true" size={15} />
-      ) : (
-        <Pin aria-hidden="true" size={15} />
-      )}
-      <ButtonLabel look={props.look}>{pinned ? "Unpin" : "Pin"}</ButtonLabel>
-    </Button>
   );
 }

@@ -1,0 +1,2103 @@
+{
+  "type": "base",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "dda04b3e-f251-4bec-80d0-9b5f57b72dd9",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_agent_steps"],
+      "writes": [
+        "s|tbl|public.junior_agent_steps",
+        "n|tbl|public.junior_agent_steps",
+        "e|tbl|public.junior_agent_steps",
+        "n|rel|public.junior_agent_steps",
+        "n|type|public.junior_agent_steps",
+        "n|rel|public.junior_agent_steps_conversation_id_seq_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversation_messages"],
+      "writes": [
+        "s|tbl|public.junior_conversation_messages",
+        "n|tbl|public.junior_conversation_messages",
+        "e|tbl|public.junior_conversation_messages",
+        "n|rel|public.junior_conversation_messages",
+        "n|type|public.junior_conversation_messages",
+        "n|rel|public.junior_conversation_messages_conversation_id_message_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|tbl|public.junior_conversations",
+        "n|tbl|public.junior_conversations",
+        "e|tbl|public.junior_conversations",
+        "n|rel|public.junior_conversations",
+        "n|type|public.junior_conversations",
+        "n|rel|public.junior_conversations_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_destinations"],
+      "writes": [
+        "s|tbl|public.junior_destinations",
+        "n|tbl|public.junior_destinations",
+        "e|tbl|public.junior_destinations",
+        "n|rel|public.junior_destinations",
+        "n|type|public.junior_destinations",
+        "n|rel|public.junior_destinations_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_identities"],
+      "writes": [
+        "s|tbl|public.junior_identities",
+        "n|tbl|public.junior_identities",
+        "e|tbl|public.junior_identities",
+        "n|rel|public.junior_identities",
+        "n|type|public.junior_identities",
+        "n|rel|public.junior_identities_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_users"],
+      "writes": [
+        "s|tbl|public.junior_users",
+        "n|tbl|public.junior_users",
+        "e|tbl|public.junior_users",
+        "n|rel|public.junior_users",
+        "n|type|public.junior_users",
+        "n|rel|public.junior_users_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_agent_steps",
+        "junior_agent_steps_epoch_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_agent_steps_epoch_idx",
+        "n|idx|public.junior_agent_steps_epoch_idx",
+        "e|idx|public.junior_agent_steps_epoch_idx",
+        "n|rel|public.junior_agent_steps_epoch_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_steps",
+        "n|sch|public",
+        "n|col|public.junior_agent_steps.conversation_id",
+        "n|col|public.junior_agent_steps.context_epoch",
+        "n|col|public.junior_agent_steps.seq"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_messages",
+        "junior_conversation_messages_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_messages_activity_idx",
+        "n|idx|public.junior_conversation_messages_activity_idx",
+        "e|idx|public.junior_conversation_messages_activity_idx",
+        "n|rel|public.junior_conversation_messages_activity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_messages",
+        "n|sch|public",
+        "n|col|public.junior_conversation_messages.conversation_id",
+        "n|col|public.junior_conversation_messages.created_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_last_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_last_activity_idx",
+        "n|idx|public.junior_conversations_last_activity_idx",
+        "e|idx|public.junior_conversations_last_activity_idx",
+        "n|rel|public.junior_conversations_last_activity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.last_activity_at",
+        "n|col|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_active_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_active_idx",
+        "n|idx|public.junior_conversations_active_idx",
+        "e|idx|public.junior_conversations_active_idx",
+        "n|rel|public.junior_conversations_active_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_destination_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_destination_activity_idx",
+        "n|idx|public.junior_conversations_destination_activity_idx",
+        "e|idx|public.junior_conversations_destination_activity_idx",
+        "n|rel|public.junior_conversations_destination_activity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.destination_id",
+        "n|col|public.junior_conversations.last_activity_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_actor_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_actor_activity_idx",
+        "n|idx|public.junior_conversations_actor_activity_idx",
+        "e|idx|public.junior_conversations_actor_activity_idx",
+        "n|rel|public.junior_conversations_actor_activity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.actor_identity_id",
+        "n|col|public.junior_conversations.last_activity_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_origin_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_origin_idx",
+        "n|idx|public.junior_conversations_origin_idx",
+        "e|idx|public.junior_conversations_origin_idx",
+        "n|rel|public.junior_conversations_origin_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.origin_type",
+        "n|col|public.junior_conversations.origin_id",
+        "n|col|public.junior_conversations.last_activity_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_parent_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_parent_idx",
+        "n|idx|public.junior_conversations_parent_idx",
+        "e|idx|public.junior_conversations_parent_idx",
+        "n|rel|public.junior_conversations_parent_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.parent_conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_destinations",
+        "junior_destinations_provider_destination_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_destinations_provider_destination_uidx",
+        "n|idx|public.junior_destinations_provider_destination_uidx",
+        "e|idx|public.junior_destinations_provider_destination_uidx",
+        "n|rel|public.junior_destinations_provider_destination_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_destinations",
+        "n|sch|public",
+        "n|col|public.junior_destinations.provider",
+        "n|col|public.junior_destinations.provider_tenant_id",
+        "n|col|public.junior_destinations.provider_destination_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_destinations",
+        "junior_destinations_provider_kind_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_destinations_provider_kind_idx",
+        "n|idx|public.junior_destinations_provider_kind_idx",
+        "e|idx|public.junior_destinations_provider_kind_idx",
+        "n|rel|public.junior_destinations_provider_kind_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_destinations",
+        "n|sch|public",
+        "n|col|public.junior_destinations.provider",
+        "n|col|public.junior_destinations.kind"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_provider_subject_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_provider_subject_uidx",
+        "n|idx|public.junior_identities_provider_subject_uidx",
+        "e|idx|public.junior_identities_provider_subject_uidx",
+        "n|rel|public.junior_identities_provider_subject_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_identities.provider",
+        "n|col|public.junior_identities.provider_tenant_id",
+        "n|col|public.junior_identities.provider_subject_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_user_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_user_idx",
+        "n|idx|public.junior_identities_user_idx",
+        "e|idx|public.junior_identities_user_idx",
+        "n|rel|public.junior_identities_user_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_identities.user_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_verified_email_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_verified_email_idx",
+        "n|idx|public.junior_identities_verified_email_idx",
+        "e|idx|public.junior_identities_verified_email_idx",
+        "n|rel|public.junior_identities_verified_email_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_identities.email_normalized"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_kind_provider_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_kind_provider_idx",
+        "n|idx|public.junior_identities_kind_provider_idx",
+        "e|idx|public.junior_identities_kind_provider_idx",
+        "n|rel|public.junior_identities_kind_provider_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_identities.kind",
+        "n|col|public.junior_identities.provider"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_users",
+        "junior_users_primary_email_normalized_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_users_primary_email_normalized_uidx",
+        "n|idx|public.junior_users_primary_email_normalized_uidx",
+        "e|idx|public.junior_users_primary_email_normalized_uidx",
+        "n|rel|public.junior_users_primary_email_normalized_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_users.primary_email_normalized"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_agent_steps"],
+      "writes": [
+        "s|fk|public.junior_agent_steps.junior_agent_steps_conversation_id_junior_conversations_convers",
+        "n|fk|public.junior_agent_steps.junior_agent_steps_conversation_id_junior_conversations_convers",
+        "e|fk|public.junior_agent_steps.junior_agent_steps_conversation_id_junior_conversations_convers",
+        "n|con|public.junior_agent_steps.junior_agent_steps_conversation_id_junior_conversations_convers"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_steps",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_agent_steps.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_messages"],
+      "writes": [
+        "s|fk|public.junior_conversation_messages.junior_conversation_messages_conversation_id_junior_conversatio",
+        "n|fk|public.junior_conversation_messages.junior_conversation_messages_conversation_id_junior_conversatio",
+        "e|fk|public.junior_conversation_messages.junior_conversation_messages_conversation_id_junior_conversatio",
+        "n|con|public.junior_conversation_messages.junior_conversation_messages_conversation_id_junior_conversatio"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_messages",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversation_messages.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_messages"],
+      "writes": [
+        "s|fk|public.junior_conversation_messages.junior_conversation_messages_author_identity_id_junior_identiti",
+        "n|fk|public.junior_conversation_messages.junior_conversation_messages_author_identity_id_junior_identiti",
+        "e|fk|public.junior_conversation_messages.junior_conversation_messages_author_identity_id_junior_identiti",
+        "n|con|public.junior_conversation_messages.junior_conversation_messages_author_identity_id_junior_identiti"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_messages",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_conversation_messages.author_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_destination_id_junior_destinations_id_fk",
+        "n|fk|public.junior_conversations.junior_conversations_destination_id_junior_destinations_id_fk",
+        "e|fk|public.junior_conversations.junior_conversations_destination_id_junior_destinations_id_fk",
+        "n|con|public.junior_conversations.junior_conversations_destination_id_junior_destinations_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_destinations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.destination_id",
+        "n|col|public.junior_destinations.id",
+        "e|uniqueness|public.junior_destinations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_actor_identity_id_junior_identities_id_fk",
+        "n|fk|public.junior_conversations.junior_conversations_actor_identity_id_junior_identities_id_fk",
+        "e|fk|public.junior_conversations.junior_conversations_actor_identity_id_junior_identities_id_fk",
+        "n|con|public.junior_conversations.junior_conversations_actor_identity_id_junior_identities_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_conversations.actor_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_creator_identity_id_junior_identities_id_f",
+        "n|fk|public.junior_conversations.junior_conversations_creator_identity_id_junior_identities_id_f",
+        "e|fk|public.junior_conversations.junior_conversations_creator_identity_id_junior_identities_id_f",
+        "n|con|public.junior_conversations.junior_conversations_creator_identity_id_junior_identities_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_conversations.creator_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_credential_subject_identity_id_junior_iden",
+        "n|fk|public.junior_conversations.junior_conversations_credential_subject_identity_id_junior_iden",
+        "e|fk|public.junior_conversations.junior_conversations_credential_subject_identity_id_junior_iden",
+        "n|con|public.junior_conversations.junior_conversations_credential_subject_identity_id_junior_iden"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_conversations.credential_subject_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_parent_conversation_id_junior_conversation",
+        "n|fk|public.junior_conversations.junior_conversations_parent_conversation_id_junior_conversation",
+        "e|fk|public.junior_conversations.junior_conversations_parent_conversation_id_junior_conversation",
+        "n|con|public.junior_conversations.junior_conversations_parent_conversation_id_junior_conversation"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.parent_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_identities"],
+      "writes": [
+        "s|fk|public.junior_identities.junior_identities_user_id_junior_users_id_fk",
+        "n|fk|public.junior_identities.junior_identities_user_id_junior_users_id_fk",
+        "e|fk|public.junior_identities.junior_identities_user_id_junior_users_id_fk",
+        "n|con|public.junior_identities.junior_identities_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_identities.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    }
+  ],
+  "ddl": [
+    {
+      "schema": "public",
+      "name": "junior_agent_steps",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "junior_conversation_messages",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "junior_conversations",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "junior_destinations",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "junior_identities",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "junior_users",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "conversation_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "seq",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "context_epoch",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "role",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "payload",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "conversation_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "message_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "role",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "author_identity_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "text",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "meta",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "replied_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "conversation_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "schema_version",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "source",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "origin_type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "origin_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "origin_run_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "destination_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "destination_json",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "actor_identity_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "creator_identity_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "credential_subject_identity_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "actor_json",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "channel_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "title",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "last_activity_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "execution_updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "execution_status",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "run_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "last_checkpoint_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "last_enqueued_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "parent_conversation_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "transcript_purged_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "provider",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "provider_tenant_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "''",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "provider_destination_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "kind",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "parent_destination_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "display_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "visibility",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'unknown'",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "metadata_json",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "kind",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "provider",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "provider_tenant_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "''",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "provider_subject_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "display_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "handle",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "email",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "avatar_url",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "metadata_json",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "user_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "email_normalized",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "email_verified",
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "primary_email",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "primary_email_normalized",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "display_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "junior_agent_steps_epoch_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "conversation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "context_epoch",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "seq",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "junior_conversation_messages_activity_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "conversation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_last_activity_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "last_activity_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "conversation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_active_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "coalesce(\"execution_updated_at\", \"updated_at\")",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "conversation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"junior_conversations\".\"execution_status\" <> 'idle'",
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_destination_activity_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "destination_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "last_activity_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_actor_activity_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "actor_identity_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "last_activity_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_origin_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "origin_type",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "origin_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "last_activity_at",
+          "isExpression": false,
+          "asc": false,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_parent_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "parent_conversation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "junior_destinations_provider_destination_uidx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider_tenant_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider_destination_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "junior_destinations_provider_kind_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "kind",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_provider_subject_uidx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider_tenant_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider_subject_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_user_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_verified_email_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "email_normalized",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"junior_identities\".\"email_verified\" = true AND \"junior_identities\".\"email_normalized\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_kind_provider_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "kind",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "provider",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "junior_users_primary_email_normalized_uidx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "primary_email_normalized",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "junior_agent_steps_conversation_id_junior_conversations_convers",
+      "nameExplicit": false,
+      "columns": ["conversation_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_conversations",
+      "columnsTo": ["conversation_id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "junior_conversation_messages_conversation_id_junior_conversatio",
+      "nameExplicit": false,
+      "columns": ["conversation_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_conversations",
+      "columnsTo": ["conversation_id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "junior_conversation_messages_author_identity_id_junior_identiti",
+      "nameExplicit": false,
+      "columns": ["author_identity_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_identities",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_destination_id_junior_destinations_id_fk",
+      "nameExplicit": false,
+      "columns": ["destination_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_destinations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_actor_identity_id_junior_identities_id_fk",
+      "nameExplicit": false,
+      "columns": ["actor_identity_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_identities",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_creator_identity_id_junior_identities_id_f",
+      "nameExplicit": false,
+      "columns": ["creator_identity_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_identities",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_credential_subject_identity_id_junior_iden",
+      "nameExplicit": false,
+      "columns": ["credential_subject_identity_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_identities",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_parent_conversation_id_junior_conversation",
+      "nameExplicit": false,
+      "columns": ["parent_conversation_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_conversations",
+      "columnsTo": ["conversation_id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_user_id_junior_users_id_fk",
+      "nameExplicit": false,
+      "columns": ["user_id"],
+      "schemaTo": "public",
+      "tableTo": "junior_users",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_agent_steps",
+      "name": "junior_agent_steps_conversation_id_seq_pk",
+      "columns": ["conversation_id", "seq"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversation_messages",
+      "name": "junior_conversation_messages_conversation_id_message_id_pk",
+      "columns": ["conversation_id", "message_id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_conversations",
+      "name": "junior_conversations_pkey",
+      "columns": ["conversation_id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_destinations",
+      "name": "junior_destinations_pkey",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_identities",
+      "name": "junior_identities_pkey",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "junior_users",
+      "name": "junior_users_pkey",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    }
+  ]
+}

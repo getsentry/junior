@@ -1,0 +1,308 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "d5abaea4-86aa-4eb8-9763-4f44340f586c",
+  "prevIds": ["8f6e6d82-8ecb-42f7-8b9a-0b8a19304e01"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_push_subscriptions"],
+      "writes": [
+        "s|tbl|public.junior_push_subscriptions",
+        "n|tbl|public.junior_push_subscriptions",
+        "e|tbl|public.junior_push_subscriptions",
+        "n|rel|public.junior_push_subscriptions",
+        "n|type|public.junior_push_subscriptions",
+        "n|rel|public.junior_push_subscriptions_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_users",
+        "notification_schedule"
+      ],
+      "writes": [
+        "s|col|public.junior_users.notification_schedule",
+        "n|col|public.junior_users.notification_schedule",
+        "e|col|public.junior_users.notification_schedule"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_push_subscriptions",
+        "junior_push_subscriptions_endpoint_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_push_subscriptions_endpoint_uidx",
+        "n|idx|public.junior_push_subscriptions_endpoint_uidx",
+        "e|idx|public.junior_push_subscriptions_endpoint_uidx",
+        "n|rel|public.junior_push_subscriptions_endpoint_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_push_subscriptions",
+        "n|sch|public",
+        "n|col|public.junior_push_subscriptions.endpoint"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_push_subscriptions",
+        "junior_push_subscriptions_user_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_push_subscriptions_user_idx",
+        "n|idx|public.junior_push_subscriptions_user_idx",
+        "e|idx|public.junior_push_subscriptions_user_idx",
+        "n|rel|public.junior_push_subscriptions_user_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_push_subscriptions",
+        "n|sch|public",
+        "n|col|public.junior_push_subscriptions.user_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_push_subscriptions"],
+      "writes": [
+        "s|fk|public.junior_push_subscriptions.junior_push_subscriptions_user_id_junior_users_id_fk",
+        "n|fk|public.junior_push_subscriptions.junior_push_subscriptions_user_id_junior_users_id_fk",
+        "e|fk|public.junior_push_subscriptions.junior_push_subscriptions_user_id_junior_users_id_fk",
+        "n|con|public.junior_push_subscriptions.junior_push_subscriptions_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_push_subscriptions",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_push_subscriptions.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_push_subscriptions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "endpoint",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "p256dh",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "auth",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "notification_schedule",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "junior_push_subscriptions_endpoint_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "endpoint",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "junior_push_subscriptions_user_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "junior_push_subscriptions_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_push_subscriptions",
+        "name": "junior_push_subscriptions_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

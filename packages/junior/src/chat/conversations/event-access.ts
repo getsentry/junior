@@ -1,8 +1,8 @@
 /**
  * Read access to a Conversation's durable event log for model-facing tools,
  * under `policies/conversation-access.md`. The current Conversation tree is
- * always readable. Other Conversations are readable when they are public or
- * at the same Destination as the current one.
+ * always readable. Other Conversations are readable when they are public, at
+ * the same Destination as the current one, or in its private Space.
  */
 import { canReadConversation } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -20,7 +20,7 @@ export async function assertCanReadConversationEvents(
   conversationId: string,
 ): Promise<void> {
   const notAccessible = new ToolInputError(
-    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or use searchConversations to find a Conversation that you can read.`,
+    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or search Conversations to find one that you can read.`,
   );
   const [readable, target] = await Promise.all([
     canReadConversation(getDb(), context.conversationId, conversationId),

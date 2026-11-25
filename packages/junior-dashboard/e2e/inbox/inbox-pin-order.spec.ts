@@ -48,8 +48,7 @@ async function servePins(page: Page) {
 // Pins in In flight keep the viewer's order, above every busy row: only
 // pins drag, and a drag, Alt+ArrowUp or Alt+ArrowDown, or the row menu
 // saves that order.
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a drag in In flight moves only that pin in the stored order", async ({
     dashboard,
     page,

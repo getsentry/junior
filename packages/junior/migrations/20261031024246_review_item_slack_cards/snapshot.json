@@ -1,0 +1,159 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "23edc95b-dfa5-495f-8ea5-cffc997c069d",
+  "prevIds": ["d814ccc1-bdb1-4766-a8b3-2f9ecb6dd89e"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_review_item_slack_cards"],
+      "writes": [
+        "s|tbl|public.junior_review_item_slack_cards",
+        "n|tbl|public.junior_review_item_slack_cards",
+        "e|tbl|public.junior_review_item_slack_cards",
+        "n|rel|public.junior_review_item_slack_cards",
+        "n|type|public.junior_review_item_slack_cards",
+        "n|rel|public.junior_review_item_slack_cards_item_id_conversation_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_review_item_slack_cards"],
+      "writes": [
+        "s|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "n|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "e|fk|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "n|con|public.junior_review_item_slack_cards.junior_review_item_slack_cards_item_id_junior_review_items_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_item_slack_cards",
+        "n|sch|public",
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_item_slack_cards.item_id",
+        "n|col|public.junior_review_items.id",
+        "e|uniqueness|public.junior_review_items.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_review_item_slack_cards",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "item_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "team_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "channel_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "message_ts",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "junior_review_item_slack_cards_item_id_junior_review_items_id_f",
+        "nameExplicit": false,
+        "columns": ["item_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_review_items",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_item_slack_cards",
+        "name": "junior_review_item_slack_cards_item_id_conversation_id_pk",
+        "columns": ["item_id", "conversation_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

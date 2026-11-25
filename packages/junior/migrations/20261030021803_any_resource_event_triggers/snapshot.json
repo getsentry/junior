@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "86385a6e-f66a-4381-8d81-540ce7c59aa5",
+  "prevIds": ["cc66b510-d9f2-4926-a86f-97f38ab69432"],
+  "footprints": [
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|ck|public.junior_automations.junior_automations_trigger_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.kind",
+        "n|col|public.junior_automations.namespace",
+        "n|col|public.junior_automations.identifier",
+        "n|col|public.junior_automations.next_run_at_ms",
+        "n|col|public.junior_automations.run_now_at_ms",
+        "n|col|public.junior_automations.status",
+        "e|col|public.junior_automations.kind",
+        "e|col|public.junior_automations.namespace",
+        "e|col|public.junior_automations.identifier",
+        "e|col|public.junior_automations.next_run_at_ms",
+        "e|col|public.junior_automations.run_now_at_ms",
+        "e|col|public.junior_automations.status"
+      ],
+      "sqlHash": "6fe8c706432aad9c"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_automations\",\"junior_automations_trigger_check\"]",
+      "set": {
+        "value": "(\"junior_automations\".\"kind\" = 'scheduled' and \"junior_automations\".\"namespace\" is null and \"junior_automations\".\"identifier\" is null) or (\"junior_automations\".\"kind\" = 'event' and \"junior_automations\".\"namespace\" is not null and \"junior_automations\".\"next_run_at_ms\" is null and \"junior_automations\".\"run_now_at_ms\" is null and \"junior_automations\".\"status\" <> 'completed')"
+      }
+    }
+  ]
+}

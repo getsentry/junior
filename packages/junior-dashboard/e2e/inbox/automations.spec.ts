@@ -15,8 +15,7 @@ function gate() {
   return { promise, resolve: () => resolve() };
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** One option in a filter of the Automations filter panel or sheet. */
   function filterOption(page: Page, filter: string, option: string) {
     return page

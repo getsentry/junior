@@ -3,8 +3,7 @@ import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("opens conversation details beside the chat", async ({
     context,
     page,
@@ -386,11 +385,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: "Dashboard transcript events should remain" })
       .getByRole("button", { name: "Go to message" })
       .click();
-    await expect(
-      page
-        .getByLabel("Conversation transcript")
-        .locator("[data-transcript-seq][data-highlighted]"),
-    ).toBeInViewport();
+    const highlighted = page
+      .getByLabel("Conversation transcript")
+      .locator("[data-transcript-seq][data-highlighted]");
+    await expect(highlighted).toBeInViewport();
+    // The mark lasts a moment, so it can end between the desktop and the
+    // mobile capture. Shoot after it ends.
+    await expect(highlighted).toHaveCount(0);
     await screenshot(page, "conversation-memory-list");
   });
 });

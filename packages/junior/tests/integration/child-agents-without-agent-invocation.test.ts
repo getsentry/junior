@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
@@ -17,7 +18,6 @@ import {
 import { eq } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import {
   getConversationStoppedAtMs,
@@ -44,6 +44,7 @@ import {
   slackDestination,
   slackInvocationInput,
   slackParentConversationId,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import {
   sendParentMessage,
@@ -51,6 +52,7 @@ import {
 } from "../fixtures/child-without-agent-invocation";
 import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
+import { mswServer } from "../msw/server";
 import {
   commitRunInput,
   createHarness,
@@ -213,16 +215,13 @@ describe("child agents", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: slackInvocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "reply",
-          reply: { text: "Deploy is green.", toolCallId: "call-reply" },
-        },
+        update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
       });
       // The reply stores who sent it; readers never parse its id.
@@ -258,16 +257,13 @@ describe("child agents", () => {
       await harness.processUntilRun(childId);
       await harness.drain(childId);
       const before = await parentMessageTexts();
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: slackInvocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "reply",
-          reply: { text: "Deploy is green.", toolCallId: "call-reply" },
-        },
+        update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
       });
       await expect(
@@ -465,6 +461,45 @@ describe("child agents", () => {
       expect(run.instruction.text).toContain("Check it again.");
       expect(run.instruction.text).toContain(agentTypeInstructions("explore"));
     } finally {
+      await harness.close();
+    }
+  });
+
+  it("summarizes a Thread after its parent's task, but not a Task", async () => {
+    const metadataPrompts: string[] = [];
+    mswServer.use(
+      http.post(
+        /ai-gateway\.vercel\.sh\/.*language-model/,
+        async ({ request }) => {
+          const body = await request.text();
+          if (body.includes("You write the summary of one Conversation")) {
+            metadataPrompts.push(body);
+          }
+          return HttpResponse.json(
+            { error: "no model in tests" },
+            { status: 400 },
+          );
+        },
+      ),
+    );
+    const harness = await createHarness();
+    try {
+      harness.onRun(finishRun);
+      const threadId = await spawnChild(harness, "parent-turn:call-1", {
+        kind: "thread",
+        task: "Open external links in new tabs.",
+      });
+      await harness.drain(threadId);
+      expect(metadataPrompts).toHaveLength(1);
+      expect(metadataPrompts[0]).toContain("Open external links in new tabs.");
+
+      const taskId = await spawnChild(harness, "parent-turn:call-2", {
+        kind: "task",
+      });
+      await harness.drain(taskId);
+      expect(metadataPrompts).toHaveLength(1);
+    } finally {
+      harness.onRun(undefined);
       await harness.close();
     }
   });
@@ -700,13 +735,13 @@ describe("child agents", () => {
         parentConversationId: childId,
       });
       harness.queue.takeMessageFor(helperId);
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: helperId,
-        result: { kind: "blocked", text: "Needs a token." },
+        update: { status: "blocked", text: "Needs a token." },
         turnId: "turn_helper",
       });
       const runCount = harness.runs.length;

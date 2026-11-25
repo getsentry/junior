@@ -28,6 +28,8 @@
   /*
    * Dashboard type scale.
    * Prefer these named steps over arbitrary text-[Nrem] values.
+   * text-3xs is only for a Space tile's two-letter glyph. Do not use it
+   * anywhere else.
    * text-2xs is reserved for compact badges and chart annotations.
    * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
@@ -38,6 +40,8 @@
    */
   --spacing-header: 3.5rem;
 
+  --text-3xs: 0.5625rem; /* 9px — Space tile glyphs only */
+  --text-3xs--line-height: 1;
   --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
   --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
@@ -308,7 +312,7 @@
    height. */
 @custom-variant tall (@media (min-height: 62.5rem));
 
-/* The new UI's nav pane footer: room for the spend meter on two rows. */
+/* The nav pane footer: room for the spend meter on two rows. */
 @custom-variant pane-tall (@media (min-height: 45rem));
 
 /* Desktop and mobile layouts. Width alone treats landscape phones as

@@ -38,6 +38,7 @@ import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
@@ -337,6 +338,76 @@ describe("inbox item push", () => {
       close: [added.item.id],
       tag: next.item.id,
     });
+  });
+
+  it("pushes a To-do for a person to each new assignee once, and closes it when it moves on", async () => {
+    const ana = await anaWithPhone();
+    await user("bob@example.com");
+    await conversation(ROOT, "public");
+    const tool = createUpdateTodosTool(
+      { conversationId: ROOT },
+      services.findMentionedUserId,
+    );
+    const updateTodos = async (input: unknown) => await execute(tool, input);
+
+    const {
+      todos: [todo],
+    } = await updateTodos({
+      add: [
+        { title: "Confirm the rollback window", assignee: "bob@example.com" },
+      ],
+    });
+    expect(pushes).toEqual([]);
+    // The item moves to Ana, so she gets its push.
+    await updateTodos({
+      update: [
+        {
+          id: todo.id,
+          assignee: "ana@example.com",
+          notes: "Check the **deploy** calendar.",
+        },
+      ],
+    });
+    const itemId = pushes[0]?.["tag"] as string;
+    expect(pushes).toEqual([
+      {
+        body: "Check the deploy calendar.",
+        tag: itemId,
+        title: "Confirm the rollback window",
+        url: `https://junior.example.com/inbox?item=${itemId}`,
+      },
+    ]);
+    // A change of the same To-do does not push again.
+    await updateTodos({
+      update: [{ id: todo.id, title: "Confirm the rollback week" }],
+    });
+    expect(pushes).toHaveLength(1);
+
+    // Ana can no longer see the item once it moves to Bob, so her next push
+    // closes its push.
+    await updateTodos({
+      update: [{ id: todo.id, assignee: "bob@example.com" }],
+    });
+    expect(pushes).toHaveLength(1);
+    const next = await execute((await turnTools(ana)).add, ASK);
+    expect(pushes[1]).toMatchObject({ close: [itemId], tag: next.item.id });
+
+    // When it comes back to Ana, it pushes to her again, and her later
+    // pushes do not close it.
+    await updateTodos({
+      update: [{ id: todo.id, assignee: "ana@example.com" }],
+    });
+    expect(pushes[2]).toEqual({
+      body: "Check the deploy calendar.",
+      tag: itemId,
+      title: "Confirm the rollback week",
+      url: `https://junior.example.com/inbox?item=${itemId}`,
+    });
+    await execute((await turnTools(ana)).add, {
+      ...ASK,
+      dedupe_key: "deploy:db",
+    });
+    expect(pushes[3]?.["close"]).toBeUndefined();
   });
 
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {

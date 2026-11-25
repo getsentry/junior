@@ -1,6 +1,5 @@
 import type { juniorConversations } from "@/db/schema";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
-import { juniorSqlSchema } from "@/db/schema";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
@@ -30,10 +29,7 @@ export function hasJuniorPostgresTestDatabase(): boolean {
 }
 
 async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
-  const fixture =
-    await createLocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>(
-      juniorSqlSchema,
-    );
+  const fixture = await createLocalPgliteFixture<PgliteDatabase>();
   const sql: JuniorSqlExecutor = {
     close: () => fixture.close(),
     db: () => fixture.db(),

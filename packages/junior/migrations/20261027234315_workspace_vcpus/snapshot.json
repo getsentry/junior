@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0f399a3e-7d45-47fd-a8ea-531f2a310588",
+  "prevIds": ["f2dd4b37-6caf-4453-9552-3ffafb9ffe5c"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_workspaces", "vcpus"],
+      "writes": [
+        "s|col|public.junior_workspaces.vcpus",
+        "n|col|public.junior_workspaces.vcpus",
+        "e|col|public.junior_workspaces.vcpus"
+      ],
+      "reads": ["n|tbl|public.junior_workspaces", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "vcpus",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

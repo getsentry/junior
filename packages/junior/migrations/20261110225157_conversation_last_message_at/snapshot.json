@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "ec0a70b8-9f3b-44db-bd84-31700827b735",
+  "prevIds": ["b3710bdd-d120-4381-ad2c-cf5cc74d1500"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "last_message_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.last_message_at",
+        "n|col|public.junior_conversations.last_message_at",
+        "e|col|public.junior_conversations.last_message_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "last_message_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

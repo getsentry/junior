@@ -1,0 +1,397 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5fa6dab4-99c4-4a5b-babc-3fccd9db8228",
+  "prevIds": ["be595415-8b43-4cb3-b103-41e0440f8a2a"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_event_tasks"],
+      "writes": [
+        "s|tbl|public.junior_event_tasks",
+        "n|tbl|public.junior_event_tasks",
+        "e|tbl|public.junior_event_tasks",
+        "n|rel|public.junior_event_tasks",
+        "n|type|public.junior_event_tasks"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_scheduler_runs"],
+      "writes": [
+        "s|tbl|public.junior_scheduler_runs",
+        "n|tbl|public.junior_scheduler_runs",
+        "e|tbl|public.junior_scheduler_runs",
+        "n|rel|public.junior_scheduler_runs",
+        "n|type|public.junior_scheduler_runs"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_scheduler_tasks"],
+      "writes": [
+        "s|tbl|public.junior_scheduler_tasks",
+        "n|tbl|public.junior_scheduler_tasks",
+        "e|tbl|public.junior_scheduler_tasks",
+        "n|rel|public.junior_scheduler_tasks",
+        "n|type|public.junior_scheduler_tasks"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_task_executions"],
+      "writes": [
+        "s|tbl|public.junior_task_executions",
+        "n|tbl|public.junior_task_executions",
+        "e|tbl|public.junior_task_executions",
+        "n|rel|public.junior_task_executions",
+        "n|type|public.junior_task_executions"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_check",
+      "statementTarget": ["table", "public", "junior_automation_versions"],
+      "writes": [
+        "s|ck|public.junior_automation_versions.junior_automation_versions_kind_check",
+        "n|ck|public.junior_automation_versions.junior_automation_versions_kind_check",
+        "e|ck|public.junior_automation_versions.junior_automation_versions_kind_check",
+        "n|con|public.junior_automation_versions.junior_automation_versions_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_versions",
+        "n|sch|public",
+        "e|col|public.junior_automation_versions.kind"
+      ]
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_origin_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_origin_idx",
+        "n|idx|public.junior_conversations_origin_idx",
+        "e|idx|public.junior_conversations_origin_idx",
+        "n|rel|public.junior_conversations_origin_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_conversations",
+        "n|sch|public",
+        "e|col|public.junior_conversations.origin_type",
+        "e|col|public.junior_conversations.origin_id",
+        "e|col|public.junior_conversations.last_activity_at"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "origin_type"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.origin_type",
+        "n|col|public.junior_conversations.origin_type",
+        "e|col|public.junior_conversations.origin_type"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "origin_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.origin_id",
+        "n|col|public.junior_conversations.origin_id",
+        "e|col|public.junior_conversations.origin_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "origin_run_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.origin_run_id",
+        "n|col|public.junior_conversations.origin_run_id",
+        "e|col|public.junior_conversations.origin_run_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automation_versions",
+        "kind"
+      ],
+      "writes": [
+        "s|col|public.junior_automation_versions.kind",
+        "n|col|public.junior_automation_versions.kind",
+        "e|col|public.junior_automation_versions.kind"
+      ],
+      "reads": ["n|tbl|public.junior_automation_versions", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_event_tasks\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_scheduler_runs\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_scheduler_tasks\"]"
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_task_executions\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversations\",\"origin_type\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversations\",\"origin_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversations\",\"origin_run_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"team_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"namespace\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"identifier\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"created_at_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"task_json\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_runs\",\"id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_runs\",\"task_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_runs\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_runs\",\"scheduled_for_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_runs\",\"record\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"team_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"creator_slack_user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"creator_identity_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"next_run_at_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"run_now_at_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"created_at_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"record\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"execution_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"kind\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"namespace\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"task_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"executed_at_ms\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_scheduler_tasks\",\"title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_automation_versions\",\"kind\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_event_tasks\",\"status_reason\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversations_origin_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_event_tasks_team_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_event_tasks_match_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_runs_task_status_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_runs_status_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_tasks_creator_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_tasks_creator_identity_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_tasks_team_status_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_tasks_run_now_due_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_scheduler_tasks_next_run_due_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_task_executions_task_time_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_task_executions_time_kind_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_task_executions_conversation_time_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_task_executions\",\"junior_task_executions_conversation_id_junior_conversations_con\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_event_tasks\",\"junior_event_tasks_pkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_scheduler_runs\",\"junior_scheduler_runs_pkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_scheduler_tasks\",\"junior_scheduler_tasks_pkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_task_executions\",\"junior_task_executions_kind_namespace_execution_id_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_task_executions\",\"junior_task_executions_kind_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_task_executions\",\"junior_task_executions_status_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_automation_versions\",\"junior_automation_versions_kind_check\"]"
+    }
+  ]
+}

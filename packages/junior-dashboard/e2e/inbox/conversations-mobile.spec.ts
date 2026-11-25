@@ -1,11 +1,12 @@
 import type { Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "../harness";
+import { longPress } from "../long-press";
+import { viewAsParticipant } from "./conversationMenu";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** Hold new Conversation creates until the returned function runs. */
   async function holdCreate(page: Page): Promise<() => void> {
     let release!: () => void;
@@ -32,7 +33,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(
         "slack:CQA123:1770003600.000200",
       )}`,
-      { waitUntil: "networkidle" },
     );
     await expect(
       page.getByRole("heading", { name: "Investigate checkout latency" }),
@@ -217,6 +217,29 @@ test.describe("new UI", { tag: "@new" }, () => {
         useInnerText: true,
       });
       await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
+    });
+
+    test("opens the row menu on a long press of a Conversation row", async ({
+      page,
+      dashboard,
+    }) => {
+      await viewAsParticipant(page);
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+      const head = page.getByRole("link", { name: /Closed issue summary/ });
+      await expect(head).toBeVisible();
+
+      const menu = page.getByRole("menu");
+      await longPress(head, menu);
+      await screenshot(page, "conversation-row-menu", { view: "mobile" });
+
+      await menu.getByRole("menuitem", { name: "Pin", exact: true }).click();
+      await expect(menu).toHaveCount(0);
+      await expect(page).toHaveURL(
+        `${dashboard.baseURL}/inbox?view=conversations`,
+      );
+      await page.getByRole("link", { name: "Pinned", exact: true }).click();
+      await expect(head).toBeVisible();
     });
 
     test("opens the keyboard on the composer only when asked or opened there", async ({

@@ -1,4 +1,5 @@
 import { expect, type Page, type Request } from "@playwright/test";
+import { waitForRequestsToEnd } from "./harness";
 
 /** The API requests of one page load. */
 export type RequestBudget = {
@@ -28,10 +29,10 @@ function serialRounds(spans: readonly Span[]): number {
 }
 
 /**
- * Run `load`, wait until the network is idle, and assert that the page sent
- * at most the budgeted API requests and serial rounds. Set the budget to the
- * measured value. Lower it when a change sends fewer requests. Do not raise
- * it to pass.
+ * Run `load`, wait until each request that it started has ended, and assert
+ * that the page sent at most the budgeted API requests and serial rounds. Set
+ * the budget to the measured value. Lower it when a change sends fewer
+ * requests. Do not raise it to pass.
  */
 export async function expectRequestBudget(
   page: Page,
@@ -57,7 +58,7 @@ export async function expectRequestBudget(
   page.on("requestfailed", onDone);
   try {
     await load();
-    await page.waitForLoadState("networkidle");
+    await waitForRequestsToEnd(page);
   } finally {
     page.off("request", onRequest);
     page.off("requestfinished", onDone);

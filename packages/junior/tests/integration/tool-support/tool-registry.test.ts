@@ -266,34 +266,34 @@ describe("static tool registry", () => {
       ).then((turns) => turns as [SentTurn, SentTurn]);
 
       expectSameCachedPrefix([person, agent]);
-      expect(person.disabled).toEqual(
-        expect.arrayContaining([
-          "spawnAgent",
-          "stopAgent",
-          "archiveAgent",
-          "listAgents",
-          "messageAgent",
-          "reply",
-          "reportBlocked",
-        ]),
-      );
+      expect(person.disabled).toContain("reportBlocked");
       expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("moveConversationToSpace");
+      // A person's Turn starts and messages child agents, as an agent's does.
+      expect(person.disabled).not.toContain("startAgent");
+      expect(person.disabled).not.toContain("messageAgent");
+      // Finding agents and Conversations reports nothing to the parent.
+      expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
+          "moveConversationToSpace",
           "addInboxItem",
           "searchInboxItems",
           "updateInboxItem",
         ]),
       );
-      expect(agent.disabled).not.toContain("spawnAgent");
-      expect(agent.disabled).not.toContain("reply");
-
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
-        await expect(callTool(person, name)).rejects.toThrow(
-          `${name} is disabled in this Turn.`,
-        );
+      expect(agent.disabled).not.toContain("startAgent");
+      // A child agent starts child agents, so it sees their arguments.
+      expect(
+        Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
+      ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
+      // Final text is the reply of every Thread Turn, so no Turn lists
+      // `reply`.
+      for (const turn of [person, agent]) {
+        expect(turn.piTools.map((tool) => tool.name)).not.toContain("reply");
       }
+
       await expect(
         callTool(agent, "setConversationSubscription", { subscribed: true }),
       ).rejects.toThrow(
@@ -302,8 +302,6 @@ describe("static tool registry", () => {
       await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
         "addInboxItem is disabled in this Turn.",
       );
-      expect(person.spawnAgent).not.toHaveBeenCalled();
-      expect(person.messageAgent).not.toHaveBeenCalled();
 
       expect(turnInputFact(person)).toContain(
         "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
@@ -344,7 +342,7 @@ describe("static tool registry", () => {
     expect(person.disabled).toEqual(
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
-    expect(person.disabled).not.toContain("spawnAgent");
+    expect(person.disabled).not.toContain("startAgent");
     expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
@@ -401,6 +399,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
+        "setConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",
@@ -409,7 +408,9 @@ describe("static tool registry", () => {
         "watchTimer",
       ].sort(),
     );
-    expect(person.disabled).toEqual([]);
+    // This Lead has no Slack channel and no Space, so it has no
+    // configuration to change.
+    expect(person.disabled).toEqual(["setConfiguration"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

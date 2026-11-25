@@ -13,8 +13,7 @@ import {
   rollout,
 } from "./inbox-fixture";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // To do asks, each in its own Conversation, in To do's order, oldest
   // first: a button question, two forms, and an ask with Dismiss only.
   const asks = [

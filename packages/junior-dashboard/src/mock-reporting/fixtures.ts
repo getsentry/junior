@@ -908,7 +908,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "spawnAgent",
+            name: "startAgent",
             status: "running",
           },
         ],
@@ -918,7 +918,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "spawnAgent",
+            name: "startAgent",
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
@@ -957,7 +957,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "spawnAgent",
+            name: "startAgent",
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
@@ -2747,6 +2747,48 @@ function conversationMetricDays(
   return [...days.values()];
 }
 
+/** Split mock daily spend by verified person, from the same summaries. */
+function mockPersonSpendDays(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): ConversationStatsReport["personSpendDays"] {
+  const byDate = new Map<
+    string,
+    { people: Map<string, number>; unattributedCostUsd: number }
+  >();
+  for (const summary of summaries) {
+    const date = summary.lastSeenAt.slice(0, 10);
+    const day = byDate.get(date) ?? {
+      people: new Map<string, number>(),
+      unattributedCostUsd: 0,
+    };
+    byDate.set(date, day);
+    const costUsd = summary.cumulativeUsage?.cost?.total ?? 0;
+    const email = summary.actorIdentity?.email?.toLowerCase();
+    if (email) day.people.set(email, (day.people.get(email) ?? 0) + costUsd);
+    else day.unattributedCostUsd += costUsd;
+  }
+  return activityDates(nowMs, 90).map((date) => {
+    const day = byDate.get(date);
+    const costs = [...(day?.people.values() ?? [])].sort((a, b) => a - b);
+    const middle = Math.floor(costs.length / 2);
+    return {
+      date,
+      people: costs.length,
+      personCostUsd: costs.reduce((sum, cost) => sum + cost, 0),
+      unattributedCostUsd: day?.unattributedCostUsd ?? 0,
+      ...(costs.length
+        ? {
+            medianPersonCostUsd:
+              costs.length % 2
+                ? (costs[middle] ?? 0)
+                : ((costs[middle - 1] ?? 0) + (costs[middle] ?? 0)) / 2,
+          }
+        : undefined),
+    };
+  });
+}
+
 function conversationMetricHours(
   nowMs: number,
   summaries: ConversationSummaryReport[],
@@ -3622,6 +3664,7 @@ export function readMockConversationStats(): ConversationStatsReport {
         ),
       };
     })(),
+    personSpendDays: mockPersonSpendDays(nowMs, summaries),
     source: "conversation_index",
     ...windowBounds(nowMs),
   };

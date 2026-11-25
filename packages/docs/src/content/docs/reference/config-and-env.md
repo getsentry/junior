@@ -24,6 +24,7 @@ related:
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_IDLE_COMPACTION_ENABLED`            | No          | Operational kill switch for [compaction on idle](#prompt-cache-warming). Defaults to `true`; set `false` to warm large idle Conversations instead of compacting them.       |
+| `JUNIOR_VERSIONS_STREAM_ENABLED`            | No          | Operational kill switch for pushing dashboard change tokens over SSE in place of the 5 s poll. Defaults to `true`; set `false` to keep the dashboard on the poll. Each function instance with an open stream holds one direct Postgres session (the `DATABASE_URL` host without Neon's `-pooler`). |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
 | `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
@@ -226,7 +227,7 @@ const app = await createApp({
 });
 ```
 
-Child agents are always on: every app gives the model `spawnAgent`,
+Child agents are always on: every app gives the model `startAgent`,
 `messageAgent`, `listAgents`, `stopAgent`, and `archiveAgent`.
 `experimental.subagents` was removed; remove it from your config, because
 Junior rejects unknown experimental keys.
@@ -234,10 +235,10 @@ Junior rejects unknown experimental keys.
 A child agent is a Task by default: only its parent gives it work. The model
 can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
-Threads alike. The model can archive a finished Thread with `archiveAgent`.
+Threads alike. The model can archive a finished child agent with `archiveAgent`.
 
 A stopped conversation gives its child agents no new work: its `messageAgent`
-calls return `noted` and start nothing, and its `spawnAgent` calls fail.
+calls return `noted` and start nothing, and its `startAgent` calls fail.
 
 By default, a child agent of the root Conversation can start its own child
 agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
@@ -453,7 +454,7 @@ const app = await createApp({
 });
 ```
 
-Keys should be registered plugin config keys. Junior retains unregistered defaults but warns at startup because they usually indicate missing plugin wiring. Channel-scoped overrides (`jr-rpc config set`) take precedence.
+Keys should be registered plugin config keys. Junior retains unregistered defaults but warns at startup because they usually indicate missing plugin wiring. Values that Junior sets for a Slack channel or a Space take precedence, and a Space's value wins over a channel's.
 
 ## Sandbox configuration
 

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.314.0",
+  "version": "0.315.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -90,7 +90,7 @@
     "@slack/web-api": "^7.16.0",
     "@vercel/blob": "^2.6.1",
     "@vercel/functions": "^3.6.0",
-    "@vercel/oidc": "^3.4.1",
+    "@vercel/oidc": "^3.8.5",
     "@vercel/queue": "^0.2.0",
     "@vercel/sandbox": "4.0.0",
     "ai": "^7.0.153",
@@ -136,6 +136,7 @@
     "@vitest/coverage-v8": "catalog:",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
+    "emulate": "0.14.0",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
     "tsdown": "catalog:",

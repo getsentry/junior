@@ -1,0 +1,19 @@
+[
+  "attachment/acp",
+  "attachment/ios",
+  "attachment/mcp",
+  "automation-card/acp",
+  "automation-card/ios",
+  "automation-card/mcp",
+  "channel-mention/acp",
+  "channel-mention/ios",
+  "channel-mention/mcp",
+  "image/ios",
+  "inbox-question/acp",
+  "object-card/acp",
+  "object-card/ios",
+  "object-card/mcp",
+  "user-mention/acp",
+  "user-mention/ios",
+  "user-mention/mcp"
+]

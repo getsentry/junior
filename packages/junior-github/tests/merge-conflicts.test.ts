@@ -219,6 +219,29 @@ describe("merge conflict check on webhook events", () => {
     expect(conflicts()).toHaveLength(2);
   });
 
+  it("drops the conflict mark on a clean read that only conflict waiters start", async () => {
+    const fixes = () =>
+      h.published.filter(
+        (event) => event.eventType === "pull_request.merge_conflict.resolved",
+      );
+    await deliver("delivery-1");
+    expect(conflicts()).toHaveLength(2);
+
+    // A change on the base branch fixed it, and nothing waits for the fix.
+    pullRequest = pullRequestResponse({
+      headSha: "1111111111111111111111111111111111111111",
+      mergeable: true,
+      mergeableState: "clean",
+    });
+    await deliver("delivery-2");
+    const published = fixes().length;
+
+    // A waiter that comes later does not get that earlier fix.
+    h.watches.fixes = true;
+    await deliver("delivery-3");
+    expect(fixes()).toHaveLength(published);
+  });
+
   it("uses the mergeability in a pull request webhook without reading the pull request", async () => {
     await deliver(
       "delivery-1",
@@ -368,6 +391,22 @@ describe("merge conflict check on webhook events", () => {
 
     afterEach(() => {
       vi.useRealTimers();
+    });
+
+    it("clears a conflict that the cache entry still knows when the pull request is mergeable", async () => {
+      const key = "pulls:getsentry/junior#947";
+      await h.cache.update(key, () => ({
+        ttlMs: 60 * minute,
+        value: { head: { sha: headSha }, mergeable: false, state: "open" },
+      }));
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+
+      expect(await h.cache.get(key)).toEqual({
+        head: { sha: headSha },
+        mergeable: true,
+        state: "open",
+      });
     });
 
     it("publishes a conflict with one search for a burst of pushes", async () => {

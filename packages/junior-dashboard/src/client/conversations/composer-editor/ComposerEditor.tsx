@@ -13,11 +13,15 @@ import {
   COMMAND_PRIORITY_NORMAL,
   DROP_COMMAND,
   HISTORIC_TAG,
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_LOW,
+  FOCUS_COMMAND,
+  KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   mergeRegister,
   PASTE_COMMAND,
+  RootNode,
   SKIP_SCROLL_INTO_VIEW_TAG,
-  TextNode,
 } from "lexical";
 import {
   useEffect,
@@ -35,14 +39,20 @@ import { ComposerSkillMenu } from "../ComposerSkillMenu";
 import { mentionTokenAt } from "../composerMentionToken";
 import { hashTokenAt } from "../composerReferences";
 import { skillTokenAt } from "../skillReferences";
+import { ComposerMarkerNode } from "./ComposerMarkerNode";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
 import {
   $readComposerText,
-  $replaceComposerTokens,
   $writeComposerText,
   type ComposerLookup,
 } from "./composerEditorText";
+import {
+  $enterInMarkdownList,
+  $styleComposerDraft,
+  placeCaretOutsideHiddenMarkers,
+  syncComposerMarkers,
+} from "./composerLiveMarkdown";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
 import { useSkillReferenceHighlights } from "./useSkillReferenceHighlights";
 
@@ -66,6 +76,8 @@ type ComposerEditorProps = {
   enterKeyHint: "enter" | "send";
   enterSends: boolean;
   label: string;
+  /** Style Markdown as it is typed, and continue lists on Enter. */
+  liveMarkdown: boolean;
   lookup: ComposerLookup;
   maxLength: number;
   onChange(text: string): void;
@@ -105,13 +117,16 @@ export default function ComposerEditor(props: ComposerEditorProps) {
     <LexicalComposer
       initialConfig={{
         editable: props.editable,
-        editorState: () => $writeComposerText(initialText.current, lookup),
+        editorState: () => {
+          $writeComposerText(initialText.current);
+          $styleComposerDraft(lookup, props.liveMarkdown);
+        },
         namespace: "junior-composer",
-        nodes: [ComposerMentionNode, ComposerReferenceNode],
+        nodes: [ComposerMarkerNode, ComposerMentionNode, ComposerReferenceNode],
         onError: (error) => {
           throw error;
         },
-        theme: { paragraph: "m-0" },
+        theme: COMPOSER_THEME,
       }}
     >
       <div className="relative min-w-0">
@@ -181,7 +196,7 @@ function ComposerBehavior(
   const setText = (text: string, caretAtEnd: boolean) => {
     editor.update(
       () => {
-        $writeComposerText(text, callbacks.current.lookup);
+        $writeComposerText(text);
         if (caretAtEnd) $getRoot().selectEnd();
         else $setSelection(null);
       },
@@ -227,68 +242,130 @@ function ComposerBehavior(
 
   useEffect(() => editor.setEditable(props.editable), [editor, props.editable]);
 
+  // Style the draft again when the setting changes.
   useEffect(
     () =>
-      mergeRegister(
-        editor.registerUpdateListener(
-          ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
-            if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
-            const text = editorState.read($readComposerText);
-            // A textarea refuses text past its limit. Refuse the change.
-            if (text.length > callbacks.current.maxLength) {
-              editor.setEditorState(prevEditorState, { tag: HISTORIC_TAG });
-              return;
-            }
-            callbacks.current.onChange(text);
-          },
-        ),
-        // Pasted or restored `<@U…>` and reference tokens become chips.
-        editor.registerNodeTransform(TextNode, (node) =>
-          $replaceComposerTokens(node, callbacks.current.lookup),
-        ),
-        // Below the menus, which take Enter while they are open.
-        editor.registerCommand(
-          KEY_ENTER_COMMAND,
-          (event) => {
-            if (
-              !callbacks.current.enterSends ||
-              !event ||
-              event.shiftKey ||
-              event.isComposing
-            ) {
-              return false;
-            }
-            event.preventDefault();
-            callbacks.current.onEnter();
-            return true;
-          },
-          COMMAND_PRIORITY_NORMAL,
-        ),
-        editor.registerCommand(
-          PASTE_COMMAND,
-          (event) => {
-            const onPasteFiles = callbacks.current.onPasteFiles;
-            const files =
-              event instanceof ClipboardEvent
-                ? Array.from(event.clipboardData?.files ?? [])
-                : [];
-            if (!onPasteFiles || !files.length) return false;
-            event.preventDefault();
-            onPasteFiles(files);
-            return true;
-          },
-          COMMAND_PRIORITY_HIGH,
-        ),
-        // The composer form takes dropped files. Keep the editor from
-        // inserting their names.
-        editor.registerCommand(
-          DROP_COMMAND,
-          (event) => Boolean(event.dataTransfer?.types.includes("Files")),
-          COMMAND_PRIORITY_HIGH,
-        ),
+      editor.update(() =>
+        $styleComposerDraft(callbacks.current.lookup, props.liveMarkdown),
       ),
-    [editor],
+    [editor, props.liveMarkdown],
   );
+
+  useEffect(() => {
+    // A click keeps the caret where it lands, in or out of a span. Keys
+    // skip over hidden markers.
+    let pointerPlaced = false;
+    const onPointerDown = () => {
+      pointerPlaced = true;
+    };
+    return mergeRegister(
+      editor.registerUpdateListener(
+        ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+          if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+          const text = editorState.read($readComposerText);
+          // A textarea refuses text past its limit. Refuse the change.
+          if (text.length > callbacks.current.maxLength) {
+            editor.setEditorState(prevEditorState, { tag: HISTORIC_TAG });
+            return;
+          }
+          callbacks.current.onChange(text);
+        },
+      ),
+      // Last in each update: style the Markdown of the draft, and turn
+      // pasted or restored `<@U…>` and reference tokens into chips. Not
+      // while an input method composes, which a new node would break.
+      editor.registerNodeTransform(RootNode, () => {
+        if (!editor.isComposing()) {
+          const { liveMarkdown, lookup } = callbacks.current;
+          $styleComposerDraft(lookup, liveMarkdown);
+        }
+      }),
+      // Reveal the markers at the caret, after the caret leaves any
+      // that are hidden.
+      editor.registerUpdateListener(() => {
+        if (!callbacks.current.liveMarkdown) return;
+        if (!pointerPlaced) placeCaretOutsideHiddenMarkers(editor);
+        syncComposerMarkers(editor);
+      }),
+      editor.registerRootListener((root) => {
+        root?.addEventListener("pointerdown", onPointerDown);
+        return () => root?.removeEventListener("pointerdown", onPointerDown);
+      }),
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        () => {
+          pointerPlaced = false;
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        FOCUS_COMMAND,
+        () => {
+          if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        BLUR_COMMAND,
+        () => {
+          // Focus moves after the blur event.
+          requestAnimationFrame(() => {
+            if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
+          });
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      // Below the menus, which take Enter while they are open.
+      editor.registerCommand(
+        KEY_ENTER_COMMAND,
+        (event) => {
+          if (event?.isComposing) return false;
+          // Enter and Shift+Enter continue a list. Other modifiers keep
+          // their own meaning.
+          if (
+            callbacks.current.liveMarkdown &&
+            !(event?.altKey || event?.ctrlKey || event?.metaKey) &&
+            $enterInMarkdownList()
+          ) {
+            event?.preventDefault();
+            return true;
+          }
+          if (!callbacks.current.enterSends || !event || event.shiftKey) {
+            return false;
+          }
+          event.preventDefault();
+          callbacks.current.onEnter();
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL,
+      ),
+      editor.registerCommand(
+        PASTE_COMMAND,
+        (event) => {
+          const onPasteFiles = callbacks.current.onPasteFiles;
+          const files =
+            event instanceof ClipboardEvent
+              ? Array.from(event.clipboardData?.files ?? [])
+              : [];
+          if (!onPasteFiles || !files.length) return false;
+          event.preventDefault();
+          onPasteFiles(files);
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      // The composer form takes dropped files. Keep the editor from
+      // inserting their names.
+      editor.registerCommand(
+        DROP_COMMAND,
+        (event) => Boolean(event.dataTransfer?.types.includes("Files")),
+        COMMAND_PRIORITY_HIGH,
+      ),
+    );
+  }, [editor]);
 
   return (
     <>
@@ -298,3 +375,16 @@ function ComposerBehavior(
     </>
   );
 }
+
+// Rendered Markdown, close to how the transcript shows it. Links underline,
+// because Markdown links are the only underlined text.
+const COMPOSER_THEME = {
+  paragraph: "m-0",
+  text: {
+    bold: "font-semibold",
+    code: "rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em]",
+    italic: "italic",
+    strikethrough: "line-through",
+    underline: "text-dashboard-accent-text underline underline-offset-2",
+  },
+};

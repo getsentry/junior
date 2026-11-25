@@ -1,12 +1,12 @@
 ---
 name: jr-rpc
-description: Manage low-level config and plugin introspection flows via jr-rpc bash commands. Use only when the user explicitly asks to read or update provider defaults/config or list installed plugins. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
+description: Read low-level config and list installed plugins via jr-rpc bash commands. Use only when the user explicitly asks to read provider defaults/config or list installed plugins. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
 allowed-tools: bash
 ---
 
 # jr-rpc
 
-Manage low-level config and plugin introspection flows for the current agent turn.
+Read low-level config and list installed plugins for the current agent turn.
 
 ## Plugins
 
@@ -18,13 +18,11 @@ Command syntax:
 
 ## Configuration
 
-`jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
+`jr-rpc config get|list` — read the configuration of the conversation's Slack channel and Space. A Space's value wins over the channel's. Change a value with the `setConfiguration` tool.
 
 Command syntax:
 
 - `jr-rpc config get <key>`
-- `jr-rpc config set <key> <value> [--json]`
-- `jr-rpc config unset <key>`
 - `jr-rpc config list [--prefix <value>]`
 
 Rules:

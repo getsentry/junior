@@ -131,7 +131,7 @@ describe("Asking a Person", () => {
       ),
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
     // Only Maya knows the region she picked, so the child reports a block.
     // Its result starts the second Turn. The parent asks in the Inbox.
     const resultTurn = conversation.turns[1];

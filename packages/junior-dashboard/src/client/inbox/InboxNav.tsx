@@ -36,6 +36,7 @@ import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
 import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpacesNav } from "../spaces/SpacesNav";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -127,9 +128,10 @@ function InFlightRow(props: {
 
 /**
  * The pane, like Google Inbox: no list of Conversations, only the
- * destinations that open a list in the main area, then the Conversations
- * in flight, running or pinned, each one click away. Pins drag into a new
- * order here. Every page with destinations shows it.
+ * destinations that open a list in the main area, then the viewer's
+ * Spaces, then the Conversations in flight, running or pinned, each one
+ * click away. Pins drag into a new order here. Every page with destinations
+ * shows it.
  */
 export function InboxNav(props: {
   /** On a phone the entries are a page, and each opens its list page. */
@@ -162,6 +164,7 @@ export function InboxNav(props: {
       )}
     >
       <PaneDestinations phone={props.phone} />
+      <SpacesNav phone={props.phone} signedIn={data.signedIn} />
       {data.inFlight.length > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">

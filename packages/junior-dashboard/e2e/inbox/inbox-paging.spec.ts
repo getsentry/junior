@@ -1,6 +1,7 @@
 /** The Inbox lists' pages: next pages, To do's own paging, and failed pages. */
 import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { holdRequests } from "../harness";
 import {
   answered,
   license,
@@ -12,9 +13,9 @@ import {
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { scrollListUntil } from "./scroll-until";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("the asks and Done load their next pages at the end of the list", async ({
     dashboard,
     page,
@@ -123,7 +124,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row).toBeVisible();
     // A count that never answers does the same.
     await page.unroute("**/api/inbox-items/count**");
-    await page.route("**/api/inbox-items/count**", () => undefined);
+    await holdRequests(page, "**/api/inbox-items/count**");
     await page.reload();
     await expect(row).toBeVisible();
   });
@@ -189,10 +190,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
     // Its end loads the next page while it shows fewer than its count.
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   /** 30 old notices, each in its own Conversation, and one new ask. */
@@ -222,7 +221,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   /** Later pages of the Inbox item list never load. */
   async function holdLaterInboxItemPages(page: Page) {
-    await page.route(/\/api\/inbox-items\?.*cursor=/, () => undefined);
+    await holdRequests(page, /\/api\/inbox-items\?.*cursor=/);
   }
 
   test("To do's first page holds the new ask behind older notices", async ({
@@ -305,10 +304,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   test("Done shows Try again when its first read fails", async ({

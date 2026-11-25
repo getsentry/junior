@@ -26,7 +26,8 @@ import {
 } from "@/chat/conversations/session-stop";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getLeadConversation } from "@/chat/lead/conversation";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { createSpace } from "@/chat/spaces/store";
 import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
@@ -390,9 +391,17 @@ describe("conversation auto-archive API", () => {
       title: "Follow-up",
       visibility: "private",
     });
-    // The Lead is the viewer's dashboard home, not a feed row, so it stays
-    // however long it has been quiet.
-    const lead = await getLeadConversation(viewer);
+    // A Space's Lead is not a feed row, so it stays however long it has
+    // been quiet.
+    const lead = await getSpaceLead({
+      member: viewer,
+      space: await createSpace({
+        creatorUserId: viewer.id,
+        description: null,
+        visibility: "public",
+        name: "Follow-ups",
+      }),
+    });
     await getDb()
       .update(juniorConversations)
       .set({ lastActivityAt: new Date(staleMs) })

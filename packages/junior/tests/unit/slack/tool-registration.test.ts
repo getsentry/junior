@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bindAgentTools, bindTurnTools } from "@/chat/agent/tools";
+import { bindAgentTools } from "@/chat/agent/tools";
 import type { AgentRun } from "@/chat/agent/types";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
@@ -179,11 +179,11 @@ describe("Slack tool registration", () => {
     expect(tools["searchConversationMessages"]?.source?.id).toBe(
       "conversations",
     );
-    expect(tools["searchConversations"]?.exposure).toBe("deferred");
-    expect(tools["searchConversations"]?.source?.id).toBe("conversations");
-    expect(
-      tools["searchConversations"]?.inputSchema["properties"],
-    ).toHaveProperty("channel_id");
+    expect(tools["listAgents"]?.exposure).toBe("deferred");
+    expect(tools["listAgents"]?.source?.id).toBe("agents");
+    expect(tools["listAgents"]?.inputSchema["properties"]).toHaveProperty(
+      "query",
+    );
     expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
     expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
     expect(tools["stopWatchingResources"]?.exposure).toBe("deferred");
@@ -203,20 +203,17 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("searchConversations");
+    expect(tools).toHaveProperty("listAgents");
   });
 
-  it("registers Conversation search without a channel filter outside Slack", () => {
+  it("registers Conversation search outside Slack", () => {
     const tools = createTools(
       [],
       {},
       { ...ctx(), conversationPrivacy: "public" },
     );
 
-    expect(tools).toHaveProperty("searchConversations");
-    expect(
-      tools["searchConversations"]?.inputSchema["properties"],
-    ).not.toHaveProperty("channel_id");
+    expect(tools).toHaveProperty("listAgents");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 
@@ -445,32 +442,6 @@ describe("agent tool binding", () => {
       spawnAgent,
     };
   }
-
-  // A person's Turn in a Thread lists the Thread's agent tools, so the
-  // Thread keeps one tool list, but its own tools have none: `createTools`
-  // disables them, also when maxAgentDepth is above 0.
-  it("lists but does not give agent tools to a person's Turn in a Thread", async () => {
-    await createApp({ limits: { maxAgentDepth: 1 } });
-    const { environment, messageAgent, run, spawnAgent } = agentRun();
-    const behavior = turnBehavior({ kind: "thread", personInput: true });
-
-    expect(bindTurnTools(run, behavior)).toEqual({
-      turnTools: behavior.tools,
-      listedTools: {
-        ...behavior.tools,
-        agents: "children_and_parent",
-        reply: "parent",
-        reportBlocked: "parent",
-      },
-      spawnAgent,
-      messageAgent,
-    });
-    expect(behavior.tools.agents).toBe("none");
-    expect(environment.bindMessageAgent).toHaveBeenCalledWith(
-      run,
-      "children_and_parent",
-    );
-  });
 
   // A root always spawns. A child spawns only when maxAgentDepth is above 0,
   // and it can always message its parent. A root's messageAgent rejects

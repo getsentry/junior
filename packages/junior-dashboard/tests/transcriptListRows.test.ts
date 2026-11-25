@@ -8,6 +8,7 @@ import {
   UNREAD_MARKER_KEY,
 } from "../src/client/conversations/transcriptListRows";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
+import { routineEventEntryKeys } from "../src/client/conversations/TranscriptActivityGroup";
 
 function entryRow(seq: number): TranscriptListRow {
   const key = `entry-${seq}`;
@@ -132,6 +133,28 @@ function captureEntry(seq: number): RenderedTranscriptEntry {
   };
 }
 
+function watchEventEntry(
+  seq: number,
+  source: string,
+  status?: string,
+): RenderedTranscriptEntry {
+  return {
+    key: `${seq}:message:0`,
+    kind: "message",
+    message: {
+      eventIdentifier: source,
+      eventNamespace: status ? "junior" : "github",
+      ...(status ? { eventStatus: status } : undefined),
+      eventType: status ? "agent.update" : "pull_request.comment.created",
+      eventWatchId: "watch-1",
+      parts: [{ type: "text", text: "Event." }],
+      role: "user",
+      sourceSeq: seq,
+    },
+    seq,
+  };
+}
+
 function rowSummary(rows: TranscriptListRow[]) {
   return rows.map((row) => ({
     keys:
@@ -150,7 +173,7 @@ describe("transcriptListRows", () => {
     const rows = transcriptListRows({
       entries: [
         messageEntry(0, "user"),
-        toolEntry(1, "spawnAgent"),
+        toolEntry(1, "startAgent"),
         subagentEntry(2),
         toolEntry(3),
         subagentEntry(4, "thread"),
@@ -296,5 +319,127 @@ describe("transcriptListRows", () => {
       { keys: ["5:message:0"], kind: "entry", seq: 5 },
       { keys: ["7:message:0"], kind: "entry", seq: 7 },
     ]);
+  });
+
+  it("folds routine Watch Events and keeps the latest one that needs a person", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        messageEntry(2),
+        watchEventEntry(3, "plan", "done"),
+        watchEventEntry(4, "plan", "waiting"),
+        watchEventEntry(5, "pr"),
+        watchEventEntry(6, "plan", "done"),
+        watchEventEntry(7, "investigate", "failed"),
+        watchEventEntry(8, "plan", "waiting"),
+        messageEntry(9),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+      // A later update settles the first "needs you".
+      {
+        keys: ["3:message:0", "4:message:0", "5:message:0", "6:message:0"],
+        kind: "activity",
+        seq: 6,
+      },
+      { keys: ["7:message:0"], kind: "entry", seq: 7 },
+      { keys: ["8:message:0"], kind: "entry", seq: 8 },
+      { keys: ["9:message:0"], kind: "entry", seq: 9 },
+    ]);
+  });
+
+  it("keeps the Watch Event that a reply answers", () => {
+    const quietReply = messageEntry(7);
+    if (quietReply.kind === "message") quietReply.message.quiet = true;
+    const rows = transcriptListRows({
+      entries: [
+        watchEventEntry(1, "pr"),
+        watchEventEntry(2, "pr"),
+        toolEntry(3),
+        messageEntry(4),
+        watchEventEntry(5, "pr"),
+        toolEntry(6),
+        quietReply,
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "activity", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+      { keys: ["3:tool:0"], kind: "activity", seq: 3 },
+      { keys: ["4:message:0"], kind: "entry", seq: 4 },
+      // A quiet reply answers nothing a reader needs.
+      {
+        keys: ["5:message:0", "6:tool:0", "7:message:0"],
+        kind: "activity",
+        seq: 7,
+      },
+    ]);
+  });
+
+  it("keeps the answered Watch Event when another Turn input comes between", () => {
+    const result = messageEntry(2, "user");
+    if (result.kind === "message")
+      result.message.eventType = "agent_invocation.result";
+    const keys = routineEventEntryKeys([
+      watchEventEntry(1, "pr"),
+      result,
+      messageEntry(3),
+    ]);
+
+    expect(keys.has("1:message:0")).toBe(false);
+  });
+
+  it("keeps a Watch Event that needs a person when its Turn got no reply", () => {
+    const entries = [
+      watchEventEntry(1, "pr"),
+      watchEventEntry(2, "plan", "waiting"),
+    ];
+    for (const entry of entries) {
+      if (entry.kind === "message") entry.message.noReply = true;
+    }
+    const rows = transcriptListRows({
+      entries,
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "activity", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+    ]);
+  });
+
+  it("keeps the Tasks of a Turn under its reply when a routine Event follows", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        subagentEntry(2),
+        messageEntry(3),
+        watchEventEntry(4, "pr"),
+        toolEntry(5),
+        messageEntry(6, "user"),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["3:message:0"], kind: "entry", seq: 3 },
+      { keys: ["4:message:0", "5:tool:0"], kind: "activity", seq: 5 },
+      { keys: ["6:message:0"], kind: "entry", seq: 6 },
+    ]);
+    const reply = rows[1]!;
+    expect(
+      reply.kind === "entry" && reply.tasks?.map((task) => task.key),
+    ).toEqual(["subagent:child-2"]);
   });
 });

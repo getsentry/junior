@@ -9,9 +9,8 @@ import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import {
   getAgentReplyMessageId,
   getParentMessageId,
-  getTurnReplyKey,
 } from "@/chat/agent-invocations/ids";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import {
@@ -71,23 +70,21 @@ describe("child agent task work", () => {
     vi.restoreAllMocks();
   });
 
-  it("reads the root Location and visibility, sends only the reply to the parent, and keeps one prompt on every path", async () => {
+  it("reads the root Location and visibility, sends only the final text to the parent, and keeps one prompt on every path", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
     const modelContexts: Context[] = [];
     const laterReply = (text: string) => ({
-      type: "toolCall" as const,
-      name: "reply",
-      arguments: { text },
+      type: "text" as const,
+      text,
       onRequest: (context: Context) => modelContexts.push(context),
     });
     const agentRunner = createModelAgentRunner(
       createModelStream([
         {
-          type: "toolCall",
-          name: "reply",
-          arguments: { text: "Durable child result" },
+          type: "text",
+          text: "Durable child result",
           onRequest: (context) => {
             observedVisibility = getCurrentConversationPrivacy();
             modelContexts.push(context);
@@ -148,7 +145,7 @@ describe("child agent task work", () => {
         status: "no_work",
       });
 
-      // The parent gets the reply once, even after redelivery, and no
+      // The parent gets the final text once, even after redelivery, as its
       // completed result.
       const parentWork = await getConversationWorkState({
         conversationId: slackParentConversationId,
@@ -158,7 +155,7 @@ describe("child agent task work", () => {
         expect.objectContaining({
           delivery: "defer",
           inboundMessageId: expect.stringMatching(
-            `^${getAgentReplyMessageId(childConversationId, getTurnReplyKey(turnId, ""))}`,
+            `^${getAgentReplyMessageId(childConversationId, turnId)}`,
           ),
           input: expect.objectContaining({
             metadata: expect.objectContaining({
@@ -172,7 +169,7 @@ describe("child agent task work", () => {
               sender: { conversationId: childConversationId, turnId },
             }),
             text: expect.stringMatching(
-              /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
+              /^<agent-result [^>]*status="done">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
             ),
           }),
           source: "event",
@@ -246,18 +243,17 @@ describe("child agent task work", () => {
         expect.arrayContaining([
           expect.objectContaining({
             role: "assistant",
-            content: expect.arrayContaining([
+            content: [
               expect.objectContaining({
-                type: "toolCall",
-                name: "reply",
-                arguments: { text: "Durable child result" },
+                type: "text",
+                text: "Durable child result",
               }),
-            ]),
+            ],
           }),
         ]),
       );
-      // A child posts nothing to its Location. Its task and its `reply` are
-      // message events in its own transcript.
+      // A child posts nothing to its Location. Its task and its final text
+      // are message events in its own transcript.
       await expect(loadMessageEvents(childConversationId)).resolves.toEqual([
         expect.objectContaining({
           type: "message",
@@ -291,7 +287,7 @@ describe("child agent task work", () => {
         }),
       ]);
       // The dashboard shows the task as parent agent input, not as the
-      // person who started the root, with the `reply` as its answer.
+      // person who started the root, with the final text as its answer.
       const api = createJuniorApi();
       const childPath = `http://localhost/api/conversations/${encodeURIComponent(childConversationId)}`;
       const outline = conversationOutlineSchema.parse(
@@ -383,14 +379,11 @@ describe("child agent task work", () => {
         },
         { conversationStore, queue, state },
       );
-      await enqueueChildResultToParent({
+      await enqueueStarterUpdate({
         actor: slackInvocationInput.actor,
         messageKey: "helper-reply",
         queue,
-        result: {
-          kind: "reply",
-          reply: { text: "Helper fact.", toolCallId: "helper-reply" },
-        },
+        update: { status: "done", text: "Helper fact." },
         sender: {
           childConversationId: helper.childConversationId,
           parentConversationId: childConversationId,
@@ -399,6 +392,20 @@ describe("child agent task work", () => {
         turnId: "turn_helper",
       });
       await processChild();
+      // The helper's result is data, not the person's instruction. The
+      // Turn still runs as the person.
+      const helperInput = (
+        await getConversationEventStore().loadCurrentHistory(
+          childConversationId,
+        )
+      ).find(
+        (event) =>
+          event.data.type === "user_message" &&
+          JSON.stringify(event.data).includes("Helper fact."),
+      );
+      expect(helperInput?.data).toMatchObject({
+        provenance: { authority: "context", actor: slackInvocationInput.actor },
+      });
       // A Turn records each input Message once. Its reply is a
       // `message_handled` row, not an edit of the Message.
       await expectNoMessageRewrites(childConversationId);
@@ -442,16 +449,20 @@ describe("child agent task work", () => {
   });
 
   const blockedMissing = "Approval to open the PR. Ask the user.";
-  // Plain text in a child Turn is not an answer. It gets one reminder.
   const quiet = {
     type: "toolCall" as const,
     name: "noReply",
     arguments: { note: "Bot comment needs no change." },
   };
-  const plainText = [
-    { type: "text" as const, text: "Draft summary for the parent." },
-    { type: "text" as const, text: "Draft summary for the parent." },
-  ];
+  const finalText = {
+    type: "text" as const,
+    text: "Draft summary for the parent.",
+  };
+  const cutOff = (stopReason: "length" | "aborted") => ({
+    type: "text" as const,
+    text: "Draft summary for the",
+    stopReason,
+  });
   it.each([
     {
       name: "failed",
@@ -509,7 +520,7 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
         ),
       ],
     },
@@ -537,7 +548,7 @@ describe("child agent task work", () => {
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [
-        expect.stringMatching(/status="completed">\n[\s\S]*\nLost reply\.\n/),
+        expect.stringMatching(/status="done">\n[\s\S]*\nLost reply\.\n/),
       ],
     },
     {
@@ -549,14 +560,40 @@ describe("child agent task work", () => {
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
-          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
         ),
       ],
     },
     {
-      // A child's parent learns that no reply was sent, without the text.
-      name: "unanswered task",
-      outputs: plainText,
+      // A Task's final text is its reply. It needs no tool call.
+      name: "final text",
+      outputs: [finalText],
+      terminal: { outcome: "success", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(
+          /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,
+        ),
+      ],
+    },
+    {
+      name: "final text thread",
+      kind: "thread" as const,
+      outputs: [finalText],
+      terminal: { outcome: "success", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(
+          /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,
+        ),
+      ],
+    },
+    {
+      // Final text that the output limit cut off is a failure, not a reply.
+      name: "cut off",
+      // The cut-off text is not delivered.
+      undelivered: ["Draft summary for the"],
+      outputs: [cutOff("length")],
       terminal: {
         failureCode: "model_execution_failed",
         type: "turn_failed",
@@ -564,15 +601,17 @@ describe("child agent task work", () => {
       subagentOutcome: "error",
       parentMessages: [
         expect.stringMatching(
-          /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
+          /status="failed">\n[\s\S]*\nThe final text was cut off at the model's output length limit\.\n/,
         ),
       ],
       lastResult: "failed" as const,
     },
     {
-      name: "unanswered thread",
+      name: "aborted thread",
+      // The cut-off text is not delivered.
+      undelivered: ["Draft summary for the"],
       kind: "thread" as const,
-      outputs: plainText,
+      outputs: [cutOff("aborted")],
       terminal: {
         failureCode: "model_execution_failed",
         type: "turn_failed",
@@ -580,7 +619,7 @@ describe("child agent task work", () => {
       subagentOutcome: "error",
       parentMessages: [
         expect.stringMatching(
-          /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
+          /status="failed">\n[\s\S]*\nThe final text was cut off when the model request was aborted\.\n/,
         ),
       ],
       lastResult: "failed" as const,
@@ -595,6 +634,7 @@ describe("child agent task work", () => {
       replied,
       subagentOutcome,
       terminal,
+      undelivered = [],
     }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const modelStream = vi.fn(createModelStream(outputs));
@@ -617,14 +657,11 @@ describe("child agent task work", () => {
           "failed-result-1",
         );
         if (replied) {
-          await enqueueChildResultToParent({
+          await enqueueStarterUpdate({
             actor: invocationInput.actor,
-            messageKey: getTurnReplyKey(turnId, "lost-reply"),
+            messageKey: turnId,
             queue,
-            result: {
-              kind: "reply",
-              reply: { text: "Lost reply.", toolCallId: "lost-reply" },
-            },
+            update: { status: "done", text: "Lost reply." },
             sender: { childConversationId, parentConversationId },
             state,
             turnId,
@@ -636,6 +673,12 @@ describe("child agent task work", () => {
         ).resolves.toMatchObject({ status: "completed" });
 
         expect(modelStream).toHaveBeenCalledTimes(outputs.length);
+        const delivered = JSON.stringify(
+          await loadMessageEvents(childConversationId),
+        );
+        expect(undelivered.filter((text) => delivered.includes(text))).toEqual(
+          [],
+        );
         await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
           expect.objectContaining({
             data: expect.objectContaining({ type: "turn_started", turnId }),
@@ -747,11 +790,7 @@ describe("child agent task work", () => {
             name: "upkeep_markDone",
             arguments: { itemId: "item-7" },
           },
-          {
-            type: "toolCall",
-            name: "reply",
-            arguments: { text: "Resumed child result" },
-          },
+          { type: "text", text: "Resumed child result" },
         ]),
       );
       const run = vi.spyOn(agentRunner, "run");

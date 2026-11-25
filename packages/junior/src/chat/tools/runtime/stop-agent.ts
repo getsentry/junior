@@ -32,7 +32,7 @@ export const stopAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          "Child conversation ID from spawnAgent or listAgents to stop",
+          "Child conversation ID from startAgent or listAgents to stop",
         ),
     })
     .strict(),

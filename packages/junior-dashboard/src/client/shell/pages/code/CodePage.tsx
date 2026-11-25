@@ -37,7 +37,7 @@ import { CodeSummaryCards } from "../../../pages/code/CodeSummaryCards";
 import { codeActivity } from "../../../pages/code/RepositorySections";
 import { codeScopeOf } from "../../../pages/code/codeRepositoryRoutes";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { CodePageFrame } from "./CodePageFrame";
+import { PageFrame } from "../../../components/layout/PageFrame";
 import { CodeScopeTabs } from "./CodeScopeTabs";
 
 /**
@@ -53,9 +53,9 @@ export function CodePage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const rangeSelector = <TimeRangeSelector onChange={setRange} value={range} />;
   return (
-    <CodePageFrame
+    <PageFrame
       returnPath={`${location.pathname}${location.search}`}
-      tabs={
+      actions={
         signedIn ? (
           <CodeScopeTabs scope={scope} search={location.search} />
         ) : undefined
@@ -70,7 +70,7 @@ export function CodePage() {
       ) : (
         <CodeAll range={range} rangeSelector={rangeSelector} />
       )}
-    </CodePageFrame>
+    </PageFrame>
   );
 }
 

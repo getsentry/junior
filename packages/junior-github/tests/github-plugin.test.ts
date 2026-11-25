@@ -424,6 +424,7 @@ function githubToolsContext(input?: {
     request: Request;
   }> = [];
   return {
+    codeChanges: dbFixture.codeIndex.codeChanges,
     db,
     log: pluginLog,
     plugin: { name: "github" },
@@ -1785,7 +1786,11 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.checks.recovered",
           "pull_request.comment.created",
           "pull_request.opened",
+          "pull_request.reopened",
           "pull_request.ready_for_review",
+          "pull_request.converted_to_draft",
+          "pull_request.synchronized",
+          "pull_request.review_requested",
           "pull_request.review.approved",
           "pull_request.review.changes_requested",
           "pull_request.review.commented",
@@ -1793,6 +1798,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.merged",
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
+          "pull_request.merge_conflict.resolved",
         ],
         type: "pull_request",
       },

@@ -11,16 +11,20 @@ const AGENT_UPDATE_TEXT_MAX_LENGTH = 12_000;
 /** What happened in the Conversation. */
 export type AgentUpdateStatus =
   | "blocked"
-  | "completed"
+  | "done"
   | "failed"
   | "stopped"
   | "waiting";
 
 /**
  * One agent update. `text` is what the Conversation said: its reply, its
- * `noReply` note, what blocks it, or its question to a person.
+ * `noReply` note, what blocks it, or its question to a person. A `quiet`
+ * update has nothing new for the receivers, such as a `noReply` end while
+ * the work goes on. It reaches each of them as a Conversation note and
+ * starts no Turn.
  */
 export interface AgentUpdate {
+  quiet?: boolean;
   status: AgentUpdateStatus;
   text: string;
 }

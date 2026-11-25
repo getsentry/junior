@@ -9,7 +9,6 @@ import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations, waitForMigrationLock } from "./migrate";
-import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
@@ -28,10 +27,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   db(): JuniorDatabase {
-    return drizzle({
-      client: this.queryClient(),
-      schema: juniorSqlSchema,
-    }) as JuniorDatabase;
+    return drizzle({ client: this.queryClient() }) as JuniorDatabase;
   }
 
   async execute(

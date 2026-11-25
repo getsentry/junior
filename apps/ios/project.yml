@@ -26,7 +26,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.1.0"
+    # The server release version. scripts/bump-release-versions.mjs sets it.
+    MARKETING_VERSION: "0.315.0"
     CURRENT_PROJECT_VERSION: "1"
     # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
@@ -40,6 +41,10 @@ targets:
     platform: iOS
     sources:
       - path: Junior
+      # Craft's changelog of each release. The drawer's Changelog reads its
+      # iOS entries from the app bundle.
+      - path: ../../CHANGELOG.md
+        buildPhase: resources
     dependencies:
       - package: JuniorKit
     settings:
@@ -55,6 +60,11 @@ targets:
         CFBundleDisplayName: Junior
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # `beta` or `rc`, and the short git commit, which the TestFlight lane
+        # sets (fastlane/Fastfile). Local builds leave them empty. The idea
+        # comes from inject-git-info in armcknight/tools.
+        JuniorChannel: $(JUNIOR_CHANNEL)
+        JuniorCommit: $(JUNIOR_COMMIT)
         # Only standard HTTPS, so TestFlight asks no export-compliance question.
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true

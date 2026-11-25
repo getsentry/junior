@@ -14,7 +14,11 @@ import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
-import { createLeadRoutes } from "./api/lead/routes";
+import { createSpaceArchiveRoutes } from "./api/spaces/archive";
+import { createSpaceConfigurationRoutes } from "./api/spaces/configuration";
+import { createSpaceLeadRoutes } from "./api/spaces/lead";
+import { createSpaceMemberRoutes } from "./api/spaces/members";
+import { createSpaceRoutes } from "./api/spaces/space";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createSearchRoutes } from "./api/search/routes";
@@ -39,10 +43,7 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
-import { validateRequest } from "./api/validation";
-import { readVersions } from "./api/versions";
-import { requireViewer } from "./api/viewer";
-import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
+import { createVersionsRoutes } from "./api/versions/routes";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
 import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
@@ -114,17 +115,7 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
-  app.get(
-    "/api/versions",
-    requireViewer,
-    validateRequest("query", versionsQuerySchema, "Invalid query parameters."),
-    async (context) =>
-      jsonResponse(
-        versionsSchema,
-        await readVersions(context.get("viewer"), context.req.valid("query")),
-        { headers: { "cache-control": "private, no-store" } },
-      ),
-  );
+  app.route("/api/versions", createVersionsRoutes());
 
   for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
 
@@ -159,11 +150,15 @@ export function createJuniorApi(
   app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
-  app.route("/api/lead", createLeadRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/search", createSearchRoutes());
+  app.route("/api/spaces", createSpaceRoutes());
+  app.route("/api/spaces", createSpaceArchiveRoutes({ queue }));
+  app.route("/api/spaces", createSpaceMemberRoutes());
+  app.route("/api/spaces", createSpaceConfigurationRoutes());
+  app.route("/api/spaces", createSpaceLeadRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

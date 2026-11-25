@@ -88,10 +88,13 @@ async function turnSkipReason(
   if (!source) {
     throw new Error(`Completed Turn ${record.turnId} is missing Source`);
   }
+  // A parent agent's task or message is the instruction of a Thread. Tasks
+  // skip metadata by kind.
   if (
     source.kind !== "slack" &&
     source.kind !== "web" &&
-    source.kind !== "local"
+    source.kind !== "local" &&
+    source.kind !== "parent_message"
   ) {
     return "unsupported_source";
   }

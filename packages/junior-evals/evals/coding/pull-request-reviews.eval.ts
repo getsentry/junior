@@ -25,10 +25,10 @@ const requesterOnGitHub = { id: 7_001, login: "octo-requester" };
 async function startPullRequestThread(run: RunAgent, events: string[]) {
   const conversation = await run(
     slackMention(
-      `Use spawnAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Reply READY now. A watch on the PR sends you its events later."`,
+      `Use startAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Reply READY now. A watch on the PR sends you its events later."`,
     ),
   );
-  const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+  const [spawned] = completedToolCalls("startAgent", conversation).map(
     (call) => toolOutput(call) as { conversation_id?: string },
   );
   expect(
@@ -86,6 +86,103 @@ describe("Watches", () => {
     );
   });
 
+  test("when you push back on a change request from the person who asked, mark it declined", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `${pullRequest} keeps the Python deploy gate script on purpose. Workflow concurrency keyed on the SHA cannot replace it: it cancels one of the duplicate runs, and the gate fails on a cancelled run.`,
+      ),
+    );
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // Only the mark asks the requester to review again. A reply alone
+    // leaves the decision with them and drops the PR from their Inbox.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Can we not move this whole script into a workflow job and set workflow concurrency to the SHA instead?",
+          id: 9_003,
+          state: "changes_requested",
+          user: { login: requesterOnGitHub.login },
+        },
+        sender: { ...requesterOnGitHub, type: "User" },
+      }),
+    );
+
+    const marks = toolCallsOf("github_updatePullRequestFeedback", delivery).map(
+      (call) => call.input,
+    );
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        comment_id: 9_003,
+        comment_kind: "review_body",
+        status: "declined",
+      }),
+    );
+  });
+
+  test.for([
+    {
+      asks: true,
+      body: "What do we lose if the gate retries forever instead of giving up after three tries? Lay out the trade-off and I'll pick one.",
+      outcome: "ask the person who asked to decide",
+    },
+    {
+      asks: false,
+      body: "Where does the gate read its retry limit from?",
+      outcome: "answer without asking them",
+    },
+  ])(
+    "when the person who asked leaves a comment-only review, $outcome",
+    async ({ asks, body }, { run }) => {
+      const conversation = await run(
+        slackMention(
+          `${pullRequest} adds a retry loop to the Python deploy gate script. It reads its limit from GATE_MAX_RETRIES and gives up after three tries by default.`,
+        ),
+      );
+      await insertLinkedGitHubIdentity(requesterOnGitHub);
+      await insertGitHubPullRequestWatch({
+        conversation,
+        draft: false,
+        pullRequest,
+      });
+
+      // A comment-only review ends GitHub's review request. Only a comment
+      // that asks them puts the PR back in their Inbox.
+      const delivery = await conversation.continue(
+        githubWebhook("pull_request_review", {
+          action: "submitted",
+          pull_request: { number: 691 },
+          repository,
+          review: {
+            body,
+            id: 9_004,
+            state: "commented",
+            user: { login: requesterOnGitHub.login },
+          },
+          sender: { ...requesterOnGitHub, type: "User" },
+        }),
+      );
+
+      const comments = toolCallsOf("github_commentOnPullRequest", delivery).map(
+        (call) => call.input as { asks_requester?: boolean } | undefined,
+      );
+      expect(comments).not.toHaveLength(0);
+      expect(comments.some((input) => input?.asks_requester === true)).toBe(
+        asks,
+      );
+    },
+  );
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {
@@ -140,10 +237,10 @@ describe("Watches", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        `Use spawnAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
+        `Use startAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
       ),
     );
-    const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+    const [spawned] = completedToolCalls("startAgent", conversation).map(
       (call) => toolOutput(call) as { conversation_id?: string },
     );
     expect(

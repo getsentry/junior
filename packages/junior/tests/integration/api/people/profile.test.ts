@@ -122,6 +122,7 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
+          visibility: null,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));
       await fixture.sql
@@ -131,6 +132,7 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
+          visibility: null,
         })
         .where(
           eq(juniorConversations.conversationId, ownerChildConversationId),

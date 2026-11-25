@@ -10,7 +10,7 @@ import {
   lte,
   sql,
 } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
   decodeStoredConversationEvent,
@@ -43,6 +43,7 @@ import { withConversationEventLock } from "./event-lock";
 import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
+  recordMentionedParticipants,
   rootConversationIsArchived,
 } from "./participants";
 
@@ -131,6 +132,18 @@ function insertFromEvent(
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
+}
+
+/** Read a Conversation's stored event rows as they are, in seq order. */
+export async function readConversationEventRows(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<ConversationEventRow[]> {
+  return await db
+    .select()
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId))
+    .orderBy(asc(juniorConversationEvents.seq));
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
@@ -296,8 +309,9 @@ class SqlConversationEventStore implements ConversationEventStore {
   }
 
   /**
-   * Add the authors of Turn input messages to the conversation.
-   * Only people who start a Turn join it. Thread context, such as backfilled
+   * Add the authors of Turn input messages to the conversation, and the
+   * people that they mention in a public one. Only people who start a Turn,
+   * or whom they mention, join it. Thread context, such as backfilled
    * or skipped messages, and Event Messages keep their author without
    * membership.
    */
@@ -342,6 +356,13 @@ class SqlConversationEventStore implements ConversationEventStore {
         resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
       restores ||= isPerson && unarchives;
+      if (isPerson) {
+        await recordMentionedParticipants(this.executor, {
+          atMs: row.createdAt.getTime(),
+          conversationId,
+          text: data.text,
+        });
+      }
     }
     /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.

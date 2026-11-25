@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import type { StoredSlackActor } from "@/chat/actor";
 import { recordCodeChange } from "@/chat/code/store";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
@@ -19,6 +20,7 @@ import {
   measureSql,
 } from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
+import { recordTurn, turnActorIdentityId } from "../people/fixture";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -48,6 +50,12 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-06-15T11:50:00.000Z"),
       });
       await store.recordExecution({
+        actorIdentityId: await turnActorIdentityId(fixture, {
+          email: "Alice@Example.com",
+          platform: "slack",
+          slackUserId: "U1",
+          teamId: "T1",
+        }),
         conversationId: "slack:C1:recent",
         createdAtMs: Date.parse("2026-06-15T11:50:00.000Z"),
         execution: {
@@ -71,6 +79,12 @@ describe("conversation stats API", () => {
         updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
       });
       await store.recordExecution({
+        actorIdentityId: await turnActorIdentityId(fixture, {
+          email: "bob@example.com",
+          platform: "slack",
+          slackUserId: "U2",
+          teamId: "T1",
+        }),
         conversationId: "slack:D1:failed",
         createdAtMs: Date.parse("2026-06-14T23:55:00.000Z"),
         destination: {
@@ -265,6 +279,33 @@ describe("conversation stats API", () => {
         ]);
       }
 
+      // Three people on one day, so the mean and the median per person differ.
+      for (const [index, costUsd] of [0.01, 0.002, 0.003].entries()) {
+        const actor = {
+          email: `person-${index}@example.com`,
+          platform: "slack",
+          slackUserId: `UP${index}`,
+          teamId: "T1",
+        } satisfies StoredSlackActor;
+        const atMs = Date.parse("2026-06-01T09:00:00.000Z");
+        const conversationId = `slack:C2:person-${index}`;
+        await store.recordActivity({
+          actor,
+          conversationId,
+          destination: { platform: "slack", teamId: "T1", channelId: "C2" },
+          nowMs: atMs,
+          source: "slack",
+        });
+        await recordTurn(fixture, {
+          actor,
+          atMs,
+          conversationId,
+          costUsd,
+          durationMs: 100,
+          runId: `turn-person-${index}`,
+        });
+      }
+
       // Two merged code changes split the cost of their conversation tree.
       for (const [number, mergedAt] of [
         [7, "2026-06-15T11:58:00.000Z"],
@@ -289,7 +330,7 @@ describe("conversation stats API", () => {
             createJuniorApi().request(
               "http://localhost/api/conversations/stats",
             ),
-          { statements: 4, serialRounds: 1 },
+          { statements: 5, serialRounds: 1 },
         ),
       );
       expect(response.status).toBe(200);
@@ -376,6 +417,42 @@ describe("conversation stats API", () => {
           tokens: 444,
         }),
       );
+      // Turns of a verified person are theirs. A Turn whose Actor has no
+      // verified email is spend with no person.
+      expect(report.personSpendDays).toHaveLength(90);
+      expect(report.personSpendDays.slice(-2)).toEqual([
+        {
+          date: "2026-06-14",
+          medianPersonCostUsd: 0.0015,
+          people: 1,
+          personCostUsd: 0.0015,
+          unattributedCostUsd: 0,
+        },
+        {
+          date: "2026-06-15",
+          medianPersonCostUsd: 0.003,
+          people: 1,
+          personCostUsd: 0.003,
+          unattributedCostUsd: 0.001,
+        },
+      ]);
+      expect(
+        report.personSpendDays.find((day) => day.date === "2026-06-01"),
+      ).toEqual({
+        date: "2026-06-01",
+        medianPersonCostUsd: 0.003,
+        people: 3,
+        personCostUsd: 0.015,
+        unattributedCostUsd: 0,
+      });
+      expect(
+        report.personSpendDays.find((day) => day.date === "2026-06-08"),
+      ).toEqual({
+        date: "2026-06-08",
+        people: 0,
+        personCostUsd: 0,
+        unattributedCostUsd: 0.002,
+      });
       expect(report.metricHours).toHaveLength(7 * 24);
       expect(report.metricSixHours).toHaveLength(7 * 4);
       expect(
@@ -463,7 +540,7 @@ describe("conversation stats API", () => {
       ]);
       vi.setSystemTime(new Date("2026-06-15T12:45:00.000Z"));
       const later = await measureSql(readConversationStatsFromSql);
-      expect(later.sql.statements).toBe(4);
+      expect(later.sql.statements).toBe(5);
       expect(later.result.guardian.metricHours?.at(0)).toEqual(
         report.guardian.metricHours?.at(0),
       );
@@ -565,7 +642,7 @@ describe("conversation stats API", () => {
       const reloaded = await measureSql(() =>
         Promise.all([readStats(), readStats()]),
       );
-      expect(reloaded.sql.statements).toBe(4);
+      expect(reloaded.sql.statements).toBe(5);
       const [first] = reloaded.result;
       expect(reloaded.result).toEqual([first, first]);
       expect(first?.metricDays.at(-1)?.conversations).toBe(1);
@@ -587,7 +664,7 @@ describe("conversation stats API", () => {
         return reports;
       });
       expect(stale.result).toEqual([first, first]);
-      expect(stale.sql.statements).toBe(4);
+      expect(stale.sql.statements).toBe(5);
 
       const refreshed = await readStats();
       expect(refreshed.generatedAt).toBe("2026-06-15T12:06:00.000Z");

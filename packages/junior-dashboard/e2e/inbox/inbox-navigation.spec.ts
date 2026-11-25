@@ -10,9 +10,9 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
+import { scrollListUntil } from "./scroll-until";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   /** Show or hide Details beside the chat. A wide screen opens it at first. */
@@ -200,13 +200,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(olderPage).toBe(0);
     const list = page.getByRole("region", { name: "Conversations" });
     // The list shows its loaded rows first, then reads the next page.
-    await expect(async () => {
-      await list
-        .locator(".overflow-y-auto")
-        .first()
-        .evaluate((node) => (node.scrollTop = node.scrollHeight));
-      await expect(older).toBeVisible({ timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(
+      () =>
+        list
+          .locator(".overflow-y-auto")
+          .first()
+          .evaluate((node) => {
+            node.scrollTop = node.scrollHeight;
+          }),
+      list.getByRole("link"),
+      older,
+    );
     expect(olderPage).toBe(1);
     expect(firstPage).toBeGreaterThan(0);
 
@@ -540,19 +544,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await mockInboxItems(page);
     const retry = page.getByRole("button", { name: "Try again" });
+    const conversationRows = page
+      .getByRole("region", { name: "Conversations" })
+      .getByRole("link");
     const scrollToEnd = (name: string) =>
       page
         .getByRole("region", { name })
         .locator(".overflow-y-auto")
         .first()
-        .evaluate((node) => (node.scrollTop = node.scrollHeight));
+        .evaluate((node) => {
+          node.scrollTop = node.scrollHeight;
+        });
 
     // Conversations loads every page it can, until one fails.
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    await expect(async () => {
-      await scrollToEnd("Conversations");
-      await expect(retry).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await scrollListUntil(
+      () => scrollToEnd("Conversations"),
+      conversationRows,
+      retry,
+    );
     expect(oldestAttempts).toBe(1);
 
     // The Inbox lists no Conversations, so it reads no older page, and the
@@ -567,10 +577,11 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // Back in Conversations, Try again loads the failed page.
     await nav.getByRole("link", { name: /^Conversations\b/ }).click();
-    await expect(async () => {
-      await scrollToEnd("Conversations");
-      await expect(retry).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await scrollListUntil(
+      () => scrollToEnd("Conversations"),
+      conversationRows,
+      retry,
+    );
     await retry.click();
     await expect(
       page.getByRole("link", { name: /The oldest conversation/ }),

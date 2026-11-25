@@ -19,19 +19,25 @@ Canonical words for Junior code and docs. One concept, one word.
   Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
-- **Lead**: one person's private top-level Conversation that finds, starts,
-  and steers their other Conversations. It has no child agents and does no
-  work itself. `startConversation` starts a public root for the person.
+- **Visibility**: `public` or `private`, stored on each Conversation. Anyone
+  can read a public Conversation. Only its Participants can read a private
+  one. Every Conversation in a tree has its root's visibility.
+- **Lead**: a Space's public top-level Conversation that finds, starts,
+  and steers the Space's other Conversations. Each Space has one. It has no
+  child agents and does no work itself. `startConversation` starts a root in
+  the Space for the Member who asked.
+- **Space**: a named, shared home for a body of related work. A
+  **Member** of a Space is a User who joined it.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
-  `task` type, the `spawnAgent` `task` field) keep their meaning.
+  `task` type, the `startAgent` `task` field) keep their meaning.
 - **Team**: an agent and the agents that it started: its child agents, and
   the roots that a Lead starts. It sets who manages an agent, not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
-- **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
+- **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
   bindings, Parent messages). Not a UI word.
 - **Conversation metadata**: the stored facts about a Conversation: its
   title and summary. A core task updates the summary after each Turn. A
@@ -85,10 +91,11 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
-- **Invite**: a person subscribes someone they mention in the composer to a
-  public Conversation's feed. Access stays the same, because anyone can
-  already read a public Conversation and join it by posting. A private
-  Conversation refuses it.
+- **Invite**: a person subscribes someone they mention to a public
+  Conversation's feed, with the composer's mention card or by sending a
+  dashboard or Slack Message that mentions them. Access stays the same,
+  because anyone can already read a public Conversation and join it by
+  posting. A private Conversation refuses it.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.
@@ -131,7 +138,7 @@ Canonical words for Junior code and docs. One concept, one word.
   spawned or messaged after the stop. A person's input sent after the stop,
   or new work from a child's parent, ends the stop. A stopped parent gives no
   new work: `messageAgent` to a child leaves a Conversation note, and
-  `spawnAgent` fails. A person's stop keeps the
+  `startAgent` fails. A person's stop keeps the
   Watches; an agent's `stopAgent` also cancels them. Reports show it as
   `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
@@ -143,13 +150,28 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
 - **Answer**: the tool call that ends a gated Turn: `reply`, `noReply`, or
-  `reportBlocked`. A Turn that a person did not open is gated on kinds
-  `automation`, `thread`, and `task`. Its final response is not delivered.
+  `reportBlocked`. Only an Automation run's Turn that a person did not open
+  is gated. Its final response is not delivered.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Loader**: a named source of data for a core prompt, such as a database
+  row or a service. Loaders do all of the I/O of a prompt. Core runs each
+  needed Loader once for each step.
+- **Fragment**: a named piece of a core prompt. It formats one Loader's value
+  into messages. It does no I/O, and reads no clock or random value.
+- **Prompt layout**: the System prompt sections and the message Fragments
+  of a core prompt, in order. It has exactly one inputs Fragment, made with
+  `inputs()`, which sets where the Turn's unread inputs go. The host checks
+  it once at startup with `definePromptLayout`.
+- **System prompt section**: a named, static piece of the system prompt in a
+  core prompt. The host builds it once at startup. It holds no Conversation
+  data.
+- **Prompt diagnostics**: how core built one prompt: the size of each System
+  prompt section, how each Loader ran, and whether each Fragment was
+  included, skipped, or disabled. It holds no content.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), `tool_result`, or `system_message` (a Pi system message after
   the leading one) event. Not `model_item` or `model_message`.
@@ -168,8 +190,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Parent message**: a task or message from a parent to a child. It waits
   in the child's mailbox as other input does, and runs as the Actor of the
   parent's Turn, with that Turn's credentials. The child checks its sender
-  before it runs it. Only a `reply`, or a failed, blocked, or stopped
-  result, reaches the parent. Do not say "Agent invocation"; it is the
+  before it runs it. The child's final text, or a failed, blocked, or
+  stopped result, reaches the parent. Do not say "Agent invocation"; it is the
   retired name.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
@@ -177,8 +199,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Turn.
   To a parent or a top-level agent it is an Event Inbound message, and it
   gives no user approval.
-- **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
-  history, and per-task instructions. It does not limit tools.
+- **Agent type**: a `startAgent` preset for a child agent: when to pick it,
+  whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.

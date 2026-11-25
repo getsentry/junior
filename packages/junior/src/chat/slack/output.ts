@@ -135,6 +135,24 @@ function takeChunk(text: string): { chunk: string; rest: string } {
   };
 }
 
+/**
+ * Split Slack text into pieces of at most `maxChars`, at a line break or a
+ * space when one fits, so no piece breaks a block's text limit.
+ */
+export function splitSlackText(text: string, maxChars: number): string[] {
+  const pieces: string[] = [];
+  let remaining = text;
+  while (remaining.length > maxChars) {
+    const { prefix, rest } = takePrefix(remaining, maxChars);
+    pieces.push(prefix);
+    remaining = rest;
+  }
+  if (remaining) {
+    pieces.push(remaining);
+  }
+  return pieces;
+}
+
 /** Split a normalized Slack reply into thread posts that fit Slack limits. */
 export function splitSlackReplyText(
   text: string,
