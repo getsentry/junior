@@ -417,6 +417,14 @@ describe("Spaces API", () => {
     expect(
       await resolveConversationConfiguration({ conversationId: thread }),
     ).toMatchObject({ "github.repo": "getsentry/junior" });
+    // An older root with no root id resolves its Space's values too.
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: null })
+      .where(eq(juniorConversations.conversationId, inSpace));
+    expect(
+      await resolveConversationConfiguration({ conversationId: inSpace }),
+    ).toMatchObject({ "github.repo": "getsentry/junior" });
 
     expect(
       await setting("spaces-config-ana@example.com", inSpace, {

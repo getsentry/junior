@@ -4,7 +4,7 @@
  * It wins over the Slack channel's value and the install default, and an
  * explicit target in a request wins over it.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   configValueSchema,
@@ -105,9 +105,10 @@ export async function readConversationSpaceConfiguration(
     .from(juniorConversations)
     .innerJoin(
       rootConversation,
+      // An older root has no root id, so it matches by its own id.
       eq(
         rootConversation.conversationId,
-        juniorConversations.rootConversationId,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
       ),
     )
     .innerJoin(
