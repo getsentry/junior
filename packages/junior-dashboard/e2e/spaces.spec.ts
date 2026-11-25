@@ -4,8 +4,11 @@ import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
 const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
+const MOBILE_APP_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22";
 // A child of the mock dashboard QA Conversation.
 const CHILD_ID = "junior:internal:dashboard-qa:advisor-plan";
+// A top-level Conversation with no visibility.
+const NON_PUBLIC_ID = "internal:history-2";
 
 test("the pane lists the viewer's Spaces, and a Space page shows its details", async ({
   dashboard,
@@ -50,11 +53,51 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   ).toBeVisible();
   await screenshot(page, "space-page", { view: "desktop" });
 
-  // A Conversation row opens it.
+  // A Conversation row opens it, and Back returns to the Space.
   await details
     .getByRole("link", { name: /Plan the billing migration/ })
     .click();
   await expect(page).toHaveURL(/\/conversations\//);
+  await page.getByRole("link", { name: "Back to Space" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
+});
+
+test("another Space's page does not show the last Space's Conversations", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  const details = page.getByRole("complementary", { name: "Space details" });
+  const billingRow = details.getByRole("link", {
+    name: /Plan the billing migration/,
+  });
+  await expect(billingRow).toBeVisible();
+
+  // Hold the next Space's list, so the page shows it loading.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) =>
+      url.pathname === "/api/conversations" &&
+      url.searchParams.get("spaceId") === MOBILE_APP_ID,
+    async (route) => {
+      await held;
+      await route.fallback();
+    },
+  );
+  await page
+    .getByRole("list", { name: "Spaces" })
+    .getByRole("link", { name: "Mobile app" })
+    .click();
+  await expect(details.getByText("Riley Park")).toBeVisible();
+  await expect(billingRow).toHaveCount(0);
+  release();
+  await expect(
+    details.getByRole("link", { name: /SDK changelog summary 8/ }),
+  ).toBeVisible();
 });
 
 test("a non-member opens a Space and joins it", async ({ dashboard, page }) => {
@@ -200,15 +243,21 @@ test("Move to Space moves a top-level Conversation", async ({
   await expect(page.getByRole("link", { name: /^Space:/ })).toHaveCount(0);
 });
 
-test("a child Conversation has no Move to Space", async ({
-  dashboard,
-  page,
-}) => {
-  await viewAsParticipant(page);
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(CHILD_ID)}`,
-  );
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await expect(conversationMenuRow(page, "Copy as Markdown")).toBeVisible();
-  await expect(conversationMenuRow(page, "Move to Space")).toHaveCount(0);
-});
+for (const [kind, conversationId] of [
+  ["child", CHILD_ID],
+  // The API lets only a public Conversation join a Space.
+  ["non-public", NON_PUBLIC_ID],
+] as const) {
+  test(`a ${kind} Conversation has no Move to Space`, async ({
+    dashboard,
+    page,
+  }) => {
+    await viewAsParticipant(page);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await expect(conversationMenuRow(page, "Copy as Markdown")).toBeVisible();
+    await expect(conversationMenuRow(page, "Move to Space")).toHaveCount(0);
+  });
+}

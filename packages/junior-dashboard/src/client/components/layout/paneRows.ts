@@ -9,6 +9,7 @@ import {
 import { COMPOSER_PATH } from "../../conversations/conversationRoutes";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import { NAV_PAGES } from "../../navPages";
+import { isSpacePath } from "../../spaces/spaceRoutes";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,
@@ -36,9 +37,11 @@ export function isCodePath(path: string): boolean {
   return under(parsePath(path).pathname ?? "/", NAV_PAGES.code.to);
 }
 
-/** Name the list that a return path opens: Code or an Inbox view. */
+/** Name the page that a return path opens: Code, a Space, or an Inbox view. */
 export function returnPathLabel(path: string): string {
-  return isCodePath(path) ? "Code" : INBOX_VIEW_LABELS[inboxViewOfPath(path)];
+  if (isCodePath(path)) return "Code";
+  if (isSpacePath(parsePath(path).pathname ?? "/")) return "Space";
+  return INBOX_VIEW_LABELS[inboxViewOfPath(path)];
 }
 
 /** True for a row that can open a Conversation and stay its origin. */

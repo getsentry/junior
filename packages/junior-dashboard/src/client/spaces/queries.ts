@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -84,7 +83,6 @@ export function useSpaceConversationsData(spaceId: string | undefined) {
         `/api/conversations?${new URLSearchParams({ spaceId: spaceId! })}`,
         signal,
       ),
-    placeholderData: keepPreviousData,
     retry: false,
   });
 }
