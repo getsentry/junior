@@ -3,11 +3,16 @@ import Observation
 import SwiftUI
 
 /// The home list (`searchConversations`): up to 50 Conversations, newest
-/// activity first, and the search query.
+/// activity first, each with its Threads from the dashboard feed, and the
+/// search query.
 @MainActor
 @Observable
 final class HomeModel {
   var rows: [MCPConversation] = []
+  /// Each root's visible Threads, by root id.
+  var threads: [String: [ConversationThread]] = [:]
+  /// Roots that show all their Threads. Like the dashboard, this resets.
+  var expandedThreads: Set<String> = []
   var loading = false
   var error: JuniorAPIError?
   var query = ""
@@ -38,15 +43,26 @@ final class HomeModel {
     defer { loading = false }
     let trimmed = String(query.trimmingCharacters(in: .whitespaces).prefix(200))
     do {
+      async let feed = loadThreads(app, query: trimmed)
       let list = try await app.call(
         "searchConversations", trimmed.isEmpty ? [:] : ["q": .string(trimmed)], as: ConversationList.self)
+      let threads = await feed
       guard ticket > appliedLoad else { return }
       appliedLoad = ticket
       rows = list.conversations
+      if let threads { self.threads = threads }
       error = nil
     } catch let error as JuniorAPIError {
       self.error = error
     } catch {}
+  }
+
+  /// The dashboard feed nests each root's Threads; MCP lists roots only. Nil
+  /// when it does not load, such as in the demo, so the last Threads stay.
+  private func loadThreads(_ app: AppModel, query: String) async -> [String: [ConversationThread]]? {
+    guard !app.server.isDemo else { return nil }
+    let items = query.isEmpty ? [] : [URLQueryItem(name: "q", value: query)]
+    return try? await app.get("/api/conversations", query: items, as: ConversationFeed.self).threadsByRoot
   }
 
   /// A refresh failed while rows show; the list keeps them.

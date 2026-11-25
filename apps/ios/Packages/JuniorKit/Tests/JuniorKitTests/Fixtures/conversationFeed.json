@@ -1,0 +1,146 @@
+{
+  "conversations": [
+    {
+      "displayTitle": "Dashboard QA edge cases",
+      "activityPreview": {
+        "createdAt": "2026-08-07T07:01:09.000Z",
+        "role": "assistant",
+        "text": "I mean the empty, loading, and failed transcript states."
+      },
+      "cumulativeDurationMs": 186400,
+      "cumulativeUsage": {
+        "inputTokens": 100700,
+        "outputTokens": 6080,
+        "cachedInputTokens": 51600,
+        "cost": {
+          "total": 0.382
+        }
+      },
+      "childAgentTotals": {
+        "count": 3,
+        "cumulativeDurationMs": 88400,
+        "cumulativeUsage": {
+          "inputTokens": 48700,
+          "outputTokens": 2680,
+          "cachedInputTokens": 21600,
+          "cost": {
+            "total": 0.172
+          }
+        }
+      },
+      "conversationId": "internal:dashboard-qa",
+      "kind": "root",
+      "isParticipant": false,
+      "space": null,
+      "status": "done",
+      "turnActive": false,
+      "startedAt": "2026-08-07T07:00:00.000Z",
+      "lastSeenAt": "2026-08-07T08:00:00.000Z",
+      "lastProgressAt": "2026-08-07T08:00:00.000Z",
+      "surface": "internal",
+      "actorIdentity": {
+        "email": "dev@example.com",
+        "fullName": "Morgan Lee",
+        "slackUserName": "morgan"
+      },
+      "participants": [
+        {
+          "email": "dev@example.com",
+          "fullName": "Morgan Lee",
+          "slackUserName": "morgan"
+        },
+        {
+          "email": "avery@sentry.io",
+          "fullName": "Avery Chen",
+          "slackUserName": "avery"
+        }
+      ],
+      "pinnedAt": null,
+      "sidebarAnnotations": [
+        {
+          "icon": "git-merge",
+          "key": "getsentry/getsentry#21571",
+          "label": "getsentry"
+        },
+        {
+          "icon": "git-pull-request",
+          "key": "getsentry/getsentry#21572",
+          "label": "getsentry"
+        },
+        {
+          "icon": "circle-dashed",
+          "key": "getsentry/getsentry#21569",
+          "label": "getsentry"
+        },
+        {
+          "icon": "git-merge",
+          "key": "getsentry/sentry#121727",
+          "label": "sentry"
+        }
+      ],
+      "assignedWork": true,
+      "isPriority": true,
+      "unfinishedWork": true,
+      "threads": [
+        {
+          "displayTitle": "Check pinned row order",
+          "activityPreview": {
+            "createdAt": "2026-08-07T09:01:50.000Z",
+            "role": "assistant",
+            "text": "The failed check was a flaky runner, so I re-ran it."
+          },
+          "cumulativeDurationMs": 30000,
+          "childAgentTotals": {
+            "count": 1,
+            "cumulativeDurationMs": 12000
+          },
+          "conversationId": "junior:internal:dashboard-qa:thread",
+          "kind": "thread",
+          "parentConversationId": "internal:dashboard-qa",
+          "isParticipant": true,
+          "status": "done",
+          "turnActive": false,
+          "startedAt": "2026-08-07T09:00:00.000Z",
+          "lastSeenAt": "2026-08-07T09:00:30.000Z",
+          "lastProgressAt": "2026-08-07T09:00:30.000Z",
+          "surface": "internal",
+          "actorIdentity": {
+            "email": "dev@example.com",
+            "fullName": "Morgan Lee",
+            "slackUserName": "morgan"
+          },
+          "pinnedAt": null,
+          "threads": [
+            {
+              "displayTitle": "Recheck pin order in Safari",
+              "activityPreview": {
+                "createdAt": "2026-08-07T09:06:30.000Z",
+                "role": "assistant",
+                "text": "Checked with a cold cache. The order still holds."
+              },
+              "cumulativeDurationMs": 30000,
+              "conversationId": "junior:internal:dashboard-qa:thread:nested",
+              "kind": "thread",
+              "parentConversationId": "junior:internal:dashboard-qa:thread",
+              "isParticipant": true,
+              "status": "needs_input",
+              "turnActive": false,
+              "startedAt": "2026-08-07T09:06:00.000Z",
+              "lastSeenAt": "2026-08-07T09:06:30.000Z",
+              "lastProgressAt": "2026-08-07T09:06:30.000Z",
+              "surface": "internal",
+              "actorIdentity": {
+                "email": "dev@example.com",
+                "fullName": "Morgan Lee",
+                "slackUserName": "morgan"
+              },
+              "pinnedAt": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "source": "conversation_index",
+  "generatedAt": "2026-08-07T12:00:00.000Z"
+}
