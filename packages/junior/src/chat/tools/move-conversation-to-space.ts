@@ -1,7 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import * as z from "zod";
 import { setConversationSpaceForViewer } from "@/api/conversations/space";
-import { listSpaces } from "@/chat/spaces/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
@@ -40,7 +39,7 @@ export const moveConversationToSpaceToolDefinition = zodToolDefinition({
         .min(1)
         .nullable()
         .describe(
-          "The Space to move it to: its ID, or its exact name. null takes the conversation out of its Space.",
+          "The Space to move it to: its ID, or a dashboard link to it that ends in /spaces/<id>. Names are not unique, so ask the person for the link when you do not have either. null takes the conversation out of its Space.",
         ),
     })
     .strict(),
@@ -53,26 +52,17 @@ export const moveConversationToSpaceToolDefinition = zodToolDefinition({
   }),
 });
 
-async function resolveSpaceId(
-  viewerUserId: string,
-  space: string,
-): Promise<string> {
-  if (z.uuid().safeParse(space).success) return space;
-  const name = space.toLowerCase();
-  const matches = (
-    await listSpaces(viewerUserId, { archived: false, membership: "all" })
-  ).filter((candidate) => candidate.name.trim().toLowerCase() === name);
-  if (matches.length === 1) return matches[0]!.id;
-  if (matches.length === 0) {
+// Space names are not unique, so the tool takes only an ID, or the ID at
+// the end of a dashboard Space link.
+function parseSpaceId(space: string): string {
+  const id = space.match(/\/spaces\/([^/?#]+)\/?(?:[?#].*)?$/)?.[1] ?? space;
+  const parsed = z.uuid().safeParse(id);
+  if (!parsed.success) {
     throw new ToolInputError(
-      `No open Space is named "${space}". Pass the Space's exact name or its ID.`,
+      `"${space}" is not a Space ID or a link to a Space. Ask the person for the Space's link.`,
     );
   }
-  throw new ToolInputError(
-    `${matches.length} Spaces are named "${space}": ${matches
-      .map((match) => match.id)
-      .join(", ")}. Pass the ID of the one to use.`,
-  );
+  return parsed.data;
 }
 
 /**
@@ -96,10 +86,7 @@ export function createMoveConversationToSpaceTool(
       }
       const conversationId = input.conversation_id ?? context.conversationId;
       try {
-        const spaceId =
-          input.space === null
-            ? null
-            : await resolveSpaceId(user.id, input.space);
+        const spaceId = input.space === null ? null : parseSpaceId(input.space);
         const result = await setConversationSpaceForViewer(
           user,
           conversationId,
