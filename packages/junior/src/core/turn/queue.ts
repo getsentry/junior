@@ -4,23 +4,13 @@
 // trace, which links to the span that published the message.
 import * as z from "zod";
 import { logWarn } from "@/chat/logging";
-import { queueCallback } from "@/chat/queue/callback";
 import type {
   QueueConsumer,
   QueueMessageMetadata,
 } from "@/chat/queue/provider";
-import {
-  QUEUE_SIGNATURE_MAX_AGE_MS,
-  signQueueMessage,
-  verifyQueueMessage,
-} from "@/chat/queue/sign";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import type { EngineContext } from "@/core/engine-context";
-import { activeTraceContext, withSpan } from "@/core/telemetry";
-
-// The queue sends a message again only after the host stops a step that runs
-// too long, so a live step is not delivered twice.
-const VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
+import { signedTopic } from "@/core/queue";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 
 const turnStepMessageSchema = z
   .object({
@@ -32,59 +22,34 @@ const turnStepMessageSchema = z
   })
   .strict();
 
-type TurnStepMessage = z.output<typeof turnStepMessageSchema>;
+type TurnStepMessage = { turnId: string };
 
-const turnStepSign = {
-  context: "junior.turn_step.v1",
-  schema: turnStepMessageSchema,
-  signatureVersion: "v1" as const,
-  parts: (message: TurnStepMessage) => [
-    message.turnId,
-    message.traceContext?.sentryTrace ?? "",
-  ],
-};
+const turnStepTopic = signedTopic<TurnStepMessage>({
+  topic: TURN_STEP_TOPIC,
+  sign: {
+    context: "junior.turn_step.v1",
+    schema: turnStepMessageSchema,
+    signatureVersion: "v1",
+    parts: (message) => [
+      message.turnId,
+      message.traceContext?.sentryTrace ?? "",
+    ],
+  },
+  onRejected: (attributes) =>
+    logWarn("turn.step.queue_message.rejected", attributes),
+  attributes: (message) => ({ "app.turn.id": message.turnId }),
+});
 
 /**
  * Sends a message that runs the next step of a Turn. `idempotencyKey` drops a
  * second send with the same key.
  */
 export async function publishTurnStep(
-  { queue }: Pick<EngineContext, "queue">,
+  ctx: Pick<EngineContext, "queue">,
   turnId: string,
   options: { delayMs?: number; idempotencyKey?: string } = {},
 ): Promise<void> {
-  await withSpan(
-    "queue.publish",
-    {
-      "app.turn.id": turnId,
-      "messaging.destination.name": TURN_STEP_TOPIC,
-      "messaging.system": queue.messagingSystem,
-    },
-    async (span) => {
-      const traceContext = activeTraceContext();
-      const payload = signQueueMessage(
-        turnStepSign,
-        traceContext ? { turnId, traceContext } : { turnId },
-      );
-      // The queue sends the payload as these UTF-8 JSON bytes.
-      span.setAttribute(
-        "messaging.message.body.size",
-        Buffer.byteLength(JSON.stringify(payload)),
-      );
-      const result = await queue.send(TURN_STEP_TOPIC, payload, {
-        delaySeconds:
-          options.delayMs && options.delayMs > 0
-            ? Math.ceil(options.delayMs / 1000)
-            : undefined,
-        idempotencyKey: options.idempotencyKey,
-        // A message older than its signature is rejected, so the queue drops it.
-        retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
-      });
-      if (result.messageId) {
-        span.setAttribute("messaging.message.id", result.messageId);
-      }
-    },
-  );
+  await turnStepTopic.publish(ctx, { turnId }, options);
 }
 
 /**
@@ -99,46 +64,14 @@ export type RunTurnStep = (
 /**
  * Builds the queue consumer of Turn step messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
- * The host mounts it on its queue provider.
+ * advanceTurn fails a Turn after `maxAttempts` tries of one step. The host
+ * mounts the consumer on its queue provider.
  */
 export function createTurnStepConsumer(
-  { queue, leaseMs }: Pick<EngineContext, "queue" | "leaseMs">,
+  ctx: Pick<EngineContext, "queue" | "leaseMs">,
   run: RunTurnStep,
 ): QueueConsumer {
-  const { consumer } = queueCallback<TurnStepMessage>({
-    // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the
-    // queue retries without a limit.
-    maxDeliveries: null,
-    onRejected: (reason, metadata) => {
-      logWarn("turn.step.queue_message.rejected", {
-        "app.queue.consumer_group": metadata.consumerGroup,
-        "app.queue.delivery_count": metadata.deliveryCount,
-        "app.queue.message_id": metadata.messageId,
-        "app.queue.reject_reason": reason,
-        "app.queue.topic_name": metadata.topicName,
-      });
-    },
-    run: (message, metadata) =>
-      withSpan(
-        "queue.process",
-        {
-          "app.turn.id": message.turnId,
-          "messaging.destination.name": metadata.topicName,
-          "messaging.system": queue.messagingSystem,
-          "messaging.message.id": metadata.messageId,
-          "messaging.message.receive.latency":
-            Date.now() - metadata.createdAt.getTime(),
-          "messaging.message.retry.count": metadata.deliveryCount - 1,
-        },
-        () => run({ turnId: message.turnId }, metadata),
-        {
-          links: message.traceContext ? [message.traceContext] : [],
-          newTrace: true,
-        },
-      ),
-    verify: (value) => verifyQueueMessage(turnStepSign, value),
-    visibilityTimeoutSeconds:
-      leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
-  });
-  return consumer;
+  return turnStepTopic.consumer(ctx, (message, metadata) =>
+    run({ turnId: message.turnId }, metadata),
+  );
 }

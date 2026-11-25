@@ -26,7 +26,7 @@ export type FailableSpan = Span & {
 };
 
 /** The `sentry-trace` header of one span, as sent with work to another host. */
-type TraceContext = { sentryTrace: string };
+export type TraceContext = { sentryTrace: string };
 
 type WithSpanOptions = {
   /** The span's name, when it is not its op. */
