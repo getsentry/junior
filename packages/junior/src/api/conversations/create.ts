@@ -13,6 +13,7 @@ import {
   createAndEnqueueConversation,
   createConversationId,
 } from "@/chat/conversations/web-input";
+import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import {
@@ -93,6 +94,9 @@ export async function requireWebMessageConversation(
       403,
       "Only participants can add messages to a private conversation.",
     );
+  }
+  if (messagesNeedSpaceMembership(conversation.kind) && conversation.spaceId) {
+    await requireSpaceForWork(viewer, conversation.spaceId);
   }
   return conversationId;
 }
