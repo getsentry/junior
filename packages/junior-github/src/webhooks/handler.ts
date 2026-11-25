@@ -474,6 +474,18 @@ export function createGitHubWebhookRoute(args: {
         responses: args.state,
         tokens: args.tokens,
       };
+      // Ask for the review of a draft that became ready before the next
+      // action reads GitHub, so a pending request comes before the merge.
+      await requestGitHubReviewersWhenReady({
+        body,
+        db: args.db,
+        deliveryId,
+        env,
+        eventName,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        state: args.state,
+      });
       await syncGitHubPullRequestActions({
         botEmail,
         codeChanges: args.codeChanges,
@@ -485,16 +497,6 @@ export function createGitHubWebhookRoute(args: {
         inboxItems: args.inboxItems,
         state: args.state,
         targets: pullRequestActionTargets(eventName, body),
-      });
-      await requestGitHubReviewersWhenReady({
-        body,
-        db: args.db,
-        deliveryId,
-        env,
-        eventName,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        state: args.state,
       });
       if (
         !pullRequestOutcome &&
