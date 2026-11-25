@@ -98,6 +98,7 @@ const LUCIDE = [
   "square-terminal",
   "sun",
   "trash-2",
+  "triangle-alert",
   "user",
   "wrench",
   "x",

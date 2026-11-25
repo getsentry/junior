@@ -114,7 +114,7 @@ The same consent also returns a code that `SessionSignInClient` trades for a
 
 ## Not in the public API
 
-MCP has user and assistant messages but no tool calls, so transcripts show no
-activity rows. It has no read position (the app opens at the latest message),
+MCP has no tool calls, so Turn activity comes from the dashboard detail; tool
+rows do not open. MCP has no read position (the app opens at the latest message),
 no attachments, no spend, and no way to answer an Inbox item or change an
 Automation; those open on the web.
