@@ -1,6 +1,4 @@
-import {
-  CONVERSATION_VERSION_HEADER,
-} from "@sentry/junior/api/schema";
+import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { requestedConversationIds, withRequestedMailbox } from "./harness";
 import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
