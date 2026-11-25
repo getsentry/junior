@@ -43,7 +43,8 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
   App's hourly GraphQL points. Sandbox GraphQL requests also stop when the
   App has only a reserve of points left, so that Junior's own GitHub calls
   keep working. Junior counts the points that GitHub charges, not an
-  estimate. The denial says when the budget resets.
+  estimate. The denial says when the budget resets. A Conversation's
+  Sandbox can also have only a few GraphQL requests in flight at one time.
 
 ## Gaps
 
