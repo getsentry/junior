@@ -8,6 +8,7 @@ import {
   gt,
   inArray,
   lt,
+  ne,
   max,
   sql,
   type SQL,
@@ -155,7 +156,9 @@ async function readThreadIds(
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
-        eq(juniorConversations.kind, "thread"),
+        // Each started child has a parent, so every child but a task is a
+        // Thread.
+        ne(juniorConversations.kind, "task"),
       ),
     );
   return new Set(rows.map((row) => row.conversationId));

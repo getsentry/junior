@@ -84,15 +84,17 @@ const automationTurn = {
 
 describe("turnBehavior", () => {
   it.each([
-    { kind: "root", personInput: true, expected: rootTurn },
+    { kind: "root", hasParent: false, personInput: true, expected: rootTurn },
     {
       kind: "root",
+      hasParent: false,
       personInput: false,
       expected: { ...rootTurn, relatedConversations: false },
     },
     // A person's reply in the run's thread runs like a root Turn.
     {
       kind: "automation",
+      hasParent: false,
       personInput: true,
       expected: {
         ...rootTurn,
@@ -102,14 +104,47 @@ describe("turnBehavior", () => {
       },
     },
     // The dispatch Turn and every Watch Event Turn.
-    { kind: "automation", personInput: false, expected: automationTurn },
-    { kind: "thread", personInput: true, expected: personInThreadTurn },
-    { kind: "thread", personInput: false, expected: agentInThreadTurn },
-    { kind: "task", personInput: false, expected: agentInTaskTurn },
+    {
+      kind: "automation",
+      hasParent: false,
+      personInput: false,
+      expected: automationTurn,
+    },
+    {
+      kind: "thread",
+      hasParent: true,
+      personInput: true,
+      expected: personInThreadTurn,
+    },
+    {
+      kind: "thread",
+      hasParent: true,
+      personInput: false,
+      expected: agentInThreadTurn,
+    },
+    // A root with a parent is a Thread.
+    {
+      kind: "root",
+      hasParent: true,
+      personInput: true,
+      expected: personInThreadTurn,
+    },
+    {
+      kind: "root",
+      hasParent: true,
+      personInput: false,
+      expected: agentInThreadTurn,
+    },
+    {
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+      expected: agentInTaskTurn,
+    },
   ] as const)(
-    "gives a $kind Turn with person input $personInput its behavior",
-    ({ kind, personInput, expected }) => {
-      expect(turnBehavior({ kind, personInput })).toEqual(expected);
+    "gives a $kind Turn with parent $hasParent and person input $personInput its behavior",
+    ({ kind, hasParent, personInput, expected }) => {
+      expect(turnBehavior({ kind, hasParent, personInput })).toEqual(expected);
     },
   );
 
@@ -131,17 +166,21 @@ describe("turnBehavior", () => {
   });
 
   it("rejects a person's input on a task", () => {
-    expect(() => turnBehavior({ kind: "task", personInput: true })).toThrow(
-      "A task Conversation cannot have a person's input",
-    );
+    expect(() =>
+      turnBehavior({ kind: "task", hasParent: true, personInput: true }),
+    ).toThrow("A task Conversation cannot have a person's input");
   });
 
   // A Lead keeps one system prompt and one tool list on every Turn.
   it("gives every Turn of a Lead the same behavior", () => {
-    const personTurn = turnBehavior({ kind: "lead", personInput: true });
-    expect(turnBehavior({ kind: "lead", personInput: false })).toEqual(
-      personTurn,
-    );
+    const personTurn = turnBehavior({
+      kind: "lead",
+      hasParent: false,
+      personInput: true,
+    });
+    expect(
+      turnBehavior({ kind: "lead", hasParent: false, personInput: false }),
+    ).toEqual(personTurn);
     expect(personTurn.promptMode).toBe("lead");
     expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
   });

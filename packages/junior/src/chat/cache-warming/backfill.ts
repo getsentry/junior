@@ -38,7 +38,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { storedMessageJson } from "@/chat/conversations/sql/message-json";
-import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { isTopLevel, turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { JUNIOR_NATIVE_EVENT_NAMESPACE } from "@/chat/conversations/structured-events";
@@ -414,6 +414,7 @@ async function loadChildAgents(
  */
 function replayConversation(
   kind: ConversationKind,
+  hasParent: boolean,
   events: EventRow[],
   children: readonly ChildAgentRow[],
   nowMs: number,
@@ -543,6 +544,7 @@ function replayConversation(
     if (turnEnding) {
       const waitsOnPendingWork = turnBehavior({
         kind,
+        hasParent,
         personInput: userActor,
       }).idleNeedsPendingWork;
       idle = {
@@ -631,6 +633,9 @@ async function replayConversations(
     for (const conversation of batch) {
       const replayed = replayConversation(
         conversationKindFromRow(conversation),
+        !isTopLevel({
+          parentConversationId: conversation.parentConversationId ?? undefined,
+        }),
         events.get(conversation.conversationId) ?? [],
         childrenByParent.get(conversation.conversationId) ?? [],
         nowMs,

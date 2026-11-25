@@ -11,6 +11,7 @@ import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
+  hasParent: false,
   personInput: true,
 }).tools;
 

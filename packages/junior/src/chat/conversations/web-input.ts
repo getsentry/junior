@@ -35,7 +35,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -143,9 +143,12 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
  * Conversation: a dashboard Conversation, a Slack thread, or a Thread.
  */
 export function acceptsWebMessages(
-  conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
+  conversation: Pick<
+    Conversation,
+    "conversationId" | "destination" | "kind" | "parentConversationId"
+  >,
 ): boolean {
-  if (!isTopLevelKind(conversation.kind)) return conversation.kind === "thread";
+  if (!isTopLevel(conversation)) return conversation.kind !== "task";
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
@@ -285,7 +288,7 @@ export async function recordWebConversationActivity(args: {
       ? { spaceId: args.rootSpaceId }
       : undefined),
   });
-  return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
+  return existing && !isTopLevel(existing) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */

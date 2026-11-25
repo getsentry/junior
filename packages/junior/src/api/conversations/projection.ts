@@ -3,6 +3,7 @@ import {
   resolveSlackConversationContextFromThreadId,
   type SlackConversationVisibility,
 } from "@/chat/slack/conversation-context";
+import { viewedKind } from "@/chat/conversations/kind-behavior";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -281,7 +282,7 @@ export function conversationSummaryFromStoredConversation(args: {
       surface,
       visibility,
     }),
-    kind: conversation.kind,
+    kind: viewedKind(conversation),
     // The summary holds private content, like the title.
     ...(canViewPrivateContent && conversation.summary
       ? { summary: conversation.summary }

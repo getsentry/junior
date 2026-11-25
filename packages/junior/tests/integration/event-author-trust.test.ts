@@ -128,7 +128,11 @@ describe("Event author trust", () => {
         channelId: "C123",
         visibility: "public",
       }),
-      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      turnTools: turnBehavior({
+        kind: "root",
+        hasParent: false,
+        personInput: true,
+      }).tools,
       workspace: {} as any,
     });
     await watches!.subscribe({

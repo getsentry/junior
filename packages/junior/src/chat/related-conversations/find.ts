@@ -60,6 +60,7 @@ async function isFirstRequest(
     !conversation ||
     !turnBehavior({
       kind: conversation.kind,
+      hasParent: Boolean(conversation.parentConversationId),
       personInput: isPersonInput(ctx.source.kind),
     }).relatedConversations
   ) {

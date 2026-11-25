@@ -9,7 +9,6 @@ import type {
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
-import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -408,7 +407,7 @@ export function actorFromRun(
 
 /**
  * Reject contradictory provider coordinates before the run touches state.
- * `conversationKind` comes from the stored Conversation, never from the Run.
+ * `hasParent` comes from the stored Conversation, never from the Run.
  */
 export function assertRunConsistency(
   run: Pick<
@@ -421,7 +420,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
-  conversationKind?: ConversationKind,
+  hasParent?: boolean,
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -468,7 +467,7 @@ export function assertRunConsistency(
         case "local": {
           // A person's Turn in a Thread replies in the Thread. Its
           // Destination is the Thread's own copy of its root's.
-          if (conversationKind === "thread") {
+          if (hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

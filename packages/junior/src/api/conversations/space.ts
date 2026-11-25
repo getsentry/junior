@@ -49,7 +49,7 @@ export async function setConversationSpaceForViewer(
   if (!conversation || !access?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!canMoveToSpace(conversation.kind)) {
+  if (!canMoveToSpace(conversation)) {
     throwApiError(
       409,
       "Only a top-level conversation moves. A child is in the Space of its root.",
