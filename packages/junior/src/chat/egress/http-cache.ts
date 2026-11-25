@@ -39,7 +39,10 @@ export interface HttpCacheRead {
    * credential context of an egress, or a plugin scope. Never shared.
    */
   scope: string;
-  /** Serve the last entry when `send` throws or the provider answers 5xx. */
+  /**
+   * Serve the last entry when `send` throws or the provider answers 429 or
+   * 5xx.
+   */
   staleIfError: boolean;
   /** How long an entry serves with no request. `0` revalidates each read. */
   ttlMs: number;
@@ -116,7 +119,9 @@ export async function readThroughHttpCache(
     await store({ ...saved, storedAtMs: Date.now() });
     return cachedResponse(saved);
   }
-  if (response.status >= 500) {
+  // A rate limit or a server error says nothing about access, so it keeps
+  // the entry, and its validators, for later reads.
+  if (response.status === 429 || response.status >= 500) {
     const fallback = stale();
     if (fallback) {
       // Some bodies, such as one that egress streams, finish cancelling

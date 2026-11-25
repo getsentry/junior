@@ -355,12 +355,12 @@ it("serves a card read from the HTTP cache within its TTL, then revalidates it, 
 
 it("shows the last card with when it was fetched only after its TTL, when the provider fails", async () => {
   await createDocsApp();
-  let up = true;
+  let status = 200;
   mswServer.use(
     http.get("https://api.docs.test/d/3", () =>
-      up
+      status === 200
         ? HttpResponse.json({ title: "Roadmap" })
-        : HttpResponse.json({ message: "Unavailable" }, { status: 503 }),
+        : HttpResponse.json({ message: "Unavailable" }, { status }),
     ),
   );
   const alice = testViewer("alice@example.com");
@@ -373,7 +373,7 @@ it("shows the last card with when it was fetched only after its TTL, when the pr
     expect(fresh[0]?.object).not.toHaveProperty("fetchedAt");
 
     // Within the TTL, the card is fresh, even with the provider down.
-    up = false;
+    status = 503;
     vi.setSystemTime(start + 30_000);
     const cached = await readCards(alice, url);
     expect(cached[0]?.object).not.toHaveProperty("fetchedAt");
@@ -389,14 +389,15 @@ it("shows the last card with when it was fetched only after its TTL, when the pr
       },
     ]);
     // The plugin did not save the old body as a fresh copy, so the next
-    // read still shows its age.
+    // read still shows its age. A rate limit also keeps the last card.
+    status = 429;
     vi.setSystemTime(start + 5 * 60_000 + 10_000);
     expect(await readCards(alice, url)).toMatchObject([
       { object: { fetchedAt: new Date(start).toISOString() } },
     ]);
 
     // A good read again shows a current card.
-    up = true;
+    status = 200;
     const current = await readCards(alice, url);
     expect(current[0]?.object).not.toHaveProperty("fetchedAt");
   } finally {
