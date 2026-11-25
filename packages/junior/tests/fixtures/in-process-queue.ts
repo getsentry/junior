@@ -140,7 +140,8 @@ export function createInProcessQueue(): InProcessQueue {
       deliveredMessages.push(message);
     } catch (error) {
       lastError = error;
-      if (consumer.retry(error, metadata)?.acknowledge) {
+      const directive = consumer.retry(error, metadata);
+      if (directive && "acknowledge" in directive) {
         deliveredMessages.push(message);
       } else {
         // Kept for a redelivery, at the head of the topic.
