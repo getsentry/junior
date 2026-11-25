@@ -168,7 +168,8 @@ function ConversationTitleHeader(props: {
   const lastFocusRef = useRef<Element | null>(null);
   useEffect(() => {
     const onFocusIn = (event: FocusEvent) => {
-      lastFocusRef.current = event.target as Element;
+      lastFocusRef.current =
+        event.target instanceof Element ? event.target : null;
     };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
