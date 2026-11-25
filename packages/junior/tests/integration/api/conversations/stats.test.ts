@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { appendConversationBrief } from "@/chat/briefs/store";
+import type { StoredSlackActor } from "@/chat/actor";
 import { recordCodeChange } from "@/chat/code/store";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
@@ -14,13 +14,13 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import {
   expectNoFullScan,
   expectSqlBudget,
   measureSql,
 } from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
+import { recordTurn, turnActorIdentityId } from "../people/fixture";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -50,6 +50,12 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-06-15T11:50:00.000Z"),
       });
       await store.recordExecution({
+        actorIdentityId: await turnActorIdentityId(fixture, {
+          email: "Alice@Example.com",
+          platform: "slack",
+          slackUserId: "U1",
+          teamId: "T1",
+        }),
         conversationId: "slack:C1:recent",
         createdAtMs: Date.parse("2026-06-15T11:50:00.000Z"),
         execution: {
@@ -73,6 +79,12 @@ describe("conversation stats API", () => {
         updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
       });
       await store.recordExecution({
+        actorIdentityId: await turnActorIdentityId(fixture, {
+          email: "bob@example.com",
+          platform: "slack",
+          slackUserId: "U2",
+          teamId: "T1",
+        }),
         conversationId: "slack:D1:failed",
         createdAtMs: Date.parse("2026-06-14T23:55:00.000Z"),
         destination: {
@@ -267,6 +279,33 @@ describe("conversation stats API", () => {
         ]);
       }
 
+      // Three people on one day, so the mean and the median per person differ.
+      for (const [index, costUsd] of [0.01, 0.002, 0.003].entries()) {
+        const actor = {
+          email: `person-${index}@example.com`,
+          platform: "slack",
+          slackUserId: `UP${index}`,
+          teamId: "T1",
+        } satisfies StoredSlackActor;
+        const atMs = Date.parse("2026-06-01T09:00:00.000Z");
+        const conversationId = `slack:C2:person-${index}`;
+        await store.recordActivity({
+          actor,
+          conversationId,
+          destination: { platform: "slack", teamId: "T1", channelId: "C2" },
+          nowMs: atMs,
+          source: "slack",
+        });
+        await recordTurn(fixture, {
+          actor,
+          atMs,
+          conversationId,
+          costUsd,
+          durationMs: 100,
+          runId: `turn-person-${index}`,
+        });
+      }
+
       // Two merged code changes split the cost of their conversation tree.
       for (const [number, mergedAt] of [
         [7, "2026-06-15T11:58:00.000Z"],
@@ -283,41 +322,16 @@ describe("conversation stats API", () => {
           updatedAt: new Date(mergedAt),
         });
       }
-      // Only a root without code changes counts its finished Brief. An
-      // unfinished Brief counts nothing.
-      for (const [conversationId, status] of [
-        ["slack:C1:recent", "done"],
-        ["slack:D1:failed", "answered"],
-        ["local:test:current-hour", "in_progress"],
-      ] as const) {
-        await appendConversationBrief(fixture.sql.db(), {
-          content: conversationBriefFixture({ status }),
-          conversationId,
-          modelId: "test-model",
-          searchText: "test",
-          throughSeq: 1,
-          turnId: `brief-${conversationId}`,
-        });
-      }
 
       // One round of hour-grained reads when the report is not cached.
-      const response = await expectNoFullScan(
-        () =>
-          expectSqlBudget(
-            () =>
-              createJuniorApi().request(
-                "http://localhost/api/conversations/stats",
-              ),
-            { statements: 5, serialRounds: 1 },
-          ),
-        {
-          "outcome change roots": {
-            table: "junior_code_changes",
-            statement: '"change_roots"',
-            reason:
-              "outcome-buckets.ts finds the roots of every code change. Remove this when a fix bounds that read.",
-          },
-        },
+      const response = await expectNoFullScan(() =>
+        expectSqlBudget(
+          () =>
+            createJuniorApi().request(
+              "http://localhost/api/conversations/stats",
+            ),
+          { statements: 5, serialRounds: 1 },
+        ),
       );
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());
@@ -400,11 +414,45 @@ describe("conversation stats API", () => {
           inputTokens: 100,
           mergedCodeChangeCostUsd: 0.003,
           mergedCodeChanges: 2,
-          outcomeCostUsd: 0.0045,
-          outcomes: 3,
           tokens: 444,
         }),
       );
+      // Turns of a verified person are theirs. A Turn whose Actor has no
+      // verified email is spend with no person.
+      expect(report.personSpendDays).toHaveLength(90);
+      expect(report.personSpendDays.slice(-2)).toEqual([
+        {
+          date: "2026-06-14",
+          medianPersonCostUsd: 0.0015,
+          people: 1,
+          personCostUsd: 0.0015,
+          unattributedCostUsd: 0,
+        },
+        {
+          date: "2026-06-15",
+          medianPersonCostUsd: 0.003,
+          people: 1,
+          personCostUsd: 0.003,
+          unattributedCostUsd: 0.001,
+        },
+      ]);
+      expect(
+        report.personSpendDays.find((day) => day.date === "2026-06-01"),
+      ).toEqual({
+        date: "2026-06-01",
+        medianPersonCostUsd: 0.003,
+        people: 3,
+        personCostUsd: 0.015,
+        unattributedCostUsd: 0,
+      });
+      expect(
+        report.personSpendDays.find((day) => day.date === "2026-06-08"),
+      ).toEqual({
+        date: "2026-06-08",
+        people: 0,
+        personCostUsd: 0,
+        unattributedCostUsd: 0.002,
+      });
       expect(report.metricHours).toHaveLength(7 * 24);
       expect(report.metricSixHours).toHaveLength(7 * 4);
       expect(
@@ -433,8 +481,6 @@ describe("conversation stats API", () => {
         date: "2026-06-15T12",
         mergedCodeChangeCostUsd: 0.0015,
         mergedCodeChanges: 1,
-        outcomeCostUsd: 0.0015,
-        outcomes: 1,
       });
       expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
@@ -460,8 +506,6 @@ describe("conversation stats API", () => {
           inputTokens: 100,
           mergedCodeChangeCostUsd: 0.0015,
           mergedCodeChanges: 1,
-          outcomeCostUsd: 0.003,
-          outcomes: 2,
           tokens: 434,
         }),
       );

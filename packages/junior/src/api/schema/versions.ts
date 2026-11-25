@@ -3,6 +3,18 @@ import * as z from "zod";
 /** The most Conversations that one versions read gives tokens for. */
 export const VERSIONS_CONVERSATION_LIMIT = 50;
 
+/**
+ * `GET /api/versions` sets this header when `GET /api/versions/stream` can
+ * push the same tokens, so a dashboard opens the stream only when it works.
+ */
+export const VERSIONS_STREAM_HEADER = "x-junior-versions-stream";
+
+/**
+ * The SSE event that the versions stream sends while no token moves. A
+ * `Versions` object comes as a plain `message` event.
+ */
+export const VERSIONS_STREAM_KEEPALIVE_EVENT = "keepalive";
+
 export const versionsQuerySchema = z
   .object({
     /**
@@ -38,8 +50,8 @@ export const versionsSchema = z
      * can record which inputs moved it.
      */
     conversations: z.string().min(1),
-    /** Open Review items that need the viewer. */
-    reviewItems: z.string().min(1),
+    /** Open Inbox items that need the viewer. */
+    inboxItems: z.string().min(1),
     /** The viewer's rolling model spend. */
     spend: z.string().min(1),
   })

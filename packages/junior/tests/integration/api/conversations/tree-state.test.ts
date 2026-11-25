@@ -1,21 +1,26 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { conversationSubtree } from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import {
+  expectPlanCost,
+  expectSqlBudget,
+  explainNodes,
+} from "../../../fixtures/sql-budget";
 import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
@@ -27,9 +32,9 @@ import {
   recordSlackRoot,
   recordDashboardRoot,
   recordAnswer,
+  lastSeq,
   addItem,
   watchDeployment,
-  recordBrief,
   DONE,
 } from "../../../fixtures/conversation-status";
 
@@ -78,7 +83,7 @@ describe("conversation tree state", () => {
       watching: true,
     });
     await expect(
-      fixture.tree(running.invocation.childConversationId),
+      fixture.tree(running.child.childConversationId),
     ).resolves.toEqual({ treeState: "working", watching: false });
 
     const asking = await spawnChildAgent({
@@ -88,8 +93,8 @@ describe("conversation tree state", () => {
     fixture.queue.takeMessageFor(asking.childConversationId);
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertReviewItem(getDb(), {
-      addedByConversationId: asking.childConversationId,
+    const forOther = await insertInboxItem(getDb(), {
+      owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
@@ -107,7 +112,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: forOther!.id,
       nowMs: Date.now(),
       status: "dismissed",
@@ -121,7 +126,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),
       status: "dismissed",
@@ -142,7 +147,7 @@ describe("conversation tree state", () => {
       watching: false,
     });
 
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item,
       nowMs: Date.now(),
       status: "dismissed",
@@ -331,6 +336,35 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
   });
 
+  it("plans a root's tree without a walk over it", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000540",
+    );
+    await getSqlExecutor().execute(
+      `insert into junior_conversations
+        (conversation_id, root_conversation_id, parent_conversation_id,
+         created_at, last_activity_at, updated_at, execution_status)
+      select 'agent:big-tree-' || n, $1, $1, now(), now(), now(), 'idle'
+      from generate_series(1, 2000) n`,
+      [conversationId],
+    );
+    await getSqlExecutor().execute("analyze junior_conversations");
+    const read = () =>
+      getDb().execute(
+        sql`select * from ${conversationSubtree([conversationId])}`,
+      );
+    const [nodes] = await explainNodes(read);
+    expect(nodes!.some((node) => node["Node Type"] === "Recursive Union")).toBe(
+      true,
+    );
+    // Postgres guesses each recursive step at hundreds of rows. A step that
+    // reads the table or the root's whole tree for each guessed row prices
+    // the read high enough to turn on JIT. Today's plan costs about 950.
+    await expectPlanCost(read, 1_500);
+  });
+
   it("skips archived children and their descendants", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
@@ -375,15 +409,16 @@ describe("conversation tree state", () => {
     });
   });
 
-  it("moves the feed token when the root starts to wait on the viewer", async () => {
+  it("moves the feed token when the root's wait on the viewer starts and ends", async () => {
     const fixture = await createStatusFixture();
-    const conversationId = await recordDashboardRoot(
+    // A Slack root's reply that Slack did not show adds no reply notice.
+    const conversationId = await recordSlackRoot(
       fixture.conversationStore,
-      "local:web:tree-token",
+      "1700000000.000590",
     );
     const other = await resolveViewerUser("bob@example.com");
-    await insertReviewItem(getDb(), {
-      addedByConversationId: conversationId,
+    await insertInboxItem(getDb(), {
+      owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
@@ -400,12 +435,28 @@ describe("conversation tree state", () => {
     const before = await feedToken(fixture);
 
     // The status still reads `needs_input`; only the viewer's wait moves.
-    await recordBrief(conversationId, 1, "partial");
+    await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
-    expect(await feedToken(fixture)).not.toBe(before);
+    const waiting = await feedToken(fixture);
+    expect(waiting).not.toBe(before);
+
+    // The starter's read ends the wait, and the status still reads
+    // `needs_input` for Bob.
+    const read = await fixture.request(
+      `${detailPath(conversationId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(conversationId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
+    expect(await feedToken(fixture)).not.toBe(waiting);
   });
 
   it("reads the tree state of a feed page and a detail in one statement", async () => {

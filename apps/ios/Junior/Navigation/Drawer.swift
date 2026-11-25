@@ -2,9 +2,12 @@ import JuniorKit
 import SwiftUI
 
 /// Full-screen navigation drawer (`DashboardHeader.tsx` mobile menu): primary
-/// places, account pages, theme, and the Junior the app is signed in to.
+/// places, account pages, theme, Log out, and the Junior the app is signed in to.
+/// `split` makes it a side panel over the list and the open item.
 struct Drawer: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
+  var split = false
 
   var body: some View {
     @Bindable var app = app
@@ -15,7 +18,7 @@ struct Drawer: View {
           .foregroundStyle(Tokens.textSolid)
         Spacer()
         Button {
-          withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = false }
+          withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = false }
         } label: {
           Icon("x", size: 20)
             .foregroundStyle(Tokens.text)
@@ -33,36 +36,52 @@ struct Drawer: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 4) {
           NavRow(label: "Go to conversation", icon: "search", active: false) {
-            app.go(.conversations)
-            app.focusSearch = true
+            window.go(.conversations)
+            window.focusSearch = true
           }
-          NavRow(label: "Conversations", active: app.place == .conversations && app.path.isEmpty) {
-            app.go(.conversations)
+          // Beside the list, an open Conversation keeps Conversations current.
+          NavRow(
+            label: "Conversations",
+            active: window.place == .conversations && (split ? window.path.first != .settings : window.path.isEmpty)
+          ) {
+            window.go(.conversations)
           }
-          NavRow(label: "Inbox", count: app.inboxCount, active: app.place == .inbox) {
-            app.go(.inbox)
+          NavRow(label: "Inbox", count: app.inboxCount, active: window.place == .inbox) {
+            window.go(.inbox)
           }
-          NavRow(label: "Automations", active: app.place == .automations) {
-            app.go(.automations)
+          NavRow(label: "Automations", active: window.place == .automations) {
+            window.go(.automations)
           }
           Rectangle().fill(Tokens.borderSubtle).frame(height: 1)
             .padding(.top, 12)
             .padding(.bottom, 8)
-          NavRow(label: "Settings", active: app.path.last == .settings) {
-            app.drawerOpen = false
-            app.path = [.settings]
+          NavRow(label: "Settings", active: window.path.last == .settings) {
+            window.drawerOpen = false
+            window.path = [.settings]
           }
-          NavRow(label: "Code", active: false) { app.openOnWeb("/code") }
-          NavRow(label: "System", active: false) { app.openOnWeb("/system") }
+          NavRow(label: "Code", active: false) { window.openOnWeb("/code") }
+          NavRow(label: "System", active: false) { window.openOnWeb("/system") }
           ThemeRow(theme: $app.theme)
             .padding(.top, 4)
+          NavRow(label: "Log out", active: false, action: app.signOut)
         }
         .padding(12)
       }
 
-      ServerFooter(host: app.server.baseURL.host() ?? app.server.baseURL.absoluteString, version: app.serverVersion)
+      ServerFooter(
+        host: app.server.isDemo ? "Demo" : app.server.baseURL.host() ?? app.server.baseURL.absoluteString,
+        version: app.serverVersion,
+        changelogBadge: app.changelogBadge
+      ) {
+        BundledChangelog.markSeen()
+        app.changelogBadge = false
+        window.changelogOpen = true
+      }
     }
     .background(Tokens.bgElevated)
+    .overlay(alignment: .trailing) {
+      if split { Rectangle().fill(Tokens.border).frame(width: 1).ignoresSafeArea() }
+    }
   }
 }
 
@@ -144,21 +163,42 @@ struct ThemeRow: View {
   }
 }
 
+/// The Junior the app is signed in to, and the changelog beside it.
 private struct ServerFooter: View {
   let host: String
   let version: String?
+  let changelogBadge: Bool
+  let openChangelog: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
-      if let version {
-        Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+    HStack(spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
+        if let version {
+          Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+        }
+        Text("iOS app \(AppBuild.current.label)").type(.xs).foregroundStyle(Tokens.textMuted)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .combine)
+      Button(action: openChangelog) {
+        HStack(spacing: 6) {
+          Text("Changelog")
+          if changelogBadge { Dot(color: Color.palette(.red, 500), size: 8) }
+        }
+        .type(.xs, .medium)
+        .foregroundStyle(Tokens.textMuted)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressableStyle(radius: 6))
+      .accessibilityLabel(changelogBadge ? "Changelog, new" : "Changelog")
+      .accessibilityIdentifier("show-changelog")
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 16)
+    .padding(.leading, 16)
+    .padding(.trailing, 8)
     .padding(.vertical, 12)
     .hairline(.top, Tokens.borderSubtle)
-    .accessibilityElement(children: .combine)
   }
 }

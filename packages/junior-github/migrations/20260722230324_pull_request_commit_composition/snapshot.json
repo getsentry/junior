@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "f26a9f2b-90af-4608-98d1-be2df70c42e2",
+  "prevIds": ["8be552be-bd1e-4cdf-8784-ed1b84438690"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "commit_composition"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.commit_composition",
+        "n|col|public.junior_github_pull_requests.commit_composition",
+        "e|col|public.junior_github_pull_requests.commit_composition"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "commit_composition",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

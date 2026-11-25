@@ -18,89 +18,52 @@ function stableId(prefix: string, ...parts: string[]): string {
   return `${prefix}:${digest}`;
 }
 
-/** Return the stable identity for one retry-safe delegated task. */
-export function getAgentInvocationId(
-  parentConversationId: string,
-  idempotencyKey: string,
-): string {
+// The ids below keep the values that earlier releases wrote, so a retry of
+// a spawn or message from before a deploy finds its child and its message.
+// No reader takes meaning from them.
+function taskKey(parentConversationId: string, idempotencyKey: string) {
   return stableId("agent-invocation", parentConversationId, idempotencyKey);
 }
 
-/** Return the stable child identity for one invocation without a named binding. */
-export function getUnnamedAgentConversationId(invocationId: string): string {
-  return stableId("agent", invocationId);
-}
-
-/** Return the stable child identity for one named binding. */
-export function getNamedAgentConversationId(
+/**
+ * Return the stable child identity for one spawn, with a name or without.
+ * The spawn's idempotency key names it, so a replay finds the same child.
+ */
+export function getSpawnedChildConversationId(
   parentConversationId: string,
-  name: string,
+  idempotencyKey: string,
 ): string {
-  return stableId("agent", parentConversationId, name);
+  return stableId("agent", taskKey(parentConversationId, idempotencyKey));
 }
 
-/**
- * Return the stable identity of the agent invocation that gives one child
- * agent result to the child Conversation that started that child agent.
- */
-export function getAgentInvocationIdForResult(
-  resultInvocationId: string,
+/** Return the mailbox identity of one parent message. */
+export function getParentMessageId(
+  parentConversationId: string,
+  idempotencyKey: string,
 ): string {
-  return stableId("agent-invocation", "result", resultInvocationId);
-}
-
-/**
- * Return the stable identity of the agent invocation that gives one message
- * from a child agent to the child Conversation that started that child agent.
- */
-export function getAgentInvocationIdForMessage(messageId: string): string {
-  return stableId("agent-invocation", "message", messageId);
-}
-
-/**
- * Return the stable identity of the agent invocation that gives one batch of
- * watch events to a child Conversation. The first message of the batch names
- * it.
- */
-export function getAgentInvocationIdForEvents(messageId: string): string {
-  return stableId("agent-invocation", "events", messageId);
-}
-
-/** Return the stable turn identity advanced by one agent invocation. */
-export function getAgentInvocationTurnId(invocationId: string): string {
-  return `agent-invocation:${invocationId}`;
-}
-
-/** Return the stable mailbox identity for one agent invocation. */
-export function getAgentInvocationMessageId(invocationId: string): string {
-  return `agent-invocation:${invocationId}:input`;
+  return `agent-invocation:${taskKey(parentConversationId, idempotencyKey)}:input`;
 }
 
 const REPLY_MESSAGE_PREFIX = "agent-reply:";
 
-/**
- * Return the parent mailbox identity of one child agent `reply` call.
- * `senderId` is the Agent invocation that sent it, or the child Conversation
- * when no Agent invocation names the child.
- */
+/** Return the parent mailbox identity of one child agent Turn's result. */
 export function getAgentReplyMessageId(
-  senderId: string,
-  toolCallId: string,
+  childConversationId: string,
+  messageKey: string,
 ): string {
-  return `${REPLY_MESSAGE_PREFIX}${senderId}:${toolCallId}`;
+  return `${REPLY_MESSAGE_PREFIX}${childConversationId}:${messageKey}`;
 }
 
-/**
- * Return the key of the `reply` of one Turn on a child's Conversation loop.
- * Readers take the sender from the message's sender fields, not this key.
- */
-export function getTurnReplyKey(turnId: string, toolCallId: string): string {
-  return `${turnId}:${toolCallId}`;
+// The Turn id of the `stopped` result that a person's stop of a child agent
+// sends. No Turn has it, so readers can tell this result from a Turn's reply.
+const PERSON_STOP_TURN_PREFIX = "stopped:";
+
+/** Return the Turn id that keys the `stopped` result of one person's stop. */
+export function getPersonStopTurnId(stoppedAtMs: number): string {
+  return `${PERSON_STOP_TURN_PREFIX}${stoppedAtMs}`;
 }
 
-/** Return the stable parent mailbox identity for one terminal result. */
-export function getAgentInvocationResultMessageId(
-  invocationId: string,
-): string {
-  return `agent-invocation:${invocationId}:result`;
+/** Return whether a sender Turn id names a person's stop, not a Turn. */
+export function isPersonStopTurnId(turnId: string): boolean {
+  return turnId.startsWith(PERSON_STOP_TURN_PREFIX);
 }

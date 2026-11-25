@@ -9,14 +9,16 @@ describe("core registrations", () => {
         plugins: defineJuniorPlugins([
           defineJuniorPlugin({
             manifest: {
-              name: "briefs",
-              displayName: "Briefs",
+              name: "notifications",
+              displayName: "Notifications",
               description: "Plugin that claims a core feature name",
             },
             hooks: {},
           }),
         ]),
       }),
-    ).rejects.toThrow('Plugin name "briefs" is reserved for a core feature');
+    ).rejects.toThrow(
+      'Plugin name "notifications" is reserved for a core feature',
+    );
   });
 });

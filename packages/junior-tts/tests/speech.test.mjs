@@ -43,13 +43,13 @@ test("Gateway request keeps style separate and writes WAV without a Sandbox key"
     assert.equal(init.headers["ai-speech-model-specification-version"], "4");
     const body = JSON.parse(init.body);
     assert.equal(body.text, "Ship it. After the tests.");
-    assert.equal(body.voice, "Puck");
+    assert.equal(body.voice, "Achird");
     assert.equal(body.outputFormat, "wav");
-    assert.match(body.instructions, /mischievous/);
+    assert.match(body.instructions, /young tech intern/);
     return Response.json({ audio: audio.toString("base64"), warnings: [] });
   });
   const result = await generateSpeech("Ship it. After the tests.", output);
-  assert.equal(result.profile, "junior-v1");
+  assert.equal(result.profile, "junior-v2");
   assert.equal(result.mimeType, "audio/wav");
   assert.equal(result.synthetic, true);
   assert.deepEqual(await readFile(output), audio);
@@ -62,7 +62,7 @@ test("plain delivery removes snark without changing the selected voice", async (
   t.mock.method(globalThis, "fetch", async (_url, init) => {
     const body = JSON.parse(init.body);
     assert.match(body.instructions, /No snark/);
-    assert.equal(body.voice, "Puck");
+    assert.equal(body.voice, "Achird");
     return Response.json({ audio: wav().toString("base64") });
   });
   await generateSpeech(
@@ -100,7 +100,7 @@ test("profile and sample are reusable and local validation prevents paid calls",
     assert.match(JSON.parse(init.body).text, /Hey, I'm Junior/);
     return Response.json({ audio: wav().toString("base64") });
   });
-  assert.equal((await run(["--profile"])).name, "junior-v1");
+  assert.equal((await run(["--profile"])).name, "junior-v2");
   await assert.rejects(run(["--api-key", "not-a-secret"]), /Unknown option/);
   await assert.rejects(
     generateSpeech("x".repeat(5001), join(dir, "long.wav")),

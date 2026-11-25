@@ -1,8 +1,8 @@
 /**
  * Event embeddings: a derived index for search by meaning over the history of
- * one Conversation. After each completed Turn, the event search task stores
- * lexemes (`event-lexemes.ts`) and embeds the newest searchable events that
- * have no vector of the configured model.
+ * one Conversation. After each Turn that ends, the event search task or the
+ * Turn itself stores lexemes (`event-lexemes.ts`) and embeds the newest
+ * searchable events that have no vector of the configured model.
  *
  * Each run embeds a bounded slice, newest first, and older history gets
  * vectors last. The heartbeat backfill (`event-search-backfill.ts`) embeds
@@ -15,16 +15,21 @@ import type {
   PluginRegistration,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { refreshEmbeddings } from "@/db/embeddings";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
+import { logException, logInfo } from "@/chat/logging";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { createConversationEmbedder } from "./embedding";
-import { storeConversationEventLexemes } from "./event-lexemes";
+import { isEventEmbeddingsEnabled } from "./event-embedding-config";
+import { seqIn, storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
   SEARCHABLE_EVENT_TYPES,
@@ -60,15 +65,21 @@ export async function embedConversationEvents(
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
-  const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
+  const lexemes = juniorConversationEventLexemes;
+  const text = sql<
+    string | null
+  >`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
   const refresh = await refreshEmbeddings<{ seq: number; text: string }>({
     batchSize: EMBEDDING_BATCH_SIZE,
     deadlineMs: limits.deadlineMs,
     embedder,
     maxItems: limits.maxEvents ?? MAX_EVENTS_PER_RUN,
-    listMissing: async ({ after, limit }) =>
-      await db
-        .select({ seq: events.seq, text })
+    listMissing: async ({ after, limit }) => {
+      // Find the seqs first, so Postgres reads the text of only this page.
+      // In one query, it reads the text of every event in the Conversation,
+      // embedded or not, before it applies the limit.
+      const missing = await db
+        .select({ seq: events.seq })
         .from(events)
         .leftJoin(
           embeddings,
@@ -79,18 +90,47 @@ export async function embedConversationEvents(
             eq(embeddings.model, embedder.model),
           ),
         )
+        .leftJoin(
+          lexemes,
+          and(
+            eq(lexemes.conversationId, events.conversationId),
+            eq(lexemes.seq, events.seq),
+          ),
+        )
         .where(
           and(
             eq(events.conversationId, conversationId),
             inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
             isNull(embeddings.seq),
-            // Text of only whitespace, such as newlines, has nothing to embed.
-            sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
+            // An event without text never gets a vector, so it would stay
+            // missing and be read again on every run. Its stored lexemes are
+            // empty, so skip it, as the heartbeat backfill does. Text of only
+            // stopwords also has empty lexemes and gets no vector. An event
+            // without stored lexemes yet is read until a run stores them.
+            or(isNull(lexemes.seq), sql`length(${lexemes.lexemes}) > 0`),
             after ? lt(events.seq, after.seq) : undefined,
           ),
         )
         .orderBy(desc(events.seq))
-        .limit(limit),
+        .limit(limit);
+      if (missing.length === 0) return [];
+      const texts = await db
+        .select({ seq: events.seq, text })
+        .from(events)
+        .where(
+          and(
+            eq(events.conversationId, conversationId),
+            seqIn(missing.map((row) => row.seq)),
+          ),
+        );
+      const textBySeq = new Map(texts.map((row) => [row.seq, row.text]));
+      // An event without text stays in the page with empty text, so the
+      // next page starts after it. `refreshEmbeddings` skips it.
+      return missing.map(({ seq }) => ({
+        seq,
+        text: textBySeq.get(seq) ?? "",
+      }));
+    },
     write: async (rows, batch) => {
       await db
         .insert(embeddings)
@@ -120,8 +160,83 @@ export async function embedConversationEvents(
 }
 
 /**
- * Core task registration that stores lexemes after each completed Turn and,
- * when `embedEvents` is set, embeds events too.
+ * Store the missing lexemes of one Conversation's events, and their vectors
+ * when `embedEvents` is set, under the Conversation's index lock. A Turn
+ * that ends calls it, through the event search task or directly. When the
+ * lock stays busy, the heartbeat backfill indexes the events later.
+ */
+export async function indexConversationEvents(args: {
+  conversationId: string;
+  embedEvents: boolean;
+  turnId: string;
+}): Promise<void> {
+  const { conversationId, turnId } = args;
+  const attempt = await withLock(
+    getStateAdapter(),
+    eventIndexLockKey(conversationId),
+    async () => {
+      // Wait for both before the lock is released, even when one fails.
+      const [lexemeResult, embeddingResult] = await Promise.allSettled([
+        storeConversationEventLexemes(getDb(), conversationId),
+        args.embedEvents
+          ? embedConversationEvents(
+              getDb(),
+              createConversationEmbedder({
+                cost: { conversationId, turnId },
+                operation: "conversation_embedding",
+              }),
+              conversationId,
+            )
+          : 0,
+      ]);
+      if (lexemeResult.status === "rejected") {
+        throw lexemeResult.reason;
+      }
+      if (embeddingResult.status === "rejected") {
+        throw embeddingResult.reason;
+      }
+      logInfo("event_search.index.completed", {
+        conversationId,
+        embedded: embeddingResult.value,
+        lexemes: lexemeResult.value,
+      });
+    },
+    // The heartbeat backfill holds the lock for at most its run budget.
+    // Waiting indexes this Turn's events now instead of in a later pass.
+    { ttlMs: EVENT_INDEX_LOCK_TTL_MS, waitMs: EVENT_INDEX_LOCK_WAIT_MS },
+  );
+  if (!attempt.acquired) {
+    logInfo("event_search.index.busy", { conversationId });
+  }
+}
+
+/**
+ * Index the events of a Turn that ended without the event search task: a
+ * failed or stopped Turn, or a completed Turn of a kind without session
+ * tasks. A failure is logged, so indexing never changes the Turn's outcome.
+ */
+export async function indexEndedTurnEvents(args: {
+  conversationId: string;
+  turnId: string;
+}): Promise<void> {
+  const { conversationId, turnId } = args;
+  try {
+    await indexConversationEvents({
+      conversationId,
+      embedEvents: isEventEmbeddingsEnabled(),
+      turnId,
+    });
+  } catch (error) {
+    logException(error, "event_search.index.failed", {
+      conversationId,
+      turnId,
+    });
+  }
+}
+
+/**
+ * Core task registration that indexes the events of a completed Turn:
+ * lexemes, and vectors when `embedEvents` is set.
  */
 export function eventSearchTaskRegistration(options: {
   embedEvents: boolean;
@@ -136,49 +251,11 @@ export function eventSearchTaskRegistration(options: {
       indexEvents: {
         async run(context: PluginTaskContext) {
           const run = await context.run.load();
-          const attempt = await context.state.withLock(
-            eventIndexLockKey(run.conversationId),
-            EVENT_INDEX_LOCK_TTL_MS,
-            async () => {
-              // Wait for both before the lock is released, even when one fails.
-              const [lexemeResult, embeddingResult] = await Promise.allSettled([
-                storeConversationEventLexemes(getDb(), run.conversationId),
-                options.embedEvents
-                  ? embedConversationEvents(
-                      getDb(),
-                      createConversationEmbedder({
-                        cost: {
-                          conversationId: run.conversationId,
-                          turnId: run.runId,
-                        },
-                        operation: "conversation_embedding",
-                      }),
-                      run.conversationId,
-                    )
-                  : 0,
-              ]);
-              if (lexemeResult.status === "rejected") {
-                throw lexemeResult.reason;
-              }
-              if (embeddingResult.status === "rejected") {
-                throw embeddingResult.reason;
-              }
-              context.log.info("Conversation events indexed", {
-                conversationId: run.conversationId,
-                embedded: embeddingResult.value,
-                lexemes: lexemeResult.value,
-              });
-            },
-            // The heartbeat backfill holds the lock for at most its run
-            // budget. Waiting indexes this Turn's events now instead of after
-            // the backfill marks the index done.
-            { waitMs: EVENT_INDEX_LOCK_WAIT_MS },
-          );
-          if (!attempt.acquired) {
-            context.log.info("Conversation event index busy", {
-              conversationId: run.conversationId,
-            });
-          }
+          await indexConversationEvents({
+            conversationId: run.conversationId,
+            embedEvents: options.embedEvents,
+            turnId: run.runId,
+          });
         },
       },
     },

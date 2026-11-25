@@ -125,7 +125,8 @@ function readJson(relativePath) {
   );
 }
 
-function main() {
+/** Check the await-in-loop baseline against the code. */
+export function run() {
   const baseline = readJson(BASELINE_PATH);
   const errors = checkAwaitInLoop({
     baseline,
@@ -138,20 +139,9 @@ function main() {
     ),
     overrideFiles: readOverrideFiles(readJson(OVERRIDE_PATH)),
   });
-  if (errors.length === 0) {
-    console.log("The await-in-loop baseline matches the code.");
-    return;
-  }
-  console.error(
-    [
-      "await-in-loop check failed:",
-      ...errors,
-      `Fix the code. Do not add or raise entries in ${BASELINE_PATH} to pass. When you move a file, move its entry in both files.`,
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    `Fix the code. Do not add or raise entries in ${BASELINE_PATH} to pass. When you move a file, move its entry in both files.`,
+  ];
 }

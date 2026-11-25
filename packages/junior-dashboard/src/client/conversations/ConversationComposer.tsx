@@ -28,6 +28,7 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useComposerLiveMarkdown } from "./composerLiveMarkdownSetting";
 import {
   mentionablePersonSchema,
   type MentionablePerson,
@@ -187,19 +188,11 @@ type ConversationComposerProps = {
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to run before a send, such as a question to the reader
-   * or answers that go with the message. `sendsMessage` is false when the
-   * draft is empty, so only those answers go. The draft stays when it
-   * resolves false. Return undefined to send at once.
+   * Return a promise to run before a send, such as a question to the reader.
+   * The draft stays when it resolves false. Return undefined to send at
+   * once.
    */
-  beforeSubmit?: (send: {
-    sendsMessage: boolean;
-  }) => Promise<boolean> | undefined;
-  /**
-   * Enable Send with an empty draft, because `beforeSubmit` has input of its
-   * own to send. An empty draft then sends no message.
-   */
-  sendsWithoutDraft?: boolean;
+  beforeSubmit?: () => Promise<boolean> | undefined;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -235,6 +228,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
+  const [liveMarkdown] = useComposerLiveMarkdown();
   const enterSends = !useSyncExternalStore(
     subscribeToTouchKeyboard,
     touchKeyboardMatches,
@@ -394,11 +388,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const canSubmit = () =>
-    Boolean(
-      draftRef.current.text.trim() ||
-      filesRef.current.length ||
-      props.sendsWithoutDraft,
-    ) &&
+    Boolean(draftRef.current.text.trim() || filesRef.current.length) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
@@ -407,11 +397,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.beforeSubmit?.({
-      sendsMessage: Boolean(
-        draftRef.current.text.trim() || filesRef.current.length,
-      ),
-    });
+    const confirmation = props.beforeSubmit?.();
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -700,6 +686,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               enterKeyHint={enterSends ? "send" : "enter"}
               enterSends={enterSends}
               label={props.label}
+              liveMarkdown={liveMarkdown}
               lookup={{
                 origin: window.location.origin,
                 person: (slackUserId) => peopleRef.current.get(slackUserId),
@@ -793,11 +780,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 "disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100",
                 props.compact && "w-9 px-0",
               )}
-              disabled={
-                (!canSend && !files.length && !props.sendsWithoutDraft) ||
-                !online ||
-                sendLocked
-              }
+              disabled={(!canSend && !files.length) || !online || sendLocked}
               variant="default"
               type="submit"
             >

@@ -1,8 +1,8 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
-import { convertMarkdown } from "../src/tools/doc-markdown";
+import { googlePlugin } from "../src/index";
+import { convertMarkdown } from "../src/docs/markdown";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
@@ -127,6 +127,40 @@ describe("Google Docs Markdown", () => {
         ["# ", "```", "", "a", "", "b", "", "```", "- "].join("\n"),
       ).text,
     ).toBe("a\n\nb");
+  });
+
+  it("reads quotes, escapes, item continuations, task items, and tables as Markdown does", () => {
+    const converted = convertMarkdown(
+      [
+        "> quoted *text*",
+        "> more",
+        "",
+        "\\*not em\\* and a_b_c",
+        "",
+        "- one",
+        "",
+        "  still one",
+        "    - deep",
+        "- [x] done",
+        "- [ ] todo",
+        "",
+        "| a | b |",
+        "|---|---|",
+      ].join("\n"),
+    );
+
+    expect(converted.text).toBe(
+      [
+        "quoted text more",
+        "*not em* and a_b_c",
+        "one still one",
+        "\tdeep",
+        "[x] done",
+        "[ ] todo",
+        "| a | b | |---|---|",
+      ].join("\n"),
+    );
+    expect(converted.textStyles).toEqual([{ end: 11, italic: true, start: 7 }]);
   });
 });
 

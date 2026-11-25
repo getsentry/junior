@@ -1,9 +1,14 @@
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
+  VERSIONS_STREAM_HEADER,
 } from "@sentry/junior/api/schema";
-import { requestedConversationIds, withRequestedMailbox } from "./harness";
-import { mockReviewItems, prReview, rowHead } from "./inbox/inbox-fixture";
+import {
+  requestedConversationIds,
+  waitForVersionChecks,
+  withRequestedMailbox,
+} from "./harness";
+import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
 
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -19,7 +24,7 @@ test("refreshes idle reads only when their version moves", async ({
     conversation: "1:1",
     conversationIds: [] as string[],
     conversations: "feed-1",
-    reviewItems: "review-1",
+    inboxItems: "review-1",
     spend: "spend-1",
   };
   let versionReads = 0;
@@ -47,13 +52,13 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
-  const reviewItemStatuses: number[] = [];
+  const inboxItemStatuses: number[] = [];
   page.on("response", (response) => {
     if (response.request().method() !== "GET") return;
     const { pathname } = new URL(response.url());
     if (pathname === "/api/conversations") feedStatuses.push(response.status());
-    if (pathname.startsWith("/api/review-items/")) {
-      reviewItemStatuses.push(response.status());
+    if (pathname.startsWith("/api/inbox-items/")) {
+      inboxItemStatuses.push(response.status());
     }
   });
   await page.route(
@@ -120,11 +125,11 @@ test("refreshes idle reads only when their version moves", async ({
   await expect(
     page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
   ).toBeVisible();
-  // The Review item reads did not change either.
-  const reviewItemReads = reviewItemStatuses.length;
-  versions.reviewItems = "review-2";
+  // The Inbox item reads did not change either.
+  const inboxItemReads = inboxItemStatuses.length;
+  versions.inboxItems = "review-2";
   await expect
-    .poll(() => reviewItemStatuses.slice(reviewItemReads), { timeout: 15_000 })
+    .poll(() => inboxItemStatuses.slice(inboxItemReads), { timeout: 15_000 })
     .toContain(304);
 });
 
@@ -148,7 +153,7 @@ test.describe("checks less often while the reader is away", () => {
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -179,7 +184,7 @@ test.describe("checks less often while the reader is away", () => {
 
 test.describe("refreshes each Conversation on screen from its token", () => {
   test.use({ controlTimers: true });
-  test("an Inbox card shows its pull request merged when the token moves @new", async ({
+  test("an Inbox card shows its pull request merged when the token moves", async ({
     page,
     dashboard,
   }) => {
@@ -188,7 +193,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions",
       rootConversationId: releaseId,
     };
@@ -201,9 +206,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
-    // The Review items mock adds its own versions route. A later route runs
+    // The Inbox items mock adds its own versions route. A later route runs
     // first, so this one comes after it to see each check.
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       const ids = requestedConversationIds(route);
       await route.fulfill({
@@ -212,7 +217,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
             ids.filter((id) => id === releaseId).map((id) => [id, token]),
           ),
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -242,8 +247,21 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    // The card reads the pull request live.
+    await page.route(/\/api\/objects\?/, async (route) => {
+      const response = await route.fetch();
+      const report: {
+        objects: { object?: { status?: string }; url: string }[];
+      } = await response.json();
+      for (const entry of report.objects) {
+        if (merged && entry.url.endsWith("/getsentry/payments/pull/91")) {
+          entry.object = { ...entry.object, status: "merged" };
+        }
+      }
+      await route.fulfill({ response, json: report });
+    });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
+    await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -263,7 +281,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     for (let step = 0; step < 6; step += 1) await tick();
     expect(detailReads).toBe(settled);
 
-    // The moved token refreshes the card.
+    // The moved token refreshes the Conversation and the live card.
     merged = true;
     token = "1:2";
     await page.clock.fastForward(5_000);
@@ -271,7 +289,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     expect(detailReads).toBe(settled + 1);
   });
 
-  test("a card whose Conversation read failed reads it again @new", async ({
+  test("a card whose Conversation read failed reads it again", async ({
     page,
     dashboard,
   }) => {
@@ -279,7 +297,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions-retry",
       rootConversationId: releaseId,
     };
@@ -293,15 +311,15 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks).toBeGreaterThan(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
-    // The Review items mock adds its own versions route. A later route runs
+    // The Inbox items mock adds its own versions route. A later route runs
     // first, so this one comes after it to see each check.
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       await route.fulfill({
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -319,8 +337,8 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
+    await rowHead(page, "Pin the release train").click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);
     // The reads that mounting the row starts are done after one check.
     await tick();
@@ -330,5 +348,109 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const settled = detailReads;
     await tick();
     await expect.poll(() => detailReads).toBeGreaterThan(settled);
+  });
+});
+
+test.describe("takes the tokens from the stream when the server pushes them", () => {
+  test.use({ controlTimers: true });
+  const tokens = {
+    conversationDetails: {},
+    conversations: "mock",
+    inboxItems: "mock",
+    spend: "mock",
+  };
+
+  test("a pushed token refreshes its read, and the poll slows", async ({
+    page,
+    dashboard,
+  }) => {
+    let checks = 0;
+    let streams = 0;
+    let feedReads = 0;
+    let push!: () => void;
+    const pushed = new Promise<void>((resolve) => {
+      push = resolve;
+    });
+    const answered = (count: number) =>
+      waitForVersionChecks(page, () => checks, count);
+    await page.route("**/api/versions*", async (route) => {
+      await route.fulfill({
+        headers: { [VERSIONS_STREAM_HEADER]: "1" },
+        json: tokens,
+      });
+      checks += 1;
+    });
+    // One message when the test pushes it, then a long `retry:`, so the
+    // stream stays quiet.
+    await page.route(
+      (url) => url.pathname === "/api/versions/stream",
+      async (route) => {
+        streams += 1;
+        await pushed;
+        await route.fulfill({
+          body: `retry: 3600000\n\ndata: ${JSON.stringify({ ...tokens, conversations: "pushed" })}\n\n`,
+          headers: { "content-type": "text/event-stream" },
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        if (route.request().method() === "GET") feedReads += 1;
+        await route.fallback();
+      },
+    );
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    );
+    await answered(1);
+    await expect.poll(() => streams).toBe(1);
+    await expect.poll(() => feedReads).toBeGreaterThan(0);
+    const settled = feedReads;
+
+    // Only the stream moves the feed token, so the feed read comes from it.
+    push();
+    await expect.poll(() => feedReads).toBeGreaterThan(settled);
+
+    // The healthy stream slows the poll to a safety net.
+    await page.clock.fastForward(30_000);
+    expect(checks).toBe(1);
+    await page.clock.fastForward(30_000);
+    await answered(2);
+  });
+
+  test("a refused stream goes back to the poll at once", async ({
+    page,
+    dashboard,
+  }) => {
+    let checks = 0;
+    let streams = 0;
+    const answered = (count: number) =>
+      waitForVersionChecks(page, () => checks, count);
+    await page.route("**/api/versions*", async (route) => {
+      await route.fulfill({
+        headers: { [VERSIONS_STREAM_HEADER]: "1" },
+        json: tokens,
+      });
+      checks += 1;
+    });
+    // The server turned push off after the poll said it was on.
+    await page.route(
+      (url) => url.pathname === "/api/versions/stream",
+      async (route) => {
+        streams += 1;
+        await route.fulfill({ status: 204 });
+      },
+    );
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    );
+    // The refused stream checks again at once, and the poll keeps its pace.
+    await answered(2);
+    await page.clock.fastForward(5_000);
+    await answered(3);
+    await page.clock.fastForward(5_000);
+    await answered(4);
+    expect(streams).toBe(1);
   });
 });

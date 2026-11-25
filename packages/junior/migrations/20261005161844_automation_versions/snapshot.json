@@ -1,0 +1,150 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e0054620-72e7-424f-8592-85b6e87336e0",
+  "prevIds": ["3d0ee9af-ae1f-4bf8-9181-b0ecd25aa8c0"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_automation_versions"],
+      "writes": [
+        "s|tbl|public.junior_automation_versions",
+        "n|tbl|public.junior_automation_versions",
+        "e|tbl|public.junior_automation_versions",
+        "n|rel|public.junior_automation_versions",
+        "n|type|public.junior_automation_versions",
+        "n|rel|public.junior_automation_versions_pk"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_automation_versions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "automation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "edited_by",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "definition",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "junior_automation_versions_pk",
+        "columns": ["kind", "automation_id", "version"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "junior_automation_versions_kind_check",
+        "value": "\"junior_automation_versions\".\"kind\" in ('scheduled', 'event')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

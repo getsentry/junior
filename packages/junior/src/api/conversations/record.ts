@@ -111,6 +111,7 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
+    ...(value.spaceId ? { spaceId: value.spaceId } : undefined),
     ...(value.archivedAt
       ? { archivedAtMs: value.archivedAt.getTime() }
       : undefined),
@@ -119,6 +120,7 @@ export function conversationFromRecordRow(
     ...(value.channelName ? { channelName: value.channelName } : undefined),
     ...(value.source ? { source: value.source } : undefined),
     ...(value.title ? { title: value.title } : undefined),
+    ...(value.summary ? { summary: value.summary } : undefined),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
       : undefined),

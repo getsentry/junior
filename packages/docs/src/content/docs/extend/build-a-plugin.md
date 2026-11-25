@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /concepts/skills-and-plugins/
   - /concepts/credentials-and-oauth/
+  - /extend/workload-identity/
   - /cli/check/
 ---
 
@@ -80,6 +81,11 @@ mcp:
 This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
+
+To reach a service behind Google Cloud or Azure identity, such as Identity-Aware
+Proxy, declare a `workload-identity` credential instead. Junior mints a
+short-lived token from its Vercel OIDC token. See
+[Workload Identity Credentials](/extend/workload-identity/).
 
 ### Placeholders
 
@@ -158,19 +164,54 @@ accounts:
 - `accounts.user-oauth` is `true` by default. Set it to `false` when people
   must not use their own accounts. Then Junior uses only the service account,
   never asks a person to connect, and ignores connections that people already
-  made. Junior hides the tools that the service account does not list. Until
+  made. Junior hides the MCP tools that the service account does not list. Until
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
-  Plugins with only a top-level `oauth` block do not support a service
-  account yet.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
+A plugin with a top-level `oauth` block and `oauth-bearer` credentials, and
+no `mcp`, lists operations instead of tools. An operation is the `operation`
+name that the plugin's host code passes to `ctx.egress.fetch`:
+
+```yaml title="plugin.yaml"
+credentials:
+  type: oauth-bearer
+  domains:
+    - api.my-provider.example
+
+oauth:
+  client-id-env: MY_PROVIDER_CLIENT_ID
+  client-secret-env: MY_PROVIDER_CLIENT_SECRET
+  authorize-endpoint: https://my-provider.example/oauth/authorize
+  token-endpoint: https://my-provider.example/oauth/token
+  scope: read upload
+
+accounts:
+  user-oauth: false
+  service-account:
+    operations:
+      - my-provider.upload
+```
+
+- `auth-token-env` is optional when the plugin has `oauth`. Leave it out
+  when only host code calls the provider: then there is no env token
+  fallback and no Sandbox placeholder.
+- Junior adds the service account's token only to `ctx.egress.fetch` calls
+  that name a listed operation. Commands in the sandbox name no operation,
+  so they never get the service account.
+- Junior refreshes the token when the provider returns `expires_in` and a
+  refresh token. A token without `expires_in` does not expire. If the
+  provider rejects the refresh, Junior removes the account, and an admin
+  must connect it again.
 The declaration has no effect until a Junior admin connects the account. In
 the dashboard, open **Admin**, find the plugin under **Service accounts**, and
 click **Connect**. Sign in as the account that Junior uses, not as yourself.
 The same card shows who connected the account and lets an admin disconnect it.
+For a plugin with a top-level `oauth` block, add
+`<base URL>/api/service-accounts/<plugin>/callback` as a redirect URI in the
+provider's OAuth app first.
 
 If the dashboard is not available, an operator can use the CLI on a machine
 with a browser and the deployment `REDIS_URL`:
@@ -181,8 +222,12 @@ junior service-account status my-provider
 junior service-account disconnect my-provider
 ```
 
+The CLI uses a loopback redirect URI on a random port. Use it only with a
+provider that accepts that redirect URI.
+
 When the account is connected, Junior uses it only for an actor who has not
-connected their own account, and only for the tools that it lists.
+connected their own account, and only for the tools or operations that it
+lists.
 Other requests ask the actor to connect their own account, as before. An
 actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
@@ -323,7 +368,8 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `disabledTools(ctx)`     | Return a reason for each tool that the current Turn cannot use, keyed by plugin-local tool name.                                                                                             |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
-| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+| `searchUsers(ctx)`       | Return the provider accounts that match `ctx.query`, such as an exact login. `userLookup` links each account to a known person. A search that fails is logged and left out of the result. |
+| `tasks`                  | Register plugin-owned background tasks. A task without `payload` runs after each completed session and loads bounded run context with `ctx.run.load()`. A task with `payload` runs only when `ctx.tasks.start(...)` starts it. |
 
 When a hook, tool, or task belongs to a Conversation, Junior records the cost
 of each `ctx.model`, `ctx.decider`, `ctx.embedder`, and `ctx.reranker` call.
@@ -368,7 +414,11 @@ not know the person's timezone. A tool that sends model text to your provider
 must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
 reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
 rewrites every string in `input`, outside Markdown code. A Slack user becomes
-`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
+`@handle` of their linked account at `provider`, or their name. When a tool
+input names a person by email, Slack mention, or name, call
+`ctx.users.findLinkedHandle(query, provider)`. It returns `found` with the
+`handle` of the linked account at `provider`, or `unlinked`, `ambiguous`, or
+`not_found`. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -463,7 +513,7 @@ context, and rejects its calls before review or execution.
 
 ```ts
 disabledTools(ctx) {
-  return ctx.source.kind === "agent_invocation"
+  return ctx.source.kind === "parent_message"
     ? { ping: "Child agents cannot ping my-provider." }
     : {};
 },
@@ -474,7 +524,15 @@ provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
 `ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
 as an incomplete response. A load that throws is not cached, and concurrent
-callers for one key share one load.
+callers for one key share one load. Set `staleIfError: true` to keep the value
+for a day after its TTL: when a later load throws, such as during a provider
+outage, the cache returns that value. Do not set it on an answer about access,
+because access must expire with its TTL. When a provider webhook carries a
+changed object, write it with `ctx.cache.update(key, next)`. `next` gets the
+cached value and returns the new entry, so the next read needs no provider
+call. When the webhook says only that the cached value is wrong, such as when
+an object moved, drop it with `ctx.cache.delete(key)`, so the next read loads
+it.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
@@ -487,9 +545,30 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.reviewItems` as
-from a plugin route. Use `ctx.decider.decide(...)` for a choice that depends
-on meaning, such as whether an email asks for work.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
+`ctx.conversationChanges` as from a plugin route.
+
+A plugin that records code changes with `ctx.codeChanges` also sets
+`codeLinks` in its registration. Junior does not store links. It calls
+`codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
+link each code change and repository.
+
+Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
+Inbox item changes together, such as a chip that shows a merged pull request
+and the close of its ask. Junior saves the batch in one write. When one entry
+fails, Junior saves no entry. A batch has at most 100 entries.
+
+```ts
+await ctx.conversationChanges.apply({
+  annotations: [{ conversationId, upsert: annotation }],
+  inboxItems: [
+    { conversationId, close: { dedupeKey, reason, status: "done" } },
+  ],
+});
+```
+
+Use `ctx.decider.decide(...)` for a choice that depends on meaning, such as
+whether an email asks for work.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -524,6 +603,94 @@ that created them. Plugins can dispatch only to validated Slack destinations
 and receive projection records, not raw runtime state. Pass `title` to name
 the dispatch Conversation. When you omit it, Junior generates one from
 `input`.
+
+### Retry a failed write with a task
+
+A provider can send a webhook only once. When a write in your route fails,
+start a task with `ctx.tasks.start(...)` and return success. Junior sends the
+task on its plugin task queue, then runs it in the background. When the send
+fails, `ctx.tasks.start` throws. Heartbeats can also start tasks.
+
+Register the task in `tasks` with a Zod `payload` schema. Junior sends the
+payload as JSON in the queue message and parses it with the schema before
+each run. When a run throws, the queue runs the task again after 30, 60, 120,
+and then 240 seconds. After the fifth run fails, Junior logs
+`plugin.task.failed` and stops.
+
+Junior turns the plugin, task name, and `key` into a hash and uses it as the
+queue idempotency key, so a key can be longer than the queue allows. A second
+start with the same key does nothing while the queue keeps the first
+message. Use a key that names one change, such as the pull request id and its
+update time. A run can happen more than once, so make the write safe to
+repeat.
+
+```ts title="index.ts"
+const statusPayload = z.object({ id: z.string(), status: z.string() });
+
+defineJuniorPlugin({
+  manifest,
+  tasks: {
+    applyStatus: {
+      payload: statusPayload,
+      async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+        await saveStatus(ctx.db, ctx.payload);
+      },
+    },
+  },
+  hooks: {
+    routes(ctx) {
+      return [
+        {
+          method: "POST",
+          path: "/api/webhooks/my-provider",
+          async handler(request) {
+            const change = statusPayload.parse(await request.json());
+            try {
+              await saveStatus(ctx.db, change);
+            } catch {
+              await ctx.tasks.start({
+                key: `status:${change.id}:${change.status}`,
+                name: "applyStatus",
+                payload: change,
+              });
+            }
+            return new Response("Accepted", { status: 202 });
+          },
+        },
+      ];
+    },
+  },
+});
+```
+
+The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
+`ctx.codeChanges`, `ctx.conversationChanges`, and `ctx.events`, as in a
+plugin route. Use `ctx.events.publish(...)` to publish an Event that the task
+finds.
+
+### Wait for a provider with a task
+
+Some providers compute a value a short time after their webhook. To read it
+later, start the task with `delaySeconds`. The queue holds the first run for
+that many seconds. While the value is not ready, throw, and the queue runs the
+task again with the backoff above.
+
+`ctx.lastDelivery` is true on the last run. When that run throws, the queue
+does not run the task again. On that run, write a fallback instead of
+throwing, such as a short cache entry that makes the next read ask the
+provider.
+
+```ts title="index.ts"
+async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+  const status = await readComputedStatus(ctx.payload.id);
+  if (status) return await saveStatus(ctx.db, status);
+  if (!ctx.lastDelivery) throw new StatusNotReadyError(ctx.payload.id);
+  await markStatusUnknown(ctx.db, ctx.payload.id);
+}
+```
+
+A key that names the event's time window makes events in one window share a
+run, while later events start their own run, with their own retries.
 
 ## Add a link type
 
@@ -583,7 +750,19 @@ defineJuniorPlugin({
 - **Resolver.** Return the card, or `undefined` for a missing object. To
   share one provider read with `canView`, read through `ctx.cache` with a
   short TTL. Junior caches the card for one minute for each viewer and URL,
-  and does not save it on a Conversation.
+  and does not save it on a Conversation. When your webhooks keep the object
+  entry current, set `cacheCards: false`. Junior then reads your entry on
+  each card read, after `canView`, so a change shows at once.
+- **Prefetch.** To load a page of links in one provider call, add
+  `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
+  that the link type claims, before `canView` and `resolve` run for each
+  URL. Write the objects to `ctx.cache`, and never return object data. To
+  tell one URL's card read what happened, return a `Map` from `url.href` to
+  an outcome. `out_of_time` means the page's time ran out before the object
+  loaded. That URL's `canView` and `resolve` on the same page get it as
+  `ctx.prefetchOutcome`, so they can show only what the cache holds. Other
+  reads, such as an Attach, get no outcome, so they ask the provider as
+  usual.
 - **People.** For a profile link of a provider account, return
   `await ctx.findPerson({ provider, handle })` when it finds a card. That is
   the Junior person card of the one known person who linked that account.

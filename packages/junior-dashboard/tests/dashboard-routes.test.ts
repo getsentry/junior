@@ -15,7 +15,6 @@ const {
   readUserSettings: vi.fn(async (_userId: string) => ({
     autoArchiveDefault: false,
     autoArchiveGraceHours: 24,
-    experimentalUi: false,
   })),
   readViewerAvatarUrl: vi.fn(
     async (): Promise<string | undefined> => undefined,
@@ -26,12 +25,10 @@ const {
       settings: {
         autoArchiveDefault?: boolean;
         autoArchiveGraceHours?: number;
-        experimentalUi?: boolean;
       },
     ) => ({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       ...settings,
     }),
   ),
@@ -107,6 +104,7 @@ describe("dashboard routes", () => {
       "/memories/memory-1",
       "/settings",
       "/settings/api-tokens",
+      "/spaces/22222222-2222-4222-8222-222222222222",
       "/system/workspaces",
       "/system/workspaces/new",
       "/system/workspaces/11111111-1111-4111-8111-111111111111",
@@ -385,7 +383,6 @@ describe("dashboard routes", () => {
     expect(await me.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       user: {
         email: "dev@example.com",
         emailVerified: true,
@@ -516,7 +513,6 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -543,29 +539,12 @@ describe("dashboard routes", () => {
     await expect(autoArchive.json()).resolves.toMatchObject({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 72,
-      experimentalUi: false,
       user: { name: "Person" },
     });
     expect(updateUserSettings).toHaveBeenCalledWith("user:person@sentry.io", {
       autoArchiveDefault: true,
       autoArchiveGraceHours: 72,
     });
-
-    const experimentalUi = await app.fetch(
-      new Request("http://localhost/api/me", {
-        body: JSON.stringify({ experimentalUi: true }),
-        headers: { "content-type": "application/json" },
-        method: "PATCH",
-      }),
-    );
-    expect(experimentalUi.status).toBe(200);
-    await expect(experimentalUi.json()).resolves.toMatchObject({
-      experimentalUi: true,
-    });
-    expect(updateUserSettings).toHaveBeenLastCalledWith(
-      "user:person@sentry.io",
-      { experimentalUi: true },
-    );
 
     const tooLong = await app.fetch(
       new Request("http://localhost/api/me", {
@@ -625,7 +604,6 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -637,10 +615,7 @@ describe("dashboard routes", () => {
 
     await app.fetch(
       new Request("http://localhost/api/me", {
-        body: JSON.stringify({
-          autoArchiveDefault: true,
-          experimentalUi: true,
-        }),
+        body: JSON.stringify({ autoArchiveDefault: true }),
         headers: { "content-type": "application/json" },
         method: "PATCH",
       }),
@@ -651,7 +626,6 @@ describe("dashboard routes", () => {
     expect(await me.json()).toEqual({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 24,
-      experimentalUi: true,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -679,7 +653,6 @@ describe("dashboard routes", () => {
     expect(await me.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       user: {
         avatarUrl: "/api/people/avatars/identity-1",
         email: "person@sentry.io",

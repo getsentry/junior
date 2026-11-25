@@ -1,30 +1,41 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { displayPlainText } from "../../display-text/plainText";
-import { Menu, PanelRight } from "lucide-react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import { Ellipsis, Info, PanelRight, Search, X } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
-import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
-import { TooltipTitle } from "../../components/ui/tooltip";
+import { Button } from "../../components/ui/button";
 import { cn } from "../../styles";
 import {
   MobileHeaderActionsPortal,
-  MobileHeaderTagsPortal,
-  useOpenMobileNavigation,
+  MobileHeaderTitlePortal,
 } from "../../components/layout/DashboardChrome";
 import {
   ConversationHeaderActions,
   HeaderIconButton,
 } from "../../conversations/ConversationHeaderActions";
-import type { ConversationMenu } from "../../conversations/conversationMenuItems";
+import {
+  isConversationParticipant,
+  useConversationMenuItems,
+  type ConversationMenu,
+} from "../../conversations/conversationMenuItems";
+import {
+  EditableConversationTitle,
+  type ConversationTitleEdit,
+} from "../../conversations/EditableConversationTitle";
 import { ChildAgentTags } from "../../conversations/ChildAgentTags";
 import { ConversationBreadcrumb } from "../../conversations/ConversationBreadcrumb";
+import { useMenuSheet } from "../../conversations/useMenuSheet";
 import {
-  BriefOutcomeChip,
-  briefOutcomeLabel,
-  type ConversationBriefReport,
-} from "../../conversations/ConversationBrief";
-import { ConversationOverflowMenu } from "../../conversations/ConversationOverflowMenu";
-import { useSetConversationAutoArchive } from "../../conversations/autoArchiveQueries";
+  CONVERSATION_MENU_BUTTON_CLASS,
+  ConversationOverflowMenu,
+} from "../../conversations/ConversationOverflowMenu";
 import { TranscriptSearchBar } from "../../conversations/TranscriptSearchBar";
 import type { TranscriptViewMode } from "../../conversations/transcriptRenderModel";
 import {
@@ -33,35 +44,68 @@ import {
 } from "../../conversations/transcriptSearch";
 import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
-import { useZenMode, ZEN_MODE_SHORTCUT } from "../../components/layout/PaneNav";
+import { useZenMode } from "../../components/layout/PaneNav";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { LeadHeader } from "../../lead/LeadHeader";
 
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
 
+// The sheet opens only after a tap on a phone, so the drawer loads with the
+// first open instead of with the page.
+const ConversationMenuSheet = lazy(() =>
+  import("../../conversations/ConversationMenuSheet").then((module) => ({
+    default: module.ConversationMenuSheet,
+  })),
+);
+
 /**
- * Keep the conversation title and frequently used controls in the header.
- * Run facts and the Brief live in Conversation details.
+ * Head a Conversation page: its Space's header on a Lead, an empty bar until
+ * the page knows which it is, else the Conversation's own header.
  */
-export function ConversationHeader(props: {
+export function ConversationHeader(
+  props: ComponentProps<typeof ConversationTitleHeader> & {
+    /** Undefined until the page knows whether it shows a Lead. */
+    lead: boolean | undefined;
+    /** The Conversation's Space, which a Lead's header shows. */
+    spaceId?: string | undefined;
+  },
+) {
+  if (props.lead)
+    return (
+      <LeadHeader
+        detailsOpen={props.detailsOpen}
+        onDetailsClick={props.onDetailsClick}
+        sidebarToggle={props.sidebarToggle}
+        spaceId={props.spaceId}
+      />
+    );
+  if (props.lead === undefined)
+    return (
+      <div
+        aria-hidden="true"
+        className="hidden h-13 border-b border-dashboard-border md:block"
+      />
+    );
+  return <ConversationTitleHeader {...props} />;
+}
+
+/**
+ * Keep the header to one row: the title and the controls people use most.
+ * The summary, cost, repository, and location live in Conversation details.
+ * A phone gets its own layout: the title and one menu button in the app
+ * bar, and the menu as a bottom sheet.
+ */
+function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
-  /** The viewer's auto-archive setting. Unset for non-participants. */
-  autoArchive?: boolean | undefined;
-  /** The current Brief. Its outcome and intent show under the title. */
-  brief?: ConversationBriefReport | undefined;
-  contextTags?: ReactNode;
-  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
-  cost?: ReactNode | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
-  /** Linked work links in the tags row below the title on mobile. */
-  linkedWork?: ReactNode;
   menu: ConversationMenu;
   /**
    * The Conversation is not created yet. Its actions stay inert until it
@@ -71,9 +115,13 @@ export function ConversationHeader(props: {
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
+  /** Renames the Conversation in place. Only participants get it. */
+  rename?: ConversationTitleEdit | undefined;
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
+  /** A link to the Conversation's Space, after the title. */
+  space?: ReactNode;
   /** The tree state or pin icon, before the title. */
   state?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
@@ -87,25 +135,12 @@ export function ConversationHeader(props: {
   const headerRef = useRef<HTMLElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
+  const sheet = useMenuSheet();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchOpenVisible =
     props.view === "rich" && (searchOpen || props.search.length > 0);
-  const openMobileNavigation = useOpenMobileNavigation();
   const zen = useZenMode();
   const { onDetailsClick } = props;
-  const autoArchive = useSetConversationAutoArchive(props.menu.conversationId);
-  const errors = autoArchive.isError
-    ? [...props.errors, "Could not save auto-archive."]
-    : props.errors;
-  const autoArchiveButton =
-    props.autoArchive === undefined ? null : (
-      <AutoArchiveButton
-        on={props.autoArchive}
-        onToggle={() => {
-          if (!autoArchive.isPending) autoArchive.mutate(!props.autoArchive);
-        }}
-      />
-    );
   // In Zen mode, showing details leaves it first.
   const openDetails = () => {
     if (zen.active) zen.toggle();
@@ -160,8 +195,8 @@ export function ConversationHeader(props: {
     setSearchOpen(true);
   };
 
-  // Search lives in the `⋯` menu; ⌘F / Ctrl+F still opens it. The Event log
-  // has its own search, so the shortcut stays with the browser there.
+  // ⌘F / Ctrl+F opens search too. The Event log has its own search, so the
+  // shortcut stays with the browser there.
   useTranscriptFindShortcut({
     anchorRef: props.view === "raw" ? NO_ANCHOR : headerRef,
     inputRef: searchInputRef,
@@ -169,30 +204,45 @@ export function ConversationHeader(props: {
     open: searchOpenVisible,
   });
 
-  const menuActions = (placement: "desktop" | "mobile") => (
-    <ConversationHeaderActions
-      // Desktop makes the whole control inert until the Conversation exists.
-      // Mobile turns off only these rows, so the app menu row stays usable.
-      disabled={placement === "mobile" && props.pending}
-      menu={props.menu}
-      onDetailsClick={props.onDetailsClick}
-      onSearchClick={toggleSearch}
-      placement={placement}
-      searchOpen={searchOpenVisible}
-      zen={
-        placement === "desktop" && zen.available
-          ? {
-              active: zen.active,
-              onToggle: zen.toggle,
-              shortcut: ZEN_MODE_SHORTCUT,
-            }
-          : undefined
-      }
-    />
+  const menuGroups = useConversationMenuItems(props.menu);
+  // The phone has no room for search and details buttons, so its sheet
+  // leads with them.
+  const sheetGroups = [
+    [
+      ...(props.view === "rich"
+        ? [
+            {
+              icon: searchOpenVisible ? X : Search,
+              key: "search",
+              label: searchOpenVisible ? "Hide search" : "Search transcript",
+              onClick: toggleSearch,
+            },
+          ]
+        : []),
+      {
+        icon: Info,
+        key: "details",
+        label: "Conversation details",
+        onClick: props.onDetailsClick,
+      },
+    ],
+    ...menuGroups,
+  ].map((items) =>
+    props.pending ? items.map((item) => ({ ...item, disabled: true })) : items,
   );
 
+  const rename = isConversationParticipant(props.menu)
+    ? props.rename
+    : undefined;
+  const titleText = (
+    <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+      {props.title}
+    </span>
+  );
+  const titleClass =
+    "font-display text-base font-medium leading-6 tracking-tight";
   const title =
-    props.view === "raw" ? (
+    props.view === "raw" && !rename?.editing ? (
       // Event log is a debug view reached from the `⋯` menu. The title leads
       // back to the Conversation.
       <>
@@ -203,9 +253,7 @@ export function ConversationHeader(props: {
             title="Back to conversation"
             type="button"
           >
-            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-              {props.title}
-            </span>
+            {titleText}
           </button>
         </h2>
         <span aria-hidden="true" className="text-dashboard-text-faint">
@@ -222,12 +270,22 @@ export function ConversationHeader(props: {
       <h2
         aria-current="page"
         className={cn(
-          fadeOverflowClass,
-          "m-0 font-display text-base font-medium leading-6 tracking-tight",
+          "m-0 flex min-w-0",
+          titleClass,
+          rename?.editing && "min-w-1/2 flex-1",
         )}
-        ref={fadeWhenOverflowing}
       >
-        {props.title}
+        {rename ? (
+          <EditableConversationTitle
+            {...rename}
+            className={titleClass}
+            title={props.title}
+          >
+            {titleText}
+          </EditableConversationTitle>
+        ) : (
+          titleText
+        )}
       </h2>
     );
 
@@ -235,47 +293,85 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    errors.length > 0 ||
+    props.errors.length > 0 ||
     Boolean(props.forks) ||
-    Boolean(props.agentTree) ||
-    Boolean(props.brief);
+    Boolean(props.agentTree);
 
-  // One line from the Brief: where the work stands and what it is for. It
-  // opens the Brief, which leads Conversation details.
-  const brief =
-    props.brief && props.view === "rich"
-      ? {
-          brief: props.brief,
-          onOpen: openDetails,
-        }
-      : undefined;
+  // A long title fades before the `⋯` button instead of running under it.
+  const mobileTitle = (
+    <span
+      className={cn(MOBILE_TITLE_CLASS, fadeOverflowClass)}
+      ref={fadeWhenOverflowing}
+    >
+      {titleText}
+    </span>
+  );
 
   return (
     <>
+      <MobileHeaderTitlePortal>
+        {props.state}
+        {props.view === "raw" && !rename?.editing ? (
+          // Back leads to the conversation here, so the title is plain text.
+          <h1 className="m-0 flex min-w-0 flex-1 items-center gap-1.5">
+            <span
+              className={cn(
+                MOBILE_TITLE_CLASS,
+                fadeOverflowClass,
+                "text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
+              {titleText}
+            </span>
+            <span aria-hidden="true" className="text-dashboard-text-faint">
+              ›
+            </span>
+            <span
+              className={cn(MOBILE_TITLE_CLASS, "shrink-0 text-dashboard-text")}
+            >
+              Event log
+            </span>
+          </h1>
+        ) : (
+          <h1 className="m-0 flex min-w-0 flex-1 text-dashboard-text">
+            {rename ? (
+              <EditableConversationTitle
+                {...rename}
+                className={MOBILE_TITLE_CLASS}
+                title={props.title}
+              >
+                {mobileTitle}
+              </EditableConversationTitle>
+            ) : (
+              mobileTitle
+            )}
+          </h1>
+        )}
+      </MobileHeaderTitlePortal>
       <MobileHeaderActionsPortal>
-        {autoArchiveButton}
-        <ConversationOverflowMenu buttonRef={menuButtonRef}>
-          {menuActions("mobile")}
-          {openMobileNavigation ? (
-            <DropdownMenuItem onClick={openMobileNavigation}>
-              <Menu aria-hidden="true" />
-              App menu
-            </DropdownMenuItem>
-          ) : null}
-        </ConversationOverflowMenu>
+        <Button
+          aria-expanded={sheet.open}
+          aria-haspopup="dialog"
+          aria-label="Conversation menu"
+          className={cn(CONVERSATION_MENU_BUTTON_CLASS, "size-10 rounded-lg")}
+          onClick={sheet.show}
+          ref={menuButtonRef}
+          size="icon"
+          variant="ghost"
+        >
+          <Ellipsis aria-hidden="true" size={20} strokeWidth={2} />
+        </Button>
+        {sheet.open ? (
+          <Suspense fallback={null}>
+            <ConversationMenuSheet
+              groups={sheetGroups}
+              onClose={sheet.close}
+              title={props.title}
+            />
+          </Suspense>
+        ) : null}
       </MobileHeaderActionsPortal>
-      {props.state || props.contextTags || props.linkedWork ? (
-        <MobileHeaderTagsPortal>
-          {/* One row. Tags keep their width; the slot scrolls. */}
-          <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
-            {props.state}
-            {props.contextTags}
-            {props.linkedWork ? (
-              <div aria-label="Linked work">{props.linkedWork}</div>
-            ) : null}
-          </div>
-        </MobileHeaderTagsPortal>
-      ) : null}
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
           covers it. Mobile: below the app header, which holds the menu. */}
       <header
@@ -287,51 +383,60 @@ export function ConversationHeader(props: {
       >
         {/* The title starts 24px in, the inset of the pane's icons. The last
             button's icon ends 24px from the edge, like the details close.
-            The Brief line shares the header row, so the row keeps the
-            height of the pane and details headers. */}
+            One row, the height of the pane and details headers. */}
         <div className="hidden h-header min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
-          <div className="grid min-w-0 gap-0.5">
-            <div className="flex min-w-0 items-center gap-2">
-              {props.sidebarToggle ? (
-                <div className="shrink-0 empty:hidden">
-                  {props.sidebarToggle}
-                </div>
-              ) : null}
-              {props.state}
-              {props.agentTree ? (
-                <ConversationBreadcrumb
-                  current={title}
-                  nodes={props.agentTree}
-                />
-              ) : (
-                title
-              )}
-              {props.status}
-              {childAgentTags}
-              {props.privacy ? (
-                <span className="shrink-0">{props.privacy}</span>
-              ) : null}
-              {/* A child has no Location of its own. */}
-              {!props.agentTree && props.contextTags ? (
-                <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
-                  {props.contextTags}
-                </div>
-              ) : null}
-            </div>
-            {brief ? <BriefLine {...brief} /> : null}
+          {/* The title field takes the free width. */}
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-2",
+              rename?.editing && "flex-1",
+            )}
+          >
+            {props.sidebarToggle ? (
+              <div className="shrink-0 empty:hidden">{props.sidebarToggle}</div>
+            ) : null}
+            {props.state}
+            {props.agentTree ? (
+              <ConversationBreadcrumb current={title} nodes={props.agentTree} />
+            ) : (
+              title
+            )}
+            {props.status}
+            {childAgentTags}
+            {props.space}
+            {props.privacy ? (
+              <span className="shrink-0">{props.privacy}</span>
+            ) : null}
           </div>
           <div
             className="flex shrink-0 items-center gap-1"
             inert={props.pending}
           >
-            {props.cost ? (
-              <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
-                {props.cost}
-              </span>
+            {props.view === "rich" ? (
+              <HeaderIconButton
+                keyShortcuts={
+                  searchOpenVisible ? undefined : "Meta+F Control+F"
+                }
+                label={searchOpenVisible ? "Hide search" : "Search transcript"}
+                onClick={toggleSearch}
+                pressed={searchOpenVisible}
+                shortcut={searchOpenVisible ? undefined : platformShortcut("f")}
+              >
+                {searchOpenVisible ? (
+                  <X aria-hidden="true" size={16} strokeWidth={1.9} />
+                ) : (
+                  <Search aria-hidden="true" size={16} strokeWidth={1.9} />
+                )}
+              </HeaderIconButton>
             ) : null}
-            {autoArchiveButton}
             <ConversationOverflowMenu>
-              {menuActions("desktop")}
+              <ConversationHeaderActions
+                menu={props.menu}
+                onDetailsClick={props.onDetailsClick}
+                onSearchClick={toggleSearch}
+                placement="desktop"
+                searchOpen={searchOpenVisible}
+              />
             </ConversationOverflowMenu>
             {detailsOpen ? null : (
               <HeaderIconButton
@@ -347,11 +452,6 @@ export function ConversationHeader(props: {
             )}
           </div>
         </div>
-        {brief ? (
-          <div className="px-4 pb-2.5 pt-2 md:hidden">
-            <BriefLine {...brief} />
-          </div>
-        ) : null}
         {props.forks ? (
           <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
         ) : null}
@@ -377,7 +477,7 @@ export function ConversationHeader(props: {
             value={props.search}
           />
         ) : null}
-        {errors.map((error) => (
+        {props.errors.map((error) => (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7" key={error}>
             {error}
           </div>
@@ -387,89 +487,4 @@ export function ConversationHeader(props: {
   );
 }
 
-function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
-  const status = props.brief.content.outcome.status;
-  const intent = displayPlainText(
-    props.brief.content.intent,
-    props.brief.mentions,
-  );
-  return (
-    <button
-      aria-label={`Brief: ${briefOutcomeLabel(status)}. ${intent} Open the Brief.`}
-      className="group flex w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-sans focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={props.onOpen}
-      type="button"
-    >
-      <BriefOutcomeChip className="shrink-0" status={status} />
-      <span
-        className={cn(
-          fadeOverflowClass,
-          "text-xs text-dashboard-text-muted group-hover:text-dashboard-text",
-        )}
-        ref={fadeWhenOverflowing}
-      >
-        {intent}
-      </span>
-    </button>
-  );
-}
-
-const AUTO_ARCHIVE_HELP =
-  "Archive this conversation for everyone when its linked work is merged or closed and nobody replies during your wait time.";
-
-/** Turn the viewer's auto-archive on or off for this Conversation. */
-function AutoArchiveButton(props: { on: boolean; onToggle(): void }) {
-  const helpId = useId();
-  return (
-    <>
-      {/* Tooltips do not open on touch screens, so the help stays in the
-          accessible description. */}
-      <span className="sr-only" id={helpId}>
-        {AUTO_ARCHIVE_HELP}
-      </span>
-      <HeaderIconButton
-        aria-describedby={helpId}
-        // Blue marks it on, so the pressed fill would repeat it.
-        aria-pressed={props.on}
-        label="Auto archive"
-        onClick={props.onToggle}
-        tooltip={
-          <>
-            <TooltipTitle>
-              Auto archive is {props.on ? "on" : "off"}
-            </TooltipTitle>
-            {AUTO_ARCHIVE_HELP}
-          </>
-        }
-      >
-        <AutoArchiveIcon
-          className={props.on ? "text-dashboard-accent-text" : undefined}
-        />
-      </HeaderIconButton>
-    </>
-  );
-}
-
-/** An archive box inside a circular arrow: archiving that runs on its own. */
-function AutoArchiveIcon(props: { className?: string | undefined }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={props.className}
-      fill="none"
-      height={17}
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={1.9}
-      viewBox="0 0 24 24"
-      width={17}
-    >
-      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <rect height="2.5" rx="0.5" width="8" x="8" y="8.5" />
-      <path d="M9 11v3.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V11" />
-      <path d="M11 13h2" />
-    </svg>
-  );
-}
+const MOBILE_TITLE_CLASS = "font-display text-base font-medium";

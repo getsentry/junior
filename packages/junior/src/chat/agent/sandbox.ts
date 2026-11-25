@@ -11,6 +11,7 @@ import { isUserActor, type Actor } from "@/chat/actor";
 import { withArtifactNote, type ArtifactSync } from "@/chat/artifacts/sync";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { listReferenceFiles } from "@/chat/discovery";
@@ -26,12 +27,14 @@ import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { writeSandboxGeneratedFiles } from "@/chat/tools/sandbox/generated-files";
-import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
+import { writeSandboxGeneratedFiles } from "@/chat/sandbox/generated-files";
+import type { GeneratedFileRef } from "@/chat/sandbox/file-uploads";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
   sandboxRef?: SandboxRef | undefined;
+  /** Replace a session near the provider's cap before any work. */
+  rotateOldSession?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   traceContext: LogContext;
@@ -165,6 +168,7 @@ function bashCommand(input: unknown): string | undefined {
 export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   const sandbox = createSandbox({
     sandboxRef: options.sandboxRef,
+    rotateOldSession: options.rotateOldSession,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: listReferenceFiles(),
@@ -203,7 +207,18 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
             actorId: isUserActor(options.actor)
               ? options.actor.userId
               : undefined,
-            onConfigurationValueChanged: (key, value) => {
+            onConfigurationValueChanged: async (key, value) => {
+              // A channel change does not touch a key that the Space sets,
+              // because the Space's value wins.
+              if (
+                options.conversationId &&
+                key in
+                  (await readConversationSpaceConfiguration(
+                    options.conversationId,
+                  ))
+              ) {
+                return;
+              }
               if (value === undefined) {
                 delete options.configurationValues[key];
                 return;

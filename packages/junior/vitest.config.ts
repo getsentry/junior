@@ -23,22 +23,13 @@ export default defineConfig({
         __dirname,
         "tests/fixtures/virtual-config.ts",
       ),
-      // Before the package root, which would also match this subpath.
-      "@sentry/junior-plugin-api/embeddings": path.resolve(
+      "#junior/system-prompts": path.resolve(
         __dirname,
-        "../junior-plugin-api/src/embeddings.ts",
+        "tests/fixtures/virtual-system-prompts.ts",
       ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",
-      ),
-      "@sentry/junior-search": path.resolve(
-        __dirname,
-        "../junior-search/src/index.ts",
-      ),
-      "@sentry/junior-memory": path.resolve(
-        __dirname,
-        "../junior-memory/src/index.ts",
       ),
       "@sentry/junior-notion": path.resolve(
         __dirname,

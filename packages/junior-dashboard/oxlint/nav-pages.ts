@@ -34,8 +34,7 @@ function propertyName(key: ESTree.Node, computed: boolean): string | undefined {
 /**
  * Make every dashboard page that a link names come from `navPages.ts`. The
  * command palette lists every page there, so a link with its own path is a
- * page that the palette cannot find. `.oxlintrc.json` turns it off for the
- * classic UI, which has its own nav and palette.
+ * page that the palette cannot find.
  */
 export const listedPagePathRule = defineRule({
   meta: {

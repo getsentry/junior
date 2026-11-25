@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import * as z from "zod";
 
-import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
+import type { ShowTranscriptRow } from "./transcriptBottomPinning";
 import { markTranscriptRow } from "./useMessageLinkJump";
 
 const conversationMemoryListSchema = z
@@ -38,12 +39,10 @@ type MemorySource = ConversationMemoryList["events"][number]["source"];
 /** Load what one Conversation recalled and captured. */
 export function useConversationMemories(conversationId: string) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationMemoryListSchema,
-        `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationMemoryListSchema,
+      `/api/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "memories"),
     retry: false,
   });
@@ -85,7 +84,11 @@ export function conversationMemoryEntries(
  * this is the last row before it: the prompt of a recall, or the reply of a
  * capture. Matches `rowIndexBeforeSeq`, which keeps that row mounted.
  */
-export function showMemoryRow(root: Element | null, seq: number) {
+export function showMemoryRow(
+  root: Element | null,
+  seq: number,
+  showRow: ShowTranscriptRow,
+) {
   // Only the rows of this Conversation's transcript count.
   const transcript = root?.querySelector(
     '[aria-label="Conversation transcript"]',
@@ -104,7 +107,7 @@ export function showMemoryRow(root: Element | null, seq: number) {
     rowSeq = candidateSeq;
   }
   if (!row) return;
-  row.scrollIntoView({ block: "center" });
+  showRow(row, { instant: true });
   markTranscriptRow(row);
 }
 

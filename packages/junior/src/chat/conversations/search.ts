@@ -9,30 +9,27 @@ import {
   and,
   desc,
   eq,
-  gt,
+  exists,
   gte,
   ilike,
   inArray,
   isNull,
   lt,
   ne,
-  notExists,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type * as z from "zod";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
   embedConversationQuery,
 } from "@/chat/conversations/embedding";
-import {
-  parseStoredBrief,
-  type BriefLink,
-  type BriefOutcomeStatus,
-} from "@/chat/briefs/schema";
+import { conversationSearchVector } from "@/chat/conversations/metadata/store";
+import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
   hasAnnotationKey,
   treeHasAnnotationKey,
@@ -43,18 +40,26 @@ import type {
 } from "@/chat/conversations/store";
 import {
   juniorConversationEmbeddings,
-  juniorConversationBriefs,
+  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaces,
 } from "@/db/schema";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
 // Not tuned yet. Memory recall admits short memories at 0.55 with the same
-// default model (`openai/text-embedding-3-small`). A Brief is a longer
+// default model (`openai/text-embedding-3-small`). A summary is a longer
 // document, so a short query scores lower against it. Retune it when the
 // embedding model changes.
 const MIN_VECTOR_SIMILARITY = 0.4;
+
+/** One linked resource of a search result. */
+export interface ConversationSearchLink {
+  label: string;
+  status?: string;
+  url: string;
+}
 
 /** One Conversation that the requester may find. */
 export interface ConversationSearchResult {
@@ -63,23 +68,39 @@ export interface ConversationSearchResult {
   /** Provider display name of the Destination, such as a Slack channel name. */
   channelName?: string;
   conversationId: string;
-  /** Matching Brief text for a query. */
+  /** Matching title or summary text for a query. */
   excerpt?: string;
   kind?: ConversationKind;
-  /** Top links of the latest Brief. */
-  links: BriefLink[];
-  /** Outcome status of the latest Brief. */
-  outcomeStatus?: BriefOutcomeStatus;
+  /** Top linked resources, such as pull requests, of the Conversation tree. */
+  links: ConversationSearchLink[];
   /** Provider Destination id, such as a Slack channel id. */
   providerDestinationId?: string;
   rootConversationId: string;
   status: ConversationStatus;
-  /** Summary of the latest Brief. A new Conversation may have none yet. */
+  /** A new Conversation has none until its first Turn completes. */
   summary?: string;
   title?: string;
-  /** Its transcript is purged. Only the Brief and title remain. */
+  /** Its transcript is purged. Only the summary and title remain. */
   transcriptPurged: boolean;
   updatedAtMs: number;
+}
+
+/** Provider-owned channel filter and match details for Conversation search. */
+export interface ConversationSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  /**
+   * Describe the provider channel of a match. `includeUrl` asks for the
+   * provider thread link, for when there is no dashboard link.
+   */
+  describeMatch(
+    match: ConversationSearchResult,
+    options: { includeUrl: boolean },
+  ): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    url?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
 }
 
 /** Filters for one Conversation search. All are optional. */
@@ -101,21 +122,30 @@ export interface ConversationSearch {
   /** Include archived Conversations. */
   includeArchived: boolean;
   limit: number;
-  /** Outcome status of the latest Brief. */
-  outcomeStatus?: BriefOutcomeStatus;
-  /** Words or meaning to match in the latest Brief, or words in the title. */
+  /** Words or meaning to match in the title or summary. */
   query?: string;
-  /** Return only root Conversations, not their child agents. */
+  /**
+   * Return only root Conversations, not their child agents. With `team`,
+   * the requester's own tree still returns its child agents.
+   */
   rootsOnly: boolean;
+  /**
+   * Also search the requester's own tree, except the requester, and rank
+   * it first. Then rank the Conversations where this person is a
+   * Participant.
+   */
+  team?: { personUserId?: string | undefined };
+  /** Only Conversations whose root has this User as a Participant. */
+  participantUserId?: string;
   /** Only Conversations whose agent has one of these statuses. */
   statuses?: readonly ConversationStatus[];
 }
 
 /**
- * Search the Conversations, outside the requester's own tree, that the
- * requester may find. Newest activity first, or best match for a query.
- * With an embedder, a query also matches by the meaning of the latest
- * Brief, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
+ * Search the Conversations, outside the requester's own tree unless
+ * `team` is set, that the requester may find. Newest activity first, or best match for a query.
+ * With an embedder, a query also matches by the meaning of the Conversation
+ * metadata, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
  */
 export async function searchConversations(
   db: JuniorDatabase,
@@ -127,8 +157,6 @@ export async function searchConversations(
 ): Promise<ConversationSearchResult[]> {
   const { embedder, requesterConversationId, search } = args;
   const conversations = juniorConversations;
-  const briefs = juniorConversationBriefs;
-  const newer = alias(juniorConversationBriefs, "newer_briefs");
   const roots = alias(juniorConversations, "target_roots");
   const requesterRoot = alias(juniorConversations, "requester_roots");
   const embeddings = juniorConversationEmbeddings;
@@ -142,8 +170,7 @@ export async function searchConversations(
     ? conversationSimilarity(queryVector)
     : undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
-  const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
-  const outcomeStatus = sql<string>`${briefs.content}->'outcome'->>'status'`;
+  const searchVector = conversationSearchVector;
   // A child requester searches with the access of its root, and its own
   // tree is never a result.
   const [requester] = await db
@@ -152,15 +179,37 @@ export async function searchConversations(
     .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
+  const ownTree = eq(conversations.rootConversationId, requesterRootId);
+  const participates = (userId: string) =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(juniorConversationParticipants)
+        .where(
+          and(
+            eq(
+              juniorConversationParticipants.rootConversationId,
+              roots.conversationId,
+            ),
+            eq(juniorConversationParticipants.userId, userId),
+          ),
+        ),
+    );
+  const { team } = search;
   const conditions: (SQL | undefined)[] = [
     // The root decides visibility. Lists hide an unkept Quick question and
     // its children.
     isNull(roots.quickQuestionAt),
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
-      ? eq(conversations.conversationId, conversations.rootConversationId)
+      ? or(
+          eq(conversations.conversationId, conversations.rootConversationId),
+          team ? ownTree : undefined,
+        )
       : undefined,
-    ne(conversations.rootConversationId, requesterRootId),
+    team
+      ? ne(conversations.conversationId, requesterConversationId)
+      : ne(conversations.rootConversationId, requesterRootId),
     or(
       eq(juniorDestinations.visibility, "public"),
       // Conversations share a Destination only when they share an audience.
@@ -169,6 +218,23 @@ export async function searchConversations(
         db
           .select({ destinationId: requesterRoot.destinationId })
           .from(requesterRoot)
+          .where(eq(requesterRoot.conversationId, requesterRootId)),
+      ),
+      // The Conversations of a private Space share one audience, the members.
+      // A private Space's roots have their own Destinations, so only this
+      // match reaches them.
+      eq(
+        roots.spaceId,
+        db
+          .select({ id: juniorSpaces.id })
+          .from(requesterRoot)
+          .innerJoin(
+            juniorSpaces,
+            and(
+              eq(juniorSpaces.id, requesterRoot.spaceId),
+              eq(juniorSpaces.visibility, "private"),
+            ),
+          )
           .where(eq(requesterRoot.conversationId, requesterRootId)),
       ),
     ),
@@ -187,6 +253,9 @@ export async function searchConversations(
     search.statuses
       ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
+    search.participantUserId
+      ? participates(search.participantUserId)
+      : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
@@ -196,9 +265,6 @@ export async function searchConversations(
       : and(isNull(conversations.archivedAt), isNull(roots.archivedAt)),
     search.channelId
       ? eq(juniorDestinations.providerDestinationId, search.channelId)
-      : undefined,
-    search.outcomeStatus
-      ? sql`${outcomeStatus} = ${search.outcomeStatus}`
       : undefined,
     search.afterMs !== undefined
       ? gte(conversations.lastActivityAt, new Date(search.afterMs))
@@ -221,24 +287,31 @@ export async function searchConversations(
   // Normalization 32 maps the word rank to [0, 1), next to the similarity,
   // so a Conversation that matches both ways ranks first.
   const wordRank = sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}, 32), 0)`;
+  const teamRank = team
+    ? [
+        desc(
+          sql`case when ${ownTree} then 2 when ${team.personUserId ? participates(team.personUserId) : sql`false`} then 1 else 0 end`,
+        ),
+      ]
+    : [];
   const order = query
     ? [
+        ...teamRank,
         desc(
           similarity ? sql`${wordRank} + coalesce(${similarity}, 0)` : wordRank,
         ),
         newestFirst,
       ]
-    : [newestFirst];
+    : [...teamRank, newestFirst];
   const excerpt = query
     ? sql<
         string | null
-      >`ts_headline('english', ${briefs.searchText}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
+      >`ts_headline('english', coalesce(${conversations.summary}, ''), ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
     : sql<string | null>`null`;
   const rows = await db
     .select({
       archivedAt: conversations.archivedAt,
       rootArchivedAt: roots.archivedAt,
-      briefContent: briefs.content,
       channelName: juniorDestinations.displayName,
       conversationId: conversations.conversationId,
       excerpt: excerpt.as("excerpt"),
@@ -247,6 +320,7 @@ export async function searchConversations(
       providerDestinationId: juniorDestinations.providerDestinationId,
       rootConversationId: roots.conversationId,
       status: conversations.executionStatus,
+      summary: conversations.summary,
       title: conversations.title,
       transcriptPurgedAt: conversations.transcriptPurgedAt,
     })
@@ -259,53 +333,51 @@ export async function searchConversations(
       juniorDestinations,
       eq(juniorDestinations.id, roots.destinationId),
     )
-    .leftJoin(
-      briefs,
-      and(
-        eq(briefs.conversationId, conversations.conversationId),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(newer)
-            .where(
-              and(
-                eq(newer.conversationId, briefs.conversationId),
-                gt(newer.version, briefs.version),
-              ),
-            ),
-        ),
-      ),
-    )
-    // Only the vector of the latest Brief counts.
+    // Only the vector of the current metadata counts.
     .leftJoin(
       embeddings,
       and(
-        eq(embeddings.conversationId, briefs.conversationId),
-        eq(embeddings.briefVersion, briefs.version),
+        eq(embeddings.conversationId, conversations.conversationId),
+        eq(embeddings.throughSeq, conversations.metadataThroughSeq),
       ),
     )
     .where(and(...conditions))
     .orderBy(...order)
     .limit(search.limit);
 
+  const annotations = await listConversationAnnotationsById(
+    db,
+    rows.map((row) => row.conversationId),
+  );
   return rows.map((row) => {
-    const brief = row.briefContent
-      ? parseStoredBrief(row.briefContent)
-      : undefined;
+    const links = (annotations.get(row.conversationId) ?? [])
+      .flatMap((annotation) =>
+        annotation.url
+          ? [
+              {
+                label: annotation.label,
+                ...(annotation.status
+                  ? { status: annotation.status }
+                  : undefined),
+                url: annotation.url,
+              },
+            ]
+          : [],
+      )
+      .slice(0, MAX_LINKS);
     return {
       archived: row.archivedAt !== null || row.rootArchivedAt !== null,
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       conversationId: row.conversationId,
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
       ...(row.kind ? { kind: row.kind } : undefined),
-      links: brief?.links.slice(0, MAX_LINKS) ?? [],
-      ...(brief ? { outcomeStatus: brief.outcome.status } : undefined),
+      links,
       ...(row.providerDestinationId
         ? { providerDestinationId: row.providerDestinationId }
         : undefined),
       rootConversationId: row.rootConversationId,
       status: row.status,
-      ...(brief ? { summary: brief.summary } : undefined),
+      ...(row.summary ? { summary: row.summary } : undefined),
       ...(row.title ? { title: row.title } : undefined),
       transcriptPurged: row.transcriptPurgedAt !== null,
       updatedAtMs: row.lastActivityAt.getTime(),

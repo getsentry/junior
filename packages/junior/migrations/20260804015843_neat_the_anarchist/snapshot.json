@@ -1,0 +1,714 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "099cc3d5-3695-47ae-9c39-fd3eff0b6650",
+  "prevIds": ["15085af3-5b3d-41b9-b7f5-0e7accb9dff7"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_scheduler_runs"],
+      "writes": [
+        "s|tbl|public.junior_scheduler_runs",
+        "n|tbl|public.junior_scheduler_runs",
+        "e|tbl|public.junior_scheduler_runs",
+        "n|rel|public.junior_scheduler_runs",
+        "n|type|public.junior_scheduler_runs",
+        "n|rel|public.junior_scheduler_runs_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_scheduler_tasks"],
+      "writes": [
+        "s|tbl|public.junior_scheduler_tasks",
+        "n|tbl|public.junior_scheduler_tasks",
+        "e|tbl|public.junior_scheduler_tasks",
+        "n|rel|public.junior_scheduler_tasks",
+        "n|type|public.junior_scheduler_tasks",
+        "n|rel|public.junior_scheduler_tasks_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_runs",
+        "junior_scheduler_runs_task_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_runs_task_status_idx",
+        "n|idx|public.junior_scheduler_runs_task_status_idx",
+        "e|idx|public.junior_scheduler_runs_task_status_idx",
+        "n|rel|public.junior_scheduler_runs_task_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_runs",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_runs.task_id",
+        "n|col|public.junior_scheduler_runs.status",
+        "n|col|public.junior_scheduler_runs.scheduled_for_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_runs",
+        "junior_scheduler_runs_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_runs_status_idx",
+        "n|idx|public.junior_scheduler_runs_status_idx",
+        "e|idx|public.junior_scheduler_runs_status_idx",
+        "n|rel|public.junior_scheduler_runs_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_runs",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_runs.status",
+        "n|col|public.junior_scheduler_runs.scheduled_for_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_tasks",
+        "junior_scheduler_tasks_creator_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_tasks_creator_idx",
+        "n|idx|public.junior_scheduler_tasks_creator_idx",
+        "e|idx|public.junior_scheduler_tasks_creator_idx",
+        "n|rel|public.junior_scheduler_tasks_creator_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_tasks",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_tasks.team_id",
+        "n|col|public.junior_scheduler_tasks.creator_slack_user_id",
+        "n|col|public.junior_scheduler_tasks.created_at_ms",
+        "n|col|public.junior_scheduler_tasks.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_tasks",
+        "junior_scheduler_tasks_creator_identity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_tasks_creator_identity_idx",
+        "n|idx|public.junior_scheduler_tasks_creator_identity_idx",
+        "e|idx|public.junior_scheduler_tasks_creator_identity_idx",
+        "n|rel|public.junior_scheduler_tasks_creator_identity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_tasks",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_tasks.creator_identity_id",
+        "n|col|public.junior_scheduler_tasks.created_at_ms",
+        "n|col|public.junior_scheduler_tasks.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_tasks",
+        "junior_scheduler_tasks_team_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_tasks_team_status_idx",
+        "n|idx|public.junior_scheduler_tasks_team_status_idx",
+        "e|idx|public.junior_scheduler_tasks_team_status_idx",
+        "n|rel|public.junior_scheduler_tasks_team_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_tasks",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_tasks.team_id",
+        "n|col|public.junior_scheduler_tasks.created_at_ms",
+        "n|col|public.junior_scheduler_tasks.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_tasks",
+        "junior_scheduler_tasks_run_now_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_tasks_run_now_due_idx",
+        "n|idx|public.junior_scheduler_tasks_run_now_due_idx",
+        "e|idx|public.junior_scheduler_tasks_run_now_due_idx",
+        "n|rel|public.junior_scheduler_tasks_run_now_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_tasks",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_tasks.run_now_at_ms",
+        "n|col|public.junior_scheduler_tasks.created_at_ms",
+        "n|col|public.junior_scheduler_tasks.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_scheduler_tasks",
+        "junior_scheduler_tasks_next_run_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_scheduler_tasks_next_run_due_idx",
+        "n|idx|public.junior_scheduler_tasks_next_run_due_idx",
+        "e|idx|public.junior_scheduler_tasks_next_run_due_idx",
+        "n|rel|public.junior_scheduler_tasks_next_run_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_scheduler_tasks",
+        "n|sch|public",
+        "n|col|public.junior_scheduler_tasks.next_run_at_ms",
+        "n|col|public.junior_scheduler_tasks.created_at_ms",
+        "n|col|public.junior_scheduler_tasks.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_scheduler_runs",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_scheduler_tasks",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "task_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "scheduled_for_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "record",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "team_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "creator_slack_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "creator_identity_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "next_run_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "run_now_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "record",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "junior_scheduler_runs_task_status_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "task_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scheduled_for_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "junior_scheduler_runs_status_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scheduled_for_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_creator_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "creator_slack_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_scheduler_tasks\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_creator_identity_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "creator_identity_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_scheduler_tasks\".\"status\" <> 'deleted' AND \"junior_scheduler_tasks\".\"creator_identity_id\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_team_status_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_scheduler_tasks\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_run_now_due_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "run_now_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_scheduler_tasks\".\"status\" = 'active' AND \"junior_scheduler_tasks\".\"run_now_at_ms\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_next_run_due_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "next_run_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_scheduler_tasks\".\"status\" = 'active' AND \"junior_scheduler_tasks\".\"next_run_at_ms\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_runs",
+        "name": "junior_scheduler_runs_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "junior_scheduler_tasks_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

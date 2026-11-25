@@ -18,7 +18,8 @@ import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { ConversationActivityChart } from "./ConversationActivityChart";
 import { GuardianActivity } from "./GuardianActivity";
-import { OutcomeCostChart } from "./OutcomeCostChart";
+import { MergedChangeCostChart } from "./MergedChangeCostChart";
+import { PersonSpendCharts } from "./PersonSpendCharts";
 
 function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
@@ -36,7 +37,7 @@ function periodTotals(days: ConversationMetricDay[]) {
 }
 
 // Longer series in the same bucket size, so rolling windows start full.
-function outcomeCostHistory(
+function mergedChangeCostHistory(
   stats: ConversationStatsReport,
   bucketUnit: TimeRangeBucketUnit,
   days: ConversationMetricDay[],
@@ -118,10 +119,14 @@ export function SystemActivity(props: {
           value={formatCostSummary({ total: totals.costUsd })}
         />
       </div>
-      <OutcomeCostChart
+      <MergedChangeCostChart
         bucketUnit={bucketUnit}
         days={days}
-        history={outcomeCostHistory(props.stats, bucketUnit, days)}
+        history={mergedChangeCostHistory(props.stats, bucketUnit, days)}
+      />
+      <PersonSpendCharts
+        days={props.stats.personSpendDays}
+        range={props.range}
       />
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
@@ -34,6 +35,8 @@ const chartConfig = Object.fromEntries(
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
+  /** Controls beside the legend, such as the range picker. */
+  actions?: ReactNode;
   bucketUnit?: TimeRangeBucketUnit;
 
   days: CodeActivityDay[];
@@ -63,7 +66,10 @@ export function CodeActivityChart(props: {
             Code changes created, merged, and closed each day.
           </p>
         </div>
-        <ChartLegend ariaLabel="Code change legend" items={series} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ChartLegend ariaLabel="Code change legend" items={series} />
+          {props.actions}
+        </div>
       </div>
 
       <div className="relative mt-5 overflow-hidden">

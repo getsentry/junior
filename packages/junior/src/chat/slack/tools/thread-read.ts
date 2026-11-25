@@ -24,7 +24,7 @@ import {
   extractAttachmentFiles,
   renderAttachmentText,
 } from "@/chat/slack/message/attachments";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";
@@ -177,7 +177,9 @@ export function createSlackThreadReadTool(
       if (url) {
         const parsed = parseSlackMessageReference(url);
         if (!parsed.ok) {
-          throw new ToolInputError(parsed.error);
+          throw new ToolInputError(
+            `${parsed.error}. Set url to a Slack message link, such as https://example.slack.com/archives/C123/p1712345678123456, or set channel_id and slack_ts.`,
+          );
         }
         channelId = parsed.reference.channelId;
         messageTs = parsed.reference.messageTs;
@@ -257,25 +259,30 @@ export function createSlackThreadReadTool(
         if (error instanceof SlackActionError) {
           if (error.code === "not_in_channel") {
             throw new ToolInputError(
-              "Could not read this Slack thread because the bot is not in the channel.",
+              "Could not read this Slack thread because the bot is not in the channel. Ask someone to add the bot to the channel.",
               { cause: error },
             );
           }
           if (error.code === "missing_scope") {
             throw new ToolInputError(
-              "Could not read this Slack thread because this installation is missing history scopes.",
+              "Could not read this Slack thread because this installation is missing history scopes. No change to the call can fix this.",
               { cause: error },
             );
           }
-          throw new ToolInputError("Could not read this Slack thread.", {
-            cause: error,
-          });
+          throw new ToolInputError(
+            "Could not read this Slack thread. Check url, or channel_id and slack_ts, or continue without it.",
+            {
+              cause: error,
+            },
+          );
         }
         throw error;
       }
 
       if (replies.length === 0) {
-        throw new ToolInputError("No messages found for this thread.");
+        throw new ToolInputError(
+          "No messages found for this thread. Check url, or channel_id and slack_ts.",
+        );
       }
 
       const root = replies[0];

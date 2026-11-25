@@ -31,16 +31,25 @@ export const conversationMetricDaySchema = z
     inputTokens: z.number().optional(),
     /** Conversation cost split to `mergedCodeChanges`. */
     mergedCodeChangeCostUsd: z.number().optional(),
-    /** Code changes merged in this bucket. They are also `outcomes`. */
+    /** Code changes merged in this bucket. */
     mergedCodeChanges: z.number().optional(),
-    /** Conversation cost of `outcomes`. */
-    outcomeCostUsd: z.number().optional(),
-    /**
-     * Merged code changes, plus root Conversations without code changes
-     * whose latest Brief is `done` or `answered`.
-     */
-    outcomes: z.number().optional(),
     tokens: z.number().optional(),
+  })
+  .strict();
+
+/**
+ * Model spend of one UTC day, split by the Turn Actor. `people` counts the
+ * verified people with a Turn that day.
+ */
+export const personSpendDaySchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    /** Median spend of one active person. Absent on a day with no person. */
+    medianPersonCostUsd: z.number().optional(),
+    people: z.number(),
+    personCostUsd: z.number(),
+    /** Spend of Turns whose Actor is not a verified person. */
+    unattributedCostUsd: z.number(),
   })
   .strict();
 
@@ -75,6 +84,7 @@ export const conversationStatsReportSchema = z
     metricDays: z.array(conversationMetricDaySchema),
     metricHours: z.array(conversationMetricDaySchema).optional(),
     metricSixHours: z.array(conversationMetricDaySchema).optional(),
+    personSpendDays: z.array(personSpendDaySchema),
     source: z.literal("conversation_index"),
     windowEnd: z.string(),
     windowStart: z.string(),
@@ -83,6 +93,7 @@ export const conversationStatsReportSchema = z
 
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;
 export type ConversationMetricDay = z.infer<typeof conversationMetricDaySchema>;
+export type PersonSpendDay = z.infer<typeof personSpendDaySchema>;
 export type GuardianMetricDay = z.infer<typeof guardianMetricDaySchema>;
 export type GuardianStats = z.infer<typeof guardianStatsSchema>;
 export type ConversationStatsReport = z.infer<

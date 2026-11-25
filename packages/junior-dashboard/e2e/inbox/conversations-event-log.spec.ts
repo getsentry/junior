@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
+import { waitForHighlightedCode } from "../highlighted-code";
 import { expect, test } from "../test";
 import { desktop, mobile, screenshot } from "../screenshot";
 import {
@@ -8,9 +9,9 @@ import {
   routeConversationVersion,
   withRequestedMailbox,
 } from "../harness";
+import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
   const conversationId = "slack:CQA123:1770003600.000200";
@@ -64,6 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       })
       .first();
+    // Opening the tool rows is reading them, so the page saves the read
+    // position.
+    const readSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname.endsWith("/read-position"),
+    );
     await activity
       .locator(':scope > [data-slot="collapsible-trigger"]')
       .click();
@@ -79,14 +87,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
     // Search must still reveal a result that the reader has closed.
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
     await page
       .getByPlaceholder("Search transcript…")
       .fill("payments-v42 deploy notes");
     await expect(toolResult).toBeVisible();
     await page.getByPlaceholder("Search transcript…").fill("");
     await expect(toolResult).toBeHidden();
+    await readSaved;
   });
 
   test("inspects all reporting events and steps through event details", async ({
@@ -94,6 +104,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     const report = await openConversation(page, dashboard.baseURL);
+    // Highlighted code renders after the transcript opens, and the transcript
+    // pins to its bottom again. A switch before that keeps the log pinned to
+    // its bottom, a row below the first event.
+    await waitForHighlightedCode(
+      page.getByLabel("Conversation transcript", { exact: true }),
+    );
     await chooseTranscriptView(page, "Event log");
     const log = page.getByRole("region", { name: "Conversation event log" });
     const entries = log.getByRole("button", { name: /^Event \d+:/ });
@@ -177,6 +193,32 @@ test.describe("new UI", { tag: "@new" }, () => {
     await entry.click();
     await expect(conversationDetails).toBeHidden();
     await screenshot(page, "conversation-event-details");
+
+    // A transcript search does not filter the log, so the step buttons visit
+    // every row that it shows.
+    await close.click();
+    await chooseTranscriptView(page, "Conversation");
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
+    await page
+      .getByPlaceholder("Search transcript…")
+      .fill("payments-v42 deploy notes");
+    await chooseTranscriptView(page, "Event log");
+    await expect(entries).toHaveCount(report.events.length);
+    await entries.first().click();
+    const next = panel.getByRole("button", { name: "Next event" });
+    for (const event of report.events.slice(1)) {
+      await next.click();
+      await expect(page).toHaveURL(new RegExp(`[?&]event=${event.seq}(&|$)`));
+    }
+    await expect(next).toBeDisabled();
+    const previous = panel.getByRole("button", { name: "Previous event" });
+    for (const event of report.events.slice(0, -1).reverse()) {
+      await previous.click();
+      await expect(page).toHaveURL(new RegExp(`[?&]event=${event.seq}(&|$)`));
+    }
+    await expect(previous).toBeDisabled();
   });
 
   test("switches event times between UTC and local time and copies raw JSON", async ({
@@ -338,7 +380,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const events = palette.getByRole("group").first();
     await expect(events).toHaveAccessibleName("Events");
     await expect(events.getByRole("option")).toHaveCount(1);
-    await events.getByRole("option").click();
+    await pickOption(events.getByRole("option"));
     await expect(page).toHaveURL(/[?&]event=2(&|$)/);
     await expect(
       log.getByRole("button", { name: "Event 2: turn_context", exact: true }),
@@ -349,7 +391,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(page).not.toHaveURL(/[?&]event=/);
     // The title in the Event log breadcrumb leads back to the Conversation.
-    await page.getByTitle("Back to conversation").click();
+    await page.getByTitle("Back to conversation", { exact: true }).click();
     await expect(log).toBeHidden();
     await expect(
       page.getByText(
@@ -639,10 +681,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await palette.getByRole("combobox").fill("row 1234.");
-    await palette
-      .getByRole("group", { name: "Events" })
-      .getByRole("option")
-      .click();
+    await pickOption(
+      palette.getByRole("group", { name: "Events" }).getByRole("option"),
+    );
     await expect(entry(1234)).toBeInViewport();
     await expect(entry(1234)).toHaveAttribute("aria-expanded", "true");
   });
@@ -781,7 +822,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   for (const view of [desktop, mobile]) {
-    test(`docks a tall question above the message box (${view.name})`, async ({
+    test(`shows a tall question in the transcript, above the message box (${view.name})`, async ({
       page,
       dashboard,
     }) => {
@@ -794,7 +835,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
       ).json();
       const item = {
-        addedByConversationId: conversationId,
+        owner: { id: conversationId, kind: "conversation" },
         rootConversationId: conversationId,
         assignedToEveryone: false,
         assignees: [
@@ -806,6 +847,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
         body: "The rollout plan has three open decisions.",
         canAct: true,
+        canAnswer: true,
         canTake: false,
         conversationIds: [conversationId],
         createdAt: report.startedAt,
@@ -833,15 +875,15 @@ test.describe("new UI", { tag: "@new" }, () => {
         dismissed
           ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
           : item;
-      await page.route(`**/api/review-items/${item.id}`, (route) =>
+      await page.route(`**/api/inbox-items/${item.id}`, (route) =>
         route.fulfill({ json: current() }),
       );
-      await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      await page.route(`**/api/inbox-items/${item.id}/actions`, (route) => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
       // The Conversation also lists the open item above the message box.
-      await page.route(`**/api/review-items?*`, (route) =>
+      await page.route(`**/api/inbox-items?*`, (route) =>
         route.fulfill({ json: { items: dismissed ? [] : [item] } }),
       );
       report.events = [
@@ -863,7 +905,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             calls: [
               {
                 input: { kind: "action", title: item.title },
-                name: "addReviewItem",
+                name: "addInboxItem",
                 output: JSON.stringify({ item: { id: item.id } }),
                 status: "completed",
                 toolCallId: "review-1",
@@ -881,30 +923,30 @@ test.describe("new UI", { tag: "@new" }, () => {
         `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
       );
 
-      // The form scrolls inside the dock, so its title and question stay in
-      // view, and the message box and queued messages stay below it.
-      const question = page.getByRole("region", {
-        name: `Question: ${item.title}`,
-      });
+      // The question shows in its card in the transcript. Nothing docks, so
+      // the message box and the queued messages stay below the transcript.
+      const record = page.getByRole("region", { name: `Asked ${item.title}` });
+      await expect(record).toContainText("Waiting on you");
+      const question = record.getByRole("region", { name: "Question" });
+      await expect(question).toContainText(item.request.question);
       await expect(
-        question.getByRole("radiogroup", { name: "Owner" }),
+        record.getByRole("radiogroup", { name: "Owner" }),
       ).toBeAttached();
       await expect(
-        question.getByRole("heading", { name: item.title }),
-      ).toBeInViewport();
+        page.getByRole("region", { name: `Question: ${item.title}` }),
+      ).toHaveCount(0);
       const composer = page.getByLabel("Continue this conversation");
       const queue = page.getByRole("button", { name: /queued messages/ });
       await expect(composer).toBeInViewport();
       await expect(queue).toBeVisible();
-      const record = page.getByRole("region", { name: `Asked ${item.title}` });
-      await expect(record).toContainText("Waiting on you");
       await screenshot(page, "conversation-question-form", {
         view: view.name,
       });
 
-      // Esc dismisses the question, and its record says so.
-      await question.getByRole("heading", { name: item.title }).click();
-      await page.keyboard.press("Escape");
+      // Dismiss closes the question, and its record says so.
+      await record
+        .getByRole("button", { name: "Dismiss", exact: true })
+        .click();
       await expect(question).toHaveCount(0);
       await expect(record).toContainText("Dismissed");
       await screenshot(page, "conversation-question-dismissed", {
@@ -914,7 +956,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test("opens the event log from the row menu", async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
       .getByRole("link", { name: /Closed issue summary/ });

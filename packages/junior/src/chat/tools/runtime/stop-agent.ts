@@ -2,7 +2,7 @@ import * as z from "zod";
 import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 
 const stopAgentOutputSchema = juniorToolOutputSchema.extend({
@@ -32,7 +32,7 @@ export const stopAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          "Child conversation ID from spawnAgent or listAgents to stop",
+          "Child conversation ID from startAgent or listAgents to stop",
         ),
     })
     .strict(),

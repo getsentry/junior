@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { onTestFinished } from "vitest";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -25,9 +25,9 @@ import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import {
-  insertReviewItem as insertStoredReviewItem,
-  type ReviewItemContent,
-} from "@/chat/review-items/store";
+  insertInboxItem as insertStoredInboxItem,
+  type InboxItemContent,
+} from "@/chat/inbox-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -267,28 +267,28 @@ export async function insertEventAutomation(args: {
 }
 
 /**
- * Store an open Review item that an earlier run added in a public thread of
+ * Store an open Inbox item that an earlier run added in a public thread of
  * `destination`. It is assigned to the Slack person `assignee`. With
  * `automationId`, later runs of that Automation can see and change it.
  */
-export async function insertReviewItem(args: {
+export async function insertInboxItem(args: {
   assignee?: SlackAuthor;
   automationId?: string;
   body: string;
   dedupeKey: string;
   destination: SlackChannel;
-  kind: ReviewItemContent["kind"];
-  request?: ReviewItemContent["request"];
-  subject?: ReviewItemContent["subject"];
+  kind: InboxItemContent["kind"];
+  request?: InboxItemContent["request"];
+  subject?: InboxItemContent["subject"];
   title: string;
 }): Promise<{ id: string }> {
   const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
   if (!identity.userId) {
-    throw new Error("insertReviewItem() needs an assignee with a User");
+    throw new Error("insertInboxItem() needs an assignee with a User");
   }
   const conversationId = await insertCreationThread(args.destination);
-  const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+  const item = await insertStoredInboxItem(getDb(), {
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [identity.userId],
     body: args.body,
@@ -303,35 +303,35 @@ export async function insertReviewItem(args: {
     ...(args.request ? { request: args.request } : undefined),
     ...(args.subject ? { subject: args.subject } : undefined),
   });
-  if (!item) throw new Error(`Review item ${args.dedupeKey} is already open`);
+  if (!item) throw new Error(`Inbox item ${args.dedupeKey} is already open`);
   return { id: item.id };
 }
 
 /**
- * Store an open Review item that an earlier Turn of a web Conversation
+ * Store an open Inbox item that an earlier Turn of a web Conversation
  * added. It is assigned to the dashboard person `viewerEmail`.
  */
-export async function insertWebReviewItem(args: {
+export async function insertWebInboxItem(args: {
   conversationId: string;
   item: InboxItem;
   viewerEmail: string;
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
   if (!user) throw new Error(`No User for ${args.viewerEmail}`);
-  const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: args.conversationId,
+  const item = await insertStoredInboxItem(getDb(), {
+    owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [user.id],
     body: args.item.body,
     conversationIds: [args.conversationId],
-    dedupeKey: `ask:${fixtureId("review-item", 20)}`,
+    dedupeKey: `ask:${fixtureId("inbox-item", 20)}`,
     kind: args.item.request ? "action" : "notice",
     nowMs: Date.now() - 60_000,
     title: args.item.title,
     visibility: "public",
     ...(args.item.request ? { request: args.item.request } : undefined),
   });
-  if (!item) throw new Error(`Review item ${args.item.title} is already open`);
+  if (!item) throw new Error(`Inbox item ${args.item.title} is already open`);
   return { id: item.id };
 }
 

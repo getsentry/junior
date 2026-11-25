@@ -3,38 +3,31 @@ import test from "node:test";
 import zlib from "node:zlib";
 import {
   compareBundleSizes,
-  measureShells,
+  measureFirstLoad,
 } from "./check-dashboard-bundle-size.mjs";
 
-test("sums the gzip size of each shell's entry and static imports", () => {
+test("sums the gzip size of the entry and its static imports", () => {
   const files = {
-    "classic-a.js": Buffer.from("classic"),
-    "inbox-b.js": Buffer.from("inbox"),
+    "dashboard-a.js": Buffer.from("dashboard"),
     "chunks/shared-c.js": Buffer.from("shared ".repeat(50)),
   };
   const gzip = (file) => zlib.gzipSync(files[file]).length;
-  const sizes = measureShells(
-    {
-      shells: {
-        classic: { entry: "classic-a.js", imports: ["chunks/shared-c.js"] },
-        inbox: { entry: "inbox-b.js", imports: [] },
-      },
-    },
+  const sizes = measureFirstLoad(
+    { entry: "dashboard-a.js", imports: ["chunks/shared-c.js"] },
     (file) => files[file],
   );
   assert.deepEqual(sizes, {
-    classic: gzip("classic-a.js") + gzip("chunks/shared-c.js"),
-    inbox: gzip("inbox-b.js"),
+    dashboard: gzip("dashboard-a.js") + gzip("chunks/shared-c.js"),
   });
 });
 
-const MAIN = { classic: 100_000 };
+const MAIN = { dashboard: 100_000 };
 
 function compare(baseline, measured, base = MAIN) {
   return compareBundleSizes({
     base,
-    baseline: { classic: baseline },
-    sizes: { classic: measured },
+    baseline: { dashboard: baseline },
+    sizes: { dashboard: measured },
   });
 }
 
@@ -43,14 +36,14 @@ test("passes a build within the noise tolerance of the baseline", () => {
   assert.deepEqual(errors, []);
   assert.deepEqual(hints, []);
   assert.deepEqual(lines, [
-    "classic: main 97.7 KB -> baseline 97.7 KB (+0.0 KB, +0.00%), measured 98.1 KB gzip (+0.5 KB, +0.50% vs baseline)",
+    "dashboard: main 97.7 KB -> baseline 97.7 KB (+0.0 KB, +0.00%), measured 98.1 KB gzip (+0.5 KB, +0.50% vs baseline)",
   ]);
 });
 
 test("rejects growth that the baseline does not commit", () => {
   const { errors } = compare(100_000, 101_500);
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /^classic: 1500 B over the committed baseline\./);
+  assert.match(errors[0], /^dashboard: 1500 B over the committed baseline\./);
   assert.match(errors[0], /--update/);
 });
 
@@ -63,7 +56,7 @@ test("rejects a baseline that grows more than 2% over main", () => {
   assert.equal(errors.length, 1);
   assert.match(
     errors[0],
-    /^classic: the baseline grew 2\.00% over origin\/main, over the 2% limit/,
+    /^dashboard: the baseline grew 2\.00% over origin\/main, over the 2% limit/,
   );
 });
 
@@ -71,17 +64,17 @@ test("passes a shrink and hints to tighten the baseline", () => {
   const { hints, errors } = compare(100_000, 90_000);
   assert.deepEqual(errors, []);
   assert.equal(hints.length, 1);
-  assert.match(hints[0], /^classic: 10000 B under the committed baseline\./);
+  assert.match(hints[0], /^dashboard: 10000 B under the committed baseline\./);
 });
 
 test("rejects a shell with no baseline, and skips main when it has none", () => {
   const { lines, errors } = compareBundleSizes({
     base: {},
-    baseline: { classic: 100_000 },
-    sizes: { classic: 100_000, inbox: 1_000 },
+    baseline: { dashboard: 100_000 },
+    sizes: { dashboard: 100_000, inbox: 1_000 },
   });
   assert.deepEqual(errors, [
-    "inbox: no baseline entry. Run `node scripts/check-dashboard-bundle-size.mjs --update`.",
+    "inbox: no baseline entry. Run `pnpm dashboard-bundle-size:check --update`.",
   ]);
-  assert.match(lines[0], /^classic: measured 97\.7 KB gzip/);
+  assert.match(lines[0], /^dashboard: measured 97\.7 KB gzip/);
 });

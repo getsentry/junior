@@ -18,7 +18,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter } from "../conversation-footer.js";
 import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
@@ -146,11 +146,11 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
 
 /**
  * Next step after an issue is created. Whether Junior does the work is the
- * requester's decision, so the note asks for a Review item. Only a Turn that
+ * requester's decision, so the note asks for an Inbox item. Only a Turn that
  * a person started gets it: no one can answer the item in other runs.
  */
 function implementIssueNote(issue: string): string {
-  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use addReviewItem: question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now", dedupe_key "github-issue-implement:${issue}". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with spawnAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
+  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use addInboxItem: question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now", dedupe_key "github-issue-implement:${issue}". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with startAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
 }
 
 async function gitHubIssueToolResult(
@@ -195,15 +195,29 @@ function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
   try {
     return Value.Parse(createIssueInputSchema, input);
   } catch (error) {
-    throw new PluginToolInputError("Invalid GitHub createIssue input.", {
-      cause: error,
-    });
+    throw new PluginToolInputError(
+      "Invalid GitHub createIssue input. Check the arguments against the tool schema and call it again.",
+      {
+        cause: error,
+      },
+    );
   }
 }
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} must not be empty. Set it and call the tool again.`,
+    );
+  }
+  return value.trim();
+}
+
+function runtimeId(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }
@@ -312,8 +326,8 @@ export const gitHubIssueTool = definePluginTool({
     ctx: ToolRegistrationHookContext,
   ) {
     const parsedInput = parseCreateIssueInput(input);
-    const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
-    const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+    const conversationId = runtimeId(ctx.conversationId, "conversationId");
+    const toolCallId = runtimeId(options?.toolCallId, "toolCallId");
     const key = `createIssue:${conversationId}:${toolCallId}`;
     const attempt = await ctx.state.withLock(
       `${key}:lock`,

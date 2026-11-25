@@ -143,6 +143,8 @@ export async function expectSqlBudget<T>(
 /** A plan node of `EXPLAIN (FORMAT JSON)`, with the fields this file reads. */
 type PlanNode = {
   "Node Type": string;
+  "Total Cost": number;
+  "Plan Rows": number;
   "Relation Name"?: string;
   "Index Cond"?: string;
   "Recheck Cond"?: string;
@@ -176,11 +178,47 @@ function isFullScan(node: PlanNode): boolean {
 // Only these statements have a plan. `BEGIN`, `SET`, and the like do not.
 const EXPLAINABLE = /^\s*(?:select|with|insert|update|delete)\b/i;
 
+/**
+ * Explain each statement that has a plan, with `EXPLAIN (FORMAT JSON)` and
+ * the bind parameters that it sent. That is the plan that Postgres made for
+ * the request, because `pg` plans each unnamed statement with its values.
+ * `EXPLAIN` does not run the statement, so writes are safe to explain. The
+ * explains run in one transaction on `getSqlExecutor()`, the
+ * product-configured database, after `setup` when it is given.
+ */
+async function explainPlans(
+  statements: readonly SqlStatement[],
+  setup?: string,
+): Promise<{ text: string; plan: PlanNode }[]> {
+  const explainable = statements.filter((statement) =>
+    EXPLAINABLE.test(statement.text),
+  );
+  expect(explainable.length, "no SQL statement was explained").toBeGreaterThan(
+    0,
+  );
+  const executor = getSqlExecutor();
+  return executor.transaction(async () => {
+    if (setup) await executor.execute(setup);
+    const plans: { text: string; plan: PlanNode }[] = [];
+    for (const statement of explainable) {
+      const [row] = await executor.query<{
+        "QUERY PLAN": [{ Plan: PlanNode }];
+      }>(`EXPLAIN (FORMAT JSON) ${statement.text}`, statement.params);
+      plans.push({ text: statement.text, plan: row!["QUERY PLAN"][0].Plan });
+    }
+    return plans;
+  });
+}
+
 // Tables that grow with use, so a full read of one gets slower over time.
 const BIG_TABLES = [
+  "junior_automations",
   "junior_code_changes",
-  "junior_conversation_briefs",
   "junior_conversation_metrics",
+  "junior_inbox_items",
+  "junior_memory_embeddings",
+  "junior_memory_memories",
+  "junior_todos",
 ];
 
 /**
@@ -197,17 +235,11 @@ type FullScanAllowance = {
  * Assert that the statements of `call` read no big table in full. A big table
  * grows with use, such as `junior_conversation_metrics`.
  *
- * Each statement is explained after `call` ends, with `EXPLAIN (FORMAT JSON)`
- * and the bind parameters that it sent. That is the plan that Postgres made
- * for the request, because `pg` plans each unnamed statement with its values.
- * `EXPLAIN` does not run the statement, so writes are safe to explain.
- *
- * Postgres reads a small test table in full even when an index fits. So the
- * statements are explained in one transaction with `SET LOCAL enable_seqscan
- * = off`, and a full scan is left only when no index condition can serve the
- * statement. A join that probes an index for each outer row passes, however
- * many rows it reads. Explains run on `getSqlExecutor()`, the
- * product-configured database.
+ * Each statement is explained after `call` ends. Postgres reads a small test
+ * table in full even when an index fits. So the statements are explained with
+ * `SET LOCAL enable_seqscan = off`, and a full scan is left only when no index
+ * condition can serve the statement. A join that probes an index for each
+ * outer row passes, however many rows it reads.
  *
  * `allowed` names known full scans, keyed by name. The assertion also fails
  * when an entry matches no full scan, so the fix must remove it.
@@ -217,29 +249,14 @@ export async function expectNoFullScan<T>(
   allowed: Readonly<Record<string, FullScanAllowance>> = {},
 ): Promise<T> {
   const { result, statements } = await measureSql(call);
-  const explainable = statements.filter((statement) =>
-    EXPLAINABLE.test(statement.text),
+  const plans = await explainPlans(
+    statements,
+    "SET LOCAL enable_seqscan = off",
   );
-  expect(explainable.length, "no SQL statement was explained").toBeGreaterThan(
-    0,
-  );
-  const executor = getSqlExecutor();
-  const plans = await executor.transaction(async () => {
-    await executor.execute("SET LOCAL enable_seqscan = off");
-    const rows: PlanNode[] = [];
-    for (const statement of explainable) {
-      const [row] = await executor.query<{
-        "QUERY PLAN": [{ Plan: PlanNode }];
-      }>(`EXPLAIN (FORMAT JSON) ${statement.text}`, statement.params);
-      rows.push(row!["QUERY PLAN"][0].Plan);
-    }
-    return rows;
-  });
   const allowances = Object.entries(allowed);
   const used = new Set<string>();
   const failures: string[] = [];
-  for (const [index, plan] of plans.entries()) {
-    const text = explainable[index]!.text;
+  for (const [index, { text, plan }] of plans.entries()) {
     for (const node of planNodes(plan)) {
       const table = node["Relation Name"];
       if (!table || !BIG_TABLES.includes(table) || !isFullScan(node)) continue;
@@ -258,6 +275,46 @@ export async function expectNoFullScan<T>(
   for (const [name] of allowances) {
     if (!used.has(name)) {
       failures.push(`allowed full scan "${name}" matches nothing; remove it`);
+    }
+  }
+  if (failures.length > 0) throw new Error(failures.join("\n"));
+  return result;
+}
+
+/**
+ * Run `call` and return every plan node of each statement that it sent, in
+ * statement order. Use it to assert one planner estimate, such as the rows
+ * that Postgres expects from a node.
+ */
+export async function explainNodes(call: () => unknown): Promise<PlanNode[][]> {
+  const { statements } = await measureSql(call);
+  const plans = await explainPlans(statements);
+  return plans.map(({ plan }) => [...planNodes(plan)]);
+}
+
+/**
+ * Assert that no statement of `call` has an estimated total cost over
+ * `maxCost`. A statement shape that makes Postgres do work for each row of a
+ * list, such as one correlated subquery for each ID, raises its cost before
+ * the test data is big enough to make it slow. A high cost also turns on JIT
+ * compilation (`jit_above_cost`), which can take longer than the statement.
+ *
+ * Each statement is explained after `call` ends, with the default planner
+ * settings. The cost depends on the seeded rows, so set `maxCost` with
+ * headroom over the measured cost. Do not raise it to pass.
+ */
+export async function expectPlanCost<T>(
+  call: () => T | Promise<T>,
+  maxCost: number,
+): Promise<T> {
+  const { result, statements } = await measureSql(call);
+  const plans = await explainPlans(statements);
+  const failures: string[] = [];
+  for (const [index, { text, plan }] of plans.entries()) {
+    if (plan["Total Cost"] > maxCost) {
+      failures.push(
+        `statement ${index} costs ${plan["Total Cost"]}, over ${maxCost}: ${text}`,
+      );
     }
   }
   if (failures.length > 0) throw new Error(failures.join("\n"));

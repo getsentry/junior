@@ -33,7 +33,7 @@
    */
   /*
    * Header row height (`h-header`) for every column: the pane's logo row, page
-   * links, the conversation title and Brief, and side panels. Each column
+   * links, the conversation title and summary, and side panels. Each column
    * draws a 1px rule under the row, so the rules meet on one line.
    */
   --spacing-header: 3.5rem;
@@ -308,7 +308,7 @@
    height. */
 @custom-variant tall (@media (min-height: 62.5rem));
 
-/* The new UI's nav pane footer: room for the spend meter on two rows. */
+/* The nav pane footer: room for the spend meter on two rows. */
 @custom-variant pane-tall (@media (min-height: 45rem));
 
 /* Desktop and mobile layouts. Width alone treats landscape phones as
@@ -330,6 +330,26 @@
     -webkit-tap-highlight-color: transparent;
     /* No font inflation in landscape on phones. */
     -webkit-text-size-adjust: 100%;
+  }
+
+  /*
+   * Reduced motion stops every CSS transition, animation, and smooth
+   * scroll, so a component cannot forget `motion-reduce:`. Transitions go
+   * away: a short duration on every element would turn each style change
+   * into a transition, and code that measures right after a change would
+   * read the old size. Animations only get short, so `animationend` still
+   * fires for UI that waits for it. Important declarations in this base
+   * layer win over utilities and inline styles.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-property: none !important;
+    }
   }
 
   /* Controls never double-tap zoom, so taps fire without the zoom wait. */
@@ -424,25 +444,20 @@
   }
 }
 
-/* The watching eye closes for a moment once in each cycle. */
-@keyframes junior-watch-blink {
-  0%,
-  97%,
-  100% {
-    transform: scaleY(1);
-  }
-
-  98.5% {
-    transform: scaleY(0.1);
-  }
-}
-
 /* Keep long mobile feeds cheap while preserving their full scroll range. */
 .mobile-conversation-row {
   @variant max-md {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
   }
+}
+
+/*
+ * Skill references in the composer draft, in the color of a sent
+ * `SkillLink`. A highlight cannot set the font.
+ */
+::highlight(skill-reference) {
+  color: var(--color-dashboard-accent-text);
 }
 
 /* The Quick question selection. Utilities cannot style a highlight. */

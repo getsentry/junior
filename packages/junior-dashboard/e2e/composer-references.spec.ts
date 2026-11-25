@@ -1,6 +1,10 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
+import { pasteText } from "./paste-text";
+import { pickOption } from "./pick-option";
+import { mockSearchRows } from "./search-fixture";
 
 // A Thread the viewer takes part in. It has a nested Thread and two files.
 const THREAD_ID = "junior:internal:dashboard-qa:thread";
@@ -18,21 +22,19 @@ async function openThread(page: Page, baseURL: string) {
   return composer;
 }
 
-// Messages and linked work that the page sends.
-async function recordWrites(page: Page) {
+// Messages and linked work that the page sends, once each response is in.
+function recordWrites(page: Page) {
   const sent: string[] = [];
   const linked: string[] = [];
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    if (route.request().method() === "POST") {
-      sent.push(route.request().postDataJSON().message);
+  page.on("requestfinished", (request) => {
+    if (request.method() !== "POST") return;
+    const { pathname } = new URL(request.url());
+    if (pathname.endsWith("/messages")) {
+      sent.push(request.postDataJSON().message);
     }
-    await route.fallback();
-  });
-  await page.route("**/api/conversations/*/annotations", async (route) => {
-    if (route.request().method() === "POST") {
-      linked.push(route.request().postDataJSON().url);
+    if (pathname.endsWith("/annotations")) {
+      linked.push(request.postDataJSON().url);
     }
-    await route.fallback();
   });
   return { linked, sent };
 }
@@ -45,7 +47,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   page,
   dashboard,
 }) => {
-  const { linked, sent } = await recordWrites(page);
+  const { linked, sent } = recordWrites(page);
   const composer = await openThread(page, dashboard.baseURL);
   const mentions = page.getByRole("listbox", { name: "Mentions" });
 
@@ -83,7 +85,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   const files = mentions.getByRole("group", { name: "Files" });
   await expect(files.getByRole("option")).toHaveText([/pinned-rows\.txt/]);
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
-  await files.getByRole("option").click();
+  await pickOption(files.getByRole("option"));
   await expect(composer.locator("[data-reference='file']")).toHaveText(
     "pinned-rows.txt",
   );
@@ -94,11 +96,19 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     /Investigate checkout latency/,
   );
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
+  const nested = conversationUrl(dashboard.baseURL, NESTED_THREAD_ID);
+  // The sent message reads the cards of its links.
+  const cardRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/objects" &&
+      url.searchParams.getAll("url").includes(checkout)
+    );
+  });
   await composer.press("Enter");
   await composer.press("Enter");
 
-  const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
-  const nested = conversationUrl(dashboard.baseURL, NESTED_THREAD_ID);
   await expect
     .poll(() => sent)
     .toEqual([
@@ -117,6 +127,61 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   await composer.press("Enter");
   await expect.poll(() => sent).toHaveLength(2);
   expect(linked).toHaveLength(2);
+  // The page read the card of this link for the first message.
+  await cardRead;
+});
+
+test("@ finds memories and sends each as a labeled link to its page", async ({
+  page,
+  dashboard,
+}) => {
+  await mockSearchRows(page, {
+    memories: () => [
+      {
+        id: "memory-deploy-runbook",
+        title:
+          "Deploy runbooks live in Notion under Engineering, then Releases.\nStart with the rollback checklist.",
+      },
+      { id: "memory-pnpm", title: "Use pnpm, not npm." },
+    ],
+  });
+  const searches: URLSearchParams[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/search") searches.push(url.searchParams);
+  });
+  const { linked, sent } = recordWrites(page);
+  const composer = await openThread(page, dashboard.baseURL);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+
+  await composer.pressSequentially("Follow @runb");
+  const memories = mentions.getByRole("group", { name: "Memories" });
+  await expect(memories.getByRole("option")).toHaveText([
+    /^Deploy runbooks live in Notion/,
+  ]);
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  // Typing waits for a pause, so the menu reads each typed word at most
+  // once and never reads with no text.
+  expect(searches.map((params) => params.get("sources"))).toEqual(
+    searches.map(() => "memories"),
+  );
+  const typed = searches.map((params) => params.get("q"));
+  expect(typed.at(-1)).toBe("runb");
+  expect(new Set(typed).size).toBe(typed.length);
+  expect(typed.length).toBeLessThanOrEqual("runb".length);
+  await composer.press("Enter");
+  await expect(mentions).toBeHidden();
+  // The label is the memory text on one line.
+  const label =
+    "Deploy runbooks live in Notion under Engineering, then Releases. Start with the rollback checklist.";
+  await expect(composer).toHaveText(`Follow ${label}`);
+  await composer.press("Enter");
+
+  const memory = `${new URL(dashboard.baseURL).origin}/memories/memory-deploy-runbook`;
+  await expect.poll(() => sent).toEqual([`Follow <${memory}|${label}>`]);
+  await expect(composer).toHaveText("");
+  // A memory is not work, so the Conversation links nothing.
+  expect(linked).toEqual([]);
 });
 
 test("the active row stays put when a source above it loads", async ({
@@ -160,7 +225,7 @@ test("the active row stays put when a source above it loads", async ({
 });
 
 test("# finds pull requests and channels", async ({ page, dashboard }) => {
-  const { linked, sent } = await recordWrites(page);
+  const { linked, sent } = recordWrites(page);
   const composer = await openThread(page, dashboard.baseURL);
   const references = page.getByRole("listbox", { name: "References" });
 
@@ -184,6 +249,8 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
+  // The thread ends at seq 5 when it opens. The sent message comes after it.
+  const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
 
   await expect
@@ -192,6 +259,43 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
       `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
     ]);
   await expect.poll(() => linked).toEqual([PULL_REQUEST]);
+  await readSaved;
+});
+
+test("# inserts a pull request only once its card says whether it is a draft", async ({
+  page,
+  dashboard,
+}) => {
+  // Hold the live cards until the test lets them through.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/objects",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+  );
+  const composer = await openThread(page, dashboard.baseURL);
+  const references = page.getByRole("listbox", { name: "References" });
+  await composer.pressSequentially("See #3838");
+  const option = references
+    .getByRole("group", { name: "Pull requests" })
+    .getByRole("option", { name: /getsentry\/junior#3838/ });
+  await expect(option).toHaveAttribute("aria-selected", "true");
+  await expect(references).not.toHaveAttribute("aria-busy", "true");
+  // Without its card, the row does not know that it is a draft.
+  await composer.press("Enter");
+  await expect(references).toBeVisible();
+  const chip = composer.getByTitle("getsentry/junior#3838");
+  await expect(chip).toHaveCount(0);
+
+  release();
+  await expect(page.getByText("getsentry/junior#3838 · Draft")).toBeVisible();
+  await composer.press("Enter");
+  await expect(chip).toHaveText("junior#3838");
 });
 
 test("a draft keeps the kind of a chip inserted last", async ({
@@ -262,17 +366,7 @@ test("pasted references become chips, and other links stay text", async ({
   const composer = await openThread(page, dashboard.baseURL);
   const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
   const pasted = `<#CQA456|proj-release> <${PULL_REQUEST}|getsentry/junior#3842> <${checkout}|Investigate checkout latency> <https://example.com|docs>`;
-  await page.evaluate((text) => {
-    const data = new DataTransfer();
-    data.setData("text/plain", text);
-    document.activeElement?.dispatchEvent(
-      new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: data,
-      }),
-    );
-  }, pasted);
+  await pasteText(page, pasted);
   await expect(composer.locator("[data-reference]")).toHaveText([
     "#proj-release",
     "junior#3842",

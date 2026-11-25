@@ -1,10 +1,14 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import { openConversationProjection } from "@/chat/conversations/projection";
+import {
+  commitMessages,
+  openConversationProjection,
+} from "@/chat/conversations/projection";
+import { contextProvenance } from "@/chat/conversations/provenance";
+import { getSqlExecutor } from "@/chat/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { AgentInvocation } from "./types";
 
 /** Instructions that a fork child reads with its first task. */
 export const FORK_INSTRUCTIONS =
@@ -18,17 +22,15 @@ export const FORK_INSTRUCTIONS =
  */
 function forkHistoryFrom(
   messages: readonly PiMessage[],
-  parentToolCallId: string | undefined,
+  parentToolCallId: string,
 ): PiMessage[] {
-  const spawnIndex = parentToolCallId
-    ? messages.findIndex(
-        (message) =>
-          message.role === "assistant" &&
-          message.content.some(
-            (part) => part.type === "toolCall" && part.id === parentToolCallId,
-          ),
-      )
-    : -1;
+  const spawnIndex = messages.findIndex(
+    (message) =>
+      message.role === "assistant" &&
+      message.content.some(
+        (part) => part.type === "toolCall" && part.id === parentToolCallId,
+      ),
+  );
   const before = spawnIndex >= 0 ? messages.slice(0, spawnIndex) : messages;
   const pending = new Set<string>();
   let end = 0;
@@ -46,56 +48,103 @@ function forkHistoryFrom(
 }
 
 /**
- * Load the start history of a fork child from its parent Conversation. The
- * child commits it as its own history in its first checkpoint, so later
- * agent invocations of the child read it from the child Conversation.
+ * Load the start history of a fork child from its parent Conversation.
  */
-export async function loadForkHistory(
-  invocation: Pick<
-    AgentInvocation,
-    "parentConversationId" | "parentToolCallId"
-  >,
-): Promise<PiMessage[]> {
+async function loadForkHistory(fork: {
+  parentConversationId: string;
+  parentToolCallId: string;
+}): Promise<PiMessage[]> {
   const parent = await openConversationProjection({
-    conversationId: invocation.parentConversationId,
+    conversationId: fork.parentConversationId,
   });
-  return forkHistoryFrom(parent.messages, invocation.parentToolCallId);
+  return forkHistoryFrom(parent.messages, fork.parentToolCallId);
 }
 
-// The child commits that start history in its first Turn, with the parent's
-// timestamps. So it comes after the first `turn_started` but is older than
-// it. A Turn's own agent history cannot be older than the Turn. The parent
-// Conversation already shows and counts the inherited history.
+async function hasTurnStarted(conversationId: string): Promise<boolean> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "turn_started"),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Commit the start history of a fork child before its first Turn starts, so
+ * the history is below the Turn start. A child that already has agent
+ * history, such as on a retry, commits nothing. A child whose Turn already
+ * started commits nothing too: the history would be Turn messages, and a
+ * parent `noReply` or `reportBlocked` in it would read as the Turn's own.
+ * Only a worker that committed fork history after the Turn start leaves such
+ * a child.
+ */
+export async function commitForkHistory(args: {
+  childConversationId: string;
+  parentConversationId: string;
+  parentToolCallId: string;
+}): Promise<void> {
+  const child = await openConversationProjection({
+    conversationId: args.childConversationId,
+  });
+  if (
+    child.messages.length > 0 ||
+    (await hasTurnStarted(args.childConversationId))
+  ) {
+    return;
+  }
+  const messages = await loadForkHistory(args);
+  if (messages.length === 0) {
+    return;
+  }
+  await commitMessages({
+    conversationId: args.childConversationId,
+    messages,
+    provenance: messages.map(() => contextProvenance),
+  });
+}
+
+// The child commits that start history before its first `turn_started`,
+// with the parent's timestamps. So it is older than the child's first event,
+// the input of its first Turn. The child's own agent history
+// cannot be older than that event. Children forked before this order commit
+// the history after their first `turn_started`, with the same timestamps.
+// The parent Conversation already shows and counts the inherited history.
 
 /** True for agent history that a fork child inherited from its parent. */
 export function isInheritedForkHistory(
   event: ConversationEvent,
-  firstTurnStart: ConversationEvent | undefined,
+  firstEvent: ConversationEvent | undefined,
 ): boolean {
   return (
-    firstTurnStart !== undefined &&
-    event.seq > firstTurnStart.seq &&
-    event.createdAtMs < firstTurnStart.createdAtMs &&
+    firstEvent !== undefined &&
+    event.seq > firstEvent.seq &&
+    event.createdAtMs < firstEvent.createdAtMs &&
     (event.data.type === "assistant_message" ||
       event.data.type === "tool_result")
   );
 }
 
-const firstTurn = alias(juniorConversationEvents, "first_turn");
+const firstRow = alias(juniorConversationEvents, "first_event");
 
 /**
  * SQL filter for event rows that a fork child did not inherit from its
  * parent. Usage reports use it, so inherited model calls count only in the
- * parent.
+ * parent. It reads only a lower seq, the Conversation's first event, so a
+ * counted row never changes whether it counts.
  */
 export function notInheritedByForkChild(): SQL {
   return sql`not coalesce(${juniorConversationEvents.createdAt} < (
-    select ${firstTurn.createdAt}
-    from ${juniorConversationEvents} as ${sql.identifier("first_turn")}
-    where ${firstTurn.conversationId} = ${juniorConversationEvents.conversationId}
-      and ${firstTurn.type} = 'turn_started'
-      and ${firstTurn.seq} < ${juniorConversationEvents.seq}
-    order by ${firstTurn.seq}
+    select ${firstRow.createdAt}
+    from ${juniorConversationEvents} as ${sql.identifier("first_event")}
+    where ${firstRow.conversationId} = ${juniorConversationEvents.conversationId}
+      and ${firstRow.seq} < ${juniorConversationEvents.seq}
+    order by ${firstRow.seq}
     limit 1
   ), false)`;
 }

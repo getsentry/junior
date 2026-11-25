@@ -1,11 +1,12 @@
 import type { Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "../harness";
+import { longPress } from "../long-press";
+import { viewAsParticipant } from "./conversationMenu";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** Hold new Conversation creates until the returned function runs. */
   async function holdCreate(page: Page): Promise<() => void> {
     let release!: () => void;
@@ -137,7 +138,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
     // A phone opens on the Inbox entries; "+" opens the composer.
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page.getByRole("button", { name: "New conversation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
 
@@ -219,6 +220,29 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
     });
 
+    test("opens the row menu on a long press of a Conversation row", async ({
+      page,
+      dashboard,
+    }) => {
+      await viewAsParticipant(page);
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+      const head = page.getByRole("link", { name: /Closed issue summary/ });
+      await expect(head).toBeVisible();
+
+      const menu = page.getByRole("menu");
+      await longPress(head, menu);
+      await screenshot(page, "conversation-row-menu", { view: "mobile" });
+
+      await menu.getByRole("menuitem", { name: "Pin", exact: true }).click();
+      await expect(menu).toHaveCount(0);
+      await expect(page).toHaveURL(
+        `${dashboard.baseURL}/inbox?view=conversations`,
+      );
+      await page.getByRole("link", { name: "Pinned", exact: true }).click();
+      await expect(head).toBeVisible();
+    });
+
     test("opens the keyboard on the composer only when asked or opened there", async ({
       page,
       dashboard,
@@ -230,7 +254,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
       // A browser back and forward is not a request to type. A direct link
       // has no origin, so Back goes to Conversations.
-      const conversationsUrl = `${dashboard.baseURL}/?view=conversations`;
+      const conversationsUrl = `${dashboard.baseURL}/inbox?view=conversations`;
       await page.getByRole("link", { name: "Back to Conversations" }).click();
       await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
@@ -263,12 +287,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await page.goto(`${dashboard.baseURL}/conversations`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     // A phone opens on the Inbox entries: the list of lists.
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
     await expect(
       entries.getByRole("link", { name: "Conversations", exact: true }),
+    ).toBeVisible();
+    await expect(
+      entries.getByRole("link", { name: "Code", exact: true }),
     ).toBeVisible();
     const navigationTrigger = page.getByRole("button", {
       name: "Open navigation",
@@ -308,9 +335,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
     const accountMenu = page.getByLabel("Account menu for Dashboard User");
+    // Code is an Inbox entry, under Conversations, not an account page.
     await expect(
       accountMenu.getByRole("link", { name: "Code", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       accountMenu.getByRole("link", { name: "System", exact: true }),
     ).toBeVisible();
@@ -347,26 +375,33 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeHidden();
     const menu = page.getByRole("button", { name: "Conversation menu" });
     await expect(menu).toBeVisible();
+    // The phone menu is a bottom sheet, with no App menu row: Back leads to
+    // the list, which has the navigation button.
     await menu.click();
+    const menuSheet = page.getByRole("dialog", {
+      name: "Investigate checkout latency",
+    });
     await expect(
-      page.getByRole("menuitem", { name: "Search transcript" }),
+      menuSheet.getByRole("button", { name: "Search transcript" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("menuitem", { name: "Open event log", exact: true }),
+      menuSheet.getByRole("button", { name: "Open event log", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("menuitem", { name: "App menu" }),
-    ).toBeVisible();
-    await page
-      .getByRole("menuitem", { name: "Conversation details", exact: true })
+      menuSheet.getByRole("button", { name: "App menu" }),
+    ).toHaveCount(0);
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
       .click();
     const details = page.getByRole("dialog", { name: "Conversation details" });
     await expect(details).toHaveAttribute("aria-modal", "true");
     // The sheet moves focus inside it.
     await expect(details.locator(":focus")).toHaveCount(1);
     await page.keyboard.press("Shift+Tab");
-    // Mobile hides the title bar, so the sheet names the location.
-    await expect(details.getByText("Location", { exact: true })).toBeVisible();
+    // Details lead with the cost and the location.
+    await expect(
+      details.getByRole("link", { name: /#proj-checkout/ }),
+    ).toBeVisible();
     await expect(details.locator(":focus")).toHaveCount(1);
     await screenshot(page, "conversation-details-sheet", {
       lightTheme: true,
@@ -375,24 +410,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("Escape");
     await expect(details).toBeHidden();
     await expect(menu).toBeFocused();
-    await page.emulateMedia({ reducedMotion: "reduce" });
     await menu.click();
-    await page
-      .getByRole("menuitem", { name: "Conversation details", exact: true })
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
       .click();
     await details.getByRole("button", { name: "Close", exact: true }).click();
     await expect(details).toBeHidden();
     await expect(menu).toBeFocused();
     await menu.click();
-    await page
-      .getByRole("menuitem", { name: "Conversation details", exact: true })
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
       .click();
     // The sheet moves focus inside it.
     await expect(details.locator(":focus")).toHaveCount(1);
     await page.mouse.click(8, 8);
     await expect(details).toBeHidden();
     await expect(menu).toBeFocused();
-    await page.emulateMedia({ reducedMotion: "no-preference" });
     const transcript = page.getByLabel("Conversation transcript");
     await expect(transcript.getByText("1.9k tokens")).toBeHidden();
     await expect(page.getByRole("note")).toBeHidden();
@@ -696,16 +729,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       )
       .toBeLessThanOrEqual(1);
 
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
-    // The search field keeps focus after the menu closes.
-    await expect(
-      page.getByRole("menuitem", { name: "Open event log", exact: true }),
-    ).toHaveCount(0);
+    await menu.click();
+    await menuSheet.getByRole("button", { name: "Search transcript" }).click();
+    // The search field keeps focus after the sheet closes.
+    await expect(menuSheet).toBeHidden();
     await expect(page.getByPlaceholder("Search transcript…")).toBeFocused();
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page
-      .getByRole("menuitem", { name: "Open event log", exact: true })
+    await menu.click();
+    await menuSheet
+      .getByRole("button", { name: "Open event log", exact: true })
       .click();
     const eventLog = page.getByRole("region", {
       name: "Conversation event log",
@@ -720,7 +751,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(eventLog).toBeHidden();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.getByRole("link", { name: "Back to Inbox" }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(entries).toBeVisible();
 
     // Log out must POST and dismiss the sheet before the response completes.
@@ -744,7 +775,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
     await signOutRequest;
     await expect(openNavigationSheet).toBeHidden();
+    // Sign-out reloads the page. Wait for the reload, so the test does not
+    // end while the document request is in flight.
+    const reloaded = page.waitForEvent("load");
     finishSignOut?.();
+    await reloaded;
   });
 
   test("keeps the message in view while earlier history and late content load", async ({

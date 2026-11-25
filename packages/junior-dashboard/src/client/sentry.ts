@@ -6,7 +6,6 @@ import {
   fetchTracingIntegration,
   getActiveSpan,
   getClient,
-  getIsolationScope,
   getRootSpan,
   linkedTracesIntegration,
   longTasksIntegration,
@@ -24,7 +23,6 @@ import {
   dashboardServerVersion,
   dashboardVersionDrift,
 } from "./dashboard-version";
-import type { UiShell } from "./uiShell";
 
 declare global {
   interface Window {
@@ -136,6 +134,19 @@ export function recordTranscriptShown(): void {
   }).end();
 }
 
+/**
+ * Record that the reader was offered a catch-up, so its click-through can be
+ * measured against the server's catch-up requests.
+ */
+export function recordCatchUpOffered(conversationId: string): void {
+  startInactiveSpan({
+    attributes: { "gen_ai.conversation.id": conversationId },
+    name: "Catch-up offered",
+    op: "ui.render",
+    parentSpan: activeRouteSpan(),
+  }).end();
+}
+
 // Response schemas are strict, so a tab that still runs an older bundle can
 // reject a field that a newer server added. Name that cause, not the schema
 // issues. The version drift banner offers the refresh.
@@ -225,7 +236,7 @@ export type FeedbackTopic = "agent" | "new_ui";
 
 /**
  * One reader feedback: a rating of one Junior Reply, or feedback from the
- * Send feedback dialog about the agent or the new UI.
+ * Send feedback dialog about the agent or the dashboard.
  */
 type DashboardFeedback =
   | {
@@ -340,16 +351,11 @@ function trackResponseBodySize(): {
 /**
  * Send dashboard performance spans and reader feedback to the server's Sentry
  * project when the server provides a DSN. Error events and breadcrumbs stay
- * off: they could carry conversation content shown on the page. Every span
- * and feedback names the UI shell in `app.dashboard.ui`.
+ * off: they could carry conversation content shown on the page.
  */
-export function initDashboardSentry(ui: UiShell): void {
+export function initDashboardSentry(): void {
   const config = window.__JUNIOR_DASHBOARD_SENTRY__;
   if (!config) return;
-  // Feedback reads scope tags, and streamed spans read scope attributes.
-  const scope = getIsolationScope();
-  scope.setTag("app.dashboard.ui", ui);
-  scope.setAttribute("app.dashboard.ui", ui);
   // Starts before the client, so before the SDK's resource observer.
   const bodySize = trackResponseBodySize();
   // `init()` bundles every default integration (about 24 KB of error,

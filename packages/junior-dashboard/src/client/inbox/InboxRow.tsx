@@ -1,29 +1,19 @@
-import {
-  AlarmClockOff,
-  Archive,
-  ArchiveRestore,
-  ArrowUpRight,
-  Pin,
-  PinOff,
-} from "lucide-react";
-import {
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { AlarmClockOff, Archive, ArchiveRestore, Pin } from "lucide-react";
+import { useMemo, useState, type ReactNode, type RefCallback } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
-import { Button, buttonVariants } from "../components/ui/button";
-import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
+import { Button } from "../components/ui/button";
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import {
   ConversationStateIcon,
@@ -33,7 +23,6 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
-import { codeChangeSize } from "../codeChangeSize";
 import { ChangeSize } from "../components/ChangeSize";
 import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
@@ -42,15 +31,27 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
+  ConversationSidebarThreadsOmitted,
 } from "../conversations/ConversationSidebarThreadRow";
-import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
-import { usePinConversation } from "../conversations/usePinConversation";
-import { DisplayText } from "../display-text/DisplayText";
+import {
+  DisplayText,
+  NearScreenObjects,
+  useNearScreen,
+} from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import type { CodeChangeHead } from "./codeChangeHead";
+import {
+  CodeChangeOpenButton,
+  CodeChangeOpenLink,
+  CodeChangeSubtitle,
+  CodeChangeTitle,
+} from "./CodeChangeTitle";
+import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
+import { useLiveAnnotations } from "../conversations/liveAnnotations";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -59,7 +60,7 @@ import {
 } from "./inboxRowStyles";
 import { openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
-import { ReviewItemObjects } from "./ReviewItemObjects";
+import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
 import { askPills, Pill, type AskPill } from "./inboxAsks";
 import { InboxFiles } from "./InboxFiles";
@@ -82,46 +83,64 @@ import {
   RowQuickActions,
   type InboxCardActions,
 } from "./RowHoverActions";
+import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { ExpandedPin } from "./ExpandedPin";
+import {
+  ReplyNoticeLink,
+  RowOwnerLink,
+  type RowOpenTarget,
+} from "./RowOwnerLink";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
-import type { InboxBundle } from "./reviewItemFormat";
+import type { EventSnooze } from "./snoozeChoices";
+import { wakeReasonText } from "./snoozeSentences";
+import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpaceChip } from "../spaces/SpaceTile";
+import {
+  itemConversationId,
+  itemOwnerLinkLabel,
+  itemOwnerPath,
+} from "./inboxItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
-const NO_NOTICES: readonly ReviewItemPayload[] = [];
+const NO_NOTICES: readonly InboxItemPayload[] = [];
 
-/** The second line: the Brief, or the newest message when there is none. */
+/** The second line: the summary, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
-  const brief = conversation?.brief;
-  if (brief)
-    return {
-      mentions: undefined,
-      status: brief.status,
-      text: brief.summary || brief.intent,
-    };
+  if (conversation?.summary)
+    return { mentions: undefined, text: conversation.summary };
   const preview = conversation?.activityPreview;
   if (!preview) return undefined;
-  return {
-    mentions: preview.mentions,
-    status: undefined,
-    text: preview.text,
-  };
+  return { mentions: preview.mentions, text: preview.text };
 }
 
 /**
- * Where the row opens. A row for one item, as in a stack, opens the
- * Conversation that added it, also a child's, at the ask's record. A row for
- * a Conversation opens it, at its newest ask when that Conversation added it.
+ * Where the row opens. A row for one item, as in a stack, opens the item's
+ * owner: the Conversation that added it, also a child's, at the ask's
+ * record, or its Automation. So does the row of an owner that is not a
+ * Conversation. A row for a Conversation opens it, at its newest ask when
+ * that Conversation added it.
  */
-function rowConversationPath(props: InboxRowProps): string {
+function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
   const newest = props.bundle?.newest;
-  const id =
-    newest && props.itemTitle !== undefined
-      ? newest.addedByConversationId
-      : props.conversationId;
-  return conversationPath(id, {
-    askItemId: newest?.addedByConversationId === id ? newest.id : undefined,
-  });
+  const id = props.conversationId;
+  if (newest && (props.itemTitle !== undefined || id === undefined))
+    return {
+      automation: newest.owner.kind === "automation",
+      label: itemOwnerLinkLabel(newest),
+      onClick: props.onOpen,
+      path: itemOwnerPath(newest, { askItemId: newest.id }),
+    };
+  return {
+    automation: false,
+    label: "Open conversation",
+    onClick: props.onOpen,
+    path: conversationPath(id!, {
+      askItemId:
+        newest && itemConversationId(newest) === id ? newest.id : undefined,
+    }),
+  };
 }
 
 type InboxRowProps = {
@@ -129,34 +148,40 @@ type InboxRowProps = {
   answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
-  cardActions?(item: ReviewItemPayload): InboxCardActions;
+  cardActions?(item: InboxItemPayload): InboxCardActions;
   /** A row with one ask shows its Snooze and Dismiss on hover. */
   itemActions?: boolean;
   conversation?: Conversation;
-  conversationId: string;
-  /** Set on a pinned row of a list that drags pins into a new order. */
-  drag?: PinnedRowDrag;
+  /**
+   * The row's root Conversation. Undefined for the stack of an owner that
+   * is not a Conversation, which always has a `bundle`.
+   */
+  conversationId: string | undefined;
   expanded: boolean;
   /** The notices that fold into each ask, by the ask's id. */
-  foldedNotices?: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+  foldedNotices?: ReadonlyMap<string, readonly InboxItemPayload[]>;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
-  /** The size of the code change that a row for one item is about. */
-  itemSize?: CodeChangeSize | undefined;
+  /** A row for one code change item leads with the change's title. */
+  itemHead?: CodeChangeHead | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
-    item: ReviewItemPayload,
-    body: ReviewItemActionBody,
+    item: InboxItemPayload,
+    body: InboxItemActionBody,
   ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(untilMs: number): void;
+  /** Snooze on an Event of the subject that the row's items share. */
+  eventSnooze?: EventSnooze | undefined;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
   onWake?(): void;
+  /** Runs when the row opens what it names, such as its Conversation. */
+  onOpen?(): void;
   rowKey: string;
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
@@ -168,6 +193,8 @@ type InboxRowProps = {
   take?: string;
   time: string;
   title: string;
+  /** Why the viewer's snooze of an item in the row woke. */
+  wake?: InboxSnoozeWake | undefined;
 };
 
 /**
@@ -180,34 +207,44 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
+  // A row reads the live cards of its links once it comes near the screen.
+  const card = useNearScreen<HTMLLIElement>();
   // The rows below move with the row as it opens and closes.
-  const cardRef = useRef<HTMLLIElement>(null);
-  useAnimatedHeight(cardRef, String(props.expanded));
+  useAnimatedHeight(card.element, String(props.expanded));
   const open = props.bundle?.items.filter((item) => item.status === "open");
   const quickActions =
     props.itemActions && open?.length === 1 && props.cardActions ? (
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
-        to={rowConversationPath(props)}
+        main={
+          props.itemHead ? (
+            <CodeChangeOpenLink head={props.itemHead} />
+          ) : undefined
+        }
+        onExpand={props.onToggle}
       />
     ) : undefined;
-  return props.conversation ? (
-    <ConversationInboxRow
-      {...props}
-      cardRef={cardRef}
-      conversation={props.conversation}
-      quickActions={quickActions}
-    />
-  ) : (
-    <li
-      className={cn(inboxCardClass(props.expanded), "group")}
-      data-expanded={props.expanded || undefined}
-      data-inbox-row={props.rowKey}
-      ref={cardRef}
-    >
-      <InboxRowBody {...props} hoverActions={quickActions} />
-    </li>
+  return (
+    <NearScreenObjects near={card.near}>
+      {props.conversation ? (
+        <ConversationInboxRow
+          {...props}
+          cardRef={card.ref}
+          conversation={props.conversation}
+          quickActions={quickActions}
+        />
+      ) : (
+        <li
+          className={cn(inboxCardClass(props.expanded), "group")}
+          data-expanded={props.expanded || undefined}
+          data-inbox-row={props.rowKey}
+          ref={card.ref}
+        >
+          <InboxRowBody {...props} hoverActions={quickActions} />
+        </li>
+      )}
+    </NearScreenObjects>
   );
 }
 
@@ -218,13 +255,13 @@ function rowRegionId(rowKey: string): string {
 
 function ConversationInboxRow(
   props: InboxRowProps & {
-    cardRef: RefObject<HTMLLIElement | null>;
+    cardRef: RefCallback<HTMLLIElement>;
     conversation: Conversation;
     /** A row with one ask acts on it instead of pinning or archiving. */
     quickActions?: ReactNode;
   },
 ) {
-  const { conversation, drag } = props;
+  const { conversation } = props;
   const actions = useInboxRowActions(conversation, {
     onRowAction: props.onRowAction,
     selected: props.selected,
@@ -233,7 +270,7 @@ function ConversationInboxRow(
   const prefetch = usePrefetchConversation(conversation.id);
   const [threadsExpanded, setThreadsExpanded] = useState(false);
   const threads = props.showThreads
-    ? sidebarThreads(conversation.threads, { expanded: threadsExpanded })
+    ? sidebarThreads(conversation, { expanded: threadsExpanded })
     : undefined;
   const participant = conversation.isParticipant;
   const hasThreads = Boolean(threads && threads.threads.length > 0);
@@ -246,7 +283,23 @@ function ConversationInboxRow(
   // meta's cell, so they never cover the title or summary.
   const hoverActions = props.quickActions ?? (
     <>
-      <RowOpenLink to={rowConversationPath(props)} />
+      {/* Archive, Pin, then Open last, in the order of an item row's
+          actions. */}
+      {participant ? (
+        <RowActionButton
+          disabled={actions.pending.archive}
+          icon={
+            actions.archived ? (
+              <ArchiveRestore aria-hidden="true" size={14} />
+            ) : (
+              <Archive aria-hidden="true" size={14} />
+            )
+          }
+          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
+          onClick={actions.toggleArchive}
+          tooltip={actions.archived ? "Restore" : "Archive"}
+        />
+      ) : null}
       {participant && !actions.archived ? (
         <RowActionButton
           disabled={actions.pending.pin}
@@ -263,58 +316,43 @@ function ConversationInboxRow(
           tooltip={actions.pinned ? "Unpin" : "Pin"}
         />
       ) : null}
-      {participant ? (
-        <RowActionButton
-          disabled={actions.pending.archive}
-          icon={
-            actions.archived ? (
-              <ArchiveRestore aria-hidden="true" size={14} />
-            ) : (
-              <Archive aria-hidden="true" size={14} />
-            )
-          }
-          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
-          onClick={actions.toggleArchive}
-          tooltip={actions.archived ? "Restore" : "Archive"}
-        />
-      ) : null}
+      <RowOpenLink {...rowOpenTarget(props)} />
     </>
   );
   return (
     <li
-      className={cn(
-        inboxCardClass(props.expanded),
-        drag?.dragging && "opacity-40",
-      )}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
       ref={props.cardRef}
     >
-      <ContextMenu onOpenChange={actions.onMenuOpenChange}>
+      {/* A closed card opens the menu anywhere on it. An open card opens it
+          only from its title, so its text selects and the browser menu
+          works there. Both stay mounted, so a toggle keeps focus. */}
+      <ContextMenu
+        disabled={props.expanded}
+        onOpenChange={actions.onMenuOpenChange}
+      >
         <ContextMenuTrigger
           {...prefetch}
-          {...drag?.listeners}
-          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
-          onKeyDown={drag?.onKeyDown}
-          ref={drag?.setNodeRef}
+          {...browserMenuOnLinks}
+          className={cn(
+            "group relative min-w-0",
+            dashboardSurfaceRadiusClass,
+            props.expanded && "select-text",
+          )}
         >
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
             threadsShown={hasThreads}
-            linkProps={{
-              "aria-keyshortcuts": drag
-                ? "Alt+ArrowUp Alt+ArrowDown"
-                : undefined,
-              // The browser's own link drag would take the pointer from the
-              // reorder.
-              draggable: drag ? false : undefined,
-            }}
+            titleMenu={actions}
           />
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
+      {actions.dialogs}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-2">
           {threads.threads.map((thread) => (
@@ -328,6 +366,9 @@ function ConversationInboxRow(
               selected={props.selected}
             />
           ))}
+          {threads.omittedCount > 0 ? (
+            <ConversationSidebarThreadsOmitted count={threads.omittedCount} />
+          ) : null}
           {toggle || actionsBelow ? (
             <div className="flex min-w-0 flex-wrap items-center gap-1">
               {toggle ? (
@@ -352,7 +393,7 @@ function ConversationInboxRow(
 
 function RowSummary(props: {
   comfortable: boolean;
-  conversationId: string;
+  conversationId: string | undefined;
   expanded: boolean;
   /** The row's linked work, so the summary's links show their chips. */
   objects: readonly OwnedObjectAnnotation[];
@@ -378,7 +419,7 @@ function RowSummary(props: {
         {/* As messages show it: links show as chips, so the clamp ends on
             a word or a chip, not inside a URL. One line runs the
             paragraphs together; more lines keep them. */}
-        <ReviewItemObjects
+        <InboxItemObjects
           cards={props.objects}
           conversationId={props.conversationId}
         >
@@ -389,9 +430,36 @@ function RowSummary(props: {
             paragraphs={props.expanded || props.comfortable}
             text={props.summary.text}
           />
-        </ReviewItemObjects>
+        </InboxItemObjects>
       </div>
     </div>
+  );
+}
+
+type TitleMenu = Pick<
+  ReturnType<typeof useInboxRowActions>,
+  "menu" | "onMenuOpenChange"
+>;
+
+/** The line that holds a row's title link, and an open row's menu. */
+function RowTitle(props: {
+  children: ReactNode;
+  expanded: boolean;
+  menu?: TitleMenu | undefined;
+}) {
+  const className = "flex min-w-0 items-center gap-1.5";
+  if (!props.menu) return <span className={className}>{props.children}</span>;
+  // A closed row's own menu takes the right-click, so this one waits.
+  return (
+    <ContextMenu
+      disabled={!props.expanded}
+      onOpenChange={props.menu.onMenuOpenChange}
+    >
+      <ContextMenuTrigger className={className} render={<span />}>
+        {props.children}
+      </ContextMenuTrigger>
+      {props.menu.menu}
+    </ContextMenu>
   );
 }
 
@@ -399,22 +467,32 @@ function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
-    linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
+    /** The Conversation menu that an open row's title opens. */
+    titleMenu?: TitleMenu;
   },
 ) {
   const { bundle, conversation } = props;
   // A row that names its Conversation opens it. A row for one item names
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
-  const path = rowConversationPath(props);
-  const openConversation = useOpenPath(path);
+  const { path } = rowOpenTarget(props);
+  const openPath = useOpenPath(path);
+  const openConversation = (event: MouseEvent) => {
+    props.onOpen?.();
+    openPath(event);
+  };
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
-  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
+  // A row for one item shows the live size of the code change it is about.
+  const itemSize = useCodeChangeFacts(
+    props.itemTitle ? bundle?.newest.subject : undefined,
+  );
+  const annotations =
+    useLiveAnnotations(conversation?.sidebarAnnotations) ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
   const subjects = new Set(
@@ -447,7 +525,7 @@ function InboxRowBody(
   const found = props.itemTitle ? undefined : rowSummary(conversation);
   // The viewer's answer replaces the line that asked for it.
   const summary = props.answered
-    ? { mentions: undefined, status: found?.status, text: props.answered }
+    ? { mentions: undefined, text: props.answered }
     : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
@@ -460,11 +538,16 @@ function InboxRowBody(
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
   const regionId = rowRegionId(props.rowKey);
+  // An open Conversation row's cards each say why their item woke.
+  const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
   // An item row's one card carries the row's actions on its own line.
   const inlineActions = Boolean(props.itemTitle) && openItems.length === 1;
+  // A reply notice's card has nothing to answer, so its link to the reply is
+  // its main action.
+  const replyNotice = inlineActions && openItems[0]?.replyNotice;
   const asksShown =
     props.expanded && (openItems.length > 0 || !props.actionsBelow);
   // The head controls what it opens. `regionId` always wraps the row bar:
@@ -481,6 +564,7 @@ function InboxRowBody(
     comfortable &&
     (images || work.length > 0 || files.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
+  const space = conversation?.space;
   const cast =
     comfortable && conversation ? (
       // The Threads list below counts the Threads, so the cast doesn't.
@@ -525,7 +609,8 @@ function InboxRowBody(
                   : undefined
             }
             className={cn(
-              "col-start-1 row-start-1 mt-[0.55rem] size-2 justify-self-center rounded-full",
+              // Centered on the title's first line (`leading-snug`, 1.375rem).
+              "col-start-1 row-start-1 mt-[0.4375rem] size-2 justify-self-center rounded-full",
               waiting
                 ? "bg-dashboard-text"
                 : openItems.length > 0
@@ -535,28 +620,29 @@ function InboxRowBody(
             data-inbox-slot="dot"
             role={waiting || openItems.length > 0 ? "img" : undefined}
           />
+          {/* The title slot spans the meta's column too. The title stays
+              left of the meta, and the lines under it use the full width. */}
           <span
-            className="col-start-2 row-start-1 grid min-w-0 gap-1"
+            className="col-span-2 col-start-2 row-start-1 grid min-w-0 grid-cols-subgrid gap-y-1"
             data-inbox-slot="title"
           >
-            {/* The Brief's outcome marks the title, as the dot does. It
-                sits outside the link, so the link's name stays the title. */}
-            <span className="flex min-w-0 items-center gap-1.5">
-              {summary?.status ? (
-                <BriefOutcomeMarker status={summary.status} />
-              ) : null}
+            <RowTitle expanded={props.expanded} menu={props.titleMenu}>
               <Link
-                {...props.linkProps}
                 aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
                 aria-expanded={opens ? undefined : props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-                  // A long press opens the row menu or drags a pin, not the iOS
-                  // link callout.
+                  // A long press opens the row menu, not the iOS link
+                  // callout.
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
+                data-row-menu=""
+                // A middle click opens the link in a new tab.
+                onAuxClick={(event) => {
+                  if (event.button === 1) props.onOpen?.();
+                }}
                 // On a row for one item, a plain click or Enter expands it in
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
@@ -568,28 +654,45 @@ function InboxRowBody(
                     event.ctrlKey ||
                     event.shiftKey ||
                     event.altKey
-                  )
+                  ) {
+                    props.onOpen?.();
                     return;
+                  }
                   event.preventDefault();
                   props.onToggle();
                 }}
                 to={path}
               >
-                <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
-                  {/* An item row's title names its kind; the icon marks it
-                    the way the pills do. */}
-                  {props.itemTitle && bundle ? (
-                    <AskKindIcon kind={inboxItemKind(bundle.newest)} />
-                  ) : null}
-                  {/* The size wraps under the title where both do not fit. */}
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span className={lineClass} ref={fadeWhenOverflowing}>
-                      {props.itemTitle ?? props.title}
+                {props.itemHead && bundle ? (
+                  <>
+                    <CodeChangeTitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                    />
+                    <CodeChangeSubtitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                      size={itemSize}
+                      subtitle={props.itemSubtitle}
+                    />
+                  </>
+                ) : (
+                  <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
+                    {/* An item row's title names its kind; the icon marks it
+                      the way the pills do. */}
+                    {props.itemTitle && bundle ? (
+                      <AskKindIcon kind={inboxItemKind(bundle.newest)} />
+                    ) : null}
+                    {/* The size wraps under the title where both do not fit. */}
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                      <span className={lineClass} ref={fadeWhenOverflowing}>
+                        {props.itemTitle ?? props.title}
+                      </span>
+                      <ChangeSize size={itemSize} />
                     </span>
-                    <ChangeSize size={props.itemSize} />
                   </span>
-                </span>
-                {props.itemTitle && props.itemSubtitle ? (
+                )}
+                {props.itemTitle && props.itemSubtitle && !props.itemHead ? (
                   <span
                     className={cn(
                       lineClass,
@@ -601,13 +704,28 @@ function InboxRowBody(
                   </span>
                 ) : null}
               </Link>
-            </span>
+            </RowTitle>
+            {wake ? (
+              <span
+                className={cn(
+                  lineClass,
+                  "col-span-2 text-xs text-dashboard-text-muted",
+                )}
+                data-inbox-slot="wake"
+                ref={fadeWhenOverflowing}
+              >
+                {wakeReasonText(wake)}
+              </span>
+            ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
-            {cast || hasChips ? (
+            {space || cast || hasChips ? (
               // No wrap: the pills and the linked work fit to one shared
               // line, and wrapping would let each one's fit move the other.
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="col-span-2 flex min-w-0 items-center gap-2">
+                {space ? (
+                  <SpaceChip className="shrink-0" space={space} />
+                ) : null}
                 {cast}
                 {pills.length > 0 ? (
                   // One line of pills: those that do not fit become +N.
@@ -668,12 +786,10 @@ function InboxRowBody(
               <span
                 className={cn(
                   "-my-1 flex gap-0.5 transition",
-                  // A touch screen has no hover. In the Inbox, a row there
-                  // shows its actions once it is open, so each row does not
-                  // repeat them. Elsewhere they always show there.
-                  !props.expanded &&
-                    props.itemActions &&
-                    "max-sm:hidden pointer-coarse:hidden",
+                  // A touch screen has no hover, and on a phone the actions
+                  // crowd out the title. There a closed row hides them: a
+                  // tap opens the row, and a long press opens its menu.
+                  !props.expanded && "max-sm:hidden pointer-coarse:hidden",
                   !props.expanded &&
                     "sm:pointer-fine:pointer-events-none sm:pointer-fine:opacity-0 sm:pointer-fine:group-focus-within:pointer-events-auto sm:pointer-fine:group-focus-within:opacity-100 sm:pointer-fine:group-hover:pointer-events-auto sm:pointer-fine:group-hover:opacity-100",
                 )}
@@ -700,7 +816,7 @@ function InboxRowBody(
             className="grid min-w-0 cursor-pointer gap-3 pr-4 pb-3 pl-8"
             {...rowClick}
           >
-            {images ? (
+            {images && props.conversationId ? (
               <InboxImageStrip
                 askToggle={{
                   controls,
@@ -720,7 +836,7 @@ function InboxRowBody(
             {links.length > 0 ? (
               <InboxLinkCards links={links} main={main} />
             ) : null}
-            {files.length > 0 ? (
+            {files.length > 0 && props.conversationId ? (
               <InboxFiles conversationId={props.conversationId} files={files} />
             ) : null}
           </div>
@@ -742,16 +858,26 @@ function InboxRowBody(
         >
           {openItems.map((item) => (
             <InboxRowCard
-              conversationId={props.conversationId}
               actions={props.cardActions?.(item)}
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               onAction={props.onItemAction}
-              rowActions={inlineActions ? rowActions(props, true) : undefined}
-              sizeShown={codeChangeSize(props.itemSize) !== undefined}
+              primaryAction={
+                props.itemHead ? (
+                  <CodeChangeOpenButton head={props.itemHead} />
+                ) : replyNotice ? (
+                  <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
+                ) : undefined
+              }
+              rowActions={
+                inlineActions
+                  ? rowActions(props, { inline: true, owner: !replyNotice })
+                  : undefined
+              }
               take={props.take}
+              wake={item.wake}
             />
           ))}
           {props.actionsBelow || inlineActions ? null : rowActions(props)}
@@ -761,19 +887,28 @@ function InboxRowBody(
   );
 }
 
-/** The open row's actions. `inline` gives them bare, for a card's line. */
-function rowActions(props: InboxRowProps, inline = false) {
+/**
+ * The open row's actions. `inline` gives them bare, for a card's line.
+ * `owner: false` leaves out the owner's link, for a card that has it as its
+ * main action.
+ */
+function rowActions(
+  props: InboxRowProps,
+  { inline = false, owner = true }: { inline?: boolean; owner?: boolean } = {},
+) {
   return (
     <ExpandedActions
       conversation={props.conversation}
       inline={inline}
+      // Next to a code change card's main action: as tall as it.
+      look={inline && props.itemHead ? "tall" : undefined}
       // A stack of one card snoozes on the card.
-      onSnooze={
-        (props.bundle?.items.length ?? 0) > 1 ? props.onSnooze : undefined
-      }
+      {...((props.bundle?.items.length ?? 0) > 1
+        ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
+        : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      openPath={rowConversationPath(props)}
+      open={owner ? rowOpenTarget(props) : undefined}
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );
@@ -782,38 +917,40 @@ function rowActions(props: InboxRowProps, inline = false) {
 function ExpandedActions(props: {
   conversation?: Conversation;
   inline: boolean;
-  openPath: string;
+  eventSnooze?: EventSnooze | undefined;
+  look?: ButtonLook | undefined;
+  open: RowOpenTarget | undefined;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
 }) {
+  // The owner's link goes last, next to a card's main action.
   const actions = (
     <>
-      <Link
-        className={buttonVariants({ variant: "ghost" })}
-        to={props.openPath}
-      >
-        <ArrowUpRight aria-hidden="true" size={15} />
-        Open conversation
-      </Link>
-      {props.conversation?.isParticipant ? (
-        <ExpandedPin conversation={props.conversation} />
-      ) : null}
-      {props.onWake ? (
-        <Button onClick={props.onWake} variant="ghost">
-          <AlarmClockOff aria-hidden="true" size={15} />
-          Wake
-        </Button>
-      ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
+          eventSnooze={props.eventSnooze}
           label="Snooze all"
           onOpenChange={props.onSnoozeMenu}
           onSnooze={props.onSnooze}
           open={props.snoozeMenuOpen}
         />
       ) : null}
+      {props.onWake ? (
+        <Button
+          className={props.look && LOOK_CLASSES[props.look]}
+          onClick={props.onWake}
+          variant="ghost"
+        >
+          <AlarmClockOff aria-hidden="true" size={15} />
+          <ButtonLabel look={props.look}>Wake</ButtonLabel>
+        </Button>
+      ) : null}
+      {props.conversation?.isParticipant ? (
+        <ExpandedPin conversation={props.conversation} look={props.look} />
+      ) : null}
+      {props.open ? <RowOwnerLink look={props.look} open={props.open} /> : null}
     </>
   );
   if (props.inline) return actions;
@@ -821,35 +958,5 @@ function ExpandedActions(props: {
     <div className="flex flex-wrap items-center justify-end gap-1">
       {actions}
     </div>
-  );
-}
-
-/** Pin the Conversation from the open row. There is one pin: its own. */
-function ExpandedPin(props: { conversation: Conversation }) {
-  const { clearActionError, showActionError } = useConversationActionToasts();
-  const pin = usePinConversation(props.conversation.id, {
-    onError: (pinning) =>
-      showActionError(
-        props.conversation,
-        pinning ? "Could not pin" : "Could not unpin",
-        () => pin.mutate(pinning),
-      ),
-    onSuccess: () => clearActionError(props.conversation),
-  });
-  const pinned = Boolean(props.conversation.pinnedAt);
-  return (
-    <Button
-      aria-pressed={pinned}
-      disabled={pin.isPending}
-      onClick={() => pin.mutate(!pinned)}
-      variant="ghost"
-    >
-      {pinned ? (
-        <PinOff aria-hidden="true" size={15} />
-      ) : (
-        <Pin aria-hidden="true" size={15} />
-      )}
-      {pinned ? "Unpin" : "Pin"}
-    </Button>
   );
 }

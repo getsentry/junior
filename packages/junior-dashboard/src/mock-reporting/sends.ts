@@ -31,6 +31,8 @@ type MockCreatedConversation = {
   conversationId: string;
   createdAtMs: number;
   fork?: MockFork;
+  /** A Lead's Space and its first events. Lists leave a Lead out. */
+  lead?: { events: ConversationReportEvent[]; spaceId: string };
   title?: string;
   visibility?: "private" | "public";
 };
@@ -82,6 +84,45 @@ export function createMockConversation(args: {
     });
   }
   return conversationId;
+}
+
+function mockLeadId(spaceId: string): string {
+  return mockConversationId("lead", spaceId);
+}
+
+/** Find the mock Lead of a Space, if it was made. */
+export function findMockLead(spaceId: string): string | undefined {
+  const conversationId = mockLeadId(spaceId);
+  return createdConversations.has(conversationId) ? conversationId : undefined;
+}
+
+/**
+ * Find or make the mock Lead of one Space. It is public and has the Space's
+ * name, as in the API.
+ */
+export function createMockLead(args: {
+  actorIdentity: ActorIdentity;
+  events: ConversationReportEvent[];
+  spaceId: string;
+  title: string;
+}): string {
+  const conversationId = mockLeadId(args.spaceId);
+  if (!createdConversations.has(conversationId)) {
+    createdConversations.set(conversationId, {
+      actorIdentity: args.actorIdentity,
+      conversationId,
+      createdAtMs: Date.now(),
+      lead: { events: args.events, spaceId: args.spaceId },
+      title: args.title,
+      visibility: "public",
+    });
+  }
+  return conversationId;
+}
+
+/** The Space of a mock Lead, or undefined for another Conversation. */
+export function mockLeadSpaceId(conversationId: string): string | undefined {
+  return createdConversations.get(conversationId)?.lead?.spaceId;
 }
 
 /** Fork one mock Conversation at a reply. A retry with the same key finds it. */
@@ -137,10 +178,15 @@ export function keepMockQuickQuestion(conversationId: string): boolean {
   return true;
 }
 
-/** Return whether lists hide this Conversation: an unkept Quick question. */
+/**
+ * Return whether lists hide this Conversation: a Lead or an unkept Quick
+ * question.
+ */
 export function isUnlistedMockConversation(conversationId: string): boolean {
+  const created = createdConversations.get(conversationId);
+  if (created?.lead) return true;
   return (
-    Boolean(createdConversations.get(conversationId)?.fork?.quickQuestion) &&
+    Boolean(created?.fork?.quickQuestion) &&
     !keptQuickQuestionIds.has(conversationId)
   );
 }
@@ -237,7 +283,7 @@ function createdConversation(
     eventHistory: { status: "available" as const },
     generatedAt: startedAt,
     isParticipant: true,
-    kind: "root" as const,
+    kind: created.lead ? ("lead" as const) : ("root" as const),
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
@@ -250,7 +296,7 @@ function createdConversation(
     return {
       ...base,
       displayTitle: created.title ?? "New conversation",
-      events: [],
+      events: created.lead?.events ?? [],
     };
   }
   const { messageId, sourceConversationId } = created.fork;

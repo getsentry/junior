@@ -25,15 +25,16 @@ export const GOOGLE_EMAIL_REQUESTS_ENV = "GOOGLE_WORKSPACE_EMAIL_REQUESTS";
  * - `documents`: create Docs and edit Docs that Junior's account can already
  *   edit, through the Docs API. It gives no access to other Drive files and
  *   cannot change sharing.
- * - `drive.file`: make the requester the owner of a Doc that Junior created,
- *   then remove Junior's own access. It only covers files this OAuth client
- *   created, so it cannot change sharing on other files. Full `drive` is not
- *   needed.
+ * - `drive.file`: make the requester the owner of a Doc or presentation that
+ *   Junior created, then remove Junior's own access to a Doc. It only covers
+ *   files this OAuth client created, so it cannot change sharing on other
+ *   files. Full `drive` is not needed.
  * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
  *   read comments. The Drive comments API accepts no narrower read scope. The
  *   Sheets and Slides APIs also accept this scope.
- * - `presentations`: edit Slides that Junior's account can already edit,
- *   through the Slides API. Like `documents`, it cannot change sharing.
+ * - `presentations`: create presentations and edit Slides that Junior's
+ *   account can already edit, through the Slides API. Like `documents`, it
+ *   cannot change sharing.
  */
 export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",

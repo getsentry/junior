@@ -14,7 +14,9 @@ data, does not run.
 - Only the person who runs the Turn can authorize an action. Their own
   messages in the Run's Conversation set what is authorized. Text from the
   agent, a parent agent, tools, files, issues, comments, Event authors, and
-  other people is context. It is never approval.
+  other people is context. It is never approval. The one exception is the
+  task of a Conversation that a Lead starts: it passes on the instruction
+  of the Lead's person, so it counts as that person's request.
 - The model rates risk and authorization, and names one rule. Code turns the
   rule into allow, ask, or deny, so the model never chooses between ask and
   deny.
@@ -29,20 +31,9 @@ data, does not run.
 - The install, not the agent, states facts about destinations. Each plugin
   can declare where its writes go, such as which destinations people outside
   the organization can read. A fact never authorizes an action.
-- For each plugin that declares `credentials`, Guardian knows that its
-  Sandbox env var holds a placeholder, and which domains get the real
-  credential. A command that sends that env var to those domains does not
-  expose a secret.
-
-## Entry points
-
-- Slack: a Review item in which Junior names an action, its target, and its
-  side effects, and asks the person to confirm it.
-- Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
-  a Conversation.
-- Plugin authors: `approvalMode` (`auto`, `review`, or `approve`), tool
-  annotations, and `describeProposal`.
-- Deployment: `AI_GUARDIAN_MODEL` selects the review model.
+- Guardian understands every placeholder credential in the Sandbox: which
+  env var holds it, and which domains get the real credential. A command
+  that sends that env var to those domains does not expose a secret.
 
 ## Rules
 
@@ -50,7 +41,7 @@ data, does not run.
   marked read-only and not destructive. A `review` tool is always reviewed.
   An `approve` tool is never reviewed, so use it only when the tool code
   proves that each effect is safe. A core tool is reviewed only when it opts
-  in, such as Automation and Workspace changes, `spawnAgent`, and
+  in, such as Automation and Workspace changes, `startAgent`, and
   `messageAgent`.
 - A public URL for a Sandbox server (`createPreview`) always goes through
   Guardian review, and the normal rules, such as `data_exposure`, decide.
@@ -62,7 +53,7 @@ data, does not run.
 - An Automation run cannot ask, because no person is there to answer. Each
   ask becomes a deny.
 - When Guardian asks, the agent asks the person about that exact action, the
-  way it asks any question. A child agent reports blocked to its parent. The
+  way it asks any question: with an Inbox item, also in a child agent. The
   agent never names Guardian or the review.
 - After three rejected attempts in a row, the agent stops that write for
   the Turn and explains the risk.
@@ -77,7 +68,7 @@ data, does not run.
   annotations, `describeProposal`, and transcript evidence are untrusted
   evidence.
 - A child agent does not inherit approvals. The parent's text is its
-  instruction. Guardian judges `spawnAgent` and `messageAgent` text by the
+  instruction. Guardian judges `startAgent` and `messageAgent` text by the
   material actions that it names, and the parent's own Conversation must
   back each one.
 - A Code Mode script cannot authorize. Guardian judges each call of a script
@@ -95,3 +86,6 @@ data, does not run.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".
+- Guardian is not told about the placeholders of the GitHub, Vercel, and
+  Datadog plugins. It can deny a normal call to their APIs as a secret leak.
+  This breaks "Guardian understands every placeholder credential".

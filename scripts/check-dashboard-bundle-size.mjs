@@ -5,16 +5,16 @@ import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 
 /**
- * Gzip budget for the dashboard first load. Each UI shell loads its entry and
- * every file that the entry imports statically, as listed in
- * `dist/client-manifest.json`. The baseline follows `main`:
+ * Gzip budget for the dashboard first load: the client entry and every file
+ * that the entry imports statically, as listed in `dist/client-manifest.json`.
+ * The baseline follows `main`:
  *
- * - The measured size of a shell must match the committed baseline within
+ * - The measured size must match the committed baseline within
  *   `NOISE_BYTES`. A change that grows the first load commits the new size.
- * - The committed baseline of a shell may grow at most 2% (`GROWTH_LIMIT`)
- *   over the baseline at the merge base with `origin/main`, so the limit
- *   applies to each change. CI needs the full history for the merge base.
- * - A shell that shrinks passes. Update the baseline to tighten it.
+ * - The committed baseline may grow at most 2% (`GROWTH_LIMIT`) over the
+ *   baseline at the merge base with `origin/main`, so the limit applies to
+ *   each change. CI needs the full history for the merge base.
+ * - A first load that shrinks passes. Update the baseline to tighten it.
  *
  * It reads the last dashboard build and does not build:
  *
@@ -23,7 +23,7 @@ import zlib from "node:zlib";
  *
  * Update the baseline in the change that grows or shrinks the first load:
  *
- *   node scripts/check-dashboard-bundle-size.mjs --update
+ *   pnpm dashboard-bundle-size:check --update
  *
  * When two open changes both grow it, the second to merge must merge `main`
  * and run `--update` again.
@@ -37,24 +37,24 @@ const DASHBOARD_DIST = "packages/junior-dashboard/dist";
 const MANIFEST_PATH = `${DASHBOARD_DIST}/client-manifest.json`;
 const BASELINE_PATH = "scripts/dashboard-bundle-size-baseline.json";
 const BASE_BRANCH = "origin/main";
-const UPDATE_COMMAND = "node scripts/check-dashboard-bundle-size.mjs --update";
+const UPDATE_COMMAND = "pnpm dashboard-bundle-size:check --update";
+
+// CI runs this check in its own job, after the dashboard build.
+export const lint = false;
 const GROWTH_LIMIT = 0.02;
 // Two clean builds of one commit give the same bytes, and CI prints the same
 // sizes as a local build. The tolerance covers zlib output that can differ
-// across platforms. It is far below the growth limit (about 13 KB per shell).
+// across platforms. It is far below the growth limit (about 13 KB).
 const NOISE_BYTES = 1024;
 
-/** Sum the gzip bytes of each shell's entry and its static imports. */
-export function measureShells(manifest, readPublicFile) {
-  return Object.fromEntries(
-    Object.entries(manifest.shells).map(([shell, files]) => [
-      shell,
-      [files.entry, ...files.imports].reduce(
-        (total, file) => total + zlib.gzipSync(readPublicFile(file)).length,
-        0,
-      ),
-    ]),
-  );
+/** Sum the gzip bytes of the entry and its static imports. */
+export function measureFirstLoad(manifest, readPublicFile) {
+  return {
+    dashboard: [manifest.entry, ...manifest.imports].reduce(
+      (total, file) => total + zlib.gzipSync(readPublicFile(file)).length,
+      0,
+    ),
+  };
 }
 
 function kb(bytes) {
@@ -69,25 +69,25 @@ function change(from, to) {
 }
 
 /**
- * Compare measured shell sizes with the committed baseline, and the committed
+ * Compare measured sizes with the committed baseline, and the committed
  * baseline with the baseline at the merge base. Returns one diff line per
- * shell, hints to tighten the baseline, and errors.
+ * entry, hints to tighten the baseline, and errors.
  */
 export function compareBundleSizes({ base, baseline, sizes }) {
   const lines = [];
   const hints = [];
   const errors = [];
-  for (const [shell, actual] of Object.entries(sizes)) {
-    const committed = baseline[shell];
+  for (const [name, actual] of Object.entries(sizes)) {
+    const committed = baseline[name];
     if (committed === undefined) {
-      lines.push(`${shell}: ${kb(actual)} gzip, no baseline`);
-      errors.push(`${shell}: no baseline entry. Run \`${UPDATE_COMMAND}\`.`);
+      lines.push(`${name}: ${kb(actual)} gzip, no baseline`);
+      errors.push(`${name}: no baseline entry. Run \`${UPDATE_COMMAND}\`.`);
       continue;
     }
-    const before = base[shell];
+    const before = base[name];
     lines.push(
       [
-        `${shell}:`,
+        `${name}:`,
         ...(before === undefined
           ? []
           : [
@@ -98,16 +98,16 @@ export function compareBundleSizes({ base, baseline, sizes }) {
     );
     if (actual > committed + NOISE_BYTES) {
       errors.push(
-        `${shell}: ${actual - committed} B over the committed baseline. Run \`${UPDATE_COMMAND}\` and commit the baseline.`,
+        `${name}: ${actual - committed} B over the committed baseline. Run \`${UPDATE_COMMAND}\` and commit the baseline.`,
       );
     } else if (actual < committed - NOISE_BYTES) {
       hints.push(
-        `${shell}: ${committed - actual} B under the committed baseline. Run \`${UPDATE_COMMAND}\` to tighten it.`,
+        `${name}: ${committed - actual} B under the committed baseline. Run \`${UPDATE_COMMAND}\` to tighten it.`,
       );
     }
     if (before !== undefined && committed > before * (1 + GROWTH_LIMIT)) {
       errors.push(
-        `${shell}: the baseline grew ${(((committed - before) / before) * 100).toFixed(2)}% over ${BASE_BRANCH}, over the ${GROWTH_LIMIT * 100}% limit for one change. Load the new code lazily, or keep it out of the first load.`,
+        `${name}: the baseline grew ${(((committed - before) / before) * 100).toFixed(2)}% over ${BASE_BRANCH}, over the ${GROWTH_LIMIT * 100}% limit for one change. Load the new code lazily, or keep it out of the first load.`,
       );
     }
   }
@@ -141,28 +141,27 @@ function readBaseBaseline() {
   }
 }
 
-function main() {
+/** Compare the dashboard first load to the baseline, or rewrite it with `--update`. */
+export function run({ args }) {
   const manifestPath = path.join(REPO_ROOT, MANIFEST_PATH);
   if (!fs.existsSync(manifestPath)) {
-    console.error(
+    return [
       `${MANIFEST_PATH} is missing. Build the dashboard first: pnpm --filter "@sentry/junior-dashboard..." run build`,
-    );
-    process.exitCode = 1;
-    return;
+    ];
   }
-  const sizes = measureShells(
+  const sizes = measureFirstLoad(
     JSON.parse(fs.readFileSync(manifestPath, "utf8")),
     (file) =>
       fs.readFileSync(path.join(REPO_ROOT, DASHBOARD_DIST, "public", file)),
   );
   const baselinePath = path.join(REPO_ROOT, BASELINE_PATH);
-  if (process.argv.includes("--update")) {
+  if (args.includes("--update")) {
     fs.writeFileSync(baselinePath, `${JSON.stringify(sizes, null, 2)}\n`);
     console.log(`Wrote ${BASELINE_PATH}:`);
-    for (const [shell, bytes] of Object.entries(sizes)) {
-      console.log(`${shell}: ${kb(bytes)} gzip`);
+    for (const [name, bytes] of Object.entries(sizes)) {
+      console.log(`${name}: ${kb(bytes)} gzip`);
     }
-    return;
+    return [];
   }
   const { lines, hints, errors } = compareBundleSizes({
     base: readBaseBaseline(),
@@ -170,14 +169,5 @@ function main() {
     sizes,
   });
   console.log([...lines, ...hints].join("\n"));
-  if (errors.length > 0) {
-    console.error(
-      ["Dashboard bundle size check failed:", ...errors].join("\n"),
-    );
-    process.exitCode = 1;
-  }
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  return errors;
 }

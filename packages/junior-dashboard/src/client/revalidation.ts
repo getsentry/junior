@@ -1,4 +1,8 @@
-import type { QueryFunctionContext } from "@tanstack/react-query";
+import type {
+  InfiniteData,
+  QueryFunctionContext,
+  QueryKey,
+} from "@tanstack/react-query";
 import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { ZodType } from "zod";
 import { readDashboardResponse } from "./http";
@@ -40,6 +44,21 @@ export function withoutVersion<T, K extends keyof T>(
 /** A read that the server revalidates on content, with its token. */
 export type ContentVersioned<T> = T & { contentVersion?: string };
 
+function readContentVersioned<T extends object>(
+  schema: ZodType<T>,
+  request: { path: string; signal: AbortSignal },
+  cached: ContentVersioned<T> | undefined,
+): Promise<ContentVersioned<T>> {
+  return readRevalidated(
+    { header: CONTENT_VERSION_HEADER, ...request },
+    cached && { data: cached, version: cached.contentVersion },
+    async (response, contentVersion) => {
+      const data = await readResponseJson(response, schema);
+      return contentVersion ? { ...data, contentVersion } : data;
+    },
+  );
+}
+
 /**
  * Build the query function of a read that `revalidateContent` covers on the
  * server. The token stays on the cached data as `contentVersion`.
@@ -48,19 +67,39 @@ export function revalidatedJsonQuery<T extends object>(
   schema: ZodType<T>,
   path: string,
 ) {
+  return ({ client, queryKey, signal }: QueryFunctionContext) =>
+    readContentVersioned(
+      schema,
+      { path, signal },
+      client.getQueryData<ContentVersioned<T>>(queryKey),
+    );
+}
+
+/**
+ * Build the page query function of an infinite read that the server
+ * revalidates on content. A refetch reads every loaded page again, and each
+ * page sends the token of the cached page with the same page param, so an
+ * unchanged page comes back with no body.
+ */
+export function revalidatedPageQuery<T extends object>(
+  schema: ZodType<T>,
+  path: (pageParam: string | undefined) => string,
+) {
   return ({
     client,
+    pageParam,
     queryKey,
     signal,
-  }: QueryFunctionContext): Promise<ContentVersioned<T>> => {
-    const cached = client.getQueryData<ContentVersioned<T>>(queryKey);
-    return readRevalidated(
-      { header: CONTENT_VERSION_HEADER, path, signal },
-      cached && { data: cached, version: cached.contentVersion },
-      async (response, contentVersion) => {
-        const data = await readResponseJson(response, schema);
-        return contentVersion ? { ...data, contentVersion } : data;
-      },
+  }: QueryFunctionContext<QueryKey, string | undefined>) => {
+    const cached =
+      client.getQueryData<
+        InfiniteData<ContentVersioned<T>, string | undefined>
+      >(queryKey);
+    const index = cached?.pageParams.indexOf(pageParam) ?? -1;
+    return readContentVersioned(
+      schema,
+      { path: path(pageParam), signal },
+      index >= 0 ? cached?.pages[index] : undefined,
     );
   };
 }

@@ -22,15 +22,15 @@ export const dashboardComposerSurfaceClass =
 export const dashboardDisclosureChevronClass =
   "size-3.5 shrink-0 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none";
 
-// One core style for both UIs. The classic and new UIs draw the surfaces
-// below from these classes, so their radii, frames, and counts cannot drift.
+// One core style. The dashboard draws the surfaces below from these
+// classes, so their radii, frames, and counts cannot drift.
 // `pnpm lint` (oxlint `radius/no-large-radius`) blocks the larger
 // radii in `shell/` and `inbox/`.
 
 /** Round a card, row, or panel. Buttons, tabs, inputs, and icon tiles use `rounded-md`. */
 export const dashboardSurfaceRadiusClass = "rounded-lg";
 
-/** Frame one message-like record in a transcript, such as an object preview or a review item. */
+/** Frame one message-like record in a transcript, such as an object preview or an inbox item. */
 export const dashboardMessageCardClass =
   "rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel";
 

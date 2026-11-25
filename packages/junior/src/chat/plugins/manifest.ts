@@ -22,6 +22,13 @@ import {
   mcpAuthSource,
   mcpOauthClientSource,
 } from "./inline-manifest-source";
+import {
+  assertWorkloadIdentityTokenTarget,
+  expandWorkloadIdentityEnvRefs,
+  workloadIdentityCredentials,
+  workloadIdentityHeader,
+  workloadIdentitySourceSchema,
+} from "./workload-identity-manifest";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -180,7 +187,7 @@ const baseCredentialsSchema = z
 
 const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
   "api-headers": stringMapSchema.optional(),
-  "auth-token-env": envVarString,
+  "auth-token-env": envVarString.optional(),
   "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   type: z.literal("oauth-bearer"),
 });
@@ -256,8 +263,12 @@ const accountsSourceSchema = z
   .object({
     "user-oauth": z.boolean().optional(),
     "service-account": z
-      .object({ tools: nonEmptyStringArraySchema("tools") })
-      .strict()
+      .union([
+        z.object({ tools: nonEmptyStringArraySchema("tools") }).strict(),
+        z
+          .object({ operations: nonEmptyStringArraySchema("operations") })
+          .strict(),
+      ])
       .optional(),
   })
   .strict();
@@ -692,7 +703,10 @@ function hostOnlyEnvNames(manifest: {
       names.add(name);
     }
   }
-  if (manifest.credentials?.authTokenEnv) {
+  if (
+    manifest.credentials?.type === "oauth-bearer" &&
+    manifest.credentials.authTokenEnv
+  ) {
     names.add(manifest.credentials.authTokenEnv);
   }
   if (manifest.oauth) {
@@ -747,10 +761,41 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
   }
 }
 
+function normalizeWorkloadIdentityCredentials(
+  data: Record<string, unknown>,
+  name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+): PluginCredentials {
+  const prefix = `Plugin ${name} credentials`;
+  const result = workloadIdentitySourceSchema.safeParse(
+    expandWorkloadIdentityEnvRefs(data, (value, path) =>
+      expandEnvPlaceholders(value, envVars, `${prefix}.${path}`),
+    ),
+  );
+  if (!result.success) {
+    throw new Error(issueMessage(result.error, prefix));
+  }
+  const domains = domainsSchema.optional().safeParse(result.data.domains);
+  if (!domains.success) {
+    throw new Error(issueMessage(domains.error, `${prefix}.domains`));
+  }
+  if (!domains.data) {
+    throw new Error(`${prefix} requires domains`);
+  }
+  const credentials = workloadIdentityCredentials(result.data, domains.data);
+  assertWorkloadIdentityTokenTarget(credentials, prefix);
+  return credentials;
+}
+
 function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  hasOAuth: boolean,
 ): PluginCredentials {
+  if (data["type"] === "workload-identity") {
+    return normalizeWorkloadIdentityCredentials(data, name, envVars);
+  }
   if (data["type"] !== "oauth-bearer") {
     throw new Error(
       `Plugin ${name} has unsupported credentials.type: "${String(data["type"])}"`,
@@ -766,6 +811,13 @@ function normalizeCredentials(
     throw new Error(`Plugin ${name} credentials requires domains`);
   }
   const domains = result.data.domains;
+  const authTokenEnv = result.data["auth-token-env"];
+  // Without OAuth, the env token is the only credential.
+  if (!authTokenEnv && !hasOAuth) {
+    throw new Error(
+      `Plugin ${name} credentials.auth-token-env is required without oauth`,
+    );
+  }
 
   const apiHeaders = result.data["api-headers"]
     ? normalizeStringMap(
@@ -779,7 +831,7 @@ function normalizeCredentials(
     type: "oauth-bearer",
     domains,
     ...(apiHeaders ? { apiHeaders } : undefined),
-    authTokenEnv: result.data["auth-token-env"],
+    ...(authTokenEnv ? { authTokenEnv } : undefined),
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
       : undefined),
@@ -1136,11 +1188,12 @@ function unloadedMcpTools(
 
 /**
  * Validate which accounts the plugin may use against the surfaces that
- * support them. Today only MCP OAuth stores a service account.
+ * support them: MCP OAuth lists tools, and a top-level `oauth` block with
+ * `oauth-bearer` credentials lists `egress.fetch` operations.
  */
 function normalizeAccounts(
   data: Record<string, unknown>,
-  mcp: PluginMcpConfig | undefined,
+  surfaces: { mcp: PluginMcpConfig | undefined; oauthBearer: boolean },
   name: string,
 ): PluginAccountsConfig | undefined {
   const result = accountsSourceSchema.safeParse(data);
@@ -1157,11 +1210,24 @@ function normalizeAccounts(
   if (!serviceAccount) {
     return undefined;
   }
+  const { mcp } = surfaces;
+  if ("operations" in serviceAccount) {
+    // One surface stores the account, so an MCP plugin lists tools instead.
+    if (mcp || !surfaces.oauthBearer) {
+      throw new Error(
+        `Plugin ${name} accounts.service-account.operations requires oauth with oauth-bearer credentials and no mcp`,
+      );
+    }
+    return {
+      ...(userOAuth === false ? { userOAuth } : undefined),
+      serviceAccount: { operations: serviceAccount.operations },
+    };
+  }
   // The connect flow registers its own OAuth client, and signed bot auth
   // has no per-actor account to replace.
   if (!mcp || mcp.auth || mcp.oauthClient) {
     throw new Error(
-      `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
+      `Plugin ${name} accounts.service-account.tools requires mcp without auth or oauth-client`,
     );
   }
   const unknownTools = unloadedMcpTools(mcp, serviceAccount.tools);
@@ -1299,8 +1365,25 @@ function parseManifestSource(
     : undefined;
 
   const credentials = data.credentials
-    ? normalizeCredentials(data.credentials, data.name)
+    ? normalizeCredentials(
+        data.credentials,
+        data.name,
+        envVars,
+        Boolean(data.oauth),
+      )
     : undefined;
+  if (credentials?.type === "workload-identity") {
+    const collision = Object.keys(apiHeaders ?? {}).find(
+      (header) =>
+        header.toLowerCase() ===
+        workloadIdentityHeader(credentials).toLowerCase(),
+    );
+    if (collision) {
+      throw new Error(
+        `Plugin ${data.name} api-headers.${collision} conflicts with credentials.header`,
+      );
+    }
+  }
   const runtimeDependencies = data["runtime-dependencies"]
     ? normalizeRuntimeDependencies(data["runtime-dependencies"], data.name)
     : undefined;
@@ -1309,7 +1392,11 @@ function parseManifestSource(
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
   const accounts = data.accounts
-    ? normalizeAccounts(data.accounts, mcp, data.name)
+    ? normalizeAccounts(
+        data.accounts,
+        { mcp, oauthBearer: Boolean(data.oauth && credentials) },
+        data.name,
+      )
     : undefined;
 
   const manifest: PluginManifest = {
@@ -1337,6 +1424,11 @@ function parseManifestSource(
   if (data.oauth) {
     if (!credentials && options?.allowHookManagedEgress !== true) {
       throw new Error(`Plugin ${data.name} oauth requires credentials`);
+    }
+    if (credentials?.type === "workload-identity") {
+      throw new Error(
+        `Plugin ${data.name} oauth cannot be used with workload-identity credentials`,
+      );
     }
 
     const result = oauthSourceSchema.safeParse(data.oauth);

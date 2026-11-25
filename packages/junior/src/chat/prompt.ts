@@ -2,15 +2,28 @@
  * Prompt assembly.
  *
  * This module owns Junior's static system prompt and volatile per-turn runtime
- * context. `policies/system-prompt.md` defines the block order, the authority
- * of each context input, and the cache rules. Change that policy before you
- * change the shape here. Runtime context is session-scoped bootstrap data; it
- * must stay separate from durable conversation history so compaction does not
- * retain runtime instructions as user text.
+ * context. The header of `system-prompt-rules.ts` holds the block order.
+ *
+ * The system prompt is the same for every Turn of one deployment, platform,
+ * and Prompt mode, so it holds no request, actor, time, or Conversation data.
+ * Facts for one request go in the context message: a user-role message before
+ * the current instruction, with `<runtime-turn-context>`, `AGENTS.md` at Turn
+ * start, and `<thread-context>`, each in its own content part. The current
+ * instruction is a separate user-role message with only a person's words and
+ * attachments. Tool results, files, and fetched pages are tool result
+ * messages.
+ *
+ * A Turn adds `AGENTS.md` only when it differs from the latest copy in
+ * history. An `AGENTS.md` that the Turn finds or changes later is a new
+ * user-role message at the end of history, because earlier messages do not
+ * change. Only context compaction rewrites them.
+ *
+ * Runtime context is session-scoped bootstrap data; it must stay separate
+ * from durable conversation history so compaction does not retain runtime
+ * instructions as user text.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { botConfig } from "@/chat/config";
 import {
   CAPABILITY_SECTION_TAG,
   type CapabilitySectionTag,
@@ -63,38 +76,63 @@ function getLoggedMarkdownFiles(): Set<string> {
   return globalState.__juniorLoggedMarkdownFiles;
 }
 
+function isMissingFile(error: unknown): boolean {
+  const code =
+    error instanceof Error && "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/** Which files that exist but give no text make a read throw. */
+type MarkdownReadChecks = { throwIfUnreadable: boolean; throwIfEmpty: boolean };
+
+/**
+ * Read the first candidate that has text. A file that exists but can't be
+ * read, or is empty, throws when `checks` says so. Otherwise the read tries
+ * the next candidate.
+ */
 function loadOptionalMarkdownFile(
   candidates: string[],
   fileName: string,
   loadedEventName: "soul.loaded" | "world.loaded",
+  checks: MarkdownReadChecks,
 ): string | null {
   for (const resolved of candidates) {
+    let raw: string;
     try {
-      const raw = fs.readFileSync(resolved, "utf8").trim();
-      if (raw.length > 0) {
-        const loggedMarkdownFiles = getLoggedMarkdownFiles();
-        const logKey = `${fileName}:${resolved}`;
-        if (!loggedMarkdownFiles.has(logKey)) {
-          loggedMarkdownFiles.add(logKey);
-          logInfo(loadedEventName, {
-            "file.path": resolved,
-          });
-        }
-        return raw;
+      raw = fs.readFileSync(resolved, "utf8").trim();
+    } catch (error) {
+      if (checks.throwIfUnreadable && !isMissingFile(error)) {
+        throw new Error(`${fileName} at ${resolved} can't be read`, {
+          cause: error,
+        });
       }
-    } catch {
       continue;
+    }
+    if (raw.length > 0) {
+      const loggedMarkdownFiles = getLoggedMarkdownFiles();
+      const logKey = `${fileName}:${resolved}`;
+      if (!loggedMarkdownFiles.has(logKey)) {
+        loggedMarkdownFiles.add(logKey);
+        logInfo(loadedEventName, {
+          "file.path": resolved,
+        });
+      }
+      return raw;
+    }
+    if (checks.throwIfEmpty) {
+      throw new Error(`${fileName} at ${resolved} is empty`);
     }
   }
 
   return null;
 }
 
-function loadSoul(): string {
+function loadSoul(strict: boolean): string {
   const soul = loadOptionalMarkdownFile(
     soulPathCandidates(),
     "SOUL.md",
     "soul.loaded",
+    { throwIfUnreadable: strict, throwIfEmpty: strict },
   );
   if (soul) {
     return soul;
@@ -106,17 +144,18 @@ function loadSoul(): string {
   return DEFAULT_SOUL;
 }
 
-function loadWorld(): string | null {
+function loadWorld(strict: boolean): string | null {
   return loadOptionalMarkdownFile(
     worldPathCandidates(),
     "WORLD.md",
     "world.loaded",
+    { throwIfUnreadable: strict, throwIfEmpty: false },
   );
 }
 
-export const JUNIOR_PERSONALITY = (() => {
+function readPersonality(): string {
   try {
-    return loadSoul();
+    return loadSoul(false);
   } catch (error) {
     logWarn("soul.load.failed", {
       "exception.message":
@@ -124,11 +163,11 @@ export const JUNIOR_PERSONALITY = (() => {
     });
     return DEFAULT_SOUL;
   }
-})();
+}
 
-export const JUNIOR_WORLD = (() => {
+function readWorld(): string | null {
   try {
-    return loadWorld();
+    return loadWorld(false);
   } catch (error) {
     logWarn("world.load.failed", {
       "exception.message":
@@ -136,7 +175,22 @@ export const JUNIOR_WORLD = (() => {
     });
     return null;
   }
-})();
+}
+
+export const JUNIOR_PERSONALITY = readPersonality();
+
+/** The text of the consumer's `SOUL.md` and `WORLD.md`. */
+export type SystemPromptFiles = { soul: string; world: string | null };
+
+/**
+ * Read `SOUL.md` and `WORLD.md` for a build. A file that exists but can't be
+ * read, or a `SOUL.md` that is empty, throws an error that names it, so the
+ * build fails. A missing `SOUL.md` gives the default personality, and a
+ * missing or empty `WORLD.md` gives no world.
+ */
+export function readSystemPromptFilesForBuild(): SystemPromptFiles {
+  return { soul: loadSoul(true), world: loadWorld(true) };
+}
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
@@ -231,7 +285,7 @@ function formatActiveMcpCatalogsForPrompt(
           ),
           childLine(
             renderInlineTag(
-              "available_tool_count",
+              "available-tool-count",
               String(catalog.available_tool_count),
             ),
           ),
@@ -353,16 +407,16 @@ const TURN_CONTEXT_HEADER =
   "Runtime context for this request. `<context-trust>` in the system prompt says how much authority each block has. The static system prompt remains authoritative.";
 
 /** Block 1, `# Identity`: the name and platform identity. Keep it short. */
-function buildIdentitySection(platform: PromptPlatform): string {
+function buildIdentitySection(
+  platform: PromptPlatform,
+  botName: string,
+): string {
   if (platform !== "slack") {
-    return [
-      "# Identity",
-      `Your assistant name is \`${botConfig.userName}\`.`,
-    ].join("\n");
+    return ["# Identity", `Your assistant name is \`${botName}\`.`].join("\n");
   }
   return [
     "# Identity",
-    `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
+    `Your Slack username is \`${botName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
     `${SLACK_MENTION_FORMAT_RULE} A mention of your own user ID means you.`,
   ].join("\n");
 }
@@ -371,20 +425,20 @@ function buildIdentitySection(platform: PromptPlatform): string {
  * Block 7, `# Personality`: the consumer's `SOUL.md`. It sets voice and tone
  * only. Core behavior must not depend on it.
  */
-function buildPersonalitySection(): string {
-  return ["# Personality", JUNIOR_PERSONALITY.trim()].join("\n");
+function buildPersonalitySection(soul: string): string {
+  return ["# Personality", soul.trim()].join("\n");
 }
 
 /**
  * Block 8, `# World`: the consumer's `WORLD.md`. It holds facts about the
  * operator, such as the company, repos, and resources.
  */
-function buildWorldSection(): string | null {
-  if (!JUNIOR_WORLD) {
+function buildWorldSection(world: string | null): string | null {
+  if (!world) {
     return null;
   }
 
-  return ["# World", JUNIOR_WORLD.trim()].join("\n");
+  return ["# World", world.trim()].join("\n");
 }
 
 function buildRuntimeSection(params: {
@@ -470,7 +524,7 @@ function formatSourceLines(source: Source): string[] {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return [`- source.kind: ${source.kind}`];
   }
 }
@@ -601,6 +655,13 @@ function buildContextSection(params: {
  * and Code Mode script tools that the model can use now, each with its tags,
  * or null when it is empty. A Turn sends the ones that changed as named
  * system prompt sections, so the Turn context and history stay the same.
+ *
+ * At Turn start, one system message sets each section that differs from the
+ * section state of history, or removes an empty one. System messages before
+ * the first assistant message fold into the system prompt. Pi sends a later
+ * one before the next assistant message, or folds it into the system prompt
+ * for a model without mid-conversation system messages. Context compaction
+ * folds the section state into one system message.
  */
 export function buildCapabilitySections(params: {
   availableSkills: SkillMetadata[];
@@ -783,8 +844,8 @@ type TurnContextPromptInput = {
   askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** From `renderPlanDelta`: plan changes that others made. */
-  planDelta?: string | null;
+  /** From `renderTodoDelta` or `renderTodosReview`. */
+  todos?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
@@ -811,49 +872,32 @@ type TurnContextPromptInput = {
   configuration?: Record<string, unknown>;
 };
 
-function buildStaticSystemPrompt(
+/** A named, static piece of the system prompt. */
+export type SystemPromptSection = { name: string; text: string };
+
+/**
+ * Build the core blocks of the system prompt for one platform and Prompt
+ * mode, in order, from `botName` and `files`. With no `files`, it reads
+ * `SOUL.md` and `WORLD.md` on each call and uses the defaults when a read
+ * fails.
+ */
+export function buildCoreSystemPromptSections(
   platform: PromptPlatform,
   mode: PromptMode,
-): string {
+  botName: string,
+  files: SystemPromptFiles = { soul: readPersonality(), world: readWorld() },
+): SystemPromptSection[] {
+  const world = buildWorldSection(files.world);
   return [
-    platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
-    buildIdentitySection(platform),
-    ...buildRuleBlocks(platform, mode),
-    buildPersonalitySection(),
-    buildWorldSection(),
-  ]
-    .filter((section): section is string => Boolean(section))
-    .join("\n\n");
-}
-
-const STATIC_SYSTEM_PROMPTS: Record<
-  PromptMode,
-  Record<PromptPlatform, string>
-> = {
-  automation: {
-    local: buildStaticSystemPrompt("local", "automation"),
-    slack: buildStaticSystemPrompt("slack", "automation"),
-  },
-  child_agent: {
-    local: buildStaticSystemPrompt("local", "child_agent"),
-    slack: buildStaticSystemPrompt("slack", "child_agent"),
-  },
-  conversation: {
-    local: buildStaticSystemPrompt("local", "conversation"),
-    slack: buildStaticSystemPrompt("slack", "conversation"),
-  },
-  thread: {
-    local: buildStaticSystemPrompt("local", "thread"),
-    slack: buildStaticSystemPrompt("slack", "thread"),
-  },
-};
-
-/** Return the fixed instructions for one platform and prompt mode. */
-export function buildSystemPrompt(
-  platform: PromptPlatform,
-  mode: PromptMode = "conversation",
-): string {
-  return STATIC_SYSTEM_PROMPTS[mode][platform];
+    {
+      name: "header",
+      text: platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
+    },
+    { name: "identity", text: buildIdentitySection(platform, botName) },
+    { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },
+    { name: "personality", text: buildPersonalitySection(files.soul) },
+    ...(world ? [{ name: "world", text: world }] : []),
+  ];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */
@@ -885,7 +929,7 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !params.planDelta &&
+    !params.todos &&
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
@@ -897,7 +941,7 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
-    params.planDelta,
+    params.todos,
     disabledTools,
     userCustomization,
     askerTimezone,

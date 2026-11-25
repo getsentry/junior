@@ -67,9 +67,7 @@ type AcpHttpHandlerOptions = {
   version: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const urlElicitationCapabilitySchema = z.object({ url: z.object({}) });
 
 function authenticatedAcpUser(connection: AcpConnection): User | undefined {
   return connection.user;
@@ -79,7 +77,7 @@ function supportsUrlElicitation(params: unknown): boolean {
   const parsed = initializeParamsSchema.safeParse(params);
   if (!parsed.success) return false;
   const elicitation = parsed.data.clientCapabilities?.["elicitation"];
-  return isRecord(elicitation) && isRecord(elicitation["url"]);
+  return urlElicitationCapabilitySchema.safeParse(elicitation).success;
 }
 
 function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {
@@ -158,7 +156,9 @@ function stableHex(value: string, length = 32): string {
 
 function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson);
-  if (!isRecord(value)) return value;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
   return Object.fromEntries(
     Object.entries(value)
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
@@ -314,6 +314,12 @@ async function acceptPrompt(args: {
     throw acp.RequestError.invalidParams(
       { field: "sessionId" },
       "This ACP session already has an active prompt",
+    );
+  }
+  if (result.status === "space_closed") {
+    throw acp.RequestError.invalidParams(
+      { field: "sessionId" },
+      "Only members of a Space that is not archived can message its Lead",
     );
   }
   return {

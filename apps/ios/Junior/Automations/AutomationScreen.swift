@@ -6,7 +6,9 @@ import SwiftUI
 /// the web; the public API reads Automations only.
 struct AutomationScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.splitColumn) private var column
   let automationId: String
   @State private var detail: AutomationDetail?
   @State private var error: JuniorAPIError?
@@ -16,17 +18,20 @@ struct AutomationScreen: View {
       AppHeader(title: app.agentName)
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          Button {
-            dismiss()
-          } label: {
-            HStack(spacing: 8) {
-              Icon("arrow-left", size: 15)
-              Text("Automations")
+          // Beside the list, there is nothing to go back to.
+          if column != .detailRoot {
+            Button {
+              dismiss()
+            } label: {
+              HStack(spacing: 8) {
+                Icon("arrow-left", size: 15)
+                Text("Automations")
+              }
+              .type(.sm, .medium, family: .display)
+              .foregroundStyle(Tokens.textMuted)
             }
-            .type(.sm, .medium, family: .display)
-            .foregroundStyle(Tokens.textMuted)
+            .buttonStyle(.plain)
           }
-          .buttonStyle(.plain)
           if let detail {
             overview(detail.automation)
             runs(detail.runs)
@@ -41,6 +46,7 @@ struct AutomationScreen: View {
           }
         }
         .padding(16)
+        .readableWidth()
       }
       .refreshable { await load() }
     }
@@ -92,7 +98,7 @@ struct AutomationScreen: View {
         MarkdownView(blocks: parseMarkdown(automation.task.text), step: .sm, color: Tokens.text)
       }
       if let url = automation.url {
-        Button("Edit on the web") { app.openLink(url) }
+        Button("Edit on the web") { window.openLink(url) }
           .buttonStyle(.dashboard(.outline))
       }
     }
@@ -141,11 +147,12 @@ struct AutomationScreen: View {
 /// One run: time and status, its error, and its Conversation.
 private struct RunRow: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let run: AutomationRun
 
   var body: some View {
     Button {
-      if let id = run.conversationId { app.path.append(.conversation(id)) }
+      if let id = run.conversationId { window.path.append(.conversation(id)) }
     } label: {
       HStack(alignment: .top, spacing: 10) {
         Dot(color: color, size: 8).padding(.top, 5)

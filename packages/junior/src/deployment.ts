@@ -17,12 +17,16 @@ export const JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE =
 export const JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE = "/api/internal/cache/warmups";
 export const JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE =
   "/api/internal/context/compactions";
+export const JUNIOR_TURN_STEP_CALLBACK_ROUTE = "/api/internal/turn/steps";
+export const JUNIOR_DELIVERY_CALLBACK_ROUTE = "/api/internal/turn/deliveries";
 export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =
   "api/internal/agent/continue.ts";
 
-// One id per process. Fluid compute runs many invocations in one process, so
-// this shows which spans shared an instance.
-const SERVICE_INSTANCE_ID = randomUUID();
+/**
+ * One id per process. Fluid compute runs many invocations in one process, so
+ * this shows which spans shared an instance.
+ */
+export const SERVICE_INSTANCE_ID = randomUUID();
 
 function toOptionalTrimmed(value: string | undefined): string | undefined {
   const trimmed = value?.trim();

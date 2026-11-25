@@ -584,6 +584,7 @@ export async function runTestHeartbeat(
   nowMs: number,
 ): Promise<void> {
   await runHeartbeat({
+    sendPluginTask: sendVercelPluginTask,
     conversationWorkQueue: queue,
     dispatchForIdentity: createIdentityDispatcher({
       conversationWorkQueue: () => queue,

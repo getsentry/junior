@@ -1,19 +1,16 @@
-import {
-  MAX_INPUT_ATTACHMENTS,
-  messageAttachmentSchema,
-} from "@/chat/attachments/input";
+import { messageAttachmentSchema } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
-import { conversationTitleSchema } from "./conversation-title";
+import { conversationKindSchema } from "./conversation-kind";
 import { conversationTreeStateSchema } from "./conversation-tree-state";
+import { spaceRefSchema } from "./space";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
@@ -39,9 +36,6 @@ export const conversationReportStatusSchema = z.enum([
   "working",
   "done",
 ]);
-
-/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -142,41 +136,6 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
 ]);
 
-/** Client key that makes a retried send the same Message. */
-export const idempotencyKeySchema = z.string().trim().min(1).max(200);
-
-export const createConversationMessageBodySchema = z
-  .object({
-    idempotencyKey: idempotencyKeySchema,
-    message: z.string().trim().max(32_000),
-    /** Uploads from `POST /api/conversations/attachment-uploads`. */
-    uploadIds: z
-      .array(z.string().min(1).max(64))
-      .max(MAX_INPUT_ATTACHMENTS)
-      .optional(),
-  })
-  .strict()
-  .refine(
-    (body) => Boolean(body.message || body.uploadIds?.length),
-    "Add a message or a file.",
-  );
-
-export const createConversationBodySchema =
-  createConversationMessageBodySchema.safeExtend({
-    /** Saved title. Title generation runs only when it is omitted. */
-    title: conversationTitleSchema.optional(),
-    /** New roots default public. Private roots stay participant-only. */
-    visibility: z.enum(["private", "public"]).optional(),
-  });
-
-export const acceptedConversationMessageSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    messageId: z.string().min(1),
-    status: z.enum(["accepted", "duplicate"]),
-  })
-  .strict();
-
 export const actorIdentitySchema = z
   .object({
     /**
@@ -257,6 +216,11 @@ export const conversationActivityPreviewSchema = z
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
+    /**
+     * Conversation metadata, when the viewer may see private content. A new
+     * Conversation has none until its first Turn completes.
+     */
+    summary: z.string().optional(),
     activityPreview: conversationActivityPreviewSchema.optional(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
@@ -268,6 +232,11 @@ export const conversationSummaryReportSchema = z
     parentConversationId: z.string().min(1).optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
+    /**
+     * The Space of the root, or null for a one-off. A child is in the Space
+     * of its root. Feed rows and the detail only.
+     */
+    space: spaceRefSchema.nullable().optional(),
     status: conversationReportStatusSchema,
     /** Feed rows and the detail only. */
     treeState: conversationTreeStateSchema.optional(),
@@ -306,12 +275,9 @@ export const conversationSummaryReportSchema = z
     locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
-     * Plugin-owned resource links for this conversation.
-     * Present on the conversation feed when the viewer can see private content.
-     * Clients must not fetch provider state while rendering these links.
+     * Plugin-selected annotations for the compact conversation row. The feed
+     * sends only these; the detail also sends the full `annotations`.
      */
-    annotations: z.array(conversationAnnotationReportSchema).optional(),
-    /** Plugin-selected annotations for the compact conversation row. */
     sidebarAnnotations: z.array(conversationSidebarAnnotationSchema).optional(),
     assignedWork: z.boolean().optional(),
     finishedWorkAt: z.string().datetime().optional(),
@@ -332,6 +298,11 @@ export const conversationSummaryReportSchema = z
      * expired.
      */
     awaitingAuthorization: z.boolean().optional(),
+    /**
+     * True on the conversation feed when the conversation's latest Turn
+     * failed and no newer Turn started.
+     */
+    latestTurnFailed: z.boolean().optional(),
   })
   .strict();
 
@@ -354,24 +325,33 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     /** Identity id of the author. Detail `authors` maps it to the person. */
     actorIdentityId: z.string().min(1).optional(),
-    /** Agent invocation whose input this is. An agent wrote it, not a person. */
+    /** Set on input that an earlier release's agent wrote, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
     eventNamespace: z.string().min(1).optional(),
+    /**
+     * Resource identifier of the first Event, such as the id of a watched
+     * Conversation. Only for viewers who can see private content.
+     */
+    eventIdentifier: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
+    /** What the first Event says happened, when it is an agent update. */
+    eventStatus: z.string().min(1).optional(),
+    /** Watch that delivered the first Event. */
+    eventWatchId: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
     /**
      * The Watch Events when several arrived together. A message that also
-     * records Review item changes lists its own Event here even when it has
+     * records Inbox item changes lists its own Event here even when it has
      * one.
      */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
-    /** Person changes to Review items that this message records. */
-    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
+    /** Person changes to Inbox items that this message records. */
+    reviewItemChanges: z.array(inboxItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -395,7 +375,7 @@ const conversationReportMessageEventDataSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
+          "redacted messages must not expose actor identity, cards, attachments, events, or inbox item changes",
       });
     }
   });
@@ -416,6 +396,8 @@ const conversationReportToolCallSchema = z
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
+    /** The Conversation that a completed `startConversation` call started. */
+    startedConversationId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((call, context) => {
@@ -800,23 +782,6 @@ function validateConversationEvents(
   }
 }
 
-export const forkConversationBodySchema = z
-  .object({
-    /** Assistant reply that ends the copied history. */
-    messageId: z.string().min(1).max(500),
-    idempotencyKey: z.string().trim().min(1).max(200),
-    /** Start a hidden, read-only Quick question about this reply text. */
-    quickQuestion: z
-      .object({ quote: z.string().trim().min(1).max(4_000) })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
-export const forkConversationResponseSchema = z
-  .object({ conversationId: z.string() })
-  .strict();
-
 /** One Conversation in the agent tree of a child Conversation. */
 export const conversationAgentTreeNodeSchema = z
   .object({
@@ -872,6 +837,12 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Conversation last. Root Conversations omit it.
      */
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
+    /**
+     * Plugin-owned annotations of this Conversation and its tree, when the
+     * viewer can see private content. Clients must not fetch provider state
+     * while rendering them.
+     */
+    annotations: z.array(conversationAnnotationReportSchema).optional(),
     /** The viewer's effective auto-archive choice. Participants only. */
     autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
@@ -904,16 +875,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
     forks: z.array(z.string()).optional(),
-    brief: z
-      .object({
-        content: conversationBriefSchema,
-        /** People mentioned in the Brief text, resolved at read time. */
-        mentions: z.array(actorIdentitySchema).optional(),
-        updatedAt: z.string().datetime(),
-        version: z.number().int().positive(),
-      })
-      .strict()
-      .optional(),
+    /** People named in `summary`, resolved at read time. */
+    summaryMentions: z.array(actorIdentitySchema).optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     /**
      * Each person who wrote in the Conversation, by each of their Identity
@@ -987,13 +950,3 @@ export type ConversationDetailReport = z.infer<
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
-export type CreateConversationBody = z.infer<
-  typeof createConversationBodySchema
->;
-export type CreateConversationMessageBody = z.infer<
-  typeof createConversationMessageBodySchema
->;
-export type AcceptedConversationMessage = z.infer<
-  typeof acceptedConversationMessageSchema
->;

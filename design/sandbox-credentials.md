@@ -26,15 +26,6 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
   CLI works in any Turn without a skill load first.
 - A missing connection becomes a prompt to connect, not a silent failure.
 
-## Entry points
-
-- Sandbox commands: `bash`, git, provider CLIs such as `gh` and `sentry`,
-  scripts, and the browser.
-- Slack: the prompt to connect an account when a command needs it.
-- Dashboard: Settings, Identities, to connect or disconnect an account. An
-  Admin connects a Service account in the dashboard or with
-  `junior service-account connect`.
-
 ## Rules
 
 - Only domains that a plugin declares get credentials, and each domain has
@@ -48,3 +39,16 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
 - Junior never deletes a Sentry organization or project, whatever the
   credential or the Actor's role. A person does that in Sentry.
 - Workspace setup scripts run with no provider credentials.
+
+## Gaps
+
+- The GitHub plugin says that its tools send no credential, so any Sandbox
+  request to GitHub that sends none gets one, also where GitHub uses the
+  Actor's account. A repo script then acts as the Actor only because it
+  calls GitHub. This breaks "Other code in the Sandbox does not act as the
+  Actor only because it calls a provider domain".
+- The Google plugin refuses every Sandbox request to the Google APIs, also
+  a request that carries its own credential. A person cannot use their own
+  Google account in the Sandbox. This breaks "A credential that a request
+  carries itself is never replaced. A person can use another account in
+  the Sandbox".

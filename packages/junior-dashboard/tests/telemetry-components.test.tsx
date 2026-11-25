@@ -24,7 +24,7 @@ import {
   type ConversationDrawerTarget,
 } from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
-import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
+import { ConversationHeader } from "../src/client/shell/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
   ConversationStats,
@@ -34,9 +34,9 @@ import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
-import { ConversationPage } from "../src/client/conversations/ConversationPage";
+import { ConversationPage } from "../src/client/shell/conversations/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
-import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { LocationsPageContent } from "../src/client/shell/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
 import {
@@ -171,6 +171,15 @@ function systemData(): SystemFixture {
           tokens: 12_345,
         },
       ],
+      personSpendDays: [
+        {
+          date: "2026-01-01",
+          medianPersonCostUsd: 1.5,
+          people: 2,
+          personCostUsd: 4,
+          unattributedCostUsd: 0.56,
+        },
+      ],
       source: "conversation_index",
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-10-03T00:00:00.000Z",
@@ -239,28 +248,33 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
 describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="line">
-          <DisplayText
-            text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
-          />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="line">
+            <DisplayText
+              text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+            />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
     expect(html).toContain('href="https://docs.sentry.io"');
+    // A link to another site opens in a new tab.
     expect(html).toContain('target="_blank"');
     expect(html).toContain("<mark");
   });
 
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="docs.sentry.io">
-          <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="docs.sentry.io">
+            <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("<mark");
@@ -285,11 +299,13 @@ describe("dashboard canonical-event components", () => {
 
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="">
+            <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain(
@@ -418,47 +434,50 @@ describe("dashboard canonical-event components", () => {
 
   it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <ConversationHeader
-          detailsOpen={false}
-          errors={[]}
-          menu={{
-            actions: {
-              archive: () => {},
-              continueInSlack: () => {},
-              delivery: () => {},
-              eventLog: () => {},
-              pin: () => {},
-              rename: () => {},
-              subscription: () => {},
-            },
-            conversation: undefined,
-            conversationId: "conversation-1",
-            detail: undefined,
-            eventLogOpen: true,
-            pending: {
-              archive: false,
-              delivery: false,
-              pin: false,
-              subscription: false,
-            },
-          }}
-          onDetailsClick={() => {}}
-          onSearchChange={() => {}}
-          onViewChange={() => {}}
-          privacy={null}
-          search=""
-          searchMatch={{
-            count: 0,
-            index: 0,
-            reset: () => {},
-            setMatches: () => {},
-            step: () => {},
-          }}
-          title="Header QA"
-          view="raw"
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ConversationHeader
+            detailsOpen={false}
+            errors={[]}
+            lead={false}
+            menu={{
+              actions: {
+                archive: () => {},
+                continueInSlack: () => {},
+                delivery: () => {},
+                eventLog: () => {},
+                pin: () => {},
+                rename: () => {},
+                subscription: () => {},
+              },
+              conversation: undefined,
+              conversationId: "conversation-1",
+              detail: undefined,
+              eventLogOpen: true,
+              pending: {
+                archive: false,
+                delivery: false,
+                pin: false,
+                subscription: false,
+              },
+            }}
+            onDetailsClick={() => {}}
+            onSearchChange={() => {}}
+            onViewChange={() => {}}
+            privacy={null}
+            search=""
+            searchMatch={{
+              count: 0,
+              index: 0,
+              reset: () => {},
+              setMatches: () => {},
+              step: () => {},
+            }}
+            title="Header QA"
+            view="raw"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(html).toContain('title="Back to conversation"');
     expect(html).toMatch(/aria-current="page"[^>]*>Event log</);
@@ -496,6 +515,7 @@ describe("dashboard canonical-event components", () => {
     expect(completedHtml).not.toContain("Assistant is thinking…");
 
     // Once the Turn has activity, its latest step replaces the thinking row.
+    // The person message links to itself, so these renders need a router.
     const working = conversation(
       [
         event(0, {
@@ -525,9 +545,11 @@ describe("dashboard canonical-event components", () => {
       { status: "working" },
     );
     const workingHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live transcript={working} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live transcript={working} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     // The reasoning shows above the announced step line.
     const step = workingHtml.match(
@@ -555,16 +577,20 @@ describe("dashboard canonical-event components", () => {
       { status: "working" },
     );
     const waitingHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live transcript={waiting} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live transcript={waiting} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     expect(waitingHtml).toContain("Review the spans");
     expect(waitingHtml).not.toContain("Assistant is thinking…");
     const pausedHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live responding={false} transcript={working} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live responding={false} transcript={working} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     expect(pausedHtml).not.toContain('aria-live="polite"');
   });
@@ -1746,7 +1772,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     const reportOnlyPluginHtml = renderSystemPage(
-      "/system/plugins/briefs",
+      "/system/plugins/report-only",
       loading,
     );
     expect(reportOnlyPluginHtml).toContain("Loading plugin");

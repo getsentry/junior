@@ -57,3 +57,16 @@ export function openOnClick(
     },
   };
 }
+
+/**
+ * Handlers that run `opened` when a link opens: a click of any kind, or a
+ * middle click, which fires `auxclick` and not `click`.
+ */
+export function onLinkOpen(opened: (() => void) | undefined) {
+  return {
+    onAuxClick: (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.button === 1) opened?.();
+    },
+    onClick: opened,
+  };
+}

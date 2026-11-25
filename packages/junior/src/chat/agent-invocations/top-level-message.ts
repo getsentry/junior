@@ -5,23 +5,23 @@
  * credentials never reach the target.
  */
 import type { StateAdapter } from "chat";
+import type { Actor } from "@/chat/actor";
 import {
   canAccessConversation,
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
-import { botConfig } from "@/chat/config";
 import { getConversationStore, getDb } from "@/chat/db";
 import {
   EVENT_WAIT_MS,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { renderUntrustedTag } from "@/chat/input-tags";
-import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { renderDataTag } from "@/chat/input-tags";
+import { readLeadSpace } from "@/chat/lead/conversation";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
-import { AgentMessagePausedError, AgentMessageTargetError } from "./errors";
+import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
+import { AgentMessageTargetError } from "./errors";
 import { PARENT_AGENT_TARGET } from "./types";
 
 const AGENT_MESSAGE_EVENT_NAMESPACE = "junior";
@@ -32,11 +32,14 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
  * Check that a top-level agent can message another top-level agent under
  * `policies/conversation-access.md`. Public agents can message each other.
  * A private agent can message only agents at its own Destination, such as
- * another thread in the same private Slack channel.
+ * another thread in the same private Slack channel, or in its own private
+ * Space. A Space's Lead messages a root outside its Space only when the
+ * member who asked is a Participant of that root.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */
 async function requireTopLevelAgentAccess(args: {
+  askingActor?: Actor | undefined;
   senderConversationId: string;
   to: string;
 }): Promise<void> {
@@ -77,8 +80,24 @@ async function requireTopLevelAgentAccess(args: {
   // nothing private.
   if (receiver.visibility === "public" && sender.visibility !== "public") {
     throw new AgentMessageTargetError(
-      `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
+      `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel, DM, or private Space`,
     );
+  }
+  const leadSpaceId = (await readLeadSpace(args.senderConversationId))?.id;
+  if (leadSpaceId && target.spaceId !== leadSpaceId) {
+    const person = args.askingActor
+      ? (await readActorIdentity(args.askingActor))?.user
+      : undefined;
+    const personAccess = person
+      ? (await readConversationAccessFromSql(getDb(), [args.to], person)).get(
+          args.to,
+        )
+      : undefined;
+    if (!personAccess?.isParticipant) {
+      throw new AgentMessageTargetError(
+        `"${args.to}" is outside this Space. You can message a conversation outside this Space only for a member who takes part in it and asked for this Turn`,
+      );
+    }
   }
 }
 
@@ -88,7 +107,7 @@ function renderTopLevelMessageInput(args: {
   senderConversationId: string;
   text: string;
 }): string {
-  return renderUntrustedTag(
+  return renderDataTag(
     "agent-message",
     {
       conversation_id: args.senderConversationId,
@@ -101,11 +120,14 @@ function renderTopLevelMessageInput(args: {
 
 /**
  * Send one message from a top-level agent to another top-level agent and
- * wake the target. The access check runs on each call. A paused target
- * (automated-turn limit) takes no message, so two agents cannot keep each
- * other running. Repeat calls with the same `messageKey` are safe.
+ * wake the target. The access check runs on each call. A stopped target
+ * holds the message, so once the automated-turn limit stops one of two
+ * agents, they cannot keep each other running. Repeat calls with the same
+ * `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
+  /** The person whose input started this Turn, if a person started it. */
+  askingActor?: Actor | undefined;
   messageKey: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -116,23 +138,6 @@ export async function enqueueTopLevelAgentMessage(args: {
 }): Promise<void> {
   await requireTopLevelAgentAccess(args);
   const nowMs = args.nowMs ?? Date.now();
-  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-  const decision = await admitAutomatedTurn({
-    conversationId: args.to,
-    maxTurns,
-    nowMs,
-    state: args.state,
-  });
-  if (decision.status === "paused") {
-    if (decision.shouldPostNotice) {
-      await postAutomatedTurnLimitNoticeForConversation({
-        conversationId: args.to,
-        maxTurns,
-        nowMs,
-      });
-    }
-    throw new AgentMessagePausedError(args.to);
-  }
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
   const summary = `Top-level agent ${args.senderConversationId} sent a message.`;
   const metadata: EventMailboxMetadata = {
@@ -145,7 +150,7 @@ export async function enqueueTopLevelAgentMessage(args: {
       trustedSummary: summary,
     },
   };
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: {
       conversationId: args.to,
       createdAtMs: nowMs,

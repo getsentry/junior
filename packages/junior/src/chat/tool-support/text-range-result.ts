@@ -1,6 +1,6 @@
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_READ_LIMIT = 1000;
 /**
@@ -177,5 +177,7 @@ export function sliceFileContent(params: {
 
 /** Reject an expected missing read target through the tool-error channel. */
 export function missingFileResult(path: string): never {
-  throw new ToolInputError(`File not found: ${path}`);
+  throw new ToolInputError(
+    `File not found: ${path}. Check the path, for example with ls in bash.`,
+  );
 }

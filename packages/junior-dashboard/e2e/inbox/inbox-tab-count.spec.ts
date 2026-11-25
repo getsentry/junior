@@ -1,29 +1,23 @@
 import type { Page } from "@playwright/test";
 
-import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
-import { attentionCount, automationReport } from "./automation-fixture";
 import {
-  conversationId,
+  automationAlert,
   expandRow,
-  grab,
   license,
   migration,
-  mockReviewItems,
-  mockViewerCodeChanges,
-  prMerge,
-  prReview,
+  mockInboxItems,
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { tabIconAccentSpots } from "../tab-icon";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   // One ask, so its row's Done takes the count to zero.
   async function mockOneAsk(page: Page) {
-    await mockReviewItems(page, { automations: () => 0, open: [rollout] });
+    await mockInboxItems(page, { automations: () => 0, open: [rollout] });
   }
 
   function inboxTab(page: Page) {
@@ -56,12 +50,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   }
 
-  function navEntry(page: Page, label: string) {
-    return page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: new RegExp(`^${label}`) });
-  }
-
   /** Answer an open question with its first field's choice, then Send. */
   async function answer(page: Page, title: string, choice: string) {
     const ask = page.getByRole("region", { name: title, exact: true });
@@ -79,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
     await expect(page).toHaveTitle("(1) Inbox - Junior");
 
@@ -87,7 +75,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/settings`);
     await expect(page).toHaveTitle("(1) Settings - Junior");
 
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await closeCheckoutAsks(page);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
     await expect(page).toHaveTitle("Inbox - Junior");
@@ -98,13 +86,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const icon = page.locator('link[rel="icon"]');
     await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
 
     await closeCheckoutAsks(page);
     await expect(page).toHaveTitle("Inbox - Junior");
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
+  });
+
+  test("the tab icon count fills the top-left corner, clear of the eye", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockOneAsk(page);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const accentSpots = await tabIconAccentSpots(page);
+    expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
   });
 
   test("turning off the tab count hides it in the title and on the icon", async ({
@@ -140,11 +138,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     }) => {
       // The mock counts this list on each request.
       const open: unknown[] = [rollout];
-      await mockReviewItems(page, { automations: () => 0, open });
+      await mockInboxItems(page, { automations: () => 0, open });
       const versions = {
         conversationDetails: {},
         conversations: "mock",
-        reviewItems: "review-1",
+        inboxItems: "review-1",
         spend: "mock",
       };
       // Page clock time of each answered check.
@@ -184,7 +182,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.clock.fastForward(5_000);
       await answered(2);
       open.push(license);
-      versions.reviewItems = "review-2";
+      versions.inboxItems = "review-2";
       await page.clock.fastForward(30_000);
       await page.clock.fastForward(30_000);
       await answered(3);
@@ -201,11 +199,11 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await recordTitles(page);
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveTitle("(1) Inbox - Junior");
     const nav = page.getByRole("navigation", { name: "Primary" });
-    await nav.getByRole("link", { name: /^Pull requests/ }).click();
-    await expect(page).toHaveTitle("(1) Pull requests - Junior");
+    await nav.getByRole("link", { name: /^Done/ }).click();
+    await expect(page).toHaveTitle("(1) Done - Junior");
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expect(page).toHaveTitle("(1) Snoozed - Junior");
     await inboxTab(page).click();
@@ -214,76 +212,37 @@ test.describe("new UI", { tag: "@new" }, () => {
     const all = await recordedTitles(page);
     // From the first counted title on: the count loads after the page title.
     const titles = all.slice(all.indexOf("(1) Inbox - Junior"));
-    expect(titles).toContain("(1) Pull requests - Junior");
+    expect(titles).toContain("(1) Done - Junior");
     expect(titles.filter((title) => /^(\(\d+\) )?Junior$/.test(title))).toEqual(
       [],
     );
   });
 
-  test("the tab count waits for the alerts that this browser put away", async ({
+  test("the tab count counts an Automation alert, and its snooze leaves the count", async ({
     dashboard,
     page,
   }) => {
-    const report = structuredClone(automationReport);
-    const blocked = report.automations[1]!;
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T10:00:00.000Z",
-      lastRunStatus: "blocked",
-      status: "blocked",
-      statusReason: "GitHub access expired.",
-    });
-    const total = 1 + attentionCount(report);
-    await mockReviewItems(page, {
-      automations: () => attentionCount(report),
-      open: [rollout],
-    });
-    // The attention list can be held, as a slow list is on a real server.
-    let held: Promise<void> | undefined;
-    let release = () => {};
-    await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
-      await held;
-      await route.fulfill({
-        json: mockAutomationCollection(
-          report,
-          new URL(route.request().url()).searchParams,
-        ),
-      });
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(page).toHaveTitle(`(${total}) Inbox - Junior`);
+    const alert = automationAlert("event-1", "Closed issue summary");
+    await mockInboxItems(page, { open: [rollout, alert] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
-    await todo.getByRole("button", { name: new RegExp(blocked.title) }).click();
-    await page
-      .getByRole("region", { name: `${blocked.title}: attention` })
-      .getByRole("button", { name: "Dismiss", exact: true })
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Snooze" })
       .click();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
 
-    // Reload while the list that says which alert was put away is held.
-    held = new Promise((resolve) => {
-      release = resolve;
-    });
+    // The server keeps the snooze, so a reload never counts the alert.
     await recordTitles(page);
-    const counted = page.waitForResponse((response) =>
-      response.url().includes("/api/review-items/count"),
-    );
     await page.reload();
-    await counted;
     await expect(rowHead(page, checkout)).toBeVisible();
-    // Let the count render before the list arrives.
-    await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-    );
-    release();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
-    // The count never showed the put-away alert, so it never dropped.
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
     expect(
-      (await recordedTitles(page)).filter((title) =>
-        title.startsWith(`(${total}) `),
-      ),
+      (await recordedTitles(page)).filter((title) => title.startsWith("(2) ")),
     ).toEqual([]);
   });
   test("To do counts its rows, also each row of a stack, before and after an answer", async ({
@@ -292,11 +251,11 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // Two asks in one Conversation make a stack of two rows, and one ask
     // makes another row.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [rollout, migration, license],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const cards = todo.locator("[data-inbox-row]");
     await expect(cards).toHaveCount(3);
@@ -309,68 +268,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(cards).toHaveCount(2);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 2 waiting");
     await expect(page).toHaveTitle("(2) Inbox - Junior");
-  });
-
-  test("Decisions counts every question that it lists, before and after an answer", async ({
-    dashboard,
-    page,
-  }) => {
-    // A question for Everyone is a Decisions row too.
-    await mockReviewItems(page, {
-      automations: () => 0,
-      open: [license, grab],
-    });
-    await page.goto(`${dashboard.baseURL}/?view=decisions`);
-    const rows = page
-      .getByRole("region", { name: "Decisions" })
-      .locator("[data-inbox-row]");
-    await expect(rows).toHaveCount(2);
-    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*2$/);
-
-    await rowHead(page, license.title).click();
-    await answer(page, license.title, "Approve");
-    await expect(rows).toHaveCount(1);
-    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*1$/);
-  });
-
-  test("Pull requests counts the changes under Waiting on you, before and after a dismiss", async ({
-    dashboard,
-    page,
-  }) => {
-    // A second ask on #42 shares its change, and #42 is a draft.
-    const squash = {
-      ...license,
-      addedByConversationId: conversationId,
-      rootConversationId: conversationId,
-      id: "item-pr-squash",
-      subject: prMerge.subject,
-      title: "Squash #42 before the merge?",
-    };
-    await mockReviewItems(page, {
-      automations: () => 0,
-      open: [prMerge, squash, prReview],
-    });
-    await mockViewerCodeChanges(page, [
-      { draft: true, idleDays: 0, number: 42, title: "Retry checkout writes" },
-      { idleDays: 1, number: 91, title: "Pin the release train" },
-    ]);
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    const waiting = page
-      .getByRole("region", { name: "Waiting on you" })
-      .locator('[data-dock-key^="change:"]');
-    await expect(waiting).toHaveCount(2);
-    await expect(navEntry(page, "Pull requests")).toHaveText(
-      /^Pull requests\s*2$/,
-    );
-
-    await rowHead(page, prReview.title).click();
-    await page
-      .locator("li[data-expanded]")
-      .getByRole("button", { name: "Dismiss", exact: true })
-      .click();
-    await expect(waiting).toHaveCount(1);
-    await expect(navEntry(page, "Pull requests")).toHaveText(
-      /^Pull requests\s*1$/,
-    );
   });
 });

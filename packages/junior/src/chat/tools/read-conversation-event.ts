@@ -8,8 +8,8 @@ import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const readConversationEventOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
@@ -100,14 +100,14 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
       const event = page.events[0];
       if (!event) {
         throw new ToolInputError(
-          `Conversation event not found: seq ${input.seq} in ${conversationId}`,
+          `Conversation event not found: seq ${input.seq} in ${conversationId}. Use searchConversationEvents to find a seq.`,
         );
       }
 
       const text = eventText(event.data);
       if (offset > 0 && offset >= text.length) {
         throw new ToolInputError(
-          `offset ${offset} is past the end of the event text (${text.length} chars)`,
+          `offset ${offset} is past the end of the event text (${text.length} chars). Set offset below ${text.length}.`,
         );
       }
       const slice = text.slice(

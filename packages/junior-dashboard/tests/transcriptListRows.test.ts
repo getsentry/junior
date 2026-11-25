@@ -97,14 +97,18 @@ function messageEntry(
   };
 }
 
-function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
+function toolEntry(
+  seq: number,
+  name = "bash",
+  itemId = `item-${seq}`,
+): RenderedTranscriptEntry {
   return {
     key: `${seq}:tool:0`,
     kind: "tool",
     part: {
       id: `call-${seq}`,
       name,
-      output: JSON.stringify({ item: { id: `item-${seq}` } }),
+      output: JSON.stringify({ item: { id: itemId } }),
       status: "completed",
       type: "tool_call",
     },
@@ -146,7 +150,7 @@ describe("transcriptListRows", () => {
     const rows = transcriptListRows({
       entries: [
         messageEntry(0, "user"),
-        toolEntry(1, "spawnAgent"),
+        toolEntry(1, "startAgent"),
         subagentEntry(2),
         toolEntry(3),
         subagentEntry(4, "thread"),
@@ -185,11 +189,11 @@ describe("transcriptListRows", () => {
       entries: [
         messageEntry(1, "user"),
         toolEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
         toolEntry(4),
         messageEntry(5),
         messageEntry(6, "user"),
-        toolEntry(7, "addReviewItem"),
+        toolEntry(7, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -207,12 +211,40 @@ describe("transcriptListRows", () => {
     ]);
   });
 
+  it("shows an item that Junior asked twice once, at its last ask", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        toolEntry(2, "addInboxItem", "item-a"),
+        toolEntry(3, "addInboxItem", "item-a"),
+        messageEntry(4),
+        messageEntry(5, "user"),
+        toolEntry(6, "addInboxItem", "item-b"),
+        messageEntry(7),
+        messageEntry(8, "user"),
+        toolEntry(9, "addInboxItem", "item-b"),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["4:message:0"], kind: "entry", seq: 4 },
+      { keys: ["3:tool:0"], kind: "entry", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      { keys: ["7:message:0"], kind: "entry", seq: 7 },
+      { keys: ["8:message:0"], kind: "entry", seq: 8 },
+      { keys: ["9:tool:0"], kind: "entry", seq: 8 },
+    ]);
+  });
+
   it("puts the New marker before a moved ask that is unread", () => {
     const rows = transcriptListRows({
       entries: [
         messageEntry(1, "user"),
         messageEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),

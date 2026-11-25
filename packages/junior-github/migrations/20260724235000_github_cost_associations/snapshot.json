@@ -1,0 +1,73 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "c77b9011-8d0d-4d16-8b63-a9a45c162c6a",
+  "prevIds": ["6e0acdc7-db48-4ebf-846e-0589fc32afb5"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_issues",
+        "conversation_ids"
+      ],
+      "writes": [
+        "s|col|public.junior_github_issues.conversation_ids",
+        "n|col|public.junior_github_issues.conversation_ids",
+        "e|col|public.junior_github_issues.conversation_ids"
+      ],
+      "reads": ["n|tbl|public.junior_github_issues", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_requests",
+        "linked_issue_numbers"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_requests.linked_issue_numbers",
+        "n|col|public.junior_github_pull_requests.linked_issue_numbers",
+        "e|col|public.junior_github_pull_requests.linked_issue_numbers"
+      ],
+      "reads": ["n|tbl|public.junior_github_pull_requests", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_issues",
+        "name": "conversation_ids",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 1,
+        "default": "ARRAY[]",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_requests",
+        "name": "linked_issue_numbers",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 1,
+        "default": "ARRAY[]",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

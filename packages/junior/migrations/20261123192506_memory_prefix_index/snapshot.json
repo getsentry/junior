@@ -1,0 +1,69 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "95db36c0-8ea2-4996-8e01-7625e5ed3391",
+  "prevIds": ["3c75f87f-c8bb-4c81-84ca-acc686ffef13"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_prefix_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_prefix_idx",
+        "n|idx|public.junior_memory_memories_prefix_idx",
+        "e|idx|public.junior_memory_memories_prefix_idx",
+        "n|rel|public.junior_memory_memories_prefix_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_prefix_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "scope",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scope_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "to_tsvector('simple', \"content\")",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

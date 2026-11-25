@@ -1,9 +1,9 @@
-import { useCallback } from "react";
 import {
   Archive,
   ArchiveRestore,
   LockKeyhole,
   MessageSquare,
+  Pin,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -19,6 +19,8 @@ import { cn } from "../../styles";
 import type { WaitingConversation } from "../../inbox/queries";
 import type { Conversation } from "../../types";
 import { useConversationActionToasts } from "../../conversations/conversationActionToasts";
+import { MessageObjectsProvider } from "../../display-text/DisplayText";
+import { useLiveAnnotations } from "../../conversations/liveAnnotations";
 import { conversationCardTags } from "../../conversations/ConversationContextTags";
 import {
   ConversationListStatusIcon,
@@ -32,11 +34,6 @@ import { ConversationSectionList } from "./ConversationSectionList";
 import { ConversationSectionHeading } from "../../conversations/ConversationSectionHeading";
 import { usePrefetchConversation } from "../../conversations/conversationPrefetch";
 import { useCollapsedConversationSections } from "../../conversations/useCollapsedConversationSections";
-import {
-  usePinnedRowDrag,
-  type PinnedRowDrag,
-} from "../../conversations/PinnedConversationOrder";
-import type { ReorderPins } from "../../conversations/useReorderPinnedConversations";
 import { formatActivityDay, formatTime } from "../../time";
 import { fadeTextClass } from "../../textFade";
 import { conversationTurnIsActive } from "../../conversations/turnActivity";
@@ -46,62 +43,55 @@ export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string | undefined;
   loading?: boolean;
-  /** Leave unset when the list shows only some pins. */
-  onReorderPins?: ReorderPins | undefined;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
-  const { showActionError, showArchiveError, showArchived } =
-    useConversationActionToasts();
-  const handleReorderError = useCallback(
-    (conversation: Conversation) =>
-      showActionError(conversation, "Could not reorder"),
-    [showActionError],
-  );
+  const { showArchiveError, showArchived } = useConversationActionToasts();
 
   // The list stays mounted through the first load, so a pointer that rests
   // on it then still holds the order.
   return (
-    <ConversationSectionList
-      conversations={props.conversations}
-      loading={props.loading ?? false}
-      onReorderError={handleReorderError}
-      onReorderPins={props.onReorderPins}
-      timeZone={props.timeZone}
-    >
-      {({ releaseHold, sections }) =>
-        props.loading && props.conversations.length === 0 ? (
-          <ConversationHomeListLoading label="Loading conversations" />
-        ) : props.conversations.length === 0 ? (
-          <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-            <EmptyTelemetry>
-              {props.emptyLabel ?? "No conversations match this view."}
-            </EmptyTelemetry>
-          </div>
-        ) : (
-          <div
-            aria-label="Your conversations"
-            className="grid gap-5"
-            role="list"
-          >
-            {sections.map((section) => (
-              <ConversationCardSection
-                collapsed={collapsedKeys.has(section.key)}
-                key={section.key}
-                onArchiveError={showArchiveError}
-                onArchived={showArchived}
-                onRowAction={releaseHold}
-                onToggle={() => toggleSection(section.key)}
-                waitingConversations={props.waitingConversations}
-                section={section}
-              />
-            ))}
-          </div>
-        )
-      }
-    </ConversationSectionList>
+    // The cards read the live status of their linked work in one request.
+    <MessageObjectsProvider>
+      <ConversationSectionList
+        conversations={props.conversations}
+        loading={props.loading ?? false}
+        timeZone={props.timeZone}
+      >
+        {({ releaseHold, sections }) =>
+          props.loading && props.conversations.length === 0 ? (
+            <ConversationHomeListLoading label="Loading conversations" />
+          ) : props.conversations.length === 0 ? (
+            <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+              <EmptyTelemetry>
+                {props.emptyLabel ?? "No conversations match this view."}
+              </EmptyTelemetry>
+            </div>
+          ) : (
+            <div
+              aria-label="Your conversations"
+              className="grid gap-5"
+              role="list"
+            >
+              {sections.map((section) => (
+                <ConversationCardSection
+                  collapsed={collapsedKeys.has(section.key)}
+                  key={section.key}
+                  onArchiveError={showArchiveError}
+                  onArchived={showArchived}
+                  onRowAction={releaseHold}
+                  onToggle={() => toggleSection(section.key)}
+                  waitingConversations={props.waitingConversations}
+                  section={section}
+                />
+              ))}
+            </div>
+          )
+        }
+      </ConversationSectionList>
+    </MessageObjectsProvider>
   );
 }
 
@@ -194,20 +184,16 @@ function ConversationCardSection(props: {
       />
       {props.collapsed ? null : (
         <div className="grid gap-2">
-          {props.section.conversations.map((conversation) => {
-            const card = {
-              conversation,
-              onArchiveError: props.onArchiveError,
-              onArchived: props.onArchived,
-              onRowAction: props.onRowAction,
-              waitingOnViewer: props.waitingConversations.has(conversation.id),
-            };
-            return conversation.pinnedAt ? (
-              <PinnedConversationCard {...card} key={conversation.id} />
-            ) : (
-              <ConversationCard {...card} key={conversation.id} />
-            );
-          })}
+          {props.section.conversations.map((conversation) => (
+            <ConversationCard
+              conversation={conversation}
+              key={conversation.id}
+              onArchiveError={props.onArchiveError}
+              onArchived={props.onArchived}
+              onRowAction={props.onRowAction}
+              waitingOnViewer={props.waitingConversations.has(conversation.id)}
+            />
+          ))}
         </div>
       )}
     </section>
@@ -216,8 +202,6 @@ function ConversationCardSection(props: {
 
 type ConversationCardProps = {
   conversation: Conversation;
-  /** Set on pinned cards, which drag to reorder. */
-  drag?: PinnedRowDrag | undefined;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   /** Lets the list show the result of a row action at once. */
@@ -225,14 +209,8 @@ type ConversationCardProps = {
   waitingOnViewer: boolean;
 };
 
-function PinnedConversationCard(props: Omit<ConversationCardProps, "drag">) {
-  const drag = usePinnedRowDrag(props.conversation.id);
-  return <ConversationCard {...props} drag={drag} />;
-}
-
 function ConversationCard(props: ConversationCardProps) {
   const conversation = props.conversation;
-  const drag = props.drag;
   const archive = useArchiveConversation(conversation.id, {
     onError: () =>
       props.onArchiveError(conversation, archive.variables?.archived ?? true),
@@ -245,7 +223,13 @@ function ConversationCard(props: ConversationCardProps) {
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
-  const tags = conversationCardTags(conversation, title);
+  const sidebarAnnotations = useLiveAnnotations(
+    conversation.sidebarAnnotations,
+  );
+  const tags = conversationCardTags(
+    { ...conversation, sidebarAnnotations },
+    title,
+  );
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   // Only a wait on the viewer gets a badge. A card whose Turn runs shows its
@@ -255,25 +239,12 @@ function ConversationCard(props: ConversationCardProps) {
   return (
     <article
       {...prefetch}
-      {...drag?.listeners}
-      className={cn(
-        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
-        drag?.dragging && "opacity-40",
-      )}
-      onKeyDown={drag?.onKeyDown}
-      ref={drag?.setNodeRef}
+      className="group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4"
       role="listitem"
     >
       <Link
-        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         aria-label={`Open ${title}`}
-        className={cn(
-          "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
-          // A long press drags the card instead of opening the link menu.
-          drag && "[-webkit-touch-callout:none]",
-        )}
-        // The browser's own link drag would take the pointer from the reorder.
-        draggable={drag ? false : undefined}
+        className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
         to={conversationPath(conversation.id)}
       />
       <span className="pointer-events-none relative z-[1] mt-0.5 grid size-8 place-items-center rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel text-dashboard-text-muted">
@@ -307,6 +278,13 @@ function ConversationCard(props: ConversationCardProps) {
             <span className="pointer-events-none relative z-[1] hidden sm:inline-flex">
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
+          ) : null}
+          {conversation.pinnedAt ? (
+            <Pin
+              aria-label="Pinned"
+              className="pointer-events-none relative z-[1] size-3 shrink-0 text-dashboard-text-muted"
+              role="img"
+            />
           ) : null}
           {/* The tile already shows the lock. A running row can also
               need input, so this shows beside the spinner. */}

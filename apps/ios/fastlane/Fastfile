@@ -5,6 +5,9 @@
 # and a profile in the match repo: run `bundle exec fastlane ios
 # create_signing` once, with the workflow's environment.
 
+require "json"
+require "tmpdir"
+
 BUNDLE_ID = "io.sentry.junior"
 TEAM_ID = "97JCY7859U"
 PROFILE = "match AppStore #{BUNDLE_ID}"
@@ -19,6 +22,35 @@ def api_key
   )
 end
 
+IOS_DIR = File.expand_path("..", __dir__)
+
+# The newest TestFlight build's "What to Test" notes. Their last line names
+# the commit of that beta, where this beta's notes start.
+def latest_beta_notes
+  app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+  build = Spaceship::ConnectAPI.get_builds(
+    filter: { app: app.id }, includes: "betaBuildLocalizations", sort: "-uploadedDate", limit: 1
+  ).to_models.first
+  (build&.beta_build_localizations || []).map(&:whats_new).find { |text| !text.to_s.empty? }.to_s
+end
+
+# The version, channel, commit, and notes of this beta, from the release tags
+# and the `(ios)` commits since the last beta
+# (Packages/JuniorKit/Sources/junior-changelog). It adds those commits to the
+# root CHANGELOG.md in this checkout only, which the app bundles.
+def prepare_beta
+  Dir.mktmpdir do |dir|
+    previous = File.join(dir, "previous-notes.txt")
+    result = File.join(dir, "result.json")
+    File.write(previous, latest_beta_notes)
+    sh(
+      "swift", "run", "--package-path", File.join(IOS_DIR, "Packages/JuniorKit"), "junior-changelog", "beta",
+      File.join(IOS_DIR, "../../CHANGELOG.md"), previous, result
+    )
+    JSON.parse(File.read(result))
+  end
+end
+
 platform :ios do
   desc "Build a signed Release and upload it to TestFlight"
   lane :beta do
@@ -26,13 +58,17 @@ platform :ios do
     key = api_key
     match(type: "appstore", api_key: key)
 
-    # TestFlight owns the build number, so a beta commits no version bump.
+    # TestFlight owns the build number, and the latest server release tag is
+    # the version, so a beta commits nothing.
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
+    # ios-beta.yml reports the build number on the pull request.
+    File.open(ENV["GITHUB_OUTPUT"], "a") { |file| file.puts("build=#{build}") } if ENV["GITHUB_OUTPUT"]
+    beta = prepare_beta
+    UI.message("Junior #{beta["version"]} #{beta["channel"]} #{build} (#{beta["commit"]})")
 
     # `sh` runs in fastlane/; the project is generated and not committed.
     sh("make -C .. xcodegen")
-    # Local device builds sign automatically with their own team (Signing.xcconfig).
-    # Only this lane signs with the App Store profile.
+    # Signing.xcconfig signs with the development profile. Release uses this one.
     update_code_signing_settings(
       path: "Junior.xcodeproj",
       targets: ["Junior"],
@@ -49,19 +85,26 @@ platform :ios do
       export_method: "app-store",
       clean: true,
       xcodebuild_formatter: "xcbeautify",
-      xcargs: "CURRENT_PROJECT_VERSION=#{build}",
+      xcargs: "CURRENT_PROJECT_VERSION=#{build} MARKETING_VERSION=#{beta["version"]} " \
+        "JUNIOR_CHANNEL=#{beta["channel"]} JUNIOR_COMMIT=#{beta["commit"]}",
       export_options: { provisioningProfiles: { BUNDLE_ID => PROFILE } }
     )
 
     upload_to_testflight(
       api_key: key,
+      # With notes, it waits until the build shows in App Store Connect to set them.
+      changelog: beta["notes"],
       skip_waiting_for_build_processing: true,
       skip_submission: true
     )
   end
 
-  desc "Create the App Store certificate and profile in the match repo. Run once, by hand."
+  desc "Create the certificates and profiles in the match repo. Run once, by hand."
   lane :create_signing do
-    match(type: "appstore", readonly: false, api_key: api_key)
+    key = api_key
+    match(type: "appstore", readonly: false, api_key: key)
+    # The development profile holds the devices registered to the team when it
+    # is made. After you register a device, run this lane again.
+    match(type: "development", readonly: false, force_for_new_devices: true, api_key: key)
   end
 end

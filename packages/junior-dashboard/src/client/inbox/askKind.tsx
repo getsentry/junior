@@ -2,7 +2,9 @@ import {
   CircleCheck,
   CircleHelp,
   Eye,
+  GitMerge,
   Info,
+  ListTodo,
   Stamp,
   type LucideIcon,
 } from "lucide-react";
@@ -16,8 +18,11 @@ const ASK_ICONS: Record<string, LucideIcon> = {
   Approval: Stamp,
   FYI: Info,
   Question: CircleHelp,
+  // A code change row's state pill; its item is a Question by kind.
+  "Merge conflict": GitMerge,
   "Ready to merge": CircleCheck,
   "Review requested": Eye,
+  "To do for you": ListTodo,
 };
 
 /** The icon of a kind of ask, such as "Ready to merge". */

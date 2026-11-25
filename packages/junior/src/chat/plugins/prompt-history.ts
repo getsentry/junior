@@ -23,15 +23,14 @@ export async function loadPluginPromptHistory(args: {
     { conversationId: args.conversationId },
     async (setSpanAttributes) => {
       const eventStore = getConversationEventStore();
-      const [replacements, contextEvents] = await Promise.all([
+      const [replacement, contextEvents] = await Promise.all([
         // Retired handoff rows also start a History version.
-        eventStore.query(args.conversationId, {
-          limit: 1,
-          types: ["compaction", "handoff"],
-        }),
+        eventStore.loadLatestEventOfTypes(args.conversationId, [
+          "compaction",
+          "handoff",
+        ]),
         eventStore.loadCurrentEventsOfType(args.conversationId, "turn_context"),
       ]);
-      const replacement = replacements.events[0];
       const contexts = contextEvents.flatMap((event) =>
         event.data.type === "turn_context" &&
         event.data.pluginName === args.pluginName

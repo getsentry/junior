@@ -6,35 +6,27 @@ import type { ConversationRow } from "./inboxData";
  */
 export type RowPlaces = ReadonlyMap<string, { index: number; time: string }>;
 
-/**
- * Note where each row shows now, to hold it there. Pins are left out: the
- * reader orders them, so a pin, an unpin or a drag shows at once.
- */
+/** Note where each row shows now, to hold it there. */
 export function rowPlaces(rows: readonly ConversationRow[]): RowPlaces {
   return new Map(
-    rows.flatMap((row, index) =>
-      row.conversation?.pinnedAt
-        ? []
-        : [[row.conversationId, { index, time: row.time }] as const],
-    ),
+    rows.map((row, index) => [row.conversationId, { index, time: row.time }]),
   );
 }
 
 /**
  * Keep rows where the reader saw them while the pointer is on the list, as
- * `useHeldListOrder` does for the current UI's sidebar, so
- * a feed refresh that re-sorts them moves no row under the pointer. A held
- * row keeps its place and its time, so it stays in its section, with fresh
- * content. A row that the refresh adds takes its own place among them, and
- * a row that it removes goes.
+ * `useHeldListOrder` does for `ConversationSectionList`, so a feed refresh
+ * that re-sorts them moves no row under the pointer. A held row keeps its
+ * place and its time, so it stays in its section, with fresh content. A row
+ * that the refresh adds takes its own place among them, and a row that it
+ * removes goes.
  */
 export function heldRows(
   rows: readonly ConversationRow[],
   held: RowPlaces | undefined,
 ): readonly ConversationRow[] {
   if (!held) return rows;
-  const place = (row: ConversationRow) =>
-    row.conversation?.pinnedAt ? undefined : held.get(row.conversationId);
+  const place = (row: ConversationRow) => held.get(row.conversationId);
   const seen = rows
     .flatMap((row) => {
       const at = place(row);

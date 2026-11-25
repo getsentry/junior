@@ -5,16 +5,20 @@ import SwiftUI
 /// composer docked at the bottom (`ConversationWorkspace` stacked home).
 struct HomeScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model = HomeModel()
   @State private var archiveError: String?
   @State private var undo: MCPConversation?
+  @State private var renaming: MCPConversation?
   @FocusState private var searchFocused: Bool
+  @Environment(\.splitColumn) private var column
 
   var body: some View {
     VStack(spacing: 0) {
       AppHeader(title: app.agentName)
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+          if column == .list { NewConversationRow().padding(.bottom, 8) }
           SearchField(placeholder: "Search conversations…", text: $model.query)
             .focused($searchFocused)
             .padding(.bottom, 12)
@@ -27,20 +31,22 @@ struct HomeScreen: View {
       .scrollDismissesKeyboard(.interactively)
       .refreshable { await model.load(app) }
       .overlay(alignment: .bottom) { toast }
-      NewConversationComposer()
+      // Beside the list, the open pane has the composer.
+      if column != .list { NewConversationComposer() }
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .renameAlert($renaming) { row, title in rename(row, title) }
     .task(id: app.conversationsVersion) { await model.load(app) }
     .task(id: model.query) {
       // Debounce like the dashboard (250ms) before a server search.
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
     }
-    .onChange(of: app.focusSearch, initial: true) { _, focus in
+    .onChange(of: window.focusSearch, initial: true) { _, focus in
       if focus {
         searchFocused = true
-        app.focusSearch = false
+        window.focusSearch = false
       }
     }
   }
@@ -65,7 +71,8 @@ struct HomeScreen: View {
           if !collapsed.wrappedValue {
             VStack(spacing: 8) {
               ForEach(section.rows) { row in
-                ConversationCard(row: row, onArchive: { archive(row) }, onPin: { pin(row) })
+                ConversationCard(
+                  row: row, onArchive: { archive(row) }, onPin: { pin(row) }, onRename: { renaming = row })
               }
             }
           }
@@ -155,19 +162,58 @@ extension HomeScreen {
       }
     }
   }
+
+  private func rename(_ row: MCPConversation, _ title: String) {
+    Task {
+      do {
+        try await model.rename(row, title: title, app: app)
+      } catch {
+        withAnimation { archiveError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not rename." }
+      }
+    }
+  }
+}
+
+/// Above the list beside the open item: closes it to show the
+/// new-conversation composer (`ConversationSidebar.tsx`).
+private struct NewConversationRow: View {
+  @Environment(WindowModel.self) private var window
+
+  var body: some View {
+    Button {
+      window.path = []
+    } label: {
+      HStack(spacing: 8) {
+        Icon("pencil", size: 12)
+          .foregroundStyle(Tokens.accentText)
+          .frame(width: 18, height: 18)
+          .background(Tokens.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+        Text("New conversation").type(.sm, .medium).foregroundStyle(Tokens.text)
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(window.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
+      .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft))
+    .accessibilityAddTraits(window.path.isEmpty ? .isSelected : [])
+  }
 }
 
 /// One home card (`ConversationHomeList.tsx`): title, state, time, and where
 /// the Conversation lives.
 struct ConversationCard: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let row: MCPConversation
   let onArchive: () -> Void
   let onPin: () -> Void
+  let onRename: () -> Void
 
   var body: some View {
     Button {
-      app.path.append(.conversation(row.conversationId))
+      window.path = [route]
     } label: {
       // A card with only a title centers it against the tile, as the web's
       // stretched column does.
@@ -183,28 +229,28 @@ struct ConversationCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
             trailing
           }
-          if row.turnActive {
-            Text("Working…").type(.sm).foregroundStyle(Tokens.textMuted).frame(minHeight: 20)
-          }
           tags
         }
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard()
+      .listCard(selected: window.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))
     .contextMenu {
       Button(
         row.pinnedAt == nil ? "Pin" : "Unpin", systemImage: row.pinnedAt == nil ? "pin" : "pin.slash", action: onPin)
+      Button("Rename", systemImage: "pencil", action: onRename)
       Button(row.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox", action: onArchive)
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(accessibilityText)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAction { app.path.append(.conversation(row.conversationId)) }
+    .accessibilityAddTraits(window.path.first == route ? .isSelected : [])
+    .accessibilityAction { window.path = [route] }
     .accessibilityAction(named: row.pinnedAt == nil ? "Pin" : "Unpin", onPin)
+    .accessibilityAction(named: "Rename", onRename)
     .accessibilityAction(named: row.archivedAt == nil ? "Archive" : "Restore", onArchive)
   }
 
@@ -212,18 +258,30 @@ struct ConversationCard: View {
   private var accessibilityText: String {
     var parts = [row.title]
     if row.pinnedAt != nil { parts.append("Pinned") }
-    // A running Turn can also need input, so say both.
-    if row.status == .needsInput { parts.append("Needs input") }
-    if row.turnActive {
-      parts.append("Working")
-    } else if let date = row.lastSeenAt.date {
-      parts.append(app.clock.activityDay(date))
-    }
-    if let location = row.locationLabel { parts.append(location) }
+    if let state = stateLabel { parts.append(state) }
+    if let date = row.lastSeenAt.date { parts.append(app.clock.activityDay(date)) }
+    if let location { parts.append(location) }
     return parts.joined(separator: ", ")
   }
 
-  private var hasBody: Bool { row.turnActive || row.locationLabel != nil }
+  // Like the web's Conversation rows, a row shows the viewer state over its
+  // tree, so a working child agent also counts.
+  private var stateLabel: String? {
+    switch row.treeState {
+    case .needsYou: return "Waiting on you"
+    case .working: return "Working"
+    default: return nil
+    }
+  }
+
+  private var location: String? {
+    guard let label = row.locationLabel, label != row.title else { return nil }
+    return label
+  }
+
+  private var hasBody: Bool { stateLabel != nil || location != nil }
+
+  private var route: Route { .conversation(row.conversationId) }
 
   private var tile: some View {
     Icon(row.surface == "scheduler" ? "clock" : "message-square", size: 15)
@@ -235,25 +293,14 @@ struct ConversationCard: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    // A running Turn can also need input, so the spinner takes only the
-    // date's place.
-    HStack(spacing: 12) {
-      if row.status == .needsInput {
-        Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
-      }
-      if row.turnActive {
-        Spinner()
-          .foregroundStyle(Tokens.textMuted)
-          .frame(minWidth: 56, alignment: .trailing)
-          .accessibilityElement()
-          .accessibilityLabel("Working")
-      } else if let date = row.lastSeenAt.date {
-        Text(app.clock.activityDay(date))
-          .type(.xs)
-          .monospacedDigit()
-          .foregroundStyle(Tokens.textMuted)
-          .frame(minWidth: 56, alignment: .trailing)
-      }
+    if let date = row.lastSeenAt.date {
+      Text(app.clock.activityDay(date))
+        .type(.xs)
+        .monospacedDigit()
+        .foregroundStyle(Tokens.textMuted)
+        .lineLimit(1)
+        .fixedSize()
+        .frame(minWidth: 56, alignment: .trailing)
     }
     Button(action: onArchive) {
       Icon(row.archivedAt == nil ? "archive" : "archive-restore", size: 15)
@@ -266,14 +313,28 @@ struct ConversationCard: View {
     .accessibilityLabel(row.archivedAt == nil ? "Archive" : "Restore")
   }
 
+  // The state sits in a tag next to the location, so the title line keeps
+  // its room and the time never wraps.
   @ViewBuilder private var tags: some View {
-    if let location = row.locationLabel, location != row.title {
+    if hasBody {
       HStack(spacing: 6) {
-        TagChip(label: location, outbound: row.locationUrl != nil) {
-          if row.surface == "slack" {
-            PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
-          } else {
-            Icon("clock", size: 12).foregroundStyle(Tokens.textMuted)
+        if let stateLabel {
+          TagChip(label: stateLabel) {
+            if row.treeState == .working {
+              Spinner(size: 12).foregroundStyle(Tokens.textMuted)
+            } else {
+              Icon("circle-question-mark", size: 12, stroke: 2.2).foregroundStyle(Tokens.accent)
+            }
+          }
+          .layoutPriority(1)
+        }
+        if let location {
+          TagChip(label: location, outbound: row.locationUrl != nil) {
+            if row.surface == "slack" {
+              PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
+            } else {
+              Icon("clock", size: 12).foregroundStyle(Tokens.textMuted)
+            }
           }
         }
       }

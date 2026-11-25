@@ -1,5 +1,10 @@
 import { juniorArtifacts } from "./schema/artifacts";
 import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
+} from "./schema/memory";
+import {
   juniorAttachmentUploads,
   juniorAttachments,
   juniorMessageAttachments,
@@ -12,15 +17,11 @@ import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationEmbeddings } from "./schema/conversation-embeddings";
 import { juniorConversationEventEmbeddings } from "./schema/conversation-event-embeddings";
 import { juniorConversationEventLexemes } from "./schema/conversation-event-lexemes";
-import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
-import {
-  juniorAgentBindings,
-  juniorAgentInvocations,
-} from "./schema/agent-invocations";
+import { juniorAgentBindings } from "./schema/agent-bindings";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
@@ -33,14 +34,23 @@ import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
 import {
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-} from "./schema/review-items";
-import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+} from "./schema/inbox-items";
+import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
+import {
+  juniorSpaceConfigurations,
+  juniorSpaceMembers,
+  juniorSpaces,
+} from "./schema/spaces";
+import { juniorTurnInbox } from "./schema/turn-inbox";
+import { juniorTurnOutbox } from "./schema/turn-outbox";
+import { juniorTurns } from "./schema/turns";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -54,34 +64,42 @@ export {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
-  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
-  juniorPlanItemVersionSeq,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
+  juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceConfigurations,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -97,33 +115,41 @@ export const juniorSqlSchema = {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
-  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceConfigurations,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,

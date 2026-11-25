@@ -1,4 +1,4 @@
-import { ArrowLeft, CornerLeftUp, History } from "lucide-react";
+import { ArrowLeft, CornerLeftUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
@@ -6,12 +6,9 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../../components/DetailsPanel";
-import { ConversationReviewItems } from "../inbox/ConversationReviewItems";
+import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
 import { Button } from "../../components/ui/button";
-import {
-  BriefOutcomeChip,
-  ConversationBrief,
-} from "../../conversations/ConversationBrief";
+import { ConversationSummary } from "../../conversations/ConversationSummary";
 import {
   ConversationTasks,
   ConversationThreads,
@@ -31,26 +28,31 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
+import { ConversationTodos } from "../../conversations/ConversationTodos";
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
-import { formatRelativeTime, formatTime } from "../../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 import { cn } from "../../styles";
 
-type Brief = NonNullable<ConversationDetailReport["brief"]>;
-
 /**
- * Surface work that needs the reader, then the Brief and its linked work.
+ * Lead with the glance (cost, repository, location), then the summary, the
+ * work that needs the reader, and linked work. Reference facts come last.
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
-  brief?: Brief | undefined;
   conversationId: string;
+  /** Live cost, repository, and location, above everything else. */
+  glance: ReactNode;
+  summary?: string | undefined;
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
-  /** True when the viewer is a Participant, who can cancel Watches. */
+  /**
+   * True when the viewer is a Participant, who can change To-dos and cancel
+   * Watches.
+   */
   isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
@@ -134,8 +136,20 @@ export function ConversationDetails(props: {
       onClose={props.onClose}
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        {/* The Brief leads: what the work is and where it stands. */}
-        {props.brief ? <BriefCard brief={props.brief} /> : null}
+        {props.glance}
+        {/* What the work is and where it stands. */}
+        {props.summary ? (
+          <section
+            aria-label="Summary"
+            className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted"
+            id="conversation-summary"
+          >
+            <ConversationSummary
+              mentions={props.summaryMentions}
+              summary={props.summary}
+            />
+          </section>
+        ) : null}
         {parent ? (
           <DetailsCard title="Parent">
             <DetailsRow
@@ -145,9 +159,13 @@ export function ConversationDetails(props: {
             />
           </DetailsCard>
         ) : null}
-        <ConversationReviewItems
+        <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
+        />
+        <ConversationTodos
+          canEdit={props.isParticipant}
+          conversationId={props.conversationId}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         <ConversationLinkedWorkCard
@@ -165,12 +183,12 @@ export function ConversationDetails(props: {
             tasks={tasks}
           />
         ) : null}
-        {props.overview != null ? (
-          <DetailsCard>{props.overview}</DetailsCard>
-        ) : null}
-        {props.usage}
         {props.identity != null ? (
           <DetailsCard title="Participants">{props.identity}</DetailsCard>
+        ) : null}
+        {props.usage}
+        {props.overview != null ? (
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard
@@ -180,58 +198,5 @@ export function ConversationDetails(props: {
         ) : null}
       </div>
     </DetailsPanel>
-  );
-}
-
-/**
- * The Brief at the top of details: its version, outcome, and summary.
- * History is disabled; it previews the version timeline in #3103.
- */
-function BriefCard(props: { brief: Brief }) {
-  const { brief } = props;
-  return (
-    <section
-      aria-label="Brief"
-      className="grid min-w-0 gap-2 px-1 pb-1"
-      id="conversation-brief"
-    >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <h3 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
-          <span className="font-semibold text-dashboard-text">
-            Brief v{brief.version}
-          </span>
-          <span aria-hidden="true" className="text-dashboard-text-faint">
-            ·
-          </span>
-          <time
-            className={cn(
-              fadeOverflowClass,
-              "text-xs font-normal text-dashboard-text-muted",
-            )}
-            ref={fadeWhenOverflowing}
-            dateTime={brief.updatedAt}
-            title={formatTime(brief.updatedAt, {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-          >
-            Updated {formatRelativeTime(brief.updatedAt)}
-          </time>
-        </h3>
-        <Button
-          className="h-7 gap-1.5 px-2 text-xs"
-          disabled
-          title="Brief history is coming (getsentry/junior#3103)"
-          variant="ghost"
-        >
-          <History aria-hidden="true" className="size-3.5" />
-          History
-        </Button>
-      </div>
-      <BriefOutcomeChip status={brief.content.outcome.status} />
-      <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-        <ConversationBrief brief={brief} variant="summary" />
-      </div>
-    </section>
   );
 }

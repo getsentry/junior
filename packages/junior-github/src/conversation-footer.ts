@@ -1,0 +1,144 @@
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
+
+export const GITHUB_SESSION_FOOTER_START =
+  "<!-- junior-session-footer:start -->";
+export const GITHUB_SESSION_FOOTER_END = "<!-- junior-session-footer:end -->";
+const GITHUB_CONVERSATION_ID_MARKER = "junior-conversation-id:";
+
+function nonEmptyString(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn, so the GitHub footer cannot be added. No change to the call can fix this.`,
+    );
+  }
+  return value.trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function sentryConversationUrl(
+  conversationId: string,
+): string | undefined {
+  const dsn = process.env["SENTRY_DSN"]?.trim();
+  const orgSlug = process.env["SENTRY_ORG_SLUG"]?.trim();
+  if (!dsn || !orgSlug) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(dsn);
+  } catch {
+    return undefined;
+  }
+
+  const projectId = parsed.pathname.split("/").filter(Boolean).at(-1);
+  if (!parsed.hostname || !projectId) {
+    return undefined;
+  }
+
+  const encodedConversationId = encodeURIComponent(conversationId);
+  const params = new URLSearchParams({ project: projectId });
+  const path = `explore/conversations/${encodedConversationId}/?${params.toString()}`;
+
+  if (
+    parsed.hostname === "sentry.io" ||
+    parsed.hostname.endsWith(".sentry.io")
+  ) {
+    return `https://${orgSlug}.sentry.io/${path}`;
+  }
+
+  const port = parsed.port ? `:${parsed.port}` : "";
+  return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
+}
+
+/**
+ * Build the conversation session footer, preferring a host-provided dashboard
+ * link. `earlierConversationIds` keeps the markers of Conversations that wrote
+ * the body before, so the footer names every one of them.
+ */
+export function githubConversationFooter(
+  conversationId: string,
+  dashboardUrl?: string,
+  earlierConversationIds: string[] = [],
+): string | undefined {
+  const id = nonEmptyString(conversationId, "conversationId");
+  const normalizedDashboardUrl = dashboardUrl?.trim();
+  const sentryUrl = sentryConversationUrl(id);
+  const sessionLinks = normalizedDashboardUrl
+    ? `[View Session](${normalizedDashboardUrl})${sentryUrl ? ` [[Sentry]](${sentryUrl})` : ""}`
+    : sentryUrl
+      ? `[View Session in Sentry](${sentryUrl})`
+      : undefined;
+  if (!sessionLinks) {
+    return undefined;
+  }
+  const markers = [...new Set([id, ...earlierConversationIds])]
+    .map(
+      (markerId) =>
+        `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(markerId)} -->`,
+    )
+    .join("\n");
+  return `${GITHUB_SESSION_FOOTER_START}\n${markers}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
+}
+
+/** Read opaque native conversation ids from runtime-owned GitHub footers. */
+export function githubConversationIds(
+  body: string | null | undefined,
+): string[] {
+  if (!body) return [];
+  const ids = new Set<string>();
+  const footer = new RegExp(
+    `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,
+    "g",
+  );
+  const marker = new RegExp(
+    `<!--\\s*${escapeRegExp(GITHUB_CONVERSATION_ID_MARKER)}([^\\s]+)\\s*-->`,
+    "g",
+  );
+  for (const footerMatch of body.matchAll(footer)) {
+    for (const markerMatch of footerMatch[0].matchAll(marker)) {
+      try {
+        const id = decodeURIComponent(markerMatch[1] ?? "").trim();
+        if (id) ids.add(id);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Append (or replace an existing) conversation session footer to a GitHub body string.
+ * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
+ */
+export function appendGitHubFooter(
+  body: string,
+  conversationId: string,
+  dashboardUrl?: string,
+  currentBody?: string,
+): string {
+  const normalizedBody = body.trimEnd();
+  // A replacement body keeps the Conversations of the body on GitHub, so a
+  // close still reaches each one.
+  const footer = githubConversationFooter(
+    conversationId,
+    dashboardUrl,
+    githubConversationIds(currentBody),
+  );
+  const existingFooter = new RegExp(
+    `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,
+  );
+  if (existingFooter.test(normalizedBody)) {
+    return footer
+      ? normalizedBody.replace(existingFooter, footer)
+      : normalizedBody.replace(existingFooter, "").trimEnd();
+  }
+  if (!footer) {
+    return normalizedBody;
+  }
+  return normalizedBody ? `${normalizedBody}\n\n${footer}` : footer;
+}

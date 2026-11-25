@@ -1,0 +1,71 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e7f4ef3b-2911-4148-bc2d-f3899ce34c7c",
+  "prevIds": ["499420cc-0984-490e-a80c-700417e8a189"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_artifacts",
+        "junior_artifacts_conversation_sha_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_artifacts_conversation_sha_uidx",
+        "n|idx|public.junior_artifacts_conversation_sha_uidx",
+        "e|idx|public.junior_artifacts_conversation_sha_uidx",
+        "n|rel|public.junior_artifacts_conversation_sha_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "e|col|public.junior_artifacts.conversation_id",
+        "e|col|public.junior_artifacts.sha256"
+      ],
+      "sharedWrites": [
+        "e|uniqueness|public.junior_artifacts.conversation_id.sha256"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_artifacts", "public"],
+      "writes": [
+        "s|col|public.junior_artifacts.public",
+        "n|col|public.junior_artifacts.public",
+        "e|col|public.junior_artifacts.public"
+      ],
+      "reads": ["n|tbl|public.junior_artifacts", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_artifacts", "visibility"],
+      "writes": ["s|colprop|public.junior_artifacts.visibility.default"],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.visibility"
+      ],
+      "sqlHash": "6fc7e7c5d884864f"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_artifacts\",\"public\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_artifacts_conversation_sha_uidx\"]"
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_artifacts\",\"visibility\"]",
+      "set": {
+        "default": "'conversation'"
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import {
   type PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { getGoogleAccount, type GoogleDb } from "../src/store";
 import {
   ACCOUNT_EMAIL,

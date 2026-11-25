@@ -260,40 +260,17 @@ describe("chat config", () => {
     );
   });
 
-  it("uses Vercel Queues by default and reads BullMQ settings", async () => {
+  it("reads a Vercel Queues API URL for a local queue server", async () => {
+    expect((await loadConfig()).getChatConfig().queue).toEqual({});
+
+    process.env["JUNIOR_QUEUE_API_URL"] = "http://127.0.0.1:3100";
     expect((await loadConfig()).getChatConfig().queue).toEqual({
-      provider: "vercel",
+      apiUrl: "http://127.0.0.1:3100",
     });
 
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-    process.env["JUNIOR_QUEUE_REDIS_URL"] = "redis://localhost:6382";
-    expect((await loadConfig()).getChatConfig().queue).toEqual({
-      provider: "bullmq",
-      redisUrl: "redis://localhost:6382",
-      workerConcurrency: 4,
-    });
-
-    process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "2";
-    expect((await loadConfig()).getChatConfig().queue).toMatchObject({
-      workerConcurrency: 2,
-    });
-  });
-
-  it("throws when the BullMQ queue has no Redis URL", async () => {
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-
+    process.env["JUNIOR_QUEUE_API_URL"] = "localhost:3100";
     await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
-    );
-  });
-
-  it("throws when the BullMQ worker concurrency is not a positive integer", async () => {
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-    process.env["JUNIOR_QUEUE_REDIS_URL"] = "redis://localhost:6382";
-    process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "0";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_QUEUE_WORKER_CONCURRENCY must be a positive integer",
+      "JUNIOR_QUEUE_API_URL must be an http or https URL",
     );
   });
 
@@ -308,13 +285,19 @@ describe("chat config", () => {
     expect(getChatConfig().conversationWorkEnabled).toBe(false);
   });
 
-  it("enables cache warming unless its kill switch is off", async () => {
+  it("enables cache warming and compaction on idle unless their kill switches are off", async () => {
     delete process.env["JUNIOR_CACHE_WARMING_ENABLED"];
-    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(true);
+    delete process.env["JUNIOR_IDLE_COMPACTION_ENABLED"];
+    expect((await loadConfig()).getChatConfig()).toMatchObject({
+      cacheWarmingEnabled: true,
+      idleCompactionEnabled: true,
+    });
     process.env["JUNIOR_CACHE_WARMING_ENABLED"] = "false";
-    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(
-      false,
-    );
+    process.env["JUNIOR_IDLE_COMPACTION_ENABLED"] = "false";
+    expect((await loadConfig()).getChatConfig()).toMatchObject({
+      cacheWarmingEnabled: false,
+      idleCompactionEnabled: false,
+    });
   });
 
   it("rejects an invalid conversation work switch", async () => {

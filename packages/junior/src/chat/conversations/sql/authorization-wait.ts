@@ -16,8 +16,8 @@ const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 /**
  * The request and the events that end its wait: the person connected, or a
  * Turn started or ended after the request. A stop or new input ends the
- * parked Turn with `turn_completed`. A child agent invocation that needs a
- * connection abandons its Turn and ends it as `blocked`, so nothing resumes
+ * parked Turn with `turn_completed`. A child agent's Turn on a parent message
+ * that needs a connection abandons its Turn and ends it as `blocked`, so nothing resumes
  * it and its parent gets the result instead.
  */
 const AUTHORIZATION_WAIT_EVENT_TYPES = [
@@ -63,15 +63,33 @@ export function awaitsAuthorizationFrom(
   );
 }
 
+/**
+ * SQL: the Conversation has an authorization request that has not expired.
+ * A request stops its wait at a fixed time, with no write, so a token that
+ * must move then reads this. Build it for each query: it binds the app clock.
+ */
+export function hasUnexpiredAuthorizationRequest(
+  conversationId: AnyPgColumn,
+): SQL<boolean> {
+  const events = juniorConversationEvents;
+  // Reads `junior_conversation_events_authorization_request_idx`. It is a
+  // scalar subquery, not `exists`, so Postgres looks up each Conversation
+  // and does not hash every recent request for each Conversation it checks.
+  return sql<boolean>`coalesce((select true from ${events} where ${events.conversationId} = ${conversationId} and ${events.type} = 'authorization_requested' and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz limit 1), false)`;
+}
+
 /** SQL: the newest wait event is a live request that `requester` matches. */
 function authorizationWait(
   conversationId: AnyPgColumn,
   requester: SQL,
 ): SQL<boolean> {
   const events = juniorConversationEvents;
-  return sql<boolean>`coalesce((
+  const start = authorizationWaitStart();
+  // Most Conversations have no request that can still wait. The first
+  // check finds that without a read of the Conversation's newest events.
+  return sql<boolean>`(${hasUnexpiredAuthorizationRequest(conversationId)} and coalesce((
     select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz
+      and ${events.createdAt} > ${start}::timestamptz
       and ${requester}
     from ${events}
     where ${events.conversationId} = ${conversationId}
@@ -81,7 +99,7 @@ function authorizationWait(
       )})
     order by ${events.seq} desc
     limit 1
-  ), false)`;
+  ), false))`;
 }
 
 /**

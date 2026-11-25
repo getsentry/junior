@@ -1,4 +1,5 @@
 /** Shared setup for the Conversation status and tree state tests. */
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { expect } from "vitest";
@@ -21,17 +22,10 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createWatch } from "@/chat/events/store";
-import {
-  juniorConversationBriefs,
-  juniorConversationEvents,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { neverRunAgentRunner } from "./agent-runner";
-import { conversationBriefFixture } from "./conversation-brief";
-import type { BriefOutcomeStatus } from "@/chat/briefs/schema";
 import { webTestActor } from "./conversation";
 import {
   createConversationWorkHarness,
@@ -85,25 +79,6 @@ export async function lastSeq(conversationId: string): Promise<number> {
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
   return row?.seq ?? -1;
-}
-
-/** Store a Brief that covers every Event so far. */
-export async function recordBrief(
-  conversationId: string,
-  version: number,
-  status: BriefOutcomeStatus,
-): Promise<void> {
-  await getDb()
-    .insert(juniorConversationBriefs)
-    .values({
-      conversationId,
-      version,
-      turnId: `brief-turn-${version}`,
-      throughSeq: await lastSeq(conversationId),
-      content: conversationBriefFixture({ status }),
-      searchText: "stored brief",
-      modelId: "test-model",
-    });
 }
 
 /** Store a Message by the root's actor that starts no Turn. */
@@ -209,13 +184,13 @@ export async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
         );
       return row && { treeState: row.treeState, watching: row.watching };
     },
-    feedStatus: async (conversationId: string) => {
+    feedRow: async (conversationId: string) => {
       const response = await request("/api/conversations");
       return conversationFeedSchema
         .parse(await response.json())
         .conversations.find(
           (conversation) => conversation.conversationId === conversationId,
-        )?.status;
+        );
     },
   };
 }
@@ -285,18 +260,18 @@ export async function recordAnswer(
   ]);
 }
 
-/** Add one Review item as the agent of `conversationId` does. */
+/** Add one Inbox item as the agent of `conversationId` does. */
 export async function addItem(
   conversationId: string,
   input: Record<string, unknown>,
 ): Promise<string> {
-  const tool = createAddReviewItemTool(
+  const tool = createAddInboxItemTool(
     {
       conversationId,
       resolveActorIdentity: async () => undefined,
       source: { kind: "scheduled_automation" },
     },
-    createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
   const result = await (tool as any).execute(
     (tool as any).prepareArguments(input),

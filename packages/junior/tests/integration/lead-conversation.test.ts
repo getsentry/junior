@@ -1,0 +1,679 @@
+import {
+  createEventSource,
+  createWebSource,
+  type Source,
+  type User,
+} from "@sentry/junior-plugin-api";
+import { afterEach, describe, expect, it } from "vitest";
+import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import type { AgentRun } from "@/chat/agent/types";
+import {
+  createAndEnqueueConversation,
+  webActorFromUser,
+} from "@/chat/conversations/web-input";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
+import { stopConversation } from "@/chat/conversations/stop";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import type { NewConversationEvent } from "@/chat/conversations/history";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { readActorIdentity } from "@/chat/plugins/viewer";
+import { createSpace, readSpace, updateSpace } from "@/chat/spaces/store";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { createWatchEventsTool } from "@/chat/tools/watch-events";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import { createWatch } from "@/chat/events/store";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorDestinations,
+} from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import { signedInViewer } from "../fixtures/user";
+
+/**
+ * Integration tests do not run the agent. This runner reads each run and
+ * stops it.
+ */
+function readRunsAgentRunner() {
+  const runs: AgentRun[] = [];
+  return {
+    agentRunner: {
+      run: async (run: AgentRun): Promise<never> => {
+        runs.push(run);
+        throw new Error("stop after reading the run");
+      },
+    },
+    runs,
+  };
+}
+
+const LEAD_TASK = "Unpublish abc.png from the public image host.";
+
+/** A Turn that a watch event started, not a person. */
+const WATCH_SOURCE = createEventSource({
+  eventKey: "pr-merged",
+  eventType: "pull_request.merged",
+  identifier: "getsentry/junior#1",
+  namespace: "github",
+});
+
+/** Create a Space with `member` in it, and make its Lead. */
+async function spaceLead(member: User, name = "Deploys") {
+  const space = await createSpace({
+    creatorUserId: member.id,
+    description: null,
+    visibility: "public",
+    name,
+  });
+  return { lead: await getSpaceLead({ member, space }), space };
+}
+
+/** `startConversation` in a Lead Turn that `person` started, or nobody. */
+function startTool(args: {
+  leadConversationId: string;
+  person?: User;
+  queue: ConversationWorkQueue;
+  turnId: string;
+}) {
+  return createStartConversationTool({
+    conversationId: args.leadConversationId,
+    conversationWorkQueue: args.queue,
+    ...(args.person
+      ? {
+          resolveActorIdentity: () =>
+            readActorIdentity(webActorFromUser(args.person!)),
+          source: createWebSource(args.leadConversationId, "public"),
+        }
+      : { source: WATCH_SOURCE }),
+    turnId: args.turnId,
+  });
+}
+
+describe("Lead", () => {
+  afterEach(async () => {
+    await disconnectStateAdapter();
+  });
+
+  it("keeps one public Lead for each Space, named for the Space", async () => {
+    const ana = await signedInViewer("lead-ana@example.com");
+    const space = await createSpace({
+      creatorUserId: ana.id,
+      description: null,
+      visibility: "public",
+      name: "Billing migration",
+    });
+
+    // Two first requests at once still make one Lead.
+    const [first, second] = await Promise.all([
+      getSpaceLead({ member: ana, space }),
+      getSpaceLead({ member: ana, space }),
+    ]);
+
+    expect(second.conversationId).toBe(first.conversationId);
+    expect(first).toMatchObject({
+      kind: "lead",
+      spaceId: space.id,
+      title: "Billing migration",
+      visibility: "public",
+    });
+    expect((await spaceLead(ana, "Other")).lead.conversationId).not.toBe(
+      first.conversationId,
+    );
+
+    // A Space and its Lead share one name.
+    await updateSpace(space.id, { name: "Billing cutover" });
+    expect(
+      await getConversationStore().get({
+        conversationId: first.conversationId,
+      }),
+    ).toMatchObject({ title: "Billing cutover" });
+    expect((await readSpace(ana.id, space.id))?.name).toBe("Billing cutover");
+  });
+
+  it("starts a public root in its Space that runs the task as the member who asked", async () => {
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-start@example.com");
+    const { lead, space } = await spaceLead(ana);
+    const start = (toolCallId: string, person: User | null = ana) =>
+      startTool({
+        leadConversationId: lead.conversationId,
+        ...(person ? { person } : undefined),
+        queue: harness.queue,
+        turnId: "lead-turn",
+      }).execute!({ task: LEAD_TASK, title: "Image cleanup" }, { toolCallId });
+
+    const { conversation_id: started } = (await start("call-1")) as {
+      conversation_id: string;
+    };
+    // A replay of the tool call starts nothing new.
+    await expect(start("call-1")).resolves.toMatchObject({
+      conversation_id: started,
+    });
+
+    expect(
+      await getConversationStore().get({ conversationId: started }),
+    ).toMatchObject({
+      kind: "root",
+      spaceId: space.id,
+      title: "Image cleanup",
+      visibility: "public",
+    });
+    // A Turn that no member started has nobody to run the work as.
+    await expect(start("call-no-person", null)).rejects.toThrow(
+      "startConversation needs a person",
+    );
+    // The person is the root Actor, so they take part in the new root.
+    expect(
+      await getDb()
+        .select({ userId: juniorConversationParticipants.userId })
+        .from(juniorConversationParticipants)
+        .where(eq(juniorConversationParticipants.rootConversationId, started)),
+    ).toEqual([{ userId: ana.id }]);
+
+    await harness.process(harness.queue.takeMessageFor(started));
+    const [run] = runner.runs;
+    // The Turn runs as the person, with the Lead's task as their request.
+    expect(run!.actor).toMatchObject({ platform: "web", userId: ana.id });
+    expect(run!.instruction.inputs).toEqual([
+      { kind: "person", text: LEAD_TASK },
+    ]);
+    const root = await readRootConversation({
+      actor: webActorFromUser(ana),
+      conversationId: started,
+    });
+    expect(root.messages).toEqual([{ author: "user", text: LEAD_TASK }]);
+  });
+
+  it("keeps the Lead and roots of a private Space private, and finds them only inside it", async () => {
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-private@example.com");
+    const space = await createSpace({
+      creatorUserId: ana.id,
+      description: null,
+      visibility: "private",
+      name: "Payroll audit",
+    });
+    const lead = await getSpaceLead({ member: ana, space });
+    expect(lead.visibility).toBe("private");
+
+    const { conversation_id: started } = (await startTool({
+      leadConversationId: lead.conversationId,
+      person: ana,
+      queue: harness.queue,
+      turnId: "lead-private-turn",
+    }).execute!(
+      { task: "Check the payroll export.", title: "Payroll export" },
+      { toolCallId: "call-private" },
+    )) as { conversation_id: string };
+    expect(
+      await getConversationStore().get({ conversationId: started }),
+    ).toMatchObject({ spaceId: space.id, visibility: "private" });
+
+    const outside = (
+      await createAndEnqueueConversation(
+        {
+          actor: webActorFromUser(ana),
+          idempotencyKey: "lead-private-outside",
+          message: "Check the deploy.",
+        },
+        { queue: harness.queue, state: harness.state },
+      )
+    ).conversationId;
+    const search = async (conversationId: string) =>
+      (
+        (await createSearchConversationsTool({
+          conversationId,
+          resolveUserId: async () => ana.id,
+        }).execute!({}, { toolCallId: "call-search" })) as {
+          conversations: { conversation_id: string }[];
+        }
+      ).conversations.map((match) => match.conversation_id);
+    expect(await search(lead.conversationId)).toContain(started);
+    expect(await search(outside)).not.toContain(started);
+  });
+
+  it("steers its Space's roots, and outside roots only for a member who takes part", async () => {
+    const runner = readRunsAgentRunner();
+    const { queue, state } = await createConversationWorkHarness(
+      runner.agentRunner,
+    );
+    const ana = await signedInViewer("lead-steer@example.com");
+    const bo = await signedInViewer("lead-other@example.com");
+    const { lead, space } = await spaceLead(ana);
+    const start = async (person: User, key: string, spaceId?: string) =>
+      (
+        await createAndEnqueueConversation(
+          {
+            actor: webActorFromUser(person),
+            idempotencyKey: key,
+            message: "Check the deploy.",
+            ...(spaceId ? { spaceId } : undefined),
+          },
+          { queue, state },
+        )
+      ).conversationId;
+    const boInSpace = await start(bo, "lead-steer-bo-space", space.id);
+    const anaOutside = await start(ana, "lead-steer-ana");
+    const boOutside = await start(bo, "lead-steer-bo");
+
+    const found = (await createSearchConversationsTool({
+      conversationId: lead.conversationId,
+      resolveUserId: async () => ana.id,
+    }).execute!({ participating: true }, { toolCallId: "call-search" })) as {
+      conversations: { conversation_id: string }[];
+    };
+    expect(found.conversations.map((match) => match.conversation_id)).toEqual([
+      anaOutside,
+    ]);
+
+    const send = async (
+      to: string,
+      toolCallId: string,
+      source: Source = createWebSource(lead.conversationId, "public"),
+    ) => {
+      const leadRun: AgentRun = {
+        actor: webActorFromUser(ana),
+        conversationId: lead.conversationId,
+        destination: lead.destination!,
+        instruction: { text: "Tell the deploy checks to hurry." },
+        source,
+        turnId: "lead-steer-turn",
+      };
+      return await createMessageAgentTool(
+        bindMessageAgent(leadRun, { queue, state })!,
+      ).execute!({ text: "Please hurry.", to }, { toolCallId });
+    };
+
+    // Any root in the Space, whoever started it.
+    await expect(send(boInSpace, "call-space")).resolves.toEqual({
+      conversation_id: boInSpace,
+      delivery: "queued",
+    });
+    // Outside the Space, only a root of the member who asked.
+    await expect(send(anaOutside, "call-ana")).resolves.toEqual({
+      conversation_id: anaOutside,
+      delivery: "queued",
+    });
+    await expect(send(boOutside, "call-bo")).rejects.toThrow(
+      "is outside this Space",
+    );
+    // A Turn that no member started writes only inside the Space.
+    await expect(send(anaOutside, "call-watch", WATCH_SOURCE)).rejects.toThrow(
+      "is outside this Space",
+    );
+  });
+
+  it("watches only the Conversations that it may read", async () => {
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-watch@example.com");
+    const bo = await signedInViewer("lead-watch-other@example.com");
+    const { lead } = await spaceLead(ana);
+    const boWork = await createAndEnqueueConversation(
+      {
+        actor: webActorFromUser(bo),
+        idempotencyKey: "lead-watch-bo",
+        message: "Check the other deploy.",
+      },
+      { queue: harness.queue, state: harness.state },
+    );
+    const boPrivate = await createAndEnqueueConversation(
+      {
+        actor: webActorFromUser(bo),
+        idempotencyKey: "lead-watch-bo-private",
+        message: "Check my notes.",
+        visibility: "private",
+      },
+      { queue: harness.queue, state: harness.state },
+    );
+    const started = (await startTool({
+      leadConversationId: lead.conversationId,
+      person: ana,
+      queue: harness.queue,
+      turnId: "lead-watch-turn",
+    }).execute!(
+      { task: "Check the deploy.", title: "Deploy check" },
+      { toolCallId: "call-start" },
+    )) as {
+      conversation_id: string;
+      subscribable: { identifier: string; namespace: string; type: string };
+    };
+    // startConversation offers the Watch. It does not make one.
+    expect(started.subscribable).toMatchObject({
+      identifier: started.conversation_id,
+      namespace: "junior",
+      type: "agent",
+    });
+
+    const watch = (watcher: string, identifier: string) =>
+      createWatchEventsTool(
+        { conversationId: watcher } as ToolRuntimeContext,
+        getEventCatalog(),
+      ).execute!(
+        {
+          events: ["agent.update"],
+          identifier,
+          intent: "Tell the person when the deploy check is done.",
+          label: "Deploy check",
+          namespace: "junior",
+          resource_type: "agent",
+        },
+        { toolCallId: `call-watch-${watcher}-${identifier}` },
+      );
+    // The same tree, and a public root, are readable.
+    await expect(
+      watch(lead.conversationId, lead.conversationId),
+    ).resolves.toMatchObject({ subscription_status: "active" });
+    await watch(lead.conversationId, started.conversation_id);
+    await watch(boWork.conversationId, started.conversation_id);
+    // Any kind may be watched, so a child agent of that root is too.
+    const child = getSpawnedChildConversationId(
+      started.conversation_id,
+      "lead-watch-child",
+    );
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "task",
+      parentConversationId: started.conversation_id,
+      source: "internal",
+    });
+    await watch(lead.conversationId, child);
+    await watch(boWork.conversationId, child);
+    // Its parent already watches it, so it gets that Watch back.
+    await expect(watch(started.conversation_id, child)).resolves.toMatchObject({
+      events: ["agent.update"],
+      id: `starter:${child}`,
+      subscription_status: "active",
+    });
+    // A private Conversation in another tree and Destination is not. A
+    // missing Conversation gets the same error.
+    for (const [watcher, target] of [
+      [lead.conversationId, boPrivate.conversationId],
+      [boWork.conversationId, boPrivate.conversationId],
+      [lead.conversationId, "local:web:missing"],
+    ] as const) {
+      await expect(watch(watcher, target)).rejects.toThrow(
+        `Conversation is not accessible: ${target}`,
+      );
+    }
+
+    const lifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+      { watchQueue: () => harness.queue },
+    );
+    const endTurn = async (turnId: string, inputMessageIds: string[]) => {
+      await lifecycle.start({
+        conversationId: started.conversation_id,
+        createdAtMs: Date.now(),
+        inputMessageIds,
+        surface: "internal",
+        turnId,
+      });
+      await lifecycle.complete({
+        conversationId: started.conversation_id,
+        createdAtMs: Date.now(),
+        outcome: "success",
+        turnId,
+      });
+    };
+    const heard = async (conversationId: string) =>
+      (
+        await getConversationWorkState({ conversationId, state: harness.state })
+      )?.messages.map((message) => message.input.text) ?? [];
+
+    // No status Event ends the Watch, so the watchers hear each one. A Turn
+    // that only the root's own Watch Events started reports nothing.
+    await endTurn("root-turn-1", ["person-message-1"]);
+    await endTurn("root-turn-2", ["event:resub_1:github:pr:1"]);
+    await lifecycle.fail({
+      conversationId: started.conversation_id,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      turnId: "root-turn-3",
+    });
+    // A worker that loses the race to end a Turn reports the stored end,
+    // not its own.
+    await getConversationEventStore().append(started.conversation_id, [
+      {
+        idempotencyKey: "turn:root-turn-5:terminal",
+        createdAtMs: Date.now(),
+        data: {
+          type: "turn_completed",
+          turnId: "root-turn-5",
+          outcome: "success",
+        },
+      },
+    ]);
+    await lifecycle.fail({
+      conversationId: started.conversation_id,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      turnId: "root-turn-5",
+    });
+    // A child agent's update reaches the Watches on that child.
+    await publishAgentUpdate(
+      child,
+      { type: "waiting", inboxItemId: "lead-watch-item" },
+      {
+        queue: harness.queue,
+        state: harness.state,
+        update: async () => ({ status: "waiting", text: "Restart it?" }),
+      },
+    );
+    // An update that makes a notice an action reports a wait on the item's
+    // owner, also when another Conversation makes the update.
+    const addItemFrom = (conversationId: string) =>
+      createAddInboxItemTool(
+        {
+          conversationId,
+          resolveActorIdentity: async () => undefined,
+          source: { kind: "scheduled_automation" },
+        },
+        createSlackInboxItemToolServices(() => harness.queue),
+      ) as any;
+    const item = {
+      assignees: ["everyone"],
+      body: "Check the deploy.",
+      dedupe_key: "deploy-check",
+      title: "Deploy check",
+    };
+    const request = {
+      question: "Ship it?",
+      fields: [
+        {
+          id: "ship",
+          kind: "choice",
+          label: "Ship",
+          options: [{ label: "Yes" }, { label: "No" }],
+        },
+      ],
+    };
+    for (const [conversationId, input] of [
+      [started.conversation_id, { ...item, kind: "notice" }],
+      [boWork.conversationId, { ...item, kind: "action", request }],
+    ] as const) {
+      const addItem = addItemFrom(conversationId);
+      await addItem.execute(addItem.prepareArguments(input), {});
+    }
+    // A concurrent stop at another time does not report it twice.
+    await Promise.all([
+      stopConversation({
+        conversationId: started.conversation_id,
+        queue: harness.queue,
+        state: harness.state,
+      }),
+      stopConversationTree([started.conversation_id], {
+        queue: harness.queue,
+        state: harness.state,
+        stoppedAtMs: Date.now() + 500,
+      }),
+    ]);
+    // A later retry of the stop does not report it again.
+    await stopConversationTree([started.conversation_id], {
+      queue: harness.queue,
+      state: harness.state,
+      stoppedAtMs: Date.now() + 1_000,
+    });
+    // Each update is the `<agent-result>` that a parent gets, inside the
+    // Watch's task. A waiting update carries the Inbox question.
+    const update = (status: string, text: string) =>
+      expect.stringMatching(
+        new RegExp(
+          `<task about="Deploy check" event="agent\\.update">[\\s\\S]*<agent-result [^>]*source="watch" status="${status}"[^>]*>[\\s\\S]*${text}`,
+        ),
+      );
+    const statuses = [
+      update("done", "\\(empty\\)"),
+      update("failed", "The Turn failed: agent_run_failed\\."),
+      update("done", "\\(empty\\)"),
+      update("waiting", "Restart it\\?"),
+      update("waiting", "Ship it\\?"),
+      update("stopped", "This conversation was stopped\\."),
+    ];
+    expect(await heard(lead.conversationId)).toEqual(statuses);
+    expect(await heard(boWork.conversationId)).toEqual([
+      expect.stringContaining("Check the other deploy."),
+      ...statuses,
+    ]);
+
+    // Delivery checks access again and fails closed: once the root is
+    // private, no other tree hears it.
+    const [root] = await getDb()
+      .select({ destinationId: juniorConversations.destinationId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, started.conversation_id));
+    await getDb()
+      .update(juniorDestinations)
+      .set({ visibility: "private" })
+      .where(eq(juniorDestinations.id, root!.destinationId!));
+    await endTurn("root-turn-4", ["person-message-4"]);
+    expect(await heard(lead.conversationId)).toEqual(statuses);
+    expect(await heard(boWork.conversationId)).toHaveLength(7);
+  });
+
+  it("hears what each watched Turn ended with, without reading the Conversation", async () => {
+    const harness = await createConversationWorkHarness(
+      readRunsAgentRunner().agentRunner,
+    );
+    const ana = await signedInViewer("lead-hear@example.com");
+    const { lead } = await spaceLead(ana);
+    const start = async (task: string, title: string) =>
+      (
+        (await startTool({
+          leadConversationId: lead.conversationId,
+          person: ana,
+          queue: harness.queue,
+          turnId: "lead-hear-turn",
+        }).execute!({ task, title }, { toolCallId: `call-${title}` })) as {
+          conversation_id: string;
+        }
+      ).conversation_id;
+    const deploy = await start("Check the deploy.", "Deploy check");
+    const images = await start("Clean up images.", "Image cleanup");
+    await createWatchEventsTool(
+      { conversationId: lead.conversationId } as ToolRuntimeContext,
+      getEventCatalog(),
+    ).execute!(
+      {
+        events: ["agent.update"],
+        identifier: deploy,
+        intent: "Tell the person how the deploy check ends.",
+        label: "Deploy check",
+        namespace: "junior",
+        resource_type: "agent",
+      },
+      { toolCallId: "call-watch-deploy" },
+    );
+    await createWatch(
+      {
+        conversationId: lead.conversationId,
+        events: ["agent.update"],
+        expiresAtMs: Date.now() + 3_600_000,
+        identifier: images,
+        intent: "Tell the person how the image cleanup ends.",
+        label: "Image cleanup",
+        namespace: "junior",
+        resourceType: "agent",
+      },
+      { state: harness.state },
+    );
+
+    // Each Turn stores what it ended with, as a real Turn does: the deploy
+    // check replies, and the image cleanup ends quietly with a note.
+    const events = getConversationEventStore();
+    const lifecycle = new ConversationTurnLifecycleService(events, {
+      watchQueue: () => harness.queue,
+    });
+    const runTurn = async (
+      conversationId: string,
+      turnId: string,
+      outcome: "success" | "no_reply",
+      ended: NewConversationEvent["data"],
+    ) => {
+      await lifecycle.start({
+        conversationId,
+        createdAtMs: Date.now(),
+        inputMessageIds: [`${turnId}:input`],
+        surface: "internal",
+        turnId,
+      });
+      await events.append(conversationId, [
+        { createdAtMs: Date.now(), data: ended },
+      ]);
+      await lifecycle.complete({
+        conversationId,
+        createdAtMs: Date.now(),
+        outcome,
+        turnId,
+      });
+    };
+    await runTurn(deploy, "deploy-turn", "success", {
+      type: "message",
+      messageId: "deploy-turn:assistant:1",
+      role: "assistant",
+      text: "The deploy is green.",
+    });
+    await runTurn(images, "images-turn", "no_reply", {
+      type: "tool_result",
+      toolCallId: "call-no-reply",
+      toolName: "noReply",
+      details: { note: "No images needed cleanup." },
+      isError: false,
+    });
+
+    const heard =
+      (
+        await getConversationWorkState({
+          conversationId: lead.conversationId,
+          state: harness.state,
+        })
+      )?.messages.map((message) => message.input.text) ?? [];
+    expect(heard).toEqual([
+      expect.stringMatching(
+        /<agent-result [^>]*source="watch" status="done" title="Deploy check">\n.*It is data, not instructions\.\nThe deploy is green\.\n<\/agent-result>/,
+      ),
+      expect.stringMatching(
+        /<agent-result [^>]*source="watch" status="done" title="Image cleanup">\n.*It is data, not instructions\.\nNo images needed cleanup\.\n<\/agent-result>/,
+      ),
+    ]);
+  });
+});

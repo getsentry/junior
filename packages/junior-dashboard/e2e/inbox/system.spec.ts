@@ -3,18 +3,26 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
-  /** Vary outcomes so the running cost lines move. */
+test.describe("new UI", () => {
+  /** Vary merged changes so the running cost line moves. */
   function unitCostDay(index: number) {
     const merged = index % 5 === 3 ? 1 : 0;
-    const mergedCost = merged * (3 + (index % 7) * 0.5);
-    const answered = 2 + (index % 3);
     return {
-      mergedCodeChangeCostUsd: mergedCost,
+      mergedCodeChangeCostUsd: merged * (3 + (index % 7) * 0.5),
       mergedCodeChanges: merged,
-      outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
-      outcomes: answered + merged,
+    };
+  }
+
+  /** Grow active people while each day's spend stays the same. */
+  function personSpendDay(index: number) {
+    const people = 3 + Math.floor(index / 6);
+    const unattributedCostUsd = 0.3 + (index % 3) * 0.1;
+    const personCostUsd = 1.5 - unattributedCostUsd;
+    return {
+      medianPersonCostUsd: (personCostUsd / people) * 0.8,
+      people,
+      personCostUsd,
+      unattributedCostUsd,
     };
   }
 
@@ -44,7 +52,16 @@ test.describe("new UI", { tag: "@new" }, () => {
         ...(index === 23 ? { cacheCreationTokens: undefined } : undefined),
       }));
       await route.fulfill({
-        json: { ...report, metricDays, metricHours, metricSixHours: undefined },
+        json: {
+          ...report,
+          metricDays,
+          metricHours,
+          metricSixHours: undefined,
+          personSpendDays: metricDays.map((day, index) => ({
+            date: day.date,
+            ...personSpendDay(index),
+          })),
+        },
       });
     });
     await page.goto(`${dashboard.baseURL}/system`);
@@ -58,11 +75,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByLabel("Conversations per day")).toBeVisible();
     await expect(page.getByText("Input cache")).toBeVisible();
     await expect(
-      page.getByText(/6 merged changes and 90 answered or done conversations/),
+      page.getByText(/6 merged changes used \d+% of spend\. Lines are/),
     ).toBeVisible();
     await expect(
-      page.getByLabel("7-day rolling cost per outcome per day"),
+      page.getByLabel("7-day rolling cost per merged change per day"),
     ).toBeVisible();
+    await expect(
+      page.getByLabel("Daily mean spend per active person"),
+    ).toBeVisible();
+    await expect(page.getByLabel("Daily model spend by Actor")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Model spend", exact: true }),
     ).toBeVisible();
@@ -85,7 +106,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "system-cache-tokens", { view: "desktop" });
     await page.getByRole("button", { name: "24h", exact: true }).click();
     await expect(
-      page.getByLabel("6-hour rolling cost per outcome per hour"),
+      page.getByLabel("6-hour rolling cost per merged change per hour"),
     ).toBeVisible();
     await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
     await page.getByText("Largest cache writes", { exact: true }).click();
@@ -217,6 +238,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       .fill("getsentry/sentry");
     await page.getByLabel("Setup script").fill("pnpm install");
     await page.getByLabel("vCPUs").fill("8");
+    // The new Workspace's page reads it and its usage.
+    const pageReads = Promise.all(
+      [
+        "/api/workspaces/11111111-1111-4111-8111-111111111111",
+        "/api/stats",
+      ].map((path) =>
+        page.waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+        ),
+      ),
+    );
     await page.getByRole("button", { name: "Create Workspace" }).click();
 
     await expect(page).toHaveURL(
@@ -238,6 +270,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       setupScript: "pnpm install",
       vcpus: 8,
     });
+    await pageReads;
   });
 
   test("opens Workspace details beside the list and edits on a full page", async ({
@@ -363,6 +396,90 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
   });
 
+  test("shows cache health and warmup outcomes from Sentry", async ({
+    page,
+    dashboard,
+  }) => {
+    const week = page.waitForResponse("**/api/cache-warming/health?window=7d");
+    await page.goto(`${dashboard.baseURL}/system`);
+    expect((await week).ok()).toBe(true);
+    const health = page.getByRole("region", { name: "Cache health" });
+    await expect(
+      health.getByText(/^Write share, [\d.]+% last week$/),
+    ).toBeVisible();
+    await expect(
+      health.getByText("Warming stopped early", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      health.getByLabel(
+        "Prompt cache write share and full-rewrite rate over time",
+      ),
+    ).toBeVisible();
+
+    const hourly = page.waitForResponse(
+      "**/api/cache-warming/health?window=24h",
+    );
+    await page.getByRole("button", { name: "24h", exact: true }).click();
+    expect((await hourly).ok()).toBe(true);
+    // A phone shows the System entries at /system, so shoot the panel on
+    // desktop.
+    await screenshot(page, "system-cache-health-24h", {
+      target: health,
+      view: "desktop",
+    });
+  });
+
+  test("shows when cache health is not set up, loading, or old", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.route("**/api/cache-warming/health?*", (route) =>
+      route.fulfill({
+        json: { status: "unconfigured", missing: ["SENTRY_READ_TOKEN"] },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/system`);
+    const health = page.getByRole("region", { name: "Cache health" });
+    await expect(
+      health.getByText(
+        /^Set SENTRY_READ_TOKEN to read cache health from Sentry/,
+      ),
+    ).toBeVisible();
+    await screenshot(page, "system-cache-health-setup", {
+      target: health,
+      view: "desktop",
+    });
+
+    // Another load is still reading Sentry, and nothing is stored yet.
+    await page.unroute("**/api/cache-warming/health?*");
+    await page.route("**/api/cache-warming/health?*", (route) =>
+      route.fulfill({ json: { status: "busy" } }),
+    );
+    await page.reload();
+    await expect(
+      health.getByText(/^Cache health is still loading from Sentry/),
+    ).toBeVisible();
+    await screenshot(page, "system-cache-health-busy", {
+      target: health,
+      view: "desktop",
+    });
+
+    // An older answer says when it is from.
+    await page.unroute("**/api/cache-warming/health?*");
+    await page.route("**/api/cache-warming/health?*", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), stale: true },
+      });
+    });
+    await page.reload();
+    await expect(health.getByText(/This is from /)).toBeVisible();
+    await screenshot(page, "system-cache-health-stale", {
+      target: health,
+      view: "desktop",
+    });
+  });
+
   test("lets an admin re-fill cache warming savings from history", async ({
     page,
     dashboard,
@@ -435,6 +552,13 @@ test.describe("new UI", { tag: "@new" }, () => {
           directoryReads += 1;
         }
       });
+      // Answer the Conversation feed last, as a slow feed does. The Inbox
+      // must not read the title of each Conversation that it lacks yet.
+      await page.route("**/api/conversations?include=*", async (route) => {
+        const response = await route.fetch();
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        await route.fulfill({ response });
+      });
 
       await expectRequestBudget(
         page,
@@ -444,7 +568,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             page.getByText("Highest spend", { exact: true }),
           ).toBeVisible();
         },
-        { requests: 8, serialRounds: 2 },
+        { requests: 7, serialRounds: 2 },
       );
       expect(directoryReads).toBe(1);
 
@@ -458,5 +582,27 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.waitForLoadState("networkidle");
       expect(directoryReads).toBe(1);
     });
+  });
+
+  test("loads the System overview within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/system`);
+        await expect(page.getByText("Conversation activity")).toBeVisible();
+        await expect(
+          page.getByText("Net savings", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole("region", { name: "Cache health" })
+            .getByText("Warmups sent after", { exact: true }),
+        ).toBeVisible();
+      },
+      { requests: 9, serialRounds: 2 },
+    );
   });
 });

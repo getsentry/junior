@@ -74,9 +74,10 @@ If Junior should receive events or report PR/issue outcomes, also:
 
 1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
-3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
-   Issue comment, Pull request, Pull request review, Pull request review
-   comment, Push, and Release.
+3. Subscribe the App to: Check run, Check suite, Deployment, Deployment
+   status, Issues, Issue comment, Pull request, Pull request review, Pull
+   request review comment, Push, and Release. Check run events keep the
+   check counts on pull request cards current.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -327,8 +328,8 @@ The next Vercel deploy applies this plugin's migrations, because the scaffolded
 build runs [junior upgrade](/cli/upgrade/). For a local database, run
 `pnpm exec junior upgrade` yourself.
 
-The migrations create the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and outcome tracking. Opened pull
+The migrations create the `junior_github_pull_requests` projection used by
+webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
 
@@ -337,7 +338,7 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
-- After it files an issue for a person, ask them with a Review item whether
+- After it files an issue for a person, ask them with an Inbox item whether
   to start a Thread that implements it. When they already asked for the fix,
   start the Thread without asking. Automation runs, events, and child agents
   do not ask
@@ -558,9 +559,41 @@ The pull request was opened.
 </details>
 
 <details class="event">
+<summary><code>pull_request.reopened</code></summary>
+
+The pull request was reopened after it closed without merging.
+
+</details>
+
+<details class="event">
 <summary><code>pull_request.ready_for_review</code></summary>
 
 The pull request became ready for review.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.converted_to_draft</code></summary>
+
+The pull request was converted to a draft.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.synchronized</code></summary>
+
+The pull request got new commits: a push or a force push to its head
+branch. Each push sends this event, also a push by Junior. So it is not in the
+suggested events, and the watch that Junior creates for its own pull requests
+does not get it by default.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.review_requested</code></summary>
+
+Someone asked a person or a team to review the pull request. Each reviewer
+that GitHub adds sends one event. The summary names the reviewer.
 
 </details>
 
@@ -640,29 +673,53 @@ people work on it:
 - In the first 2 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day,
   and at most 3 times in a row with no activity by a person between them.
-- After that, Junior publishes no event. It adds a Review item with a
-  **Resume** button for the person who asked for the pull request. The item
+- After that, Junior publishes no event and tells nobody. The next push,
+  review, or comment by a person starts the count again.
+- An approved pull request would be ready to merge but for the conflict. It
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
+- When the head commit is the same a day after its fix, the fix did not
+  land. Then Junior adds an Inbox item with a **Resume** button for the
+  person who asked for the pull request. It adds the item once after each
+  Resume, so **Dismiss** ends these asks for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
-  closes.
+  closes. When the conflict goes away while the item is open, a later fix
+  that does not land adds the item again.
 - **Resume** counts as activity by a person, so the count starts again. It
   adds the pull request's watch again if it expired, so the event reaches
   the conversation, and publishes the event at once. Until a fix lands
   after it, Junior publishes no event. If no fix lands in a day, Junior
   adds the item again. Resume on a draft, or on a pull request that GitHub
   can merge, does nothing.
-- After 3 days without activity by a person, Junior does nothing.
-- An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, up to
-  the limit of 3 in a row. The ready to merge notice needs a clean merge
-  state, so it comes after the fix.
 
 For each conflict, Junior reads the pull request's timeline and review
 decision from GitHub, for the latest activity by a person. Only the events
 that Junior published for a fix count as fixes, so a merge or force push for
-work that a person asked for does not. Junior stores those, with the time of
-the latest Resume. Each head commit publishes one event. When the head
-commit is the same a day after its fix, the fix did not land, and Junior
-adds the item.
+work that a person asked for does not. Junior stores those, with the times
+of the latest Resume and the latest item. Each head commit publishes one
+event.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.merge_conflict.resolved</code></summary>
+
+The pull request had merge conflicts, and now GitHub can merge it cleanly.
+GitHub sends no webhook for this either. When Junior reads a conflict, it
+marks the pull request for 30 days. The reads that mark it are the merge
+conflict checks, a `pull_request` webhook, the merge state read after a push,
+and a card that shows the pull request. When a watch, event automation, or
+snooze wants this event, a comment, review, or check result on the pull
+request also reads its merge state, the same as for
+`pull_request.merge_conflict`. After each push, Junior reads the merge state
+again a few seconds later. When a read finds no conflict on a marked pull
+request, Junior publishes this event and removes the mark. A pull request that
+had no conflict sends no event. Each head commit publishes one event. A
+conflict that a change on the base branch fixes, with no push to the pull
+request, publishes at the next read: the next comment, review, check result,
+or push. For pull requests that Junior opened, a push to the default branch
+also starts that read. Trusted data includes the full head SHA.
 
 </details>
 

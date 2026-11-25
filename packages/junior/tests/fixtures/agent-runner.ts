@@ -7,9 +7,21 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
-import type { AgentEnvironment, AgentRun } from "@/chat/agent/types";
+import type {
+  AgentEnvironment,
+  AgentHistory,
+  AgentRun,
+} from "@/chat/agent/types";
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
+
+/**
+ * History that earlier Turns committed, with a placeholder seq for each
+ * message. Without a `turn_started` event, none of it belongs to the Turn.
+ */
+export function committedHistory(messages: readonly PiMessage[]): AgentHistory {
+  return { messages, seqs: messages.map((_, index) => index) };
+}
 
 function assistantMessage(text: string): AssistantMessage {
   return fauxAssistantMessage(text);
@@ -84,7 +96,7 @@ export async function deliverAssistantMessagesForTest(
   }
   const history = finalHistory
     ? finalHistory.slice(0, -replies.length)
-    : [...(run.history ?? [])];
+    : [...(run.history?.messages ?? [])];
   const firstReplyIndex = (finalHistory?.length ?? 0) - replies.length;
   for (const [index, reply] of replies.entries()) {
     const message =

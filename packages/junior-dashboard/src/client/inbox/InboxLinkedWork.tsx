@@ -336,8 +336,9 @@ function WorkChip(props: { work: Annotation }) {
     </>
   );
   const className =
-    // A chip alone on its line shrinks and truncates its title.
-    "inline-flex min-w-0 max-w-48 items-baseline rounded-sm font-sans text-xs no-underline";
+    // A chip alone on its line shrinks and truncates its title. It is as
+    // tall as an ask pill, so both center on one line.
+    "inline-flex h-5 min-w-0 max-w-48 items-center rounded-sm font-sans text-xs no-underline";
   const chip = work.url ? (
     <a
       className={cn(

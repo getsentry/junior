@@ -4,6 +4,7 @@ import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import { mockBuiltSystemPrompts } from "../../junior/tests/fixtures/built-system-prompts";
 
 const { authenticatePersonalToken, resolveViewerUser } = vi.hoisted(() => ({
   authenticatePersonalToken: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function mockDashboardVirtualConfig() {
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp,
     functionMaxDurationSeconds: undefined,
     dashboard: undefined,
@@ -28,9 +30,10 @@ function mockDashboardVirtualConfig() {
     pluginSet: undefined,
     plugins: undefined,
   }));
+  mockBuiltSystemPrompts();
 }
 
-function memoryRoutes() {
+function notesRoutes() {
   const app = new Hono();
   app.get("/memories", (c) => c.json({ path: c.req.path, ok: true }));
   return app;
@@ -45,6 +48,7 @@ describe("dashboard plugin routes", () => {
 
   afterEach(() => {
     vi.doUnmock("#junior/config");
+    vi.doUnmock("#junior/system-prompts");
     resetDashboardEnv();
   });
 
@@ -87,7 +91,7 @@ describe("dashboard plugin routes", () => {
 
   it("mounts plugin API route apps under the authenticated namespace", async () => {
     mockDashboardVirtualConfig();
-    const pluginApp = memoryRoutes();
+    const pluginApp = notesRoutes();
     const app = await createApp({
       allowedDomains: ["sentry.io"],
       dashboard: {
@@ -96,9 +100,9 @@ describe("dashboard plugin routes", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes plugin",
           },
           hooks: {
             apiRoutes() {
@@ -110,7 +114,7 @@ describe("dashboard plugin routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -123,15 +127,21 @@ describe("dashboard plugin routes", () => {
   });
 
   it("protects plugin API route apps with dashboard auth", async () => {
-    const pluginApp = memoryRoutes();
+    const pluginApp = notesRoutes();
     const unauthenticated = createDashboardApp({
       agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [
+        {
+          app: pluginApp,
+          pluginName: "notes",
+          prefix: "/api/plugins/notes",
+        },
+      ],
     });
     const denied = await unauthenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(denied.status).toBe(401);
     await expect(denied.json()).resolves.toEqual({
@@ -147,10 +157,16 @@ describe("dashboard plugin routes", () => {
           emailVerified: true,
         },
       }),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [
+        {
+          app: pluginApp,
+          pluginName: "notes",
+          prefix: "/api/plugins/notes",
+        },
+      ],
     });
     const allowed = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(allowed.status).toBe(200);
     await expect(allowed.json()).resolves.toEqual({
@@ -171,11 +187,17 @@ describe("dashboard plugin routes", () => {
       agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [
+        {
+          app: pluginApp,
+          pluginName: "notes",
+          prefix: "/api/plugins/notes",
+        },
+      ],
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories/memory-1", {
+      new Request("http://localhost/api/plugins/notes/memories/memory-1", {
         headers: { authorization: "Bearer jr_pat_valid" },
         method: "DELETE",
       }),
@@ -205,13 +227,14 @@ describe("dashboard plugin routes", () => {
               return Response.json({ ok: true });
             },
           },
-          pluginName: "memory",
+          pluginName: "notes",
+          prefix: "/api/plugins/notes",
         },
       ],
     });
 
     const response = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(response.status).toBe(200);
     expect(pluginContext).toEqual({
@@ -223,7 +246,7 @@ describe("dashboard plugin routes", () => {
           name: "Person",
         },
       },
-      pluginName: "memory",
+      pluginName: "notes",
     });
 
     // The admin role comes from the stored user, not from the sign-in session.
@@ -234,7 +257,7 @@ describe("dashboard plugin routes", () => {
       isAdmin: true,
     } as never);
     await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(pluginContext).toMatchObject({
       auth: { user: { email: "person@sentry.io", isAdmin: true } },
@@ -252,7 +275,13 @@ describe("dashboard plugin routes", () => {
       agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
-      pluginRoutes: [{ app: pluginApp, pluginName: "viewer" }],
+      pluginRoutes: [
+        {
+          app: pluginApp,
+          pluginName: "viewer",
+          prefix: "/api/plugins/viewer",
+        },
+      ],
     });
     const response = await app.fetch(
       new Request("http://localhost/api/plugins/viewer/viewer"),

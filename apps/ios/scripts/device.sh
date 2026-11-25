@@ -1,16 +1,11 @@
 #!/bin/bash
 # Build Junior for the connected iPhone, install it, and open it there.
-# Signing reads DEVELOPMENT_TEAM from Local.xcconfig (see Signing.xcconfig), and
-# Xcode must be signed in to that team (Xcode › Settings › Accounts). With more
+# Signing.xcconfig has the signing settings; run `make signing` first. With more
 # than one iPhone connected, set JUNIOR_IOS_DEVICE to a device name or id.
 # Usage: scripts/device.sh [app launch arguments…]
 set -euo pipefail
 
 ios_dir="$(cd "$(dirname "$0")/.." && pwd)"
-if ! grep -Eqs '^DEVELOPMENT_TEAM *= *[A-Z0-9]+' "$ios_dir/Local.xcconfig"; then
-  echo "Add 'DEVELOPMENT_TEAM = <team ID>' to $ios_dir/Local.xcconfig first." >&2
-  exit 1
-fi
 
 devices_json="$(mktemp)"
 trap 'rm -f "$devices_json"' EXIT

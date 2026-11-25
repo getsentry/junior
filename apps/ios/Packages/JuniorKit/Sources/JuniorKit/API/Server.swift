@@ -7,6 +7,16 @@ public struct JuniorServer: Equatable, Sendable, Codable {
 
   public init(baseURL: URL) { self.baseURL = baseURL }
 
+  /// The built-in demo (`DemoServer`). The `.invalid` domain never resolves,
+  /// so nothing leaves the device.
+  public static let demo = JuniorServer(baseURL: URL(string: "https://demo.junior.invalid")!)
+
+  /// Sentry's Junior. Sign in suggests it until the app has signed in to
+  /// another server.
+  public static let production = JuniorServer(baseURL: URL(string: "https://junior-prod.sentry.dev")!)
+
+  public var isDemo: Bool { self == .demo }
+
   /// The MCP endpoint, which is also the OAuth resource indicator.
   public var mcpURL: URL { URL(string: "/api/mcp", relativeTo: baseURL)!.absoluteURL }
 
@@ -64,7 +74,9 @@ func describe(_ error: DecodingError) -> String {
   switch error {
   case .keyNotFound(let key, let context):
     return "Missing \(path(context.codingPath + [key]))."
-  case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+  case .typeMismatch(let type, let context), .valueNotFound(let type, let context):
+    return "Bad value at \(path(context.codingPath)), expected \(type)."
+  case .dataCorrupted(let context):
     return "Bad value at \(path(context.codingPath))."
   @unknown default:
     return "\(error)"

@@ -7,8 +7,11 @@ import {
   type ConversationMetricBucket,
 } from "./metric-buckets";
 import {
+  readPersonSpendDays,
+  type PersonSpendDayRow,
+} from "./person-spend-days";
+import {
   outcomeBuckets,
-  readBriefOutcomeRoots,
   readWindowMerges,
   readWindowRoots,
   type OutcomeBucket,
@@ -19,9 +22,11 @@ import type {
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
+  PersonSpendDay,
 } from "../schema/conversation-stats";
 import {
   WINDOW_SEVEN_DAY_HOURS,
+  fillUtcDays,
   sumUtcHoursIntoSixHours,
   startOfUtcHour,
   utcHourKey,
@@ -56,8 +61,6 @@ type MetricRow = {
   inputTokens: number | null;
   mergedCodeChangeCostUsd: number | null;
   mergedCodeChanges: number | null;
-  outcomeCostUsd: number | null;
-  outcomes: number | null;
   tokens: number | null;
 };
 
@@ -72,8 +75,6 @@ function emptyMetricRow(date: string): MetricRow {
     inputTokens: null,
     mergedCodeChangeCostUsd: null,
     mergedCodeChanges: null,
-    outcomeCostUsd: null,
-    outcomes: null,
     tokens: null,
   };
 }
@@ -93,8 +94,6 @@ function applyMetricBuckets(
     const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
     row.mergedCodeChanges = bucket.mergedCodeChanges;
     row.mergedCodeChangeCostUsd = bucket.mergedCodeChangeCostUsd;
-    row.outcomes = bucket.outcomes;
-    row.outcomeCostUsd = bucket.outcomeCostUsd;
     byDate.set(bucket.date, row);
   }
   for (const metric of metrics) {
@@ -138,8 +137,6 @@ function metricPoint(
         inputTokens?: number | null;
         mergedCodeChangeCostUsd?: number | null;
         mergedCodeChanges?: number | null;
-        outcomeCostUsd?: number | null;
-        outcomes?: number | null;
         tokens?: number | null;
       }
     | undefined,
@@ -161,15 +158,13 @@ function metricPoint(
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
       : undefined),
-    ...(row?.outcomes !== null && row?.outcomes !== undefined
+    ...(row?.mergedCodeChanges !== null && row?.mergedCodeChanges !== undefined
       ? {
           mergedCodeChangeCostUsd: addUsd(
             undefined,
             row.mergedCodeChangeCostUsd ?? 0,
           ),
-          mergedCodeChanges: row.mergedCodeChanges ?? 0,
-          outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
-          outcomes: row.outcomes,
+          mergedCodeChanges: row.mergedCodeChanges,
         }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
@@ -320,6 +315,22 @@ function guardianStats(
   };
 }
 
+function personSpendDay(row: PersonSpendDayRow): PersonSpendDay {
+  return {
+    date: row.date,
+    people: row.people,
+    personCostUsd: microUsdToUsd(row.personCostMicroUsd),
+    unattributedCostUsd: microUsdToUsd(row.unattributedCostMicroUsd),
+    ...(row.medianPersonCostMicroUsd !== null
+      ? { medianPersonCostUsd: microUsdToUsd(row.medianPersonCostMicroUsd) }
+      : undefined),
+  };
+}
+
+function emptyPersonSpendDay(date: string): PersonSpendDay {
+  return { date, people: 0, personCostUsd: 0, unattributedCostUsd: 0 };
+}
+
 /** Sum hour rows into UTC day rows, one per day and `key`. */
 function sumHoursIntoDays<T extends { date: string }>(
   hours: readonly T[],
@@ -357,16 +368,16 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
   const db = getDb();
   // One hour-grained read per aggregate. Days and six-hour buckets are sums
   // of these hours.
-  const [windowRoots, metrics, merges, briefRoots, guardian] =
+  const [windowRoots, metrics, merges, guardian, personSpend] =
     await Promise.all([
       readWindowRoots(db, { start, end }),
       readConversationMetricBuckets(db, { start, end }),
       readWindowMerges(db, { start, end }),
-      readBriefOutcomeRoots(db, { start, end }),
       readGuardianHours(db, getStateAdapter(), { start, end }),
+      readPersonSpendDays(db, { start, end }),
     ]);
   const activity = activityHours(windowRoots);
-  const outcomes = outcomeBuckets({ briefRoots, merges, windowRoots });
+  const outcomes = outcomeBuckets({ merges });
   const hours = metricHours(
     applyMetricBuckets(activity, metrics, outcomes),
     nowMs,
@@ -401,14 +412,18 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
         sumHoursIntoDays(outcomes, (day, hour) => {
           day.mergedCodeChangeCostUsd += hour.mergedCodeChangeCostUsd;
           day.mergedCodeChanges += hour.mergedCodeChanges;
-          day.outcomeCostUsd += hour.outcomeCostUsd;
-          day.outcomes += hour.outcomes;
         }),
       ),
       nowMs,
     ),
     metricHours: hours,
     metricSixHours: sumMetricHoursIntoSixHours(hours, nowMs),
+    personSpendDays: fillUtcDays({
+      count: WINDOW_DAYS,
+      empty: emptyPersonSpendDay,
+      nowMs,
+      rows: new Map(personSpend.map((row) => [row.date, personSpendDay(row)])),
+    }),
     source: "conversation_index",
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),

@@ -200,6 +200,7 @@ function dashboardHostRoutePaths(
     `${pagePath("plugins")}/*`,
     pagePath("settings"),
     `${pagePath("settings")}/*`,
+    `${pagePath("spaces")}/*`,
   ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
@@ -215,6 +216,8 @@ function dashboardHostRoutePaths(
     loginPath,
     "/api/health",
     "/api/runtime",
+    "/api/memory",
+    "/api/memory/*",
     "/api/plugins",
     "/api/plugins/*",
     "/api/plugin-reports",
@@ -236,6 +239,7 @@ function dashboardHostRoutePaths(
     "/api/objects",
     "/api/stats",
     "/api/versions",
+    "/api/versions/*",
     "/api/conversations",
     "/api/conversations/*",
     "/api/locations",
@@ -243,8 +247,11 @@ function dashboardHostRoutePaths(
     "/api/people",
     "/api/people/*",
     "/api/inbox/*",
-    "/api/review-items",
-    "/api/review-items/*",
+    "/api/inbox-items",
+    "/api/inbox-items/*",
+    "/api/search",
+    "/api/spaces",
+    "/api/spaces/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
     "/api/service-accounts",

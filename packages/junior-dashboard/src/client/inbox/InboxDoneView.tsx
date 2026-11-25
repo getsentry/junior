@@ -1,8 +1,7 @@
 import { ArrowUpRight, Check, X } from "lucide-react";
 import { Link } from "react-router";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
-import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import {
@@ -12,24 +11,30 @@ import {
 } from "./inboxRowStyles";
 import { InboxSection } from "./InboxSection";
 import { doneSections } from "./inboxModel";
-import { ReviewItemActions } from "./ReviewItemActions";
-import { ReviewItemObjects } from "./ReviewItemObjects";
-import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { answerLine, reviewItemText } from "./reviewItemFormat";
+import { InboxItemActions } from "./InboxItemActions";
+import { InboxItemObjects } from "./InboxItemObjects";
+import { InboxItemSubjectPreview } from "./InboxItemSubjectPreview";
+import {
+  answerLine,
+  itemConversationId,
+  itemOwnerLinkLabel,
+  itemOwnerPath,
+  inboxItemText,
+} from "./inboxItemFormat";
 import { formatRelativeTime } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
-import { ReviewItemCloser, ReviewItemTitle } from "./ReviewItemPeople";
-import { reviewItemTitleText } from "./reviewItemFormat";
+import { InboxItemCloser, InboxItemTitle } from "./InboxItemPeople";
+import { inboxItemTitleText } from "./inboxItemFormat";
 
 /** The answer, or the reason that the item closed. */
-function outcomeOf(item: ReviewItemPayload): string | undefined {
+function outcomeOf(item: InboxItemPayload): string | undefined {
   if (item.request && item.answer) return answerLine(item.request, item.answer);
   return item.closeReason;
 }
 
 function DoneRow(props: {
   expanded: boolean;
-  item: ReviewItemPayload;
+  item: InboxItemPayload;
   onToggle(): void;
   /** The Conversation title, when it is known. */
   title?: string;
@@ -39,7 +44,7 @@ function DoneRow(props: {
   const outcome = outcomeOf(item);
   const text =
     item.kind === "notice" || !item.request
-      ? reviewItemText(item)
+      ? inboxItemText(item)
       : item.request.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
@@ -68,7 +73,7 @@ function DoneRow(props: {
             )}
             ref={fadeWhenOverflowing}
           >
-            <ReviewItemTitle item={item} />
+            <InboxItemTitle item={item} />
           </span>
           <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-dashboard-text-muted">
             {outcome ? (
@@ -82,7 +87,7 @@ function DoneRow(props: {
             <span className="shrink-0">
               {outcome ? "· " : ""}
               {/* The row is a button, which cannot hold a link. */}
-              <ReviewItemCloser card={false} item={item} />
+              <InboxItemCloser card={false} item={item} />
             </span>
           </span>
         </span>
@@ -97,7 +102,7 @@ function DoneRow(props: {
       </button>
       {props.expanded ? (
         <div
-          aria-label={`${reviewItemTitleText(item)}: how it closed`}
+          aria-label={`${inboxItemTitleText(item)}: how it closed`}
           className={cn(INBOX_ROW_DETAIL_CLASS, "gap-4 font-sans text-sm")}
           id={regionId}
           role="region"
@@ -111,25 +116,23 @@ function DoneRow(props: {
             </span>
             <Link
               className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-              to={conversationPath(item.addedByConversationId, {
-                askItemId: item.id,
-              })}
+              to={itemOwnerPath(item, { askItemId: item.id })}
             >
-              Open conversation
+              {itemOwnerLinkLabel(item)}
               <ArrowUpRight aria-hidden="true" size={14} />
             </Link>
           </div>
-          <ReviewItemObjects conversationId={item.addedByConversationId}>
+          <InboxItemObjects conversationId={itemConversationId(item)}>
             <DisplayText mentions={item.mentions} text={text} />
             {item.subject ? (
-              <ReviewItemSubjectPreview
-                conversationId={item.addedByConversationId}
+              <InboxItemSubjectPreview
+                conversationId={itemConversationId(item)}
                 subject={item.subject}
               />
             ) : null}
-          </ReviewItemObjects>
+          </InboxItemObjects>
           {/* A closed item shows who closed it, when, and the answer. */}
-          <ReviewItemActions item={item} />
+          <InboxItemActions item={item} />
         </div>
       ) : null}
     </li>
@@ -137,18 +140,18 @@ function DoneRow(props: {
 }
 
 /**
- * Done: the closed Review items of the Inbox, newest closed first, in
+ * Done: the closed Inbox items, newest closed first, in
  * Today, This week, and Earlier. It is read-only. A row expands in place;
- * only "Open conversation" leaves the Inbox.
+ * only the link to its Conversation or Automation leaves the Inbox.
  */
 export function InboxDoneView(props: {
   collapsed: ReadonlySet<string>;
   expandedKey?: string;
-  items: readonly ReviewItemPayload[];
+  items: readonly InboxItemPayload[];
   nowMs: number;
   onToggle(key: string): void;
   onToggleSection(key: string): void;
-  titleOf(conversationId: string): string | undefined;
+  titleOf(conversationId: string | undefined): string | undefined;
 }) {
   return (
     <div className="grid">
@@ -166,7 +169,7 @@ export function InboxDoneView(props: {
               item={item}
               key={item.id}
               onToggle={() => props.onToggle(item.id)}
-              title={props.titleOf(item.addedByConversationId)}
+              title={props.titleOf(itemConversationId(item))}
             />
           ))}
         </InboxSection>

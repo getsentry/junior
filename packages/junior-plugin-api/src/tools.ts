@@ -10,6 +10,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import type { PluginCodeChanges } from "./code";
 import { objectAnnotationSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
@@ -104,6 +105,22 @@ export interface PluginEgress {
     provider: string;
     request: Request;
   }): Promise<Response>;
+}
+
+/** Public artifacts that a plugin tool publishes for the conversation. */
+export interface PluginArtifacts {
+  /**
+   * Publish image bytes at a public HTTPS URL that anyone with the URL can
+   * open. With `expiresInMs`, the URL stops serving after that long. PNG,
+   * JPEG, GIF, or WebP up to 10 MB; other input throws a tool input error.
+   */
+  publishImage(input: { body: Uint8Array; expiresInMs?: number }): Promise<{
+    url: string;
+    /** ISO time when the URL stops serving. Absent when it does not expire. */
+    expiresAt?: string;
+  }>;
+  /** Stop serving an image that this conversation published, by its URL. */
+  unpublishImage(url: string): Promise<void>;
 }
 
 export const pluginToolContentSchema = z.discriminatedUnion("type", [
@@ -757,7 +774,7 @@ export interface PluginConversationMatch {
    * working. idle: waits for a message. A failed Turn shows as idle.
    */
   status: "pending" | "running" | "paused" | "idle";
-  /** Summary of the latest Brief, when it has one. */
+  /** Conversation summary, when it has one. */
   summary?: string;
   title?: string;
   /** ISO time of the latest activity. */
@@ -802,6 +819,14 @@ export type PluginWorkOwner =
       url?: string;
     };
 
+/**
+ * Result of `users.findLinkedHandle`. `unlinked` means one person matched
+ * but has no linked account at the provider.
+ */
+export type PluginLinkedHandleLookup =
+  | { status: "found"; handle: string }
+  | { status: "ambiguous" | "not_found" | "unlinked" };
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -819,8 +844,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    * started the root. Returns nothing when nobody did.
    */
   resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+  /** The plugin's code changes in Junior's code records. */
+  codeChanges: PluginCodeChanges;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
+  /** Absent when the install has no artifact storage or public base URL. */
+  artifacts?: PluginArtifacts;
   /** Decision model for narrow choices, such as checks on text a tool writes. */
   decider: PluginDecider;
   embedder: PluginEmbedder;
@@ -846,6 +875,16 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      * written. Call it before you send model text out.
      */
     replaceSlackMentions<T>(value: T, provider: string): Promise<T>;
+    /**
+     * Find the one person that `query` names, such as an email, a Slack
+     * mention, or a name, and return the handle of their linked `provider`
+     * account. Only accounts that people linked count, so the handle is
+     * verified.
+     */
+    findLinkedHandle(
+      query: string,
+      provider: string,
+    ): Promise<PluginLinkedHandleLookup>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

@@ -1,23 +1,42 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
-import { deletePlanItems } from "@/chat/plan/store";
-import { dismissOpenReviewItems } from "@/chat/review-items/store";
+import { deleteTodos } from "@/chat/todos/store";
+import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import {
   juniorConversationEvents,
-  juniorConversationBriefs,
+  juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
-  juniorAgentInvocations,
-  juniorReviewItems,
+  juniorInboxItems,
+  juniorTurnInbox,
+  juniorTurns,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
+
+// No runtime code reads or writes Agent invocations, but the table stays in
+// the database for one release, with its rows and their foreign keys to
+// Conversations. Purge still deletes the rows of a purged tree.
+// TODO(dcramer): Delete with the migration that drops the table.
+const juniorAgentInvocations = pgTable("junior_agent_invocations", {
+  parentConversationId: text("parent_conversation_id").notNull(),
+  childConversationId: text("child_conversation_id").notNull(),
+});
+
+// No runtime code reads legacy Briefs, but the table stays in the database
+// for one release. A Brief holds Conversation content, so purge still
+// deletes the Briefs of a purged non-public tree.
+// TODO(dcramer): Delete with the migration that drops the table.
+const juniorConversationBriefs = pgTable("junior_conversation_briefs", {
+  conversationId: text("conversation_id").notNull(),
+});
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
@@ -127,14 +146,23 @@ export async function selectExpiredRoots(
            or bindings.child_conversation_id = tree.conversation_id
       )
       or exists (
-        select 1 from junior_review_items review_items
-        where review_items.added_by_conversation_id = tree.conversation_id
-          and review_items.status = 'open'
-          and review_items.automation_id is null
+        select 1 from junior_inbox_items inbox_items
+        where inbox_items.owner_kind = 'conversation'
+          and inbox_items.owner_id = tree.conversation_id
+          and inbox_items.status = 'open'
+          and inbox_items.automation_id is null
       )
       or exists (
-        select 1 from junior_plan_items plan_items
-        where plan_items.conversation_id = tree.conversation_id
+        select 1 from junior_todos todos
+        where todos.conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_turns turns
+        where turns.conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_turn_inbox inbox
+        where inbox.conversation_id = tree.conversation_id
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
@@ -144,12 +172,22 @@ export async function selectExpiredRoots(
             where briefs.conversation_id = tree.conversation_id
           )
           or exists (
-            select 1 from junior_review_items review_items
-            where review_items.added_by_conversation_id = tree.conversation_id
-              and review_items.visibility = 'private'
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and metadata.summary is not null
+          )
+          or exists (
+            select 1 from junior_conversation_embeddings embeddings
+            where embeddings.conversation_id = tree.conversation_id
+          )
+          or exists (
+            select 1 from junior_inbox_items inbox_items
+            where inbox_items.owner_kind = 'conversation'
+              and inbox_items.owner_id = tree.conversation_id
+              and inbox_items.visibility = 'private'
               and (
-                review_items.status <> 'open'
-                or review_items.automation_id is null
+                inbox_items.status <> 'open'
+                or inbox_items.automation_id is null
               )
           )
           or exists (
@@ -198,9 +236,11 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. Plan items go with the transcript.
- * Non-public content also loses its Briefs and the Review items that it
- * added. The metadata rows themselves survive.
+ * conversations keep only safe metadata. To-dos, Turns, and Turn inputs and
+ * deliveries go with the transcript.
+ * Non-public content also loses its summary, Conversation embedding, legacy
+ * Briefs, and the Inbox items that it added. The metadata rows themselves
+ * survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -305,11 +345,21 @@ export async function purgeConversationTree(
               return { purged: false, conversations: 0 };
             }
           }
+          // The outbox rows go with their events.
           await executor
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
           await deleteMessageLinks(executor, ids);
+          // Inbox rows hold message text. They refer to Turns, so they go first.
+          await executor
+            .db()
+            .delete(juniorTurnInbox)
+            .where(inArray(juniorTurnInbox.conversationId, ids));
+          await executor
+            .db()
+            .delete(juniorTurns)
+            .where(inArray(juniorTurns.conversationId, ids));
           await executor
             .db()
             .delete(juniorAgentInvocations)
@@ -329,51 +379,66 @@ export async function purgeConversationTree(
               ),
             );
           // No agent can act on an item after its Conversation is purged.
-          await dismissOpenReviewItems(executor.db(), {
-            addedByConversationIds: ids,
+          await dismissOpenInboxItems(executor.db(), {
+            ownerConversationIds: ids,
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
-          // Plan items hold titles and notes from the transcript.
-          await deletePlanItems(executor, ids);
+          // To-dos hold titles and notes from the transcript.
+          await deleteTodos(executor, ids);
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic
             : resolvedScrubMetadata;
-          if (scrubMetadata) {
-            await executor
-              .db()
-              .delete(juniorConversationBriefs)
-              .where(inArray(juniorConversationBriefs.conversationId, ids));
-            // A private Review item holds content from its Conversation. A
-            // public item stays, even when its destination later turned
-            // private, because other Conversations can still link to it. An
-            // open item of an Automation also stays, because a later run can
-            // still change it. A later purge deletes it after it closes.
-            await executor
-              .db()
-              .delete(juniorReviewItems)
-              .where(
-                and(
-                  inArray(juniorReviewItems.addedByConversationId, ids),
-                  eq(juniorReviewItems.visibility, "private"),
-                  or(
-                    ne(juniorReviewItems.status, "open"),
-                    isNull(juniorReviewItems.automationId),
-                  ),
-                ),
-              );
-          }
+          // Clear the metadata before the embedding delete. The update locks
+          // each Conversation row, so an embedding write that holds a share
+          // lock commits first and is deleted below, and a later one finds
+          // no metadata. See `writeConversationEmbeddings`.
           await executor
             .db()
             .update(juniorConversations)
             .set({
               transcriptPurgedAt: new Date(args.nowMs),
               ...(scrubMetadata
-                ? { title: null, channelName: null, actor: null }
+                ? {
+                    title: null,
+                    channelName: null,
+                    actor: null,
+                    summary: null,
+                    metadataThroughSeq: null,
+                  }
                 : undefined),
             })
             .where(inArray(juniorConversations.conversationId, ids));
+          if (scrubMetadata) {
+            await executor
+              .db()
+              .delete(juniorConversationBriefs)
+              .where(inArray(juniorConversationBriefs.conversationId, ids));
+            await executor
+              .db()
+              .delete(juniorConversationEmbeddings)
+              .where(inArray(juniorConversationEmbeddings.conversationId, ids));
+            // A private Inbox item holds content from its Conversation. A
+            // public item stays, even when its destination later turned
+            // private, because other Conversations can still link to it. An
+            // open item of an Automation also stays, because a later run can
+            // still change it. A later purge deletes it after it closes.
+            await executor
+              .db()
+              .delete(juniorInboxItems)
+              .where(
+                and(
+                  eq(juniorInboxItems.ownerKind, "conversation"),
+                  inArray(juniorInboxItems.ownerId, ids),
+                  eq(juniorInboxItems.visibility, "private"),
+                  or(
+                    ne(juniorInboxItems.status, "open"),
+                    isNull(juniorInboxItems.automationId),
+                  ),
+                ),
+              );
+          }
           await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },

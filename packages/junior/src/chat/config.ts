@@ -6,6 +6,7 @@ import {
   readEncryptionKeyring,
   type EncryptionKeyring,
 } from "@/chat/encryption/keyring";
+import { resolveBotName } from "@/chat/bot-name";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -137,8 +138,20 @@ export interface ChatConfig {
   functionMaxDurationSeconds: number;
   /** Kill switch for prompt cache warming. Defaults to true. */
   cacheWarmingEnabled: boolean;
+  /**
+   * Kill switch for compaction on idle: a warmup of a prefix at or above the
+   * background compaction mark swaps in a ready background summary instead.
+   * Defaults to true. It runs only while cache warming is on.
+   */
+  idleCompactionEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /**
+   * Opt-in for `GET /api/versions/stream`, which pushes dashboard change
+   * tokens over SSE. Each function instance with an open stream holds one
+   * direct Postgres session. Defaults to false; the dashboard then polls.
+   */
+  versionsStreamEnabled: boolean;
   /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
   encryption: EncryptionKeyring;
   sql: {
@@ -242,10 +255,18 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-// Operational kill switches default to on. Only "false" turns them off.
-function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
+// Operational kill switches default to on, and opt-in flags to off. Only
+// "true" or "false" overrides the default.
+function parseKillSwitch(
+  name: string,
+  rawValue: string | undefined,
+  defaultValue = true,
+): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
-  if (value === undefined || value === "true") {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (value === "true") {
     return true;
   }
   if (value === "false") {
@@ -324,7 +345,7 @@ function readBotConfig(
     DEFAULT_GUARDIAN_MODEL_ID;
 
   return {
-    userName: toOptionalTrimmed(env["JUNIOR_BOT_NAME"]) ?? "junior",
+    userName: resolveBotName(undefined, env),
     modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
@@ -443,12 +464,20 @@ export function readChatConfig(
       "JUNIOR_CACHE_WARMING_ENABLED",
       env["JUNIOR_CACHE_WARMING_ENABLED"],
     ),
+    idleCompactionEnabled: parseKillSwitch(
+      "JUNIOR_IDLE_COMPACTION_ENABLED",
+      env["JUNIOR_IDLE_COMPACTION_ENABLED"],
+    ),
     conversationWorkEnabled: parseKillSwitch(
       "JUNIOR_CONVERSATION_WORK_ENABLED",
       env["JUNIOR_CONVERSATION_WORK_ENABLED"],
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
+    ),
+    versionsStreamEnabled: parseKillSwitch(
+      "JUNIOR_VERSIONS_STREAM_ENABLED",
+      env["JUNIOR_VERSIONS_STREAM_ENABLED"],
     ),
     encryption: readEncryptionKeyring(env),
     sql: {
@@ -765,14 +794,14 @@ export function setBotModelConfig(config: BotModelConfig): void {
   }
 }
 
-/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+/**
+ * Apply the bot name that a `juniorNitro()` build resolved, so the runtime
+ * and the built system prompt use the same name. Without a build, the name
+ * stays `JUNIOR_BOT_NAME`, then `junior`.
+ */
 export function setBotName(name: string | undefined): void {
   if (name === undefined) return;
-  const trimmed = toOptionalTrimmed(name);
-  if (!trimmed) {
-    throw new Error("botName must not be empty");
-  }
-  botConfig.userName = trimmed;
+  botConfig.userName = resolveBotName(name, process.env);
 }
 
 /** Return the current Slack reaction emoji config. */

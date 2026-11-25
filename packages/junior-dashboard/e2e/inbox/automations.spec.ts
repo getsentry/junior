@@ -1,5 +1,6 @@
 import { mockAutomationEditor } from "../automation-editor-fixture";
 import { LIST_NOW, automationReport } from "./automation-fixture";
+import { automationAlert, mockInboxItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "../harness";
@@ -14,8 +15,7 @@ function gate() {
   return { promise, resolve: () => resolve() };
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** One option in a filter of the Automations filter panel or sheet. */
   function filterOption(page: Page, filter: string, option: string) {
     return page
@@ -118,7 +118,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // Groups follow the latest run, so fix the day that the list reads.
     await page.clock.setFixedTime(LIST_NOW);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Automations" })
@@ -897,10 +897,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       editor.value = { ...editor.value, status, revision: "b".repeat(64) };
       return route.fulfill({ json: editor.value });
     });
+    // A failed last run gives the viewer's Automation an alert, so To do
+    // lists it.
+    await mockInboxItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
+    });
     await page.goto(`${dashboard.baseURL}/automations`);
     const todo = page.getByRole("region", { exact: true, name: "To do" });
-    // A failed last run puts the viewer's Automation in To do, as the Inbox
-    // lists it.
     await expect(todo).toContainText("Weekly project summary");
     await screenshot(page, "automation-attention");
     await todo.getByRole("button", { name: /Weekly project summary/ }).click();
@@ -977,9 +980,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByText("Edit the trigger, or enable its plugin again."),
     ).toBeVisible();
     // The notice owns the fix, so it opens edit mode.
+    const editRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations/event-2/edit",
+    );
     await page
       .getByRole("link", { name: "Change trigger", exact: true })
       .click();
     await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
+    await editRead;
   });
 });

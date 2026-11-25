@@ -1,6 +1,6 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { loadModule, parse, parsePlPgSQL } from "libpg-query";
 
 /**
@@ -187,9 +187,9 @@ async function migrationFiles(root) {
         throw error;
       });
     for (const name of names
-      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .filter((folder) => /^\d{14}_.+$/.test(folder))
       .sort()) {
-      const filePath = path.join(directory, name);
+      const filePath = path.join(directory, name, "migration.sql");
       files.push([
         filePath,
         await fs.readFile(path.join(root, filePath), "utf8"),
@@ -199,22 +199,21 @@ async function migrationFiles(root) {
   return files;
 }
 
-async function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
+/** Check migration locks with this script, then with squawk. */
+export async function run({ root }) {
   const [files, baselineText] = await Promise.all([
     migrationFiles(root),
     fs.readFile(path.join(root, BASELINE_PATH), "utf8"),
   ]);
   const errors = await checkMigrationLocks(files, JSON.parse(baselineText));
-  if (errors.length === 0) {
-    console.log(`Migration lock check passed for ${files.length} migrations.`);
-    return;
+  const squawk = spawnSync(
+    path.join(root, "node_modules/.bin/squawk"),
+    ["--reporter", "gcc", "packages/*/migrations/*/migration.sql"],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (squawk.error) throw squawk.error;
+  if (squawk.status !== 0) {
+    errors.push(...`${squawk.stdout}${squawk.stderr}`.trim().split("\n"));
   }
-  console.error(["Migration lock check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await main();
+  return errors;
 }

@@ -1,10 +1,10 @@
 import {
+  createEventSource,
   createLocalSource,
   createSlackSource,
   createWebSource,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { promptPlatform } from "@/chat/agent/prompt";
@@ -23,12 +23,12 @@ import { readSlackActionToken } from "@/chat/slack/action-token";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { createTools } from "@/chat/tools";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import {
   RUN_BUILT_TOOL_NAMES,
   staticToolDefinitions,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 
 type ToolContext = Parameters<typeof createTools>[2];
 
@@ -37,6 +37,7 @@ const MODES: PromptMode[] = [
   "child_agent",
   "automation",
   "thread",
+  "lead",
 ];
 const PLATFORMS = ["slack", "local"] as const;
 
@@ -68,7 +69,19 @@ function fullContext(
     },
     spawnAgent: unavailable,
     messageAgent: unavailable,
-    mcpToolManager: new McpToolManager([]),
+    mcpToolManager: new McpToolManager([
+      {
+        dir: "/plugins/docs",
+        skillsDir: "/plugins/docs/skills",
+        manifest: {
+          name: "docs",
+          displayName: "Docs",
+          description: "Docs MCP provider",
+          configKeys: [],
+          mcp: { transport: "http", url: "https://docs.example.test/mcp" },
+        },
+      },
+    ]),
     supportsImageInput: () => true,
     workspaces: { activeWorkspaceId: () => undefined, switch: unavailable },
   };
@@ -104,7 +117,7 @@ function modelFacing(tools: ToolRegistry): Record<string, unknown> {
   );
 }
 
-const plugins = () => defineJuniorPlugins([githubPlugin(), memoryPlugin()]);
+const plugins = () => defineJuniorPlugins([githubPlugin()]);
 
 // A Turn's run as the agent gets it: a person's Turn runs on the
 // Conversation loop with a Delivery, and any other Turn has none. All have
@@ -246,51 +259,47 @@ describe("static tool registry", () => {
           sentTurn(
             turnBehavior({ kind: "thread", personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
-              kind: "agent_invocation",
+              kind: "parent_message",
             }),
           ),
         ),
       ).then((turns) => turns as [SentTurn, SentTurn]);
 
       expectSameCachedPrefix([person, agent]);
-      expect(person.disabled).toEqual(
-        expect.arrayContaining([
-          "spawnAgent",
-          "stopAgent",
-          "archiveAgent",
-          "listAgents",
-          "messageAgent",
-          "reply",
-          "reportBlocked",
-        ]),
-      );
-      expect(person.disabled).not.toContain("addReviewItem");
+      expect(person.disabled).toContain("reportBlocked");
+      expect(person.disabled).not.toContain("addInboxItem");
+      // A person's Turn starts and messages child agents, as an agent's does.
+      expect(person.disabled).not.toContain("startAgent");
+      expect(person.disabled).not.toContain("messageAgent");
+      // Finding agents and Conversations reports nothing to the parent.
+      expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
-          "addReviewItem",
-          "searchReviewItems",
-          "updateReviewItem",
+          "addInboxItem",
+          "searchInboxItems",
+          "updateInboxItem",
         ]),
       );
-      expect(agent.disabled).not.toContain("spawnAgent");
-      expect(agent.disabled).not.toContain("reply");
-
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
-        await expect(callTool(person, name)).rejects.toThrow(
-          `${name} is disabled in this Turn.`,
-        );
+      expect(agent.disabled).not.toContain("startAgent");
+      // A child agent starts child agents, so it sees their arguments.
+      expect(
+        Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
+      ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
+      // Final text is the reply of every Thread Turn, so no Turn lists
+      // `reply`.
+      for (const turn of [person, agent]) {
+        expect(turn.piTools.map((tool) => tool.name)).not.toContain("reply");
       }
+
       await expect(
         callTool(agent, "setConversationSubscription", { subscribed: true }),
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(callTool(agent, "addReviewItem")).rejects.toThrow(
-        "addReviewItem is disabled in this Turn.",
+      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
+        "addInboxItem is disabled in this Turn.",
       );
-      expect(person.spawnAgent).not.toHaveBeenCalled();
-      expect(person.messageAgent).not.toHaveBeenCalled();
 
       expect(turnInputFact(person)).toContain(
         "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
@@ -331,8 +340,8 @@ describe("static tool registry", () => {
     expect(person.disabled).toEqual(
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
-    expect(person.disabled).not.toContain("spawnAgent");
-    expect(person.disabled).not.toContain("addReviewItem");
+    expect(person.disabled).not.toContain("startAgent");
+    expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
     expect(silent.disabled).toContain("reply");
@@ -355,6 +364,64 @@ describe("static tool registry", () => {
     );
   });
 
+  // A Lead finds, starts, and steers work, and never does it. A person's
+  // Turn and a Watch Turn send the same tools and system prompt.
+  it("sends a Lead only the tools that steer work", async () => {
+    const conversationId = "local:web:lead";
+    const [person, watch] = await Promise.all(
+      [true, false].map((personInput) =>
+        sentTurn(
+          turnBehavior({ kind: "lead", personInput }),
+          turnRun(
+            conversationId,
+            personInput,
+            createEventSource({
+              eventKey: "event-1",
+              eventType: "timer.fired",
+              identifier: "timer-1",
+              namespace: "junior",
+            }),
+          ),
+        ),
+      ),
+    ).then((turns) => turns as [SentTurn, SentTurn]);
+
+    expectSameCachedPrefix([person, watch]);
+    expect(Object.keys(person.tools).sort()).toEqual(
+      [
+        "listWatches",
+        "messageAgent",
+        "noReply",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "setSpaceConfiguration",
+        "startConversation",
+        "stopWatchingResources",
+        "systemTime",
+        // `updateUserCustomization` is listed only with its experiment on.
+        "watchEvents",
+        "watchTimer",
+      ].sort(),
+    );
+    expect(person.disabled).toEqual([]);
+    // The Lead's main tools are in the model tool list, not behind
+    // `searchTools`.
+    expect(person.piTools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "listWatches",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "stopWatchingResources",
+      ]),
+    );
+  });
+
   // A stale run-built name would hide a static tool from the check above.
   it("builds every run-built tool for a run with each capability", () => {
     const built = new Set(
@@ -372,5 +439,19 @@ describe("static tool registry", () => {
     );
 
     expect(RUN_BUILT_TOOL_NAMES.filter((name) => !built.has(name))).toEqual([]);
+  });
+
+  it("leaves out the MCP tools when the deployment has no MCP provider", () => {
+    const tools = createTools(
+      [],
+      { writeGeneratedFiles: () => [] },
+      {
+        ...fullContext("local", "conversation"),
+        mcpToolManager: new McpToolManager([]),
+      },
+    );
+
+    expect(Object.keys(tools)).not.toContain("searchMcpTools");
+    expect(Object.keys(tools)).not.toContain("callMcpTool");
   });
 });

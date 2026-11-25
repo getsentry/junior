@@ -12,7 +12,10 @@ import type {
   ConversationSource,
 } from "@/chat/conversations/store";
 import { fallbackShortTitle } from "@/chat/services/short-title";
-import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
+import {
+  slackStatsLocationLabel,
+  surfaceFallbackLabel,
+} from "./location-labels";
 import type {
   ActorIdentity,
   ConversationEventHistory,
@@ -21,6 +24,7 @@ import type {
   ConversationSurface,
   ConversationUsage,
 } from "../schema/conversation";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import type { ConversationAccess } from "./access";
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 
@@ -36,6 +40,7 @@ type ConversationProjectionSource = Pick<
   | "location"
   | "parentConversationId"
   | "source"
+  | "summary"
   | "title"
   | "updatedAtMs"
 > & {
@@ -227,6 +232,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number | undefined;
   pinPosition?: number;
+  /** The Space of the root, or null for a one-off. Feed rows and the detail. */
+  space?: SpaceRef | null;
   /** The status that `conversationStatusSql` read with the row. */
   status: ConversationReportStatus;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -275,11 +282,16 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     kind: conversation.kind,
+    // The summary holds private content, like the title.
+    ...(canViewPrivateContent && conversation.summary
+      ? { summary: conversation.summary }
+      : undefined),
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }
       : undefined),
     isParticipant: args.access?.isParticipant ?? false,
     ...(visibility ? { visibility } : undefined),
+    ...(args.space !== undefined ? { space: args.space } : undefined),
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),

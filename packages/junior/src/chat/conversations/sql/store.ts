@@ -23,6 +23,7 @@ import type {
   ConversationSource,
   ConversationStatus,
   ConversationStore,
+  TopLevelConversationKind,
 } from "../store";
 import {
   juniorConversations,
@@ -30,8 +31,10 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import {
+  destinationUpsertFromDestination,
+  type DestinationUpsert,
+} from "./destination-upsert";
 import {
   bindProviderConversation,
   claimProviderConversationOwner,
@@ -63,17 +66,6 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
-}
-
-interface DestinationUpsert {
-  displayName?: string;
-  kind: JuniorDestinationKind;
-  metadata?: Record<string, unknown>;
-  provider: string;
-  providerDestinationId: string;
-  providerTenantId?: string | undefined;
-  refreshVisibility: boolean;
-  visibility: JuniorDestinationVisibility;
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
@@ -134,56 +126,6 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
   return undefined;
 }
 
-function localWorkspaceFromConversationId(
-  conversationId: string,
-): string | undefined {
-  const match = /^local:([^:]+):/.exec(conversationId);
-  return match?.[1];
-}
-
-function destinationUpsertFromDestination(args: {
-  channelName?: string | undefined;
-  conversationId?: string;
-  destination: Destination | undefined;
-  /** Confirmed destination visibility; omit when unavailable. */
-  visibility?: ConversationPrivacy;
-}): DestinationUpsert | undefined {
-  const { destination } = args;
-  if (!destination) {
-    return undefined;
-  }
-  if (destination.platform === "slack") {
-    const channelId = destination.channelId;
-    const channelKind = channelId.startsWith("D")
-      ? "dm"
-      : channelId.startsWith("G")
-        ? "group"
-        : "channel";
-    return {
-      kind: channelKind,
-      provider: "slack",
-      providerTenantId: destination.teamId,
-      providerDestinationId: channelId,
-      refreshVisibility: args.visibility !== undefined,
-      visibility: args.visibility ?? "unknown",
-      ...(args.channelName ? { displayName: args.channelName } : undefined),
-      metadata: { platform: "slack" },
-    };
-  }
-  return {
-    kind: "local_conversation",
-    provider: "local",
-    providerTenantId:
-      localWorkspaceFromConversationId(destination.conversationId) ??
-      localWorkspaceFromConversationId(args.conversationId ?? ""),
-    providerDestinationId: destination.conversationId,
-    // Match Slack: only refresh when a live visibility signal is present so
-    // execution-metadata writes cannot clobber public dashboard roots.
-    refreshVisibility: args.visibility !== undefined,
-    visibility: args.visibility ?? "direct",
-    metadata: { platform: "local" },
-  };
-}
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "failed" ||
@@ -288,6 +230,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.rootConversationId
       ? { rootConversationId: row.rootConversationId }
       : undefined),
+    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
@@ -298,6 +241,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(source ? { source } : undefined),
     ...(sessionSource ? { sessionSource } : undefined),
     ...(row.title ? { title: row.title } : undefined),
+    ...(row.summary ? { summary: row.summary } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
@@ -314,7 +258,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination | undefined;
-  kind?: "root" | "automation" | undefined;
+  kind?: TopLevelConversationKind | undefined;
   nowMs: number;
   source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
@@ -468,7 +412,8 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
-    kind?: "root" | "automation";
+    kind?: TopLevelConversationKind;
+    spaceId?: string | undefined;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -496,8 +441,11 @@ export class SqlStore implements ConversationStore {
         });
       // Persist visibility only from the current event's live signal; the
       // previously stored confirmation must not be replayed as a new signal.
+      // The stored Space is not resent, so a move that commits between the
+      // read above and this write is kept.
       const {
         sessionSource: _persistedSessionSource,
+        spaceId: _persistedSpaceId,
         visibility: _persistedVisibility,
         ...currentWithoutPersistedSignals
       } = current;
@@ -517,6 +465,9 @@ export class SqlStore implements ConversationStore {
             updatedAtMs: current.execution.updatedAtMs ?? nowMs,
           },
           ...(args.visibility ? { visibility: args.visibility } : undefined),
+          ...(!existing && args.spaceId
+            ? { spaceId: args.spaceId }
+            : undefined),
         },
       });
     });
@@ -882,6 +833,7 @@ export class SqlStore implements ConversationStore {
         parentConversationId: conversation.parentConversationId ?? null,
         kind: conversation.kind,
         rootConversationId,
+        spaceId: conversation.spaceId ?? null,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -908,6 +860,8 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
+          // Only a new root sends a Space. `setConversationSpace` moves it.
+          spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
           detailVersion: nextDetailVersion,
         },
       })

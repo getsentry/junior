@@ -14,19 +14,25 @@ import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
+import { createSpaceArchiveRoutes } from "./api/spaces/archive";
+import { createSpaceConfigurationRoutes } from "./api/spaces/configuration";
+import { createSpaceLeadRoutes } from "./api/spaces/lead";
+import { createSpaceMemberRoutes } from "./api/spaces/members";
+import { createSpaceRoutes } from "./api/spaces/space";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createSearchRoutes } from "./api/search/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
 import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
-import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxItemRoutes } from "./api/inbox-items/routes";
 import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
-import { apiErrorSchema } from "./api/schema/common";
+import { apiErrorSchema } from "./api/schema/response";
 import {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
@@ -37,13 +43,10 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
-import { validateRequest } from "./api/validation";
-import { readVersions } from "./api/versions";
-import { requireViewer } from "./api/viewer";
-import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
+import { createVersionsRoutes } from "./api/versions/routes";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
-import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
+import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import type { WaitUntilFn } from "./handlers/types";
@@ -112,17 +115,7 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
-  app.get(
-    "/api/versions",
-    requireViewer,
-    validateRequest("query", versionsQuerySchema, "Invalid query parameters."),
-    async (context) =>
-      jsonResponse(
-        versionsSchema,
-        await readVersions(context.get("viewer"), context.req.valid("query")),
-        { headers: { "cache-control": "private, no-store" } },
-      ),
-  );
+  app.route("/api/versions", createVersionsRoutes());
 
   for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
 
@@ -140,11 +133,11 @@ export function createJuniorApi(
     }),
   );
   app.route(
-    "/api/review-items",
-    createReviewItemRoutes({
+    "/api/inbox-items",
+    createInboxItemRoutes({
       delivery: {
         queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
     }),
   );
@@ -160,6 +153,12 @@ export function createJuniorApi(
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
+  app.route("/api/search", createSearchRoutes());
+  app.route("/api/spaces", createSpaceRoutes());
+  app.route("/api/spaces", createSpaceArchiveRoutes({ queue }));
+  app.route("/api/spaces", createSpaceMemberRoutes());
+  app.route("/api/spaces", createSpaceConfigurationRoutes());
+  app.route("/api/spaces", createSpaceLeadRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

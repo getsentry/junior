@@ -1,0 +1,30 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "8e2b0f6c-ca38-4edf-b706-246b9d502445",
+  "prevIds": ["a60cc2e7-fb87-43d7-a2c2-d91992887a1c"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_agent_invocations",
+        "model_profile"
+      ],
+      "writes": [
+        "s|col|public.junior_agent_invocations.model_profile",
+        "n|col|public.junior_agent_invocations.model_profile",
+        "e|col|public.junior_agent_invocations.model_profile"
+      ],
+      "reads": ["n|tbl|public.junior_agent_invocations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_agent_invocations\",\"model_profile\"]"
+    }
+  ]
+}

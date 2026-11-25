@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Fails when a tracked TypeScript file is in no project that a check runs.
 // A project counts only when `pnpm typecheck` or `astro check` runs it, and
 // only when it does not set `noCheck`. Every other tsconfig.json fails.
@@ -7,8 +6,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = process.cwd();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tsc = path.join(root, "node_modules/.bin/tsc");
 const BASELINE_PATH = "scripts/typecheck-coverage-baseline.json";
 
@@ -21,17 +21,6 @@ const EXCLUDED = [
   // scripts/release-artifacts.mjs.
   "scripts/release-consumer/",
 ];
-
-// Tracked and new files that still exist in the working tree.
-function git(...patterns) {
-  return execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", ...patterns],
-    { cwd: root, encoding: "utf8" },
-  )
-    .split("\n")
-    .filter((file) => file && fs.existsSync(path.join(root, file)));
-}
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
@@ -70,62 +59,60 @@ function runProjects() {
   return { projects, errors };
 }
 
-const { projects, errors } = runProjects();
-const discovered = git("*tsconfig.json")
-  .filter((file) => !EXCLUDED.some((prefix) => file.startsWith(prefix)))
-  .map((file) => path.dirname(file));
-for (const project of discovered) {
-  if (!projects.has(project)) {
-    errors.push(`No check runs this project: ${project}/tsconfig.json`);
+/** Check that a type-check project covers each TypeScript file. */
+export function run({ files }) {
+  const { projects, errors } = runProjects();
+  const discovered = files
+    .filter((file) => file.endsWith("tsconfig.json"))
+    .filter((file) => !EXCLUDED.some((prefix) => file.startsWith(prefix)))
+    .map((file) => path.dirname(file));
+  for (const project of discovered) {
+    if (!projects.has(project)) {
+      errors.push(`No check runs this project: ${project}/tsconfig.json`);
+    }
   }
-}
-for (const project of projects) {
-  if (!discovered.includes(project)) {
-    errors.push(`A check runs a missing project: ${project}`);
+  for (const project of projects) {
+    if (!discovered.includes(project)) {
+      errors.push(`A check runs a missing project: ${project}`);
+    }
   }
-}
 
-const checked = new Set();
-for (const project of projects) {
-  if (!discovered.includes(project)) continue;
-  const config = JSON.parse(
-    execFileSync(tsc, ["--showConfig", "-p", project], {
-      cwd: root,
-      encoding: "utf8",
-    }),
+  const checked = new Set();
+  for (const project of projects) {
+    if (!discovered.includes(project)) continue;
+    const config = JSON.parse(
+      execFileSync(tsc, ["--showConfig", "-p", project], {
+        cwd: root,
+        encoding: "utf8",
+      }),
+    );
+    if (config.compilerOptions?.noCheck === true) {
+      errors.push(`Project sets noCheck, so it checks nothing: ${project}`);
+      continue;
+    }
+    for (const file of config.files ?? []) {
+      checked.add(path.relative(root, path.resolve(root, project, file)));
+    }
+  }
+
+  // Files with type errors that no project checks yet. The list only shrinks:
+  // a new unchecked file fails, and so does an entry that a project checks now.
+  const baseline = new Set(readJson(BASELINE_PATH));
+  const unchecked = files.filter(
+    (file) =>
+      /\.[cm]?tsx?$/.test(file) &&
+      !file.endsWith(".d.ts") &&
+      !checked.has(file) &&
+      !EXCLUDED.some((prefix) => file.startsWith(prefix)),
   );
-  if (config.compilerOptions?.noCheck === true) {
-    errors.push(`Project sets noCheck, so it checks nothing: ${project}`);
-    continue;
+  for (const file of unchecked) {
+    if (!baseline.delete(file)) {
+      errors.push(`Not in a type-check project: ${file}`);
+    }
   }
-  for (const file of config.files ?? []) {
-    checked.add(path.relative(root, path.resolve(root, project, file)));
+  for (const file of baseline) {
+    errors.push(`Remove from ${BASELINE_PATH}, it is checked or gone: ${file}`);
   }
-}
 
-// Files with type errors that no project checks yet. The list only shrinks:
-// a new unchecked file fails, and so does an entry that a project checks now.
-const baseline = new Set(readJson(BASELINE_PATH));
-const unchecked = git("*.ts", "*.tsx", "*.mts", "*.cts").filter(
-  (file) =>
-    !file.endsWith(".d.ts") &&
-    !checked.has(file) &&
-    !EXCLUDED.some((prefix) => file.startsWith(prefix)),
-);
-for (const file of unchecked) {
-  if (!baseline.delete(file)) {
-    errors.push(`Not in a type-check project: ${file}`);
-  }
+  return errors;
 }
-for (const file of baseline) {
-  errors.push(`Remove from ${BASELINE_PATH}, it is checked or gone: ${file}`);
-}
-
-if (errors.length > 0) {
-  for (const error of errors) console.error(error);
-  process.exit(1);
-}
-
-console.log(
-  `Type-check coverage OK: ${checked.size} files in ${projects.size} projects.`,
-);

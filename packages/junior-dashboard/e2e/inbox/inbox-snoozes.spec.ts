@@ -1,10 +1,11 @@
-import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
+  automationAlert,
   digest,
   expandRow,
   license,
-  mockReviewItems,
+  mockInboxItems,
+  openRowOf,
   pinChecks,
   pinReview,
   prReady,
@@ -13,20 +14,16 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { automationReport } from "./automation-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// The open row. Every row has its own quick Snooze, so scope to this one.
-const openRowOf = (page: Page) =>
-  page.locator("li[data-inbox-row][data-expanded]");
-
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await mockInboxItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
@@ -43,7 +40,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // wakes the item at its time.
     expect((await created).postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
       wakeAt: expect.any(String),
     });
     const todo = page.getByRole("region", { name: "To do" });
@@ -53,9 +50,81 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
+    await expect(page.getByText("Nothing snoozed")).toBeVisible();
+  });
+
+  test("an Automation alert snoozes on the server like any item", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = automationAlert("event-1", "Closed issue summary");
+    await mockInboxItems(page, { open: [alert, license] });
+    const automation = {
+      ...automationReport.automations.find(({ id }) => id === "event-1")!,
+      status: "blocked" as const,
+      statusReason: "GitHub access expired.",
+    };
+    await page.route("**/api/automations/event-1", (route) =>
+      route.fulfill({ json: automation }),
+    );
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expandRow(rowHead(todo, alert.title));
+    // The card says what to fix, and acts on its Automation.
+    await expect(openRowOf(page)).toContainText(alert.body);
+    await expect(
+      openRowOf(page).getByRole("button", { name: "Resume" }),
+    ).toBeVisible();
+    await expect(
+      openRowOf(page).getByRole("link", { name: "Open automation" }),
+    ).toHaveAttribute("href", "/automations/event-1");
+    await expect(
+      openRowOf(page).getByRole("link", { name: "Open editor" }),
+    ).toHaveAttribute("href", "/automations/event-1/edit");
+    await screenshot(page, "inbox-automation-alert", { lightTheme: true });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    // The alert has no Conversation, so the snooze names the item only.
+    expect((await created).postDataJSON()).toEqual({
+      inboxItemId: alert.id,
+      wakeAt: expect.any(String),
+    });
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    // The server keeps the snooze. The browser stores no copy.
+    await page.reload();
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        Object.keys(localStorage).filter((key) => key.includes("automation")),
+      ),
+    ).toEqual([]);
+
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
+      "1",
+    );
+    await nav.getByRole("link", { name: /^Snoozed/ }).click();
+    await expect(rowHead(page, alert.title)).toBeVisible();
+    await screenshot(page, "inbox-automation-alert-snoozed", {
+      lightTheme: true,
+    });
+    await expandRow(rowHead(page, alert.title));
+    const deleted = page.waitForRequest(
+      (request) =>
+        request.method() === "DELETE" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await page.getByRole("button", { name: "Wake" }).click();
+    expect((await deleted).postDataJSON()).toEqual({ inboxItemId: alert.id });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
@@ -66,26 +135,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     // An FYI notice in the ask's Conversation, on a row of its own.
     const notice = {
       ...releaseNotes,
-      addedByConversationId: rollout.addedByConversationId,
-      conversationIds: [rollout.addedByConversationId],
+      owner: { id: rollout.owner.id, kind: "conversation" },
+      conversationIds: [rollout.owner.id],
       rootConversationId: rollout.rootConversationId,
     };
-    await mockReviewItems(page, { open: [rollout, notice] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await mockInboxItems(page, { open: [rollout, notice] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
-    const created = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const created = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     // The closed row's quick Snooze.
     const row = rowHead(todo, checkout);
     await row.hover();
     await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
-    expect((await created).postDataJSON()).toEqual({
+    expect((await created).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
       wakeAt: expect.any(String),
     });
     await expect(todo).toHaveCount(0);
@@ -96,15 +165,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expandRow(rowHead(page, checkout));
-    const deleted = page.waitForRequest(
-      (request) =>
-        request.method() === "DELETE" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const deleted = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Wake" }).click();
-    expect((await deleted).postDataJSON()).toEqual({
+    expect((await deleted).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
@@ -113,13 +182,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
+    await mockInboxItems(page, { open: [license, rollout] });
     await page.route("**/api/inbox/snoozes", (route) =>
       route.request().method() === "POST"
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -132,11 +201,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -146,7 +215,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("The row could not be woken")).toBeVisible();
@@ -160,11 +229,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Another Conversation added this ask, and it links the release one.
     const linked = {
       ...license,
-      addedByConversationId: "slack:CLINK:1770030000.000100",
-      conversationIds: [
-        "slack:CLINK:1770030000.000100",
-        pinReview.addedByConversationId,
-      ],
+      owner: { id: "slack:CLINK:1770030000.000100", kind: "conversation" },
+      conversationIds: ["slack:CLINK:1770030000.000100", pinReview.owner.id],
       id: "item-linked-release",
       title: "Approve the release window",
     };
@@ -175,10 +241,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-release-checklist",
       title: "Approve the release checklist",
     };
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, pinReview, checklist, linked],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const linkedRow = todo
       .locator("[data-inbox-row]")
@@ -187,7 +253,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Hold the reads that follow the snooze, so only the page hides the rows.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**", async (route) => {
+    await page.route("**/api/inbox-items?**", async (route) => {
       await held;
       await route.fallback();
     });
@@ -207,17 +273,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [pinReview, pinChecks],
       snoozes: [
         {
-          conversationId: pinReview.addedByConversationId,
+          conversationId: pinReview.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     // The link opens the row, so its Wake shows.
     await expect(page.getByRole("button", { name: "Wake" })).toBeVisible();
   });
@@ -226,20 +292,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
     });
     // Only Snoozed can tell whether a snooze hides the item.
-    await page.route("**/api/review-items?**snoozed=true**", (route) =>
+    await page.route("**/api/inbox-items?**snoozed=true**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(page).not.toHaveURL(/[?&]item=/);
@@ -250,17 +316,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     // A pull request row opens from its item link.
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: "Review requested · #91" });
-    await expect(page.getByRole("button", { name: "Snooze" })).toBeVisible();
+      .filter({ hasText: "Pin the release train" });
+    await expect(
+      openRowOf(page).getByRole("button", { name: "Snooze" }),
+    ).toBeVisible();
     // Hold the reads that follow the snooze, so only the page hides the row.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**", async (route) => {
+    await page.route("**/api/inbox-items?**", async (route) => {
       await held;
       await route.fallback();
     });
@@ -276,16 +344,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // Nothing in this browser knows about the snooze: the server keeps it.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
@@ -304,8 +372,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Wake" }).click();
     // Wake is per item, even when the snooze came from the whole row.
     expect((await woken).postDataJSON()).toEqual({
-      conversationId: rollout.addedByConversationId,
-      reviewItemId: rollout.id,
+      conversationId: rollout.owner.id,
+      inboxItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
     await nav.getByRole("link", { name: /^Inbox/ }).click();
@@ -317,15 +385,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // One item a page: the digest's row is on Snoozed's second page.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
-        conversationId: item.addedByConversationId,
+        conversationId: item.owner.id,
         untilMs: NOW_MS + 86_400_000,
       })),
     });
-    await page.goto(`${dashboard.baseURL}/?item=${digest.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${digest.id}`);
     await expect(page).toHaveURL(/[?&]view=snoozed(?:&|$)/);
     await expect(rowHead(page, "Daily operations digest")).toBeVisible();
     await expect(rowHead(page, checkout)).toBeVisible();
@@ -339,11 +407,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
-        conversationId: item.addedByConversationId,
+        conversationId: item.owner.id,
         untilMs: NOW_MS + 86_400_000,
       })),
     });
@@ -351,7 +419,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let failing = true;
     await page.route(
       (url) =>
-        url.pathname === "/api/review-items" &&
+        url.pathname === "/api/inbox-items" &&
         url.searchParams.get("snoozed") === "true" &&
         url.searchParams.has("cursor"),
       (route) =>
@@ -359,7 +427,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ status: 500, json: { error: "boom" } })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expect(rowHead(page, checkout)).toBeVisible();
     await expect(
       page.getByText("Could not load your snoozed rows."),
@@ -376,11 +444,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -388,11 +456,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Snoozed rows arrive after the Inbox is ready.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**snoozed=true**", async (route) => {
+    await page.route("**/api/inbox-items?**snoozed=true**", async (route) => {
       await held;
       await route.fallback();
     });
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     // The link holds until Snoozed says whether a snooze hides the item.
@@ -410,7 +478,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.clock.install({ time: NOW_MS });
     // The server checks the wake time against the page's clock.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       now: () => page.evaluate(() => Date.now()),
       open: [license, rollout],
     });
@@ -418,7 +486,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const polled = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith("/api/versions"),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await polled;
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));

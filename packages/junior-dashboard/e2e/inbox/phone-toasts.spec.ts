@@ -1,9 +1,8 @@
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
-import { digest, license, mockReviewItems, prReady } from "./inbox-fixture";
+import { digest, license, mockInboxItems, prReady } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("phone toasts", { tag: "@new" }, () => {
+test.describe("phone toasts", () => {
   const checkout = "Investigate checkout latency";
 
   test("on a phone, a sweep's Undo works over a Conversation's composer", async ({
@@ -11,11 +10,11 @@ test.describe("phone toasts", { tag: "@new" }, () => {
     page,
   }) => {
     await page.clock.setFixedTime(NOW_MS);
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [license, prReady, digest],
     });
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox/ })
@@ -58,9 +57,9 @@ test.describe("phone toasts", { tag: "@new" }, () => {
   }) => {
     // A paused clock keeps the toast from timing out during the swipe.
     await page.clock.install();
-    await mockReviewItems(page, { open: [license, digest] });
+    await mockInboxItems(page, { open: [license, digest] });
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     const toast = page
       .getByRole("region", { name: "Notifications" })

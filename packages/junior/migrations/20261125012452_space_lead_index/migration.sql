@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_space_lead_idx" ON "junior_conversations" ("space_id") WHERE "kind" = 'lead';

@@ -1,18 +1,10 @@
-import {
-  actorSchema,
-  destinationSchema,
-  sourceSchema,
-} from "@sentry/junior-plugin-api";
+import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
-import {
-  AGENT_INVOCATION_MAILBOX_STATUSES,
-  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
-  AGENT_INVOCATION_STATUSES,
-} from "@/chat/agent-invocations/statuses";
+import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
 
 const exactStringSchema = z
   .string()
@@ -34,14 +26,6 @@ export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 /** `messageAgent` target for the parent of a child agent. */
 export const PARENT_AGENT_TARGET = "parent";
 
-const agentInvocationMailboxStatusSchema = z.enum(
-  AGENT_INVOCATION_MAILBOX_STATUSES,
-);
-
-const agentInvocationParentMailboxStatusSchema = z.enum(
-  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
-);
-
 export const agentBindingSchema = z
   .object({
     childConversationId: exactStringSchema,
@@ -50,58 +34,17 @@ export const agentBindingSchema = z
   })
   .strict();
 
-const agentInvocationBaseSchema = z
-  .object({
-    actor: actorSchema,
-    agentName: agentNameSchema.optional(),
-    childConversationId: exactStringSchema,
-    createdAtMs: z.number().finite(),
-    credentialContext: credentialContextSchema.optional(),
-    destination: destinationSchema,
-    input: exactStringSchema,
-    invocationId: exactStringSchema,
-    mailboxStatus: agentInvocationMailboxStatusSchema,
-    parentConversationId: exactStringSchema,
-    parentToolCallId: exactStringSchema.optional(),
-    agentType: agentTypeSchema.optional(),
-    /** The child starts with its parent's history. */
-    fork: z.literal(true).optional(),
-    reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
-    source: sourceSchema,
-    title: exactStringSchema.optional(),
-    updatedAtMs: z.number().finite(),
-  })
-  .strict();
-
-export const agentInvocationSchema = z.discriminatedUnion("status", [
-  agentInvocationBaseSchema.extend({
-    status: z.enum(["pending", "running", "paused"]),
-  }),
-  agentInvocationBaseSchema.extend({
-    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
-    result: z.string(),
-    status: z.literal("completed"),
-    terminalAtMs: z.number().finite(),
-  }),
-  agentInvocationBaseSchema.extend({
-    errorMessage: z.string(),
-    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
-    status: z.enum(["blocked", "failed", "stopped"]),
-    terminalAtMs: z.number().finite(),
-  }),
-]);
-
-export const createAgentInvocationSchema = z
+/** Input of one `startAgent` call that starts a child agent. */
+export const spawnChildAgentInputSchema = z
   .object({
     actor: actorSchema,
     agentName: agentNameSchema.optional(),
     credentialContext: credentialContextSchema.optional(),
-    destination: destinationSchema,
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     kind: z.enum(CHILD_AGENT_KINDS).default("task"),
     parentConversationId: exactStringSchema,
-    parentToolCallId: exactStringSchema.optional(),
+    parentToolCallId: exactStringSchema,
     agentType: agentTypeSchema.optional(),
     fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
@@ -110,43 +53,33 @@ export const createAgentInvocationSchema = z
   .strict();
 
 export type AgentBinding = z.output<typeof agentBindingSchema>;
-/**
- * The child agent that sent one reply or message to its parent. A child that
- * an Agent invocation names has its `invocationId` and `actor`. A child that
- * none names has only its child Conversation.
- */
-export type ChildAgentSender = Pick<
-  AgentInvocation,
-  "agentName" | "childConversationId" | "parentConversationId" | "title"
-> &
-  Partial<Pick<AgentInvocation, "actor" | "invocationId">>;
-export type AgentInvocation = z.output<typeof agentInvocationSchema>;
-export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
-export type TerminalAgentInvocation = Extract<
-  AgentInvocation,
-  { status: "blocked" | "completed" | "failed" | "stopped" }
->;
-export type CreateAgentInvocationInput = z.input<
-  typeof createAgentInvocationSchema
->;
+/** The child agent that sent one reply or message to its parent. */
+export type ChildAgentSender = {
+  agentName?: string;
+  childConversationId: string;
+  parentConversationId: string;
+  title?: string;
+};
+type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
+export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
 
 /** How a finished task of a child agent ended. A stop is not a result. */
 export const CHILD_AGENT_RESULTS = ["completed", "blocked", "failed"] as const;
-export type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
+type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
 
-/** Current state of one child agent, read from its agent invocations. */
+/** Current state of one child agent, read from its Turns and mailbox. */
 export type ChildAgent = {
   agentName?: string;
   /** Set while the child Conversation is archived. */
   archivedAtMs?: number;
   childConversationId: string;
-  /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
+  /** Why the child is blocked, failed, or stopped. */
   errorMessage?: string;
   kind: ChildAgentKind;
-  /** Result of the newest agent invocation that finished without a stop. */
+  /** How the newest task that finished without a stop ended. */
   lastResult?: ChildAgentResult;
   status: AgentInvocationStatus;
-  /** Input of the latest agent invocation that the parent started. */
+  /** Latest task that the parent gave the child. */
   task: string;
   /** Short title of that task. */
   title?: string;

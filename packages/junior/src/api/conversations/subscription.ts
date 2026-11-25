@@ -1,13 +1,16 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
-import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
+import {
+  readMentionedUserIds,
+  resolveRootConversationId,
+} from "@/chat/conversations/sql/participants";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorIdentities,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -55,16 +58,19 @@ import {
  *   MCP tool act only on the signed-in person or the Turn actor. No argument
  *   of theirs names a person.
  * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person they mention, then that person becomes a
- *   subscribed Participant. This is the only way to subscribe another
- *   person. It gives no access: anyone can already read a public
- *   Conversation and join it by posting. A private Conversation refuses
- *   Invite with the same error as a missing one, so Invite never shares
- *   private content. An archived root refuses Invite, because no feed shows
- *   it and a restore is for everyone. The mention names a Slack user of the
- *   Conversation's workspace. An existing Participant keeps their row, so
- *   Invite does not undo their unsubscribe. Nobody can unsubscribe another
- *   person.
+ *   they Invite a person they mention, or send a dashboard or Slack Message
+ *   that mentions them, then that person becomes a subscribed Participant.
+ *   A dashboard Message adds them when it is accepted. Any Message adds them
+ *   when it starts or joins a Turn, like its author. This is the only way to
+ *   subscribe another person. It gives no access: anyone can already read a
+ *   public Conversation and join it by posting. A private Conversation
+ *   refuses Invite with the same error as a missing one, so Invite never
+ *   shares private content. An archived root refuses Invite, because no
+ *   feed shows it and a restore is for everyone. A Message that mentions
+ *   someone in an archived root still adds them, because that Message
+ *   restores the root. The mention names a Slack user of the Conversation's
+ *   workspace. An existing Participant keeps their row, so Invite does not
+ *   undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
@@ -169,12 +175,28 @@ export async function updateConversationSubscription(
       return { archivedAt: null, subscribed: false };
     }
     const archivedAt = new Date();
-    await archiveTree(db, rootConversationId, archivedAt);
+    // Archive the root and each descendant that is not archived, so an
+    // archived descendant keeps its own time. The guard runs on the latest
+    // row, so a descendant that a Turn restores while this waits is archived
+    // too. A child that a Turn adds while this runs stays unarchived, and its
+    // next Message restores the root.
+    await setArchivedAt(
+      db,
+      inConversationTree(rootConversationId),
+      archivedAt,
+      isNull(juniorConversations.archivedAt),
+    );
     // The archive waited for each Turn in a child that held its row. Such a
     // Turn can subscribe someone, so check again and undo the archive if it
     // did. A Turn that starts later sees the archive and restores it.
     if (await hasSubscriber(db, rootConversationId)) {
-      await restoreTree(db, rootConversationId, archivedAt);
+      // Restore only what this archive wrote.
+      await setArchivedAt(
+        db,
+        inConversationTree(rootConversationId),
+        null,
+        eq(juniorConversations.archivedAt, archivedAt),
+      );
       return { archivedAt: null, subscribed: false };
     }
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
@@ -191,6 +213,58 @@ export async function inviteToConversation(
   conversationId: string,
   body: ConversationInviteBody,
 ): Promise<ConversationInviteResponse> {
+  const conversation = await readInvitableConversation(viewer, conversationId);
+  if (!conversation) throwApiError(404, "Conversation not found.");
+  const [userId] = await readMentionedUserIds(
+    getSqlExecutor(),
+    [body.slackUserId],
+    conversation.slackTeamId,
+  );
+  if (!userId) throwApiError(404, "Person not found.");
+  const added = await addInvitedParticipants(
+    conversation.rootConversationId,
+    [userId],
+    { refuseArchived: true },
+  );
+  return { added: added > 0 };
+}
+
+/**
+ * Invite each person that a viewer's Message mentions, as if the viewer
+ * chose Invite on each mention. The contract is in the comment above, with
+ * one change: an archived root still adds them, because the Message itself
+ * restores the root. A mention of someone who is not a User adds nobody.
+ */
+export async function inviteMentionedPeople(
+  viewer: User,
+  conversationId: string,
+  text: string,
+): Promise<void> {
+  const slackUserIds = slackMentionedUserIds(text);
+  if (slackUserIds.length === 0) return;
+  const conversation = await readInvitableConversation(viewer, conversationId);
+  if (!conversation) return;
+  const userIds = await readMentionedUserIds(
+    getSqlExecutor(),
+    slackUserIds,
+    conversation.slackTeamId,
+  );
+  if (userIds.length === 0) return;
+  await addInvitedParticipants(conversation.rootConversationId, userIds, {
+    refuseArchived: false,
+  });
+}
+
+/**
+ * The root and Slack workspace of a Conversation that the viewer may Invite
+ * people to: a public one that they can add Messages to.
+ */
+async function readInvitableConversation(
+  viewer: User,
+  conversationId: string,
+): Promise<
+  { rootConversationId: string; slackTeamId: string | undefined } | undefined
+> {
   const access = (
     await readConversationAccessFromSql(getDb(), [conversationId], viewer)
   ).get(conversationId);
@@ -200,31 +274,25 @@ export async function inviteToConversation(
     access.visibility !== "public" ||
     !canAddConversationMessages(access)
   ) {
-    throwApiError(404, "Conversation not found.");
+    return undefined;
   }
-  const slackTeamId = readableSlackTeamId(access);
-  const [person] = await getDb()
-    .select({ userId: juniorIdentities.userId })
-    .from(juniorIdentities)
-    .where(
-      and(
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.providerSubjectId, body.slackUserId),
-        isNotNull(juniorIdentities.userId),
-        slackTeamId
-          ? eq(juniorIdentities.providerTenantId, slackTeamId)
-          : undefined,
-      ),
-    )
-    .limit(1);
-  if (!person?.userId) throwApiError(404, "Person not found.");
-  const userId = person.userId;
+  return { rootConversationId, slackTeamId: readableSlackTeamId(access) };
+}
+
+/**
+ * Add each User as a subscribed Participant of the root. An existing
+ * Participant keeps their row. Returns how many rows it added.
+ */
+async function addInvitedParticipants(
+  rootConversationId: string,
+  userIds: readonly string[],
+  options: { refuseArchived: boolean },
+): Promise<number> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
     // Lock the root as an unsubscribe does, so a last-subscriber archive
-    // either sees this subscriber or happens before it.
+    // either sees these subscribers or happens before them.
     const [root] = await db
       .select({
         archivedAt: juniorConversations.archivedAt,
@@ -234,21 +302,25 @@ export async function inviteToConversation(
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
     if (!root) throwApiError(404, "Conversation not found.");
-    if (root.archivedAt) throwApiError(409, "Conversation is archived.");
+    if (options.refuseArchived && root.archivedAt) {
+      throwApiError(409, "Conversation is archived.");
+    }
     // The detail ETag and the feed version read the subscription on each
     // request.
     // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
     const added = await db
       .insert(juniorConversationParticipants)
-      .values({
-        lastMessageAt: root.lastActivityAt,
-        rootConversationId,
-        unsubscribedAt: null,
-        userId,
-      })
+      .values(
+        userIds.map((userId) => ({
+          lastMessageAt: root.lastActivityAt,
+          rootConversationId,
+          unsubscribedAt: null,
+          userId,
+        })),
+      )
       .onConflictDoNothing()
       .returning({ userId: juniorConversationParticipants.userId });
-    return { added: added.length > 0 };
+    return added.length;
   });
 }
 
@@ -273,47 +345,6 @@ async function hasSubscriber(
   return Boolean(subscriber);
 }
 
-/**
- * Archive the root and each descendant that is not archived. Descendants
- * that are already archived keep their own time. The test runs on the
- * latest row, so a descendant that a Turn restores while this waits is
- * archived too. A child that a Turn adds while this runs stays unarchived,
- * and its next Message restores the root.
- */
-async function archiveTree(
-  db: JuniorDatabase,
-  rootConversationId: string,
-  archivedAt: Date,
-): Promise<void> {
-  await db
-    .update(juniorConversations)
-    .set({
-      archivedAt: sql`coalesce(${juniorConversations.archivedAt}, ${archivedAt.toISOString()}::timestamptz)`,
-      detailVersion: nextDetailVersion,
-    })
-    .where(inConversationTree(rootConversationId));
-}
-
-/** Undo `archiveTree`: restore only what it archived at `archivedAt`. */
-async function restoreTree(
-  db: JuniorDatabase,
-  rootConversationId: string,
-  archivedAt: Date,
-): Promise<void> {
-  await db
-    .update(juniorConversations)
-    .set({ archivedAt: null, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inConversationTree(rootConversationId),
-        eq(juniorConversations.archivedAt, archivedAt),
-      ),
-    );
-}
-
 function inConversationTree(rootConversationId: string) {
-  return or(
-    eq(juniorConversations.conversationId, rootConversationId),
-    eq(juniorConversations.rootConversationId, rootConversationId),
-  );
+  return sql`(${eq(juniorConversations.conversationId, rootConversationId)} or ${eq(juniorConversations.rootConversationId, rootConversationId)})`;
 }

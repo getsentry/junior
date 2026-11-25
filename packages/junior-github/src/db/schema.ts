@@ -1,7 +1,4 @@
-import { sql } from "drizzle-orm";
 import {
-  boolean,
-  index,
   integer,
   jsonb,
   pgTable,
@@ -36,48 +33,6 @@ export type GitHubPullRequestCommitComposition = z.output<
   typeof githubPullRequestCommitCompositionSchema
 >;
 
-export const githubIssueStateSchema = z.enum(["closed", "open"]);
-
-export type GitHubIssueState = z.output<typeof githubIssueStateSchema>;
-
-export const githubIssueStateReasonSchema = z.enum([
-  "completed",
-  "duplicate",
-  "not_planned",
-  "reopened",
-]);
-
-export type GitHubIssueStateReason = z.output<
-  typeof githubIssueStateReasonSchema
->;
-
-/** Current provider projection for issues classified as Junior-owned. */
-export const juniorGitHubIssues = pgTable(
-  "junior_github_issues",
-  {
-    issueId: text("issue_id").primaryKey(),
-    repositoryId: text("repository_id").notNull(),
-    repositoryFullName: text("repository_full_name").notNull(),
-    number: integer("number").notNull(),
-    state: text("state").$type<GitHubIssueState>().notNull(),
-    stateReason: text("state_reason").$type<GitHubIssueStateReason>(),
-    conversationIds: text("conversation_ids")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
-    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => [
-    index("junior_github_issues_opened_at_idx").on(table.openedAt),
-    index("junior_github_issues_closed_at_idx").on(table.closedAt),
-    index("junior_github_issues_open_idx")
-      .on(table.issueId)
-      .where(sql`${table.state} = 'open'`),
-  ],
-);
-
 /** A merge conflict fix that Junior started: the event it published. */
 export interface GitHubConflictFix {
   atMs: number;
@@ -85,95 +40,57 @@ export interface GitHubConflictFix {
   headSha: string;
 }
 
-/** Current provider projection for pull requests classified as Junior-owned. */
-export const juniorGitHubPullRequests = pgTable(
-  "junior_github_pull_requests",
-  {
-    pullRequestId: text("pull_request_id").primaryKey(),
-    repositoryId: text("repository_id").notNull(),
-    repositoryFullName: text("repository_full_name").notNull(),
-    number: integer("number").notNull(),
-    state: text("state").$type<GitHubPullRequestState>().notNull(),
-    commitComposition:
-      text("commit_composition").$type<GitHubPullRequestCommitComposition>(),
-    conversationIds: text("conversation_ids")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
-    /** The daily reconcile compares this with GitHub. */
-    draft: boolean("draft").notNull().default(false),
-    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    mergedAt: timestamp("merged_at", { withTimezone: true }),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-    /**
-     * The requester's next action that Junior last derived from GitHub, and
-     * shows in the Inbox. Null when no action waits on them.
-     */
-    nextAction: text("next_action").$type<GitHubPullRequestAction>(),
-    /**
-     * Webhooks that asked to check the next action. The check runs again
-     * when this changes during a check.
-     */
-    readySyncRequests: integer("ready_sync_requests").notNull().default(0),
-    /**
-     * The request that runs the current check. Null when no check runs.
-     */
-    readySyncId: integer("ready_sync_id"),
-    /** When the current check started. */
-    readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
-    /**
-     * When a person last chose Resume on the stopped merge conflict item.
-     * It counts as activity by a person, so the fix count starts again.
-     */
-    conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
-      withTimezone: true,
-    }),
-    /**
-     * The latest merge conflict fixes that Junior started, oldest first.
-     * Only these count as fixes, so a merge or force push for work that a
-     * person asked for does not.
-     */
-    conflictFixes: jsonb("conflict_fixes")
-      .$type<GitHubConflictFix[]>()
-      .notNull()
-      .default([]),
-  },
-  (table) => [
-    index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
-    index("junior_github_pull_requests_merged_at_idx").on(table.mergedAt),
-    index("junior_github_pull_requests_closed_at_idx").on(table.closedAt),
-    index("junior_github_pull_requests_open_idx")
-      .on(table.pullRequestId)
-      .where(sql`${table.state} = 'open'`),
-    index("junior_github_pull_requests_unmerged_conversations_idx")
-      .using("gin", table.conversationIds)
-      .where(sql`${table.state} <> 'merged'`),
-  ],
-);
-
-/** Many-to-many links between tracked pull requests and tracked issues. */
-export const juniorGitHubPullRequestIssues = pgTable(
-  "junior_github_pull_request_issues",
-  {
-    pullRequestId: text("pull_request_id")
-      .notNull()
-      .references(() => juniorGitHubPullRequests.pullRequestId, {
-        onDelete: "cascade",
-      }),
-    issueRepositoryFullName: text("issue_repository_full_name").notNull(),
-    issueNumber: integer("issue_number").notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [
-        table.pullRequestId,
-        table.issueRepositoryFullName,
-        table.issueNumber,
-      ],
-    }),
-  ],
-);
+/**
+ * What Junior records for each pull request classified as Junior-owned. The
+ * lifecycle, repository, number, and linked Conversations are in Junior's
+ * code index.
+ */
+export const juniorGitHubPullRequests = pgTable("junior_github_pull_requests", {
+  pullRequestId: text("pull_request_id").primaryKey(),
+  commitComposition:
+    text("commit_composition").$type<GitHubPullRequestCommitComposition>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  /**
+   * The requester's next action that Junior last derived from GitHub, and
+   * shows in the Inbox. Null when no action waits on them.
+   */
+  nextAction: text("next_action").$type<GitHubPullRequestAction>(),
+  /**
+   * Webhooks that asked to check the next action. The check runs again
+   * when this changes during a check.
+   */
+  readySyncRequests: integer("ready_sync_requests").notNull().default(0),
+  /**
+   * The request that runs the current check. Null when no check runs.
+   */
+  readySyncId: integer("ready_sync_id"),
+  /** When the current check started. */
+  readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+  /**
+   * When a person last chose Resume on the merge conflict item.
+   * It counts as activity by a person, so the fix count starts again.
+   */
+  conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
+    withTimezone: true,
+  }),
+  /**
+   * When Junior last asked the requester to resume a merge conflict fix
+   * that did not land. It asks once after each Resume, so a Dismiss ends
+   * the asks on the pull request.
+   */
+  conflictFixAskedAt: timestamp("conflict_fix_asked_at", {
+    withTimezone: true,
+  }),
+  /**
+   * The latest merge conflict fixes that Junior started, oldest first.
+   * Only these count as fixes, so a merge or force push for work that a
+   * person asked for does not.
+   */
+  conflictFixes: jsonb("conflict_fixes")
+    .$type<GitHubConflictFix[]>()
+    .notNull()
+    .default([]),
+});
 
 /**
  * People who asked Junior to open or update a pull request. Each row links
@@ -202,10 +119,3 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     }),
   ],
 );
-
-export const githubSqlSchema = {
-  juniorGitHubIssues,
-  juniorGitHubPullRequestIssues,
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-};
