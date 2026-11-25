@@ -65,6 +65,42 @@ export function conversationHasParticipantUser(userId: string): SQL {
   return exists(memberParticipantRow({ userId }));
 }
 
+function privateSpaceIds() {
+  return getDb()
+    .select({ id: juniorSpaces.id })
+    .from(juniorSpaces)
+    .where(eq(juniorSpaces.visibility, "private"));
+}
+
+/** The private Spaces that the person is a member of. */
+function memberPrivateSpaceIds(member: ConversationMember) {
+  const rows = getDb()
+    .select({ id: juniorSpaceMembers.spaceId })
+    .from(juniorSpaceMembers)
+    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorSpaceMembers.spaceId));
+  const isPrivate = eq(juniorSpaces.visibility, "private");
+  return "userId" in member
+    ? rows.where(and(eq(juniorSpaceMembers.userId, member.userId), isPrivate))
+    : rows
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorSpaceMembers.userId))
+        .where(
+          and(eq(juniorUsers.primaryEmailNormalized, member.email), isPrivate),
+        );
+}
+
+/**
+ * True when the outer root conversation is in no Space, in a public Space,
+ * or in a private Space that the person is a member of. A participant who
+ * leaves a private Space no longer reads its roots.
+ */
+export function rootSpaceReadableBy(member: ConversationMember): SQL {
+  return or(
+    isNull(juniorConversations.spaceId),
+    notInArray(juniorConversations.spaceId, privateSpaceIds()),
+    inArray(juniorConversations.spaceId, memberPrivateSpaceIds(member)),
+  )!;
+}
+
 /**
  * True when the viewer may find the outer root conversation by a link to
  * it: its Destination, joined as `juniorDestinations`, is public, or the
@@ -72,16 +108,11 @@ export function conversationHasParticipantUser(userId: string): SQL {
  * Space's members, and to all of them.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
-  const db = getDb();
-  const privateSpaces = db
-    .select({ id: juniorSpaces.id })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.visibility, "private"));
   return or(
     and(
       or(
         isNull(juniorConversations.spaceId),
-        notInArray(juniorConversations.spaceId, privateSpaces),
+        notInArray(juniorConversations.spaceId, privateSpaceIds()),
       ),
       or(
         eq(juniorDestinations.visibility, "public"),
@@ -91,19 +122,7 @@ export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
     viewerUserId
       ? inArray(
           juniorConversations.spaceId,
-          db
-            .select({ id: juniorSpaceMembers.spaceId })
-            .from(juniorSpaceMembers)
-            .innerJoin(
-              juniorSpaces,
-              eq(juniorSpaces.id, juniorSpaceMembers.spaceId),
-            )
-            .where(
-              and(
-                eq(juniorSpaceMembers.userId, viewerUserId),
-                eq(juniorSpaces.visibility, "private"),
-              ),
-            ),
+          memberPrivateSpaceIds({ userId: viewerUserId }),
         )
       : undefined,
   )!;

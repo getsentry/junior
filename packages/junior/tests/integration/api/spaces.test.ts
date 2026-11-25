@@ -428,13 +428,35 @@ describe("Spaces API", () => {
     await send(ana, "PATCH", `/${space.id}`, { visibility: "private" });
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
-    // The last member stays, so somebody can always read it.
+    // A participant who leaves no longer finds its Conversations.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: inSpace,
+        userId: (await signedInViewer("spaces-private-bo@example.com")).id,
+      });
+    const inbox = async () =>
+      conversationFeedSchema
+        .parse(await (await request(bo, "GET", "/conversations")).json())
+        .conversations.map((row) => row.conversationId);
+    expect(await inbox()).toContain(inSpace);
     expect((await send(bo, "DELETE", `/${space.id}/members/me`)).status).toBe(
       200,
     );
-    expect((await send(ana, "DELETE", `/${space.id}/members/me`)).status).toBe(
-      409,
+    expect(await inbox()).not.toContain(inSpace);
+
+    // The last member stays, so somebody can always read it, even when the
+    // last two leave at once.
+    await send(ana, "POST", `/${space.id}/members`, {
+      email: "spaces-private-bo@example.com",
+    });
+    const leaves = await Promise.all(
+      [ana, bo].map((app) => send(app, "DELETE", `/${space.id}/members/me`)),
     );
+    expect(leaves.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
   });
 
   it("keeps a Space with a Slack Conversation public", async () => {

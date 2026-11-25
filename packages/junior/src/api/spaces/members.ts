@@ -87,15 +87,9 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
       const space = await requireSpace(viewerUserId, spaceId);
-      // Nobody could read or restore a private Space with no members.
-      if (
-        space.visibility === "private" &&
-        space.viewerIsMember &&
-        space.memberCount === 1
-      ) {
+      if (!(await leaveSpace(spaceId, viewerUserId))) {
         throwApiError(409, "The last member can't leave a private Space.");
       }
-      await leaveSpace(spaceId, viewerUserId);
       // A private Space is no longer readable by the person who left it.
       if (space.visibility === "private") {
         return jsonResponse(spaceSchema, {

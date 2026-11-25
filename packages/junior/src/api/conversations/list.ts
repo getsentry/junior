@@ -43,6 +43,7 @@ import {
 import {
   conversationPinnedForUser,
   conversationIsMemberRoot,
+  rootSpaceReadableBy,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
@@ -120,6 +121,7 @@ function conversationFeedMembershipFilter(
   const member = feedMember(filter);
   return and(
     conversationIsMemberRoot(member),
+    rootSpaceReadableBy(member),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"

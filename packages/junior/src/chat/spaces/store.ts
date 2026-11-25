@@ -237,19 +237,40 @@ export async function joinSpace(
     .onConflictDoNothing();
 }
 
-/** Remove one person from a Space. */
+/**
+ * Remove one person from a Space. Returns false, and changes nothing, when
+ * they are the last member of a private Space: nobody could read or restore
+ * a private Space with no members.
+ */
 export async function leaveSpace(
   spaceId: string,
   userId: string,
-): Promise<void> {
-  await getDb()
-    .delete(juniorSpaceMembers)
-    .where(
-      and(
-        eq(juniorSpaceMembers.spaceId, spaceId),
-        eq(juniorSpaceMembers.userId, userId),
-      ),
+): Promise<boolean> {
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // Two members who leave at once, or a leave and a change to private,
+    // take turns on this lock, so one of them sees the other's change.
+    const [space] = await db
+      .select({ visibility: juniorSpaces.visibility })
+      .from(juniorSpaces)
+      .where(eq(juniorSpaces.id, spaceId))
+      .for("update");
+    const member = and(
+      eq(juniorSpaceMembers.spaceId, spaceId),
+      eq(juniorSpaceMembers.userId, userId),
     );
+    if (space?.visibility === "private") {
+      const members = await db
+        .select({ userId: juniorSpaceMembers.userId })
+        .from(juniorSpaceMembers)
+        .where(eq(juniorSpaceMembers.spaceId, spaceId))
+        .limit(2);
+      if (members.length === 1 && members[0]!.userId === userId) return false;
+    }
+    await db.delete(juniorSpaceMembers).where(member);
+    return true;
+  });
 }
 
 /** Return the members of a Space, earliest join first. */
