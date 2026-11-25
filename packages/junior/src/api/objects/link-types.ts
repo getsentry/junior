@@ -81,10 +81,55 @@ function filtersOverlap(
     left.target === undefined ||
     left.target.filters.some((leftTarget) =>
       rightTargets.some((rightTarget) =>
-        filtersOverlap(leftTarget, rightTarget),
+        targetsOverlap(leftTarget, rightTarget),
       ),
     )
   );
+}
+
+// Target filters can differ in specificity, so a broader one, such as a
+// wildcard host or no path, overlaps every narrower one that it claims.
+function targetsOverlap(
+  left: ObjectLinkFilter,
+  right: ObjectLinkFilter,
+): boolean {
+  if ((left.scheme ?? "https") !== (right.scheme ?? "https")) return false;
+  if (!hostsOverlap(left.host, right.host)) return false;
+  if (left.path !== undefined) return pathClaims(right, left.path);
+  if (right.path !== undefined) return pathClaims(left, right.path);
+  if (left.pathPrefix !== undefined && right.pathPrefix !== undefined) {
+    return (
+      left.pathPrefix.startsWith(right.pathPrefix) ||
+      right.pathPrefix.startsWith(left.pathPrefix)
+    );
+  }
+  // Two patterns compare by segment. A missing path claims every path, and
+  // a prefix and a pattern count as overlapping.
+  return bothPatterns(left, right) ? pathsOverlap(left, right) : true;
+}
+
+function hostsOverlap(left?: string, right?: string): boolean {
+  if (left === undefined || right === undefined) return true;
+  return hostClaims(left, right) || hostClaims(right, left);
+}
+
+// `*.example.com` claims `a.example.com` and `*.a.example.com`.
+function hostClaims(wide: string, narrow: string): boolean {
+  return (
+    wide === narrow || (wide.startsWith("*.") && narrow.endsWith(wide.slice(1)))
+  );
+}
+
+function pathClaims(filter: ObjectLinkFilter, path: string): boolean {
+  const { path: exact, pathPattern, pathPrefix } = filter;
+  return objectLinkFilterMatches(
+    { path: exact, pathPattern, pathPrefix },
+    new URL(path, "https://link.invalid"),
+  );
+}
+
+function bothPatterns(left: ObjectLinkFilter, right: ObjectLinkFilter) {
+  return left.pathPattern !== undefined && right.pathPattern !== undefined;
 }
 
 function pathsOverlap(left: ObjectLinkFilter, right: ObjectLinkFilter) {
