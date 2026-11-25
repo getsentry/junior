@@ -88,7 +88,7 @@ test.describe("new UI", () => {
     await screenshot(page, "inbox-tree-state", { lightTheme: true });
 
     // Each Conversation row shows the same one icon.
-    const row = page
+    const row = list
       .getByRole("listitem")
       .filter({
         has: page.getByRole("link", { name: /^Quarterly reliability review/ }),
