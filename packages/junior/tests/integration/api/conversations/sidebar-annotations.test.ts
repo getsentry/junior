@@ -89,8 +89,6 @@ describe("conversation list sidebar annotations", () => {
         await annotations.upsert({
           kind: "resource_link",
           key: "getsentry/junior#1081",
-          label: "getsentry/junior#1081",
-          status: "open",
           url: "https://github.com/getsentry/junior/pull/1081",
         });
       }
@@ -103,9 +101,7 @@ describe("conversation list sidebar annotations", () => {
         kind: "object",
         objectType: "automation",
         key: "daily",
-        label: "Daily check",
         title: "Daily check",
-        status: "blocked",
         url: null,
       });
       const feed = await readConversationFeedFromSql();
@@ -114,12 +110,8 @@ describe("conversation list sidebar annotations", () => {
           expect.objectContaining({
             conversationId: publicId,
             sidebarAnnotations: [
-              {
-                objectType: "automation",
-                key: "daily",
-                label: "Daily check",
-                status: "blocked",
-              },
+              // No link to read, so the chip shows only the type.
+              { objectType: "automation", key: "daily", label: "Automation" },
               { icon: "circle-dot", key: "github", label: "junior" },
             ],
           }),
@@ -143,9 +135,9 @@ describe("conversation list sidebar annotations", () => {
         expect.objectContaining({
           key: "getsentry/junior#1081",
           kind: "resource_link",
-          label: "getsentry/junior#1081",
+          // No link type reads the link, so its host is the label.
+          label: "github.com",
           plugin: "github",
-          status: "open",
           url: "https://github.com/getsentry/junior/pull/1081",
         }),
       ]);
@@ -199,10 +191,8 @@ describe("conversation list sidebar annotations", () => {
           kind: "object",
           objectType: "code_change",
           key: "getsentry/roach#12",
-          label: "getsentry/roach#12",
           subject: { id: "1200", kind: "pull_request" },
           title: "Retry flaky uploads",
-          status: "open",
           url: "https://github.com/getsentry/roach/pull/12",
         });
       }
@@ -298,9 +288,7 @@ describe("conversation list sidebar annotations", () => {
         kind: "object",
         objectType: "code_change",
         key: "getsentry/junior#36",
-        label: "Saved label",
         title: "Draft: retry uploads",
-        status: "open",
         url: `${GITHUB_REPO}/pull/36`,
       });
 

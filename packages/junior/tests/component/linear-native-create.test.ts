@@ -161,8 +161,8 @@ describe("Linear MCP create annotations", () => {
             kind: "object",
             objectType: "task",
             key: "ENG-123",
-            label: "ENG-123",
             plugin: "linear",
+            title: "Linear MCP create issue",
             url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
           },
         ]);
@@ -171,7 +171,6 @@ describe("Linear MCP create annotations", () => {
           {
             plugin: "linear",
             objectType: "task",
-            status: "Todo",
             title: "Linear MCP create issue",
           },
         ]);
@@ -191,13 +190,7 @@ describe("Linear MCP create annotations", () => {
               entity_type: "slack#/entities/task",
               url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
               entity_payload: {
-                attributes: {
-                  display_id: "ENG-123",
-                  title: { text: "Linear MCP create issue" },
-                },
-                custom_fields: [
-                  { key: "description", value: createInput.description },
-                ],
+                attributes: { title: { text: "Linear MCP create issue" } },
               },
             },
           ],
@@ -217,16 +210,6 @@ describe("Linear MCP create annotations", () => {
           {
             plugin: "linear",
             key: "ENG-123",
-            description: undefined,
-            status: "In Progress",
-            sourceUpdatedAt: "2026-09-25T14:00:00Z",
-            facts: {
-              type: "task",
-              assignees: ["Sam"],
-              priority: "High",
-              project: "Quality",
-              labels: ["Bug", "Backend"],
-            },
           },
         ]);
         expect(saveCalls).toEqual([

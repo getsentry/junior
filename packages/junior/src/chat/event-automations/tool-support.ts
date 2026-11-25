@@ -2,7 +2,6 @@ import type { AnnotatedObject } from "@sentry/junior-plugin-api";
 import {
   agentEventKeys,
   agentEventMatchSchema,
-  eventTriggerText,
   type EventMatch,
   type EventTriggerDescription,
 } from "@sentry/junior-plugin-api";
@@ -223,16 +222,10 @@ export async function eventAutomationToolResult(
   isCreator: boolean,
   action: AnnotatedObject["action"],
 ) {
-  const description = describeEventAutomationTrigger(task.trigger, catalog);
   return saveAutomationCardResult(
     conversationId,
     compactEventAutomation(task, catalog, isCreator),
-    {
-      task: task.task,
-      fallbackTitle: "Event automation",
-      trigger: eventTriggerText(task.trigger.label, description),
-      triggerProblems: description.problems,
-    },
+    { task: task.task, fallbackTitle: "Event automation" },
     action,
   );
 }

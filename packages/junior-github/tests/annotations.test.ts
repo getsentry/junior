@@ -1,25 +1,28 @@
 import {
   conversationSidebarAnnotationSchema,
-  type ConversationAnnotation,
+  type LiveAnnotation,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import { githubSidebarAnnotations } from "../src/annotations";
 
+// The live card of a GitHub object, as core reads it for the sidebar.
 function annotation(
   repo: string,
   number: number,
-  status: NonNullable<ConversationAnnotation["status"]>,
+  status: string,
   owner = "getsentry",
   updatedAt = "2026-01-01T00:00:01.000Z",
   kind: "pull" | "issues" = "pull",
-): ConversationAnnotation {
+): LiveAnnotation {
   return {
     createdAt: "2026-01-01T00:00:00.000Z",
     key: `${owner}/${repo}#${number}`,
-    kind: "resource_link",
+    kind: "object",
     label: `${owner}/${repo}#${number}`,
+    objectType: kind === "pull" ? "code_change" : "task",
     plugin: "github",
     status,
+    title: `Change ${number}`,
     updatedAt,
     url: `https://github.com/${owner}/${repo}/${kind}/${number}`,
   };
@@ -57,6 +60,7 @@ describe("GitHub conversation sidebar", () => {
         status: "closed",
         key: "getsentry/junior#3",
         label: "junior",
+        title: "Change 3",
         url: "https://github.com/getsentry/junior/pull/3",
       },
       {
@@ -64,6 +68,7 @@ describe("GitHub conversation sidebar", () => {
         status: "open",
         key: "getsentry/payments#2",
         label: "payments",
+        title: "Change 2",
         url: "https://github.com/getsentry/payments/pull/2",
       },
       {
@@ -71,6 +76,7 @@ describe("GitHub conversation sidebar", () => {
         status: "merged",
         key: "getsentry/junior#1",
         label: "junior",
+        title: "Change 1",
         url: "https://github.com/getsentry/junior/pull/1",
       },
     ]);
@@ -87,6 +93,7 @@ describe("GitHub conversation sidebar", () => {
           status: "open",
           key: "getsentry/junior#1",
           label: "junior",
+          title: "Change 1",
           url: "https://github.com/getsentry/junior/pull/1",
         },
       ],
@@ -111,12 +118,13 @@ describe("GitHub conversation sidebar", () => {
         status: "open",
         key: "getsentry/junior#1",
         label: "junior",
+        title: "Change 1",
         url: "https://github.com/getsentry/junior/issues/1",
       },
     ]);
   });
 
-  it("carries a saved object's title, URL and first image for row cards", () => {
+  it("carries a live object's title, URL and first image for row cards", () => {
     expect(
       githubSidebarAnnotations([
         {

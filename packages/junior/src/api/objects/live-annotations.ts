@@ -1,31 +1,58 @@
 /**
  * Annotations as people see them: each object reads its title and state
- * live, with the same resolver as the Inbox. A card never shows the stored
- * label: the plugin makes the label from the object, or from its link when
- * Junior cannot read it. An Annotation whose plugin has no link type for
- * its object keeps what it saved.
+ * live, with the same resolver as the Inbox. An Annotation stores only its
+ * object's subject, title, and link, so a card that cannot read the object
+ * shows only the label that the plugin makes from the link.
  */
-import type { ConversationAnnotation, User } from "@sentry/junior-plugin-api";
+import {
+  objectPresentation,
+  type ConversationAnnotation,
+  type LiveAnnotation,
+  type User,
+} from "@sentry/junior-plugin-api";
 import { annotationSubject } from "@/chat/plugins/annotations";
-import { resolveObjectCards, type ObjectCardView } from "./subject-cards";
+import { readObjectLinkTypes } from "./resolve";
+import {
+  ownerLinkLabel,
+  resolveObjectCards,
+  type ObjectCardView,
+} from "./subject-cards";
 
 /**
  * What an Annotation shows when its object cannot be read live:
- * - `label`: only the label of its link and the link, for a viewer who
- *   cannot read the object or when its provider is down.
- * - `saved`: the saved facts with the label of its link, for a card that
+ * - `label`: only the label and the link, for a viewer who cannot read the
+ *   object or when its provider is down.
+ * - `title`: the stored title with the label and the link, for a card that
  *   Junior posts once.
  */
-export type AnnotationFallback = "label" | "saved";
+export type AnnotationFallback = "label" | "title";
+
+/**
+ * Return the short label of an Annotation's object that Junior did not
+ * read: the label that its plugin makes from the link, else the name of its
+ * type, else its key.
+ */
+export function annotationLabel(
+  annotation: Pick<ConversationAnnotation, "key" | "objectType" | "plugin"> & {
+    url: string | null;
+  },
+  linkTypes = readObjectLinkTypes(),
+): string {
+  return (
+    ownerLinkLabel(annotation.plugin, annotation.url, linkTypes) ??
+    (annotation.objectType
+      ? objectPresentation({ objectType: annotation.objectType }).label
+      : annotation.key)
+  );
+}
 
 function liveAnnotation(
   annotation: ConversationAnnotation,
   view: ObjectCardView | undefined,
   fallback: AnnotationFallback,
-): ConversationAnnotation {
-  if (!view) return annotation;
-  const { createdAt, key, plugin, updatedAt } = annotation;
-  if (view.object) {
+): LiveAnnotation {
+  const { createdAt, key, objectType, plugin, updatedAt } = annotation;
+  if (view?.object) {
     // The Annotation keeps its own identity. A renamed repository gives
     // the card a new key, but Message refs name the Annotation's key.
     const {
@@ -45,17 +72,29 @@ function liveAnnotation(
       updatedAt,
     };
   }
-  const label = view.label ?? view.url;
-  if (fallback === "saved") return { ...annotation, label };
+  // A subject link follows a renamed repository; the stored link does not.
+  const url = view?.url ?? annotation.url;
+  const label = view?.label ?? annotationLabel({ ...annotation, url });
+  if (fallback === "title" && annotation.kind === "object") {
+    return {
+      kind: "object",
+      key,
+      label,
+      objectType: annotation.objectType,
+      plugin,
+      title: annotation.title,
+      url,
+      createdAt,
+      updatedAt,
+    };
+  }
   return {
     kind: "resource_link",
     key,
     label,
-    ...(annotation.objectType
-      ? { objectType: annotation.objectType }
-      : undefined),
-    url: view.url,
+    ...(objectType ? { objectType } : undefined),
     plugin,
+    url,
     createdAt,
     updatedAt,
   };
@@ -70,7 +109,7 @@ export async function readLiveAnnotations(
   viewer: User | undefined,
   annotations: readonly ConversationAnnotation[],
   fallback: AnnotationFallback = "label",
-): Promise<ConversationAnnotation[]> {
+): Promise<LiveAnnotation[]> {
   const views = await resolveObjectCards(
     viewer,
     annotations.map((annotation) => {
@@ -96,7 +135,7 @@ export async function readLiveAnnotations(
 export async function readLiveAnnotationsById(
   viewer: User | undefined,
   byConversation: ReadonlyMap<string, readonly ConversationAnnotation[]>,
-): Promise<Map<string, ConversationAnnotation[]>> {
+): Promise<Map<string, LiveAnnotation[]>> {
   const entries = [...byConversation];
   const live = await readLiveAnnotations(
     viewer,

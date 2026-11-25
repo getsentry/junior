@@ -18,7 +18,7 @@ import type {
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { githubObjectAnnotation } from "./annotations.js";
+import { githubObjectCard } from "./annotations.js";
 import {
   DEFAULT_CODE_CHANGE_CATEGORIES,
   parseCodeChangeTitle,
@@ -100,7 +100,7 @@ function issueCard(
   link: GitHubObjectLink,
   issue: GitHubIssueFields,
 ): ObjectAnnotation {
-  return githubObjectAnnotation({
+  return githubObjectCard({
     ...githubObjectFacts("task", issue),
     repo: repoRef(issue.html_url, link),
     number: issue.number,
@@ -140,7 +140,7 @@ function pullRequestCard(
     (parsed.type?.length ?? 0) <= TITLE_PART_MAX_LENGTH
       ? parsed
       : undefined;
-  return githubObjectAnnotation({
+  return githubObjectCard({
     ...card,
     ...(titleParts && card.facts?.type === "code_change"
       ? { facts: withTitleParts(card.facts, titleParts) }

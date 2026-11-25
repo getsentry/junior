@@ -92,8 +92,6 @@ import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import {
   annotationMatches,
   resolveAnnotationFilter,
-  storedAnnotationTitle,
-  storedAnnotationUrl,
 } from "@/chat/conversations/sql/annotation-filter";
 import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
 import { feedMediaSql } from "./feed-media";
@@ -331,7 +329,7 @@ function annotationMatch(
 ) {
   // The link matches only whole, so a word of every link, such as `pull`,
   // does not match each Conversation.
-  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${storedAnnotationTitle}))`;
+  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}))`;
   return exists(
     db
       .select({ one: sql`1` })
@@ -354,7 +352,7 @@ function annotationMatch(
             : eq(juniorDestinations.visibility, "public"),
           or(
             sql<boolean>`strpos(${text}, ${query}) > 0`,
-            sql<boolean>`lower(${storedAnnotationUrl}) = ${query}`,
+            sql<boolean>`lower(${juniorConversationAnnotations.url}) = ${query}`,
             subjects.length > 0
               ? annotationMatches({ references: [], subjects })
               : undefined,

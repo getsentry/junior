@@ -658,16 +658,10 @@ describe("Google Calendar tools", () => {
         kind: "object",
         key: body.id,
         subject: { id: body.id, kind: "calendar_event" },
-        label: "Oct 12",
         objectType: "calendar_event",
         title: "Sync",
         // The link opens in each viewer's Workspace account.
         url: `https://accounts.google.com/AccountChooser?hd=example.com&continue=${encodeURIComponent("https://calendar.google.com/event?eid=1")}`,
-        facts: {
-          type: "calendar_event",
-          when: "Mon, Oct 12, 10:00 – 10:30 PDT",
-          attendees: [REQUESTER, "Bob Smith"],
-        },
       },
     ]);
   });
@@ -881,16 +875,10 @@ describe("Google Calendar tools", () => {
         { email: "dana@example.com", optional: true },
       ],
       event_id: "event1",
-      // The same key replaces the saved card with the new time.
-      objectAnnotations: [
-        {
-          key: "event1",
-          label: "Oct 13",
-          facts: { when: "Tue, Oct 13, 11:00 – 11:30 PDT" },
-          sourceUpdatedAt: "2026-10-08T12:00:00.000Z",
-          title: "S".repeat(512),
-        },
-      ],
+      label: "Tue, Oct 13, 11:00 – 11:30 PDT",
+      // The same key replaces the saved Annotation. Its card reads the new
+      // time live.
+      objectAnnotations: [{ key: "event1", title: "S".repeat(512) }],
       start: input.start,
     });
   });
@@ -946,8 +934,8 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       cancelled: true,
       event_id: "event1",
-      // The saved card now shows that the event is cancelled.
-      objectAnnotations: [{ key: "event1", status: "cancelled" }],
+      // The card stays. It reads that the event is cancelled live.
+      objectAnnotations: [{ key: "event1", title: "Sync" }],
       title: "Sync",
     });
 

@@ -174,6 +174,11 @@ export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }
 
+/** Return the Automation id in a dashboard Automation URL, if it is one. */
+export function parseDashboardTaskLink(url: string): string | undefined {
+  return parseDashboardPageLink(url, "/automations/");
+}
+
 /** Build the Inbox URL that selects one Inbox item. */
 export function getDashboardInboxItemLink(itemId: string): string | undefined {
   return resolveDashboardPath(`/inbox?item=${encodeURIComponent(itemId)}`);

@@ -16,16 +16,6 @@ import {
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
-const namedFact = z
-  .union([z.string(), z.object({ name: z.string() })])
-  .nullish();
-const short = (value: string | undefined) => {
-  const text = value?.trim();
-  return text ? (text.length > 64 ? `${text.slice(0, 63)}…` : text) : undefined;
-};
-const factName = (value: z.output<typeof namedFact>) =>
-  short(typeof value === "string" ? value : value?.name);
-
 const issueIdentifier = z
   .string()
   .trim()
@@ -36,17 +26,6 @@ const savedIssueSchema = z
     id: z.string().optional(),
     url: z.url(),
     title: z.string().optional(),
-    description: z.string().nullish(),
-    status: z.string().optional(),
-    assignee: namedFact,
-    priority: z
-      .union([z.string(), z.number(), z.object({ name: z.string() })])
-      .nullish(),
-    project: namedFact,
-    cycle: namedFact,
-    labels: z.array(namedFact).nullish(),
-    dueDate: z.iso.date().nullish(),
-    updatedAt: z.iso.datetime({ offset: true }).nullish(),
   })
   .transform((issue, ctx) => {
     // Hosted MCP uses id for the display identifier; a UUID is not a ticket key.
@@ -88,7 +67,7 @@ const saveIssueResultSchema = z.union([
   z.object({ issue: savedIssueSchema }).transform(({ issue }) => issue),
 ]);
 
-/** Read Linear's JSON result without inferring issue facts from prose. */
+/** Read Linear's JSON result without inferring the issue from prose. */
 function readSavedIssue(result: AfterMcpToolHookContext["result"]) {
   if (result.structuredContent !== undefined) {
     return saveIssueResultSchema.safeParse(result.structuredContent);
@@ -136,35 +115,8 @@ async function annotateSavedIssue(
         objectType: "task",
         key: identifier,
         subject: { id: identifier, kind: LINEAR_SUBJECT_KINDS.issue },
-        label: identifier,
         title: (issue.title || identifier).slice(0, 512),
-        description: issue.description?.slice(0, 4000),
         url: issue.url,
-        status: issue.status,
-        displayType: "Issue",
-        sourceUpdatedAt: issue.updatedAt ?? undefined,
-        facts: {
-          type: "task",
-          assignees:
-            issue.assignee === undefined
-              ? undefined
-              : factName(issue.assignee)
-                ? [factName(issue.assignee)!]
-                : [],
-          priority:
-            typeof issue.priority === "number"
-              ? ["No priority", "Urgent", "High", "Normal", "Low"][
-                  issue.priority
-                ]
-              : factName(issue.priority),
-          project: factName(issue.project),
-          cycle: factName(issue.cycle),
-          dueDate: issue.dueDate ?? undefined,
-          labels: issue.labels
-            ?.slice(0, 5)
-            .map((label) => factName(label)!)
-            .filter(Boolean),
-        },
       },
     ],
   };

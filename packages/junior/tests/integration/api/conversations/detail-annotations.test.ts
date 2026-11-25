@@ -65,8 +65,6 @@ describe("conversation detail annotations", () => {
     await annotations.upsert({
       kind: "resource_link",
       key: "getsentry/junior#1081",
-      label: "getsentry/junior #1081",
-      status: "open",
       url: "https://github.com/getsentry/junior/pull/1081",
     });
     await storeConversationMetadataFixture(getDb(), {
@@ -90,9 +88,9 @@ describe("conversation detail annotations", () => {
         {
           key: "getsentry/junior#1081",
           kind: "resource_link",
-          label: "getsentry/junior #1081",
+          // No plugin reads the link, so its host is the label.
+          label: "github.com",
           plugin: "github",
-          status: "open",
           url: "https://github.com/getsentry/junior/pull/1081",
         },
       ],
@@ -142,9 +140,7 @@ describe("conversation detail annotations", () => {
       objectType: "code_change",
       key: "getsentry/junior#35",
       // A card never shows the stored label. GitHub makes it.
-      label: "Saved label",
       title: "Draft title",
-      status: "open",
       url: `${GITHUB_REPO}/pull/35`,
     });
 
@@ -348,7 +344,6 @@ async function annotatedPullRequestPage(number: number) {
     kind: "object",
     objectType: "code_change",
     key: `getsentry/junior#${number}`,
-    label: `getsentry/junior#${number}`,
     subject: { id: String(number * 1000), kind: "pull_request" },
     title: "Cache GitHub objects",
     url: `${GITHUB_REPO}/pull/${number}`,

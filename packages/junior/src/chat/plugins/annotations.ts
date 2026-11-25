@@ -14,6 +14,7 @@ import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
+import type { StoredAnnotationJson } from "@/db/schema/conversation-annotations";
 import {
   conversationDetailTouch,
   nextDetailVersion,
@@ -59,8 +60,12 @@ export function annotationSubject(
   };
 }
 
+// The JSON holds the shape and the type of the object. A row that an older
+// release saved can also hold `objectId`, which no reader uses.
 const savedAnnotationJsonSchema = z.looseObject({
-  objectId: z.unknown().optional(),
+  key: z.string(),
+  kind: z.enum(["object", "resource_link"]),
+  objectType: z.unknown().optional(),
 });
 
 function annotationFromRow(row: {
@@ -70,14 +75,18 @@ function annotationFromRow(row: {
   plugin: string;
   subjectId: string | null;
   subjectKind: string | null;
+  title: string | null;
   updatedAt: Date;
+  url: string | null;
 }): ConversationAnnotation | undefined {
-  // The subject lives in its columns. A card that an older release saved
-  // kept the provider id in `objectId` instead.
   const saved = savedAnnotationJsonSchema.safeParse(row.annotation);
   if (!saved.success) return undefined;
-  const { objectId: _objectId, ...json } = saved.data;
-  const parsed = conversationAnnotationInputSchema.safeParse(json);
+  const { key, kind, objectType } = saved.data;
+  const parsed = conversationAnnotationInputSchema.safeParse(
+    kind === "object"
+      ? { key, kind, objectType, title: row.title, url: row.url }
+      : { key, kind, objectType, url: row.url },
+  );
   if (!parsed.success) return undefined;
   // The inverse of `annotationSubject`. A `link` subject names no provider
   // id, so the annotation gets none.
@@ -120,9 +129,13 @@ export async function upsertPluginAnnotation(
 ): Promise<void> {
   const parsed = conversationAnnotationInputSchema.parse(args.annotation);
   const subject = args.subject ?? annotationSubject(args.plugin, parsed);
-  // The columns hold the subject, so the JSON does not repeat it.
-  const annotation =
-    parsed.kind === "object" ? { ...parsed, subject: undefined } : parsed;
+  // The columns hold the subject, the title, and the link.
+  const annotation: StoredAnnotationJson = {
+    key: parsed.key,
+    kind: parsed.kind,
+    ...(parsed.objectType ? { objectType: parsed.objectType } : undefined),
+  };
+  const title = parsed.kind === "object" ? parsed.title : null;
   const now = new Date();
   const table = juniorConversationAnnotations;
   await db
@@ -133,18 +146,22 @@ export async function upsertPluginAnnotation(
       annotation,
       conversationId: args.conversationId,
       createdAt: now,
-      key: annotation.key,
-      kind: annotation.kind,
+      key: parsed.key,
+      kind: parsed.kind,
       plugin: args.plugin,
       subjectId: subject?.id,
       subjectKind: subject?.kind,
+      title,
       updatedAt: now,
+      url: parsed.url,
     })
     .onConflictDoUpdate({
       target: [table.conversationId, table.plugin, table.kind, table.key],
       set: {
         annotation,
+        title,
         updatedAt: now,
+        url: parsed.url,
         ...(subject
           ? { subjectId: subject.id, subjectKind: subject.kind }
           : undefined),

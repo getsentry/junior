@@ -76,20 +76,10 @@ export function deploymentResult(data: unknown, action?: "created") {
     action,
     kind: "object",
     objectType: "deployment",
-    displayType: "Deployment",
     key: value.id,
     subject: { id: value.id, kind: VERCEL_SUBJECT_KINDS.deployment },
-    label: value.id,
     title: value.url.slice(0, 512),
     url: `https://${value.url}`,
-    status: value.readyState,
-    facts: {
-      type: "deployment",
-      project: value.projectId?.slice(0, 64),
-      environment: value.target?.slice(0, 64) ?? undefined,
-      revision: value.gitSource?.sha?.slice(0, 64),
-      branch: value.gitSource?.ref?.slice(0, 64),
-    },
   };
   return {
     target: "deployment" as const,

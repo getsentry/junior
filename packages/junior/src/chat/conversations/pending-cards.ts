@@ -137,8 +137,8 @@ async function readConversationOwner(
 /**
  * Select undelivered cards and read each object once, with the access of
  * the person who started the Conversation. The delivered Message keeps
- * that copy. A card whose object cannot be read that way shows its saved
- * facts.
+ * that copy. A card whose object cannot be read that way shows only the
+ * stored title, the label, and the link.
  */
 export async function loadPendingMessageCards(
   conversationId: string,
@@ -164,7 +164,7 @@ export async function loadPendingMessageCards(
       ? await readLiveAnnotations(
           await readConversationOwner(conversationId),
           annotations,
-          "saved",
+          "title",
         )
       : [],
   );
