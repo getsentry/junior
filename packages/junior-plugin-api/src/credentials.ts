@@ -199,6 +199,11 @@ export interface PluginGraphqlField {
   arguments: string[];
   /** Schema field name. An alias does not replace it. */
   name: string;
+  /**
+   * Names of the arguments whose value is `true`: a literal, or a variable
+   * whose value or default is `true`. Unset when there are none.
+   */
+  trueArguments?: string[];
 }
 
 /** The GraphQL operation that one request runs. */

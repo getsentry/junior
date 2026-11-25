@@ -221,6 +221,53 @@ describe("readGraphqlRequest", () => {
     expect(result).not.toHaveProperty("operation.connectionRequests");
   });
 
+  it.each([
+    [
+      "a literal",
+      "query { rateLimit(dryRun: true) { cost } }",
+      undefined,
+      true,
+    ],
+    [
+      "a variable",
+      "query($dry: Boolean!) { rateLimit(dryRun: $dry) { cost } }",
+      { dry: true },
+      true,
+    ],
+    [
+      "a variable default",
+      "query($dry: Boolean = true) { rateLimit(dryRun: $dry) { cost } }",
+      undefined,
+      true,
+    ],
+    [
+      "a false literal",
+      "query { rateLimit(dryRun: false) { cost } }",
+      undefined,
+      false,
+    ],
+    [
+      "a variable set to false over a true default",
+      "query($dry: Boolean = true) { rateLimit(dryRun: $dry) { cost } }",
+      { dry: false },
+      false,
+    ],
+  ])(
+    "reads a true argument from %s",
+    async (_name, query, variables, isTrue) => {
+      const result = await read({
+        query,
+        ...(variables ? { variables } : undefined),
+      });
+      if (result.kind !== "operation") throw new Error(result.kind);
+      expect(result.operation.fields[0]).toEqual({
+        arguments: ["dryRun"],
+        name: "rateLimit",
+        ...(isTrue ? { trueArguments: ["dryRun"] } : undefined),
+      });
+    },
+  );
+
   it("reads subscriptions", async () => {
     expect(
       await read({ query: "subscription { events { id } }" }),

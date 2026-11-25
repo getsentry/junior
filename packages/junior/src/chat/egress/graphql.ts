@@ -133,10 +133,17 @@ async function readOperation(
   if (!operation) {
     return "operation";
   }
+  const values = variableValues(operation, variables);
   const fields = new Map<string, PluginGraphqlField>();
   const rootFields: string[] = [];
   if (
-    !collectFields(operation.selectionSet, fragments, new Set(), fields) ||
+    !collectFields(
+      operation.selectionSet,
+      fragments,
+      values,
+      new Set(),
+      fields,
+    ) ||
     !collectRootFields(operation.selectionSet, fragments, new Set(), rootFields)
   ) {
     return "document";
@@ -144,7 +151,7 @@ async function readOperation(
   const connectionRequests = countConnectionRequests(
     operation,
     fragments,
-    variables,
+    values,
   );
   return {
     ...(connectionRequests !== undefined ? { connectionRequests } : undefined),
@@ -159,20 +166,35 @@ async function readOperation(
 function collectFields(
   selectionSet: SelectionSetNode,
   fragments: Fragments,
+  values: VariableValues,
   seen: Set<string>,
   fields: Map<string, PluginGraphqlField>,
 ): boolean {
   for (const selection of selectionSet.selections) {
     if (selection.kind === "Field") {
       const name = selection.name.value;
-      const args = (selection.arguments ?? []).map((arg) => arg.name.value);
-      const key = [name, ...args].join("\0");
+      const args = selection.arguments ?? [];
+      const argNames = args.map((arg) => arg.name.value);
+      const trueArguments = args
+        .filter((arg) =>
+          arg.value.kind === "Variable"
+            ? values.get(arg.value.name.value) === true
+            : arg.value.kind === "BooleanValue" && arg.value.value,
+        )
+        .map((arg) => arg.name.value);
+      // A field that passes `true` differs from one that passes the same
+      // arguments with other values.
+      const key = [name, ...argNames, "", ...trueArguments].join("\0");
       if (!fields.has(key)) {
-        fields.set(key, { arguments: args, name });
+        fields.set(key, {
+          arguments: argNames,
+          name,
+          ...(trueArguments.length > 0 ? { trueArguments } : undefined),
+        });
       }
       if (
         selection.selectionSet &&
-        !collectFields(selection.selectionSet, fragments, seen, fields)
+        !collectFields(selection.selectionSet, fragments, values, seen, fields)
       ) {
         return false;
       }
@@ -182,7 +204,7 @@ function collectFields(
     if (inner === false) {
       return false;
     }
-    if (inner && !collectFields(inner, fragments, seen, fields)) {
+    if (inner && !collectFields(inner, fragments, values, seen, fields)) {
       return false;
     }
   }
@@ -246,9 +268,8 @@ function fragmentSelectionSet(
 function countConnectionRequests(
   operation: OperationDefinitionNode,
   fragments: Fragments,
-  variables: unknown,
+  values: VariableValues,
 ): number | undefined {
-  const values = integerVariables(operation, variables);
   const counted = new Map<string, number | undefined>();
   const count = (selectionSet: SelectionSetNode): number | undefined => {
     let total = 0;
@@ -288,7 +309,9 @@ function countConnectionRequests(
           : arg.value.kind === "Variable"
             ? values.get(arg.value.name.value)
             : undefined;
-      if (value === undefined) return undefined;
+      if (typeof value !== "number" || !Number.isInteger(value)) {
+        return undefined;
+      }
       pageSize = Math.max(pageSize, value);
     }
     // One request for this connection, then the requests below it for each
@@ -298,28 +321,33 @@ function countConnectionRequests(
   return count(operation.selectionSet);
 }
 
-/** Integer variable values of a request, with the operation's defaults. */
-function integerVariables(
+type VariableValues = Map<string, unknown>;
+
+/**
+ * Variable values of a request. A variable that the request does not set
+ * takes the operation's integer or boolean default.
+ */
+function variableValues(
   operation: OperationDefinitionNode,
   variables: unknown,
-): Map<string, number> {
+): VariableValues {
   const given = new Map<string, unknown>(
     variables && typeof variables === "object" && !Array.isArray(variables)
       ? Object.entries(variables)
       : [],
   );
-  const values = new Map<string, number>();
+  const values: VariableValues = new Map();
   for (const definition of operation.variableDefinitions ?? []) {
     const name = definition.variable.name.value;
-    const value = given.get(name);
-    if (typeof value === "number" && Number.isInteger(value)) {
-      values.set(name, value);
-    } else if (
-      value === undefined &&
-      definition.defaultValue?.kind === "IntValue"
-    ) {
-      values.set(name, Number.parseInt(definition.defaultValue.value, 10));
-    }
+    const fallback = definition.defaultValue;
+    const value = given.has(name)
+      ? given.get(name)
+      : fallback?.kind === "IntValue"
+        ? Number.parseInt(fallback.value, 10)
+        : fallback?.kind === "BooleanValue"
+          ? fallback.value
+          : undefined;
+    if (value !== undefined) values.set(name, value);
   }
   return values;
 }

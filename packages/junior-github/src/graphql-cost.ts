@@ -32,7 +32,7 @@ function githubGraphqlCost(connectionRequests: number): number {
  *
  * Host tool requests name an egress operation, and their documents are
  * small, so the cap skips them. A request that carries its own credential
- * spends its own budget, so the cap skips it too. A `rateLimit(dryRun:)`
+ * spends its own budget, so the cap skips it too. A `rateLimit(dryRun: true)`
  * query only predicts a cost, so it is allowed. A query whose cost the host
  * could not count is allowed and logged.
  */
@@ -49,7 +49,8 @@ export function assertGitHubGraphqlCostAllowed(ctx: EgressHookContext): void {
     query.rootFields.includes("rateLimit") &&
     query.fields.some(
       (field) =>
-        field.name === "rateLimit" && field.arguments.includes("dryRun"),
+        field.name === "rateLimit" &&
+        field.trueArguments?.includes("dryRun") === true,
     );
   if (isDryRun) {
     return;

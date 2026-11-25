@@ -39,6 +39,10 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
 - Junior never deletes a Sentry organization or project, whatever the
   credential or the Actor's role. A person does that in Sentry.
 - Workspace setup scripts run with no provider credentials.
+- A Sandbox GitHub GraphQL query that GitHub would charge more than a fixed
+  number of points for is denied before it gets a credential. The denial
+  says how to make the query smaller. Junior's own GitHub calls share the
+  same App budget, so one Sandbox query must not spend a large part of it.
 
 ## Gaps
 

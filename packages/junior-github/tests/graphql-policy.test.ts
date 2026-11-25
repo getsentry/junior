@@ -340,10 +340,25 @@ describe("GitHub GraphQL policy", () => {
       grantForGraphql({
         graphql: costedQuery(11_011, [
           { arguments: ["first"], name: "search" },
-          { arguments: ["dryRun"], name: "rateLimit" },
+          {
+            arguments: ["dryRun"],
+            name: "rateLimit",
+            trueArguments: ["dryRun"],
+          },
         ]),
       }),
     ).resolves.toMatchObject({ access: "read" });
+  });
+
+  it("caps an expensive query whose rateLimit dryRun is not true", async () => {
+    await expect(
+      grantForGraphql({
+        graphql: costedQuery(11_011, [
+          { arguments: ["first"], name: "search" },
+          { arguments: ["dryRun"], name: "rateLimit" },
+        ]),
+      }),
+    ).rejects.toThrow("GitHub GraphQL query denied");
   });
 
   it("allows and logs a query whose cost was not counted", async () => {
