@@ -8,7 +8,7 @@ export interface Inputs {
   auto_merge: boolean;
   review_pending: boolean;
   merge_state: "clean" | "conflict" | "blocked" | "unknown";
-  changes_requested: boolean;
+  review_outcome: "approved" | "changes_requested" | "none";
   viewer: {
     requester: boolean;
     requested: boolean;
@@ -57,7 +57,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "clean" &&
-    !inputs.changes_requested &&
+    inputs.review_outcome !== "changes_requested" &&
     inputs.viewer.requester
   ) {
     return { kind: "ask", rule: "pr-merge", label: "Ready to merge" };
@@ -68,7 +68,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.draft &&
     !inputs.auto_merge &&
     inputs.merge_state === "clean" &&
-    !inputs.changes_requested &&
+    inputs.review_outcome !== "changes_requested" &&
     !inputs.viewer.requester &&
     inputs.viewer.requested
   ) {

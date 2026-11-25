@@ -262,6 +262,16 @@ function mergeStateInput(
   return mergeableState === "dirty" ? "conflict" : "blocked";
 }
 
+/** GitHub's review outcome as the table's input. */
+const REVIEW_OUTCOMES: Record<
+  NonNullable<GitHubPullRequestMergeState["reviewOutcome"]> | "none",
+  Inputs["review_outcome"]
+> = {
+  approved: "approved",
+  changesRequested: "changes_requested",
+  none: "none",
+};
+
 /** The action that each ask of the table shows. */
 const ASK_ACTIONS: Record<
   Extract<Outcome, { kind: "ask" }>["label"],
@@ -290,9 +300,9 @@ function nextAction(
   // `requestedReviewers` is never set without `reviewPending`.
   const outcome = decide({
     auto_merge: state.autoMerge,
-    changes_requested: state.reviewOutcome === "changesRequested",
     draft: state.draft,
     merge_state: mergeStateInput(state.mergeableState),
+    review_outcome: REVIEW_OUTCOMES[state.reviewOutcome ?? "none"],
     review_pending: state.reviewPending,
     state: state.state,
     viewer: {

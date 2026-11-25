@@ -9,7 +9,7 @@ inputs:
   auto_merge: bool
   review_pending: bool
   merge_state: [clean, conflict, blocked, unknown]
-  changes_requested: bool
+  review_outcome: [approved, changes_requested, none]
   viewer.requester: bool
   viewer.requested: bool
   viewer.asked_again: bool
@@ -38,7 +38,7 @@ rules:
           auto_merge: false
           review_pending: false
           merge_state: clean
-          changes_requested: false
+          review_outcome: not(changes_requested)
         output: { ask: { label: Ready to merge } }
       - when:
           viewer.requester: false
@@ -47,7 +47,7 @@ rules:
           draft: false
           auto_merge: false
           merge_state: clean
-          changes_requested: false
+          review_outcome: not(changes_requested)
         output: { ask: { label: Ready to merge } }
       - when:
           state: open
