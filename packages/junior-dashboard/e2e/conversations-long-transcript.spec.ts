@@ -311,6 +311,16 @@ test("keeps the current search match while earlier pages load", async ({
   ).toBeInViewport();
   releaseNext();
   await mock.pageReadsLanded();
+
+  // The jump left the latest, so clearing the search does not pin to it.
+  await search.fill("");
+  // Rows that do not match come back.
+  await expect(
+    transcript.getByText(/^Transcript message \d+[0-8] with/).first(),
+  ).toBeAttached();
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).not.toBeInViewport();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({
