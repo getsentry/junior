@@ -18,6 +18,7 @@ import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { withConversationMutationLock } from "./store";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 // No runtime code reads or writes Agent invocations, but the table stays in
 // the database for one release, with its rows and their foreign keys to
@@ -109,7 +110,7 @@ export async function selectExpiredRoots(
   const privateCutoff = new Date(
     args.nowMs - args.privateWindowMs,
   ).toISOString();
-  const cutoff = sql`case when ${juniorConversations.visibility} = 'public' then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
+  const cutoff = sql`case when ${isPublicConversation(juniorConversations)} then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
   const effectiveLastActivityAt = sql<Date>`(
     with recursive conversation_tree(conversation_id, last_activity_at) as (
       select ${juniorConversations.conversationId}, ${juniorConversations.lastActivityAt}
@@ -164,7 +165,7 @@ export async function selectExpiredRoots(
         where inbox.conversation_id = tree.conversation_id
       )
       or (
-        ${juniorConversations.visibility} is distinct from 'public'
+        ${isPublicConversation(juniorConversations)} is not true
         and (
           exists (
             select 1 from junior_conversation_briefs briefs
