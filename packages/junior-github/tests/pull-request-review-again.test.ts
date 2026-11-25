@@ -619,7 +619,8 @@ describe("review again after a change request", () => {
     const requests: string[] = [];
     const github: GitHubState = {
       draft: false,
-      mergeableStates: ["blocked"],
+      // A clean merge state still waits on the open ask.
+      mergeableStates: ["clean"],
       merged: false,
       requestedReviewers: ["Requester"],
       reviewRequests: [{ at: "2026-07-02T10:00:00Z", login: "Requester" }],
@@ -670,7 +671,7 @@ describe("review again after a change request", () => {
       expect(asks()).toEqual([]);
       expect(calls).toHaveLength(1);
 
-      // An approval answers the ask, so the item closes.
+      // An approval answers the ask, so the PR is ready to merge.
       github.reviews.push({
         state: "APPROVED",
         submitted_at: "2026-07-02T14:00:00Z",
@@ -683,7 +684,9 @@ describe("review again after a change request", () => {
         }),
       );
       expect(asks()).toEqual([]);
-      expect(calls.slice(1)).toMatchObject([{ kind: "close" }]);
+      expect(calls.slice(1)).toMatchObject([
+        { kind: "upsert", notice: { title: "Ready to merge · #946" } },
+      ]);
     } finally {
       await fixture.close();
     }

@@ -327,8 +327,13 @@ function nextAction(
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to. A pending
-  // review request comes first, even where GitHub requires no review.
-  const canMerge = !state.draft && !state.autoMerge && !state.reviewPending;
+  // review request comes first, even where GitHub requires no review. So
+  // does a review ask that a comment-only review keeps open.
+  const canMerge =
+    !state.draft &&
+    !state.autoMerge &&
+    !state.reviewPending &&
+    !requester.askOpen;
   if (
     canMerge &&
     state.mergeableState === "clean" &&
