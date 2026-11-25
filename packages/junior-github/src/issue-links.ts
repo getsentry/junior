@@ -128,10 +128,10 @@ function withTitleParts(
 function pullRequestCard(
   link: GitHubObjectLink,
   pull: GitHubPullRequestFields,
-  categories: readonly CodeChangeCategory[],
+  categories: readonly CodeChangeCategory[] | undefined,
 ): ObjectAnnotation {
   const card = githubObjectFacts("code_change", pull);
-  const parsed = parseCodeChangeTitle(pull.title, categories);
+  const parsed = categories && parseCodeChangeTitle(pull.title, categories);
   // Card facts cap a title part at 160 characters, and a longer one would
   // drop the whole card, so such a title shows without its parts.
   const titleParts =
@@ -164,13 +164,15 @@ function releaseConfigKey(link: Pick<GitHubObjectLink, "name" | "owner">) {
 
 /**
  * Read the text of a repository's `.github/release.yml` with the App, or
- * an empty text when it has none. A failed read is not cached.
+ * an empty text when it has none. A failed read is not cached. A card whose
+ * page read ran out of time reads only the cache, and a miss rejects with
+ * `OUT_OF_TIME`.
  */
 async function readReleaseConfig(
   ctx: ObjectLinkContext,
   link: Pick<GitHubObjectLink, "name" | "owner">,
 ): Promise<string> {
-  return await ctx.cache.getOrLoad(releaseConfigKey(link), async () => {
+  const load = async () => {
     const response = await githubApi(ctx.egress, {
       apiVersion: "2022-11-28",
       operation: "github.repository.release-config.get",
@@ -189,18 +191,28 @@ async function readReleaseConfig(
       value: Buffer.from(file.data.content, "base64").toString("utf8"),
       ttlMs: RELEASE_CONFIG_TTL_MS,
     };
-  });
+  };
+  return await ctx.cache.getOrLoad<string>(
+    releaseConfigKey(link),
+    ctx.prefetchOutcome === "out_of_time"
+      ? () => Promise.reject(OUT_OF_TIME)
+      : load,
+  );
 }
 
-/** The change types of a repository. The defaults when the read fails. */
+/**
+ * The change types of a repository. The defaults when the read fails, and
+ * none when the page read ran out of time before the cache held them.
+ */
 async function readCategories(
   ctx: ObjectLinkContext,
   link: Pick<GitHubObjectLink, "name" | "owner">,
-): Promise<readonly CodeChangeCategory[]> {
+): Promise<readonly CodeChangeCategory[] | undefined> {
   try {
     const text = await readReleaseConfig(ctx, link);
     return text ? parseReleaseCategories(text) : DEFAULT_CODE_CHANGE_CATEGORIES;
   } catch (error) {
+    if (error === OUT_OF_TIME) return undefined;
     // The title parts are optional, so the card still shows.
     ctx.log.warn("GitHub release config read failed", {
       error: error instanceof Error ? error.message : String(error),
