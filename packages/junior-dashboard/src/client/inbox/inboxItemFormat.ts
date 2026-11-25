@@ -182,25 +182,43 @@ export function conversationAnswerLine(
 }
 
 /**
+ * Whether the viewer cannot see the Conversation that owns the item. The
+ * API then names no root for it, as for a person whose role on the subject
+ * puts them on the item.
+ */
+export function itemConversationHidden(
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
+): boolean {
+  return item.owner.kind === "conversation" && !item.rootConversationId;
+}
+
+/**
  * The Conversation that owns an item, or undefined when something else owns
- * it, such as an Automation.
+ * it, such as an Automation, or when the viewer cannot see it.
  */
 export function itemConversationId(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
 ): string | undefined {
-  return item.owner.kind === "conversation" ? item.owner.id : undefined;
+  return item.owner.kind === "conversation" && !itemConversationHidden(item)
+    ? item.owner.id
+    : undefined;
 }
 
 /**
  * The route of an item's owner: its Conversation, with `options`, or its
- * Automation.
+ * Automation. When the viewer cannot see the Conversation, the item's own
+ * row, so nothing links to the Conversation.
  */
 export function itemOwnerPath(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<
+    InboxItemPayload,
+    "id" | "owner" | "rootConversationId" | "status"
+  >,
   options?: Parameters<typeof conversationPath>[1],
 ): string {
-  return item.owner.kind === "automation"
-    ? automationPath(item.owner.id)
+  if (item.owner.kind === "automation") return automationPath(item.owner.id);
+  return itemConversationHidden(item)
+    ? inboxRowPath(item)
     : conversationPath(item.owner.id, options);
 }
 

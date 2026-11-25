@@ -1,7 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +16,9 @@ import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import type { InboxItemPayload } from "@/api/schema";
 import {
+  juniorDestinations,
   juniorIdentities,
   juniorInboxItemAssignees,
   juniorInboxItems,
@@ -130,7 +132,9 @@ async function issueItem() {
         eq(juniorInboxItems.subjectKind, "github:issue"),
         eq(juniorInboxItems.subjectId, String(ISSUE_ID)),
       ),
-    );
+    )
+    .orderBy(desc(juniorInboxItems.createdAt))
+    .limit(1);
   if (!item) return undefined;
   const people = await getDb()
     .select({ email: juniorUsers.primaryEmail })
@@ -143,8 +147,8 @@ async function issueItem() {
   };
 }
 
-/** Dismiss the item as the signed-in person with this email. */
-async function dismissAs(email: string, itemId: string): Promise<number> {
+/** The Junior API as the signed-in person with this email. */
+async function apiAs(email: string) {
   const viewer = await signedInViewer(email);
   const api = new Hono<JuniorApiEnv>();
   api.use("*", async (context, next) => {
@@ -152,15 +156,33 @@ async function dismissAs(email: string, itemId: string): Promise<number> {
     await next();
   });
   api.route("/", createJuniorApi());
-  const response = await api.request(
-    `http://localhost/api/inbox-items/${itemId}/actions`,
-    {
-      body: JSON.stringify({ action: "dismiss" }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    },
-  );
+  return api;
+}
+
+/** Dismiss the item as the signed-in person with this email. */
+async function dismissAs(email: string, itemId: string): Promise<number> {
+  const response = await (
+    await apiAs(email)
+  ).request(`http://localhost/api/inbox-items/${itemId}/actions`, {
+    body: JSON.stringify({ action: "dismiss" }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
   return response.status;
+}
+
+/** The open items that the person's Inbox lists. */
+async function inboxOf(email: string): Promise<InboxItemPayload[]> {
+  const response = await (
+    await apiAs(email)
+  ).request("http://localhost/api/inbox-items?for=viewer");
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { items: InboxItemPayload[] }).items;
+}
+
+/** Give the issue's Conversation a private Destination. */
+async function makeConversationPrivate(): Promise<void> {
+  await getDb().update(juniorDestinations).set({ visibility: "private" });
 }
 
 describe("the Inbox item of an issue that Junior created", () => {
@@ -302,6 +324,122 @@ describe("the Inbox item of an issue that Junior created", () => {
 
       await sendGitHubWebhook("issues", issueEvent(body, "closed", ["pat"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
+
+      // Assigned again, Pat and Sam both dismiss at once. The second one
+      // to leave is the last, so the item closes and nobody is left on it.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
+      );
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat", "sam"], {
+          assignee: { login: "sam" },
+        }),
+      );
+      const again = await issueItem();
+      expect(again).toMatchObject({
+        assignees: ["pat@example.com", "sam@example.com"],
+        status: "open",
+      });
+      refuse.clear();
+      expect(
+        await Promise.all([
+          dismissAs("pat@example.com", again!.id),
+          dismissAs("sam@example.com", again!.id),
+        ]),
+      ).toEqual([200, 200]);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
+    } finally {
+      setDashboardConversationLinkOptions(previousDashboard);
+      await fixture.close();
+    }
+  });
+  it("puts an assignee from outside a private Conversation on the item, without the Conversation", async () => {
+    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await seedLinkedPerson({
+      email: "pat@example.com",
+      linked: { handle: "pat", provider: "github", subjectId: "2002" },
+      slackUserId: person.userId,
+    });
+    // Out is not in the issue's Conversation, but is assigned on GitHub.
+    await seedLinkedPerson({
+      email: "out@example.com",
+      linked: { handle: "out", provider: "github", subjectId: "2004" },
+      slackUserId: "U_OUT",
+    });
+    const { fixture } = await prepareSlackParentConversation();
+    const [creator] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(eq(juniorIdentities.providerSubjectId, person.userId));
+    await recordConversationParticipant(getSqlExecutor(), {
+      actorIdentityId: creator!.id,
+      atMs: Date.now(),
+      conversationId: slackParentConversationId,
+    });
+    await makeConversationPrivate();
+    const previousDashboard = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      await migratePluginSchemas(fixture.sql, [
+        {
+          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
+          pluginName: "github",
+        },
+      ]);
+      const unassigned: unknown[] = [];
+      mswServer.use(
+        http.delete(
+          "https://api.github.com/repos/getsentry/junior/issues/4254/assignees",
+          async ({ request }) => {
+            unassigned.push(await request.json());
+            return HttpResponse.json({ assignees: [] });
+          },
+        ),
+      );
+      const body = await createIssue();
+
+      // Nobody on the issue has a linked account, so it gets no item. It is
+      // never up for grabs.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["nolink"], {
+          assignee: { login: "nolink" },
+        }),
+      );
+      expect(await issueItem()).toBeUndefined();
+
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["nolink", "out"], {
+          assignee: { login: "out" },
+        }),
+      );
+      const item = await issueItem();
+      expect(item).toMatchObject({
+        assignees: ["out@example.com"],
+        status: "open",
+      });
+
+      // Out sees the item and the issue, but not the private Conversation.
+      const [card] = (await inboxOf("out@example.com")).filter(
+        (listed) => listed.id === item!.id,
+      );
+      expect(card).toMatchObject({
+        canAct: true,
+        conversationIds: [],
+        body: expect.stringContaining(ISSUE_URL),
+        subject: { kind: "github:issue" },
+      });
+      // No root tells the dashboard that the viewer cannot see it.
+      expect(card).not.toHaveProperty("rootConversationId");
+      expect(card).not.toHaveProperty("addedByLabel");
+
+      expect(await dismissAs("out@example.com", item!.id)).toBe(200);
+      expect(unassigned).toEqual([{ assignees: ["out"] }]);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

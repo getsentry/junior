@@ -165,7 +165,7 @@ export interface PluginHooks {
    */
   inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
   /**
-   * Remove the person who dismissed an item of a `dismissLeaves` subject
+   * Remove the person who dismissed an item of an `assigneeRoles` subject
    * kind from the object on the provider. Throw when the provider refuses:
    * the dismiss then fails, and the person stays on the item. Junior calls
    * it again when the person retries, so it must be safe to repeat.
