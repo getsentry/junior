@@ -216,10 +216,16 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Inbox items that wait on the viewer, as the dashboard badge counts.
+  /// Open Inbox items that wait on the viewer: the dashboard badge's own
+  /// count, with no 50-item limit. The demo has no dashboard API, so it
+  /// counts its own list.
   func refreshInboxCount() async {
-    if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
-      inboxCount = list.items.filter(\.needsViewer).count
+    if server.isDemo {
+      if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
+        inboxCount = list.items.filter(\.needsViewer).count
+      }
+    } else if let count = try? await get("/api/inbox-items/count", as: InboxItemCount.self) {
+      inboxCount = count.needsViewer
     }
   }
 
