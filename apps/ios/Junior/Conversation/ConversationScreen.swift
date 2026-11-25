@@ -166,7 +166,9 @@ struct ConversationScreen: View {
               Text("No messages yet.").type(.sm).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
             }
             ForEach(model.messages) { message in
-              MessageRow(message: message, blocks: model.messageBlocks[message.seq])
+              MessageRow(
+                message: message, blocks: model.messageBlocks[message.seq],
+                photo: message.author.flatMap { model.photos[$0] })
                 .id(message.seq)
             }
             if model.conversation?.turnActive == true {
@@ -271,6 +273,7 @@ private struct EarlierButton: View {
 /// More than five collapse behind one row.
 private struct QueuedStack: View {
   let messages: [PendingMessage]
+  let photos: [String: String]
   let onCancel: () -> Void
   @State private var expanded = false
 
@@ -304,7 +307,7 @@ private struct QueuedStack: View {
         if messages.count <= 5 || expanded {
           ForEach(messages) { message in
             HStack(spacing: 8) {
-              Avatar(kind: .person(message.author))
+              Avatar(kind: .person(message.author, photo: message.author.flatMap { photos[$0] }))
               Text(message.text)
                 .type(.sm)
                 .foregroundStyle(Tokens.textSubtle)
@@ -347,7 +350,7 @@ private struct ConversationComposer: View {
       if let authorization = model.state?.authorization {
         AuthorizationPrompt(authorization: authorization)
       }
-      QueuedStack(messages: model.queued) { Task { await model.cancelQueued(app) } }
+      QueuedStack(messages: model.queued, photos: model.photos) { Task { await model.cancelQueued(app) } }
     } content: {
       ComposerSurface(focused: focused) {
         HStack(alignment: .bottom, spacing: 0) {

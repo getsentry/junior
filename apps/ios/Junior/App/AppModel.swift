@@ -71,6 +71,8 @@ final class AppModel {
 
   private let store = KeychainStore<OAuthCredentials>(account: "mcp-credentials")
   private let sessionStore = KeychainStore<SessionCredentials>(account: "dashboard-session")
+  /// Profile photos by path. A path names one photo version.
+  @ObservationIgnored private var photos: [String: UIImage] = [:]
   private var ticking: Task<Void, Never>?
   private var lastInput = Date()
 
@@ -122,6 +124,15 @@ final class AppModel {
     }
   }
 
+  /// The profile photo at a dashboard API path, or nil when it does not
+  /// load, such as in the demo.
+  func photo(_ path: String) async -> UIImage? {
+    if let photo = photos[path] { return photo }
+    guard let data = try? await dashboard.data(path), let photo = UIImage(data: data) else { return nil }
+    photos[path] = photo
+    return photo
+  }
+
   /// GET one dashboard API path. A call that finds the session gone shows
   /// Sign in.
   func get<Result: Decodable & Sendable>(
@@ -163,6 +174,7 @@ final class AppModel {
     self.server = server
     client = Self.client(for: server, store: store)
     dashboard = Self.dashboard(for: server, store: sessionStore)
+    photos = [:]
     await client.signIn(credentials)
     await dashboard.signIn(session)
     signedIn = true

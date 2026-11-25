@@ -189,11 +189,12 @@ struct Dot: View {
   }
 }
 
-/// Person avatar: violet-300 circle with initials; Junior shows its avatar.
+/// Person avatar: the profile photo, or a violet-300 circle with initials
+/// until it loads or when it fails; Junior shows its avatar.
 struct Avatar: View {
   enum Kind {
-    /// A person, by display name.
-    case person(String?)
+    /// A person, by display name and the dashboard API path of their photo.
+    case person(String?, photo: String?)
     case agent
     case parentAgent
     /// An Event or Automation that started a Turn.
@@ -220,7 +221,7 @@ struct Avatar: View {
       Circle().fill(Tokens.surfaceHover).frame(width: size, height: size)
         .overlay(Icon("bot", size: 15).foregroundStyle(Color.palette(.cyan, 200)))
         .accessibilityHidden(true)
-    case .person(let name):
+    case .person(let name, let photo):
       Circle().fill(Color.palette(.violet, 300)).frame(width: size, height: size)
         .overlay(
           Text(Self.initials(name))
@@ -229,7 +230,23 @@ struct Avatar: View {
             .minimumScaleFactor(0.5)
             .padding(2)
         )
+        .overlay { if let photo { Photo(path: photo) } }
         .accessibilityHidden(true)
+    }
+  }
+
+  /// A profile photo, which loads with the dashboard session.
+  private struct Photo: View {
+    @Environment(AppModel.self) private var app
+    let path: String
+    @State private var image: UIImage?
+
+    // `Color.clear`, not an empty view, so `task` runs before the photo loads.
+    var body: some View {
+      Color.clear
+        .overlay { if let image { Image(uiImage: image).resizable().scaledToFill() } }
+        .clipShape(Circle())
+        .task(id: path) { image = await app.photo(path) }
     }
   }
 

@@ -9,6 +9,8 @@ struct MessageRow: View {
   let message: MCPMessage
   /// Parsed body, when the caller keeps a cache; parsed here otherwise.
   var blocks: [MarkdownBlock]? = nil
+  /// Dashboard API path of the author's profile photo.
+  var photo: String? = nil
   @State private var copied = false
 
   var body: some View {
@@ -53,7 +55,7 @@ struct MessageRow: View {
   }
 
   @ViewBuilder private var avatar: some View {
-    if message.isAssistant { Avatar(kind: .agent) } else { Avatar(kind: .person(message.author)) }
+    if message.isAssistant { Avatar(kind: .agent) } else { Avatar(kind: .person(message.author, photo: photo)) }
   }
 
   private var header: some View {

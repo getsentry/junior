@@ -10,6 +10,8 @@ final class ConversationModel {
   let conversationId: String
   var state: ConversationState?
   var messages: [MCPMessage] = []
+  /// Profile photo paths by author name, from the dashboard API.
+  var photos: [String: String] = [:]
   /// `nextCursor` for older messages, when there are any.
   var olderCursor: String?
   var loadingEarlier = false
@@ -57,6 +59,7 @@ final class ConversationModel {
       refreshFailed = false
       rebuild()
       await markRead(app)
+      await loadPhotos(app)
     } catch let error as JuniorAPIError {
       if state == nil { self.error = error } else { refreshFailed = true }
     } catch {}
@@ -110,6 +113,16 @@ final class ConversationModel {
   }
 
   /// The page opens at the newest message, so reading it marks it read.
+  /// The authors' photo paths. The demo has no dashboard API, so it shows
+  /// initials.
+  private func loadPhotos(_ app: AppModel) async {
+    guard !app.server.isDemo,
+      let path = "/api/conversations/\(conversationId)".addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+      let authors = try? await app.get(path, query: [URLQueryItem(name: "limit", value: "1")], as: ConversationAuthors.self)
+    else { return }
+    photos = authors.photos
+  }
+
   private func markRead(_ app: AppModel) async {
     guard let newest = messages.last?.seq, newest > reportedSeq else { return }
     struct Read: Decodable, Sendable { var lastReadSeq: Int }
