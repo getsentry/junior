@@ -29,6 +29,9 @@ const issueSchema = z
   .object({
     identifier: issueIdentifier.optional(),
     id: z.string().optional(),
+    // Linear's own id. Unlike the identifier, it stays when the issue moves
+    // to another team.
+    uuid: z.uuid().optional(),
     url: z.url(),
     title: z.string().optional(),
     description: z.string().nullish(),
@@ -96,7 +99,8 @@ export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
     kind: "object",
     objectType: "task",
     key: identifier,
-    subject: { id: identifier, kind: LINEAR_SUBJECT_KINDS.issue },
+    // A result without the uuid keeps the identifier, as older cards do.
+    subject: { id: issue.uuid ?? identifier, kind: LINEAR_SUBJECT_KINDS.issue },
     label: identifier,
     title: (issue.title || identifier).slice(0, 512),
     description: issue.description?.slice(0, 4000),

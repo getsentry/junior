@@ -127,6 +127,8 @@ export function linearPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
+        // Issue link cards read the issue as the viewer.
+        viewerTools: ["get_issue"],
       },
       name: "linear",
       ...(options.reviewContext

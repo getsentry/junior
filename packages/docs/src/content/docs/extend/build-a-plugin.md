@@ -766,6 +766,12 @@ defineJuniorPlugin({
   gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
   can open the object. Junior calls `canView` before each card read and
   again on each Attach.
+  For an MCP plugin, `ctx.viewerMcp` calls a provider tool with only the
+  viewer's own stored MCP login. List each tool that it may call in
+  `mcp.viewer-tools` (`viewerTools` in TypeScript). Without the list, it
+  can call no tool. Each tool must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools` when the plugin sets `allowed-tools`. The provider
+  must mark the tool read-only.
 - **Resolver.** Return the card, or `undefined` for a missing object. To
   share one provider read with `canView`, read through `ctx.cache` with a
   short TTL. Junior caches the card for one minute for each viewer and URL,

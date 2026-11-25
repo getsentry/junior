@@ -15,11 +15,13 @@ import { mswServer } from "../../msw/server";
 
 const MCP_URL = "https://mcp.linear.app/mcp";
 const ISSUE_URL = "https://linear.app/acme/issue/ENG-123/fix-login-redirect";
+const ISSUE_UUID = "8a87ba83-4e33-4c81-8751-a885a554e2fd";
 
 /** `get_issue` results, in the shape that Linear's hosted MCP returns. */
 const ISSUES: Record<string, Record<string, unknown>> = {
   "ENG-123": {
     id: "ENG-123",
+    uuid: ISSUE_UUID,
     title: "Fix login redirect",
     description: "Users land on a blank page after they sign in.",
     url: ISSUE_URL,
@@ -161,6 +163,8 @@ describe("Linear issue link cards", () => {
           objectType: "task",
           plugin: "linear",
           key: "ENG-123",
+          // Linear's uuid stays when the issue moves to another team.
+          subject: { id: ISSUE_UUID, kind: "issue" },
           label: "ENG-123",
           title: "Fix login redirect",
           description: "Users land on a blank page after they sign in.",
