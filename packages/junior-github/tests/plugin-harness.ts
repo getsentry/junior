@@ -5,6 +5,7 @@ import type {
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
+  ObjectSubject,
   PluginReviewNotice,
   PluginState,
   PluginTaskStartInput,
@@ -88,6 +89,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
     }>,
     /** Batches of annotation and Inbox item changes, in order. */
     batches: [] as ConversationChangeBatch[],
+    /** Objects that a heartbeat said changed, so open pages read them again. */
+    changedObjects: [] as ObjectSubject[],
     closedNotices: [] as string[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
     /** Tasks that the plugin started and that have not run yet. */
@@ -268,7 +271,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
       },
       async nameObject() {},
       async objectsMoved() {},
-      async objectChanged() {},
+      async objectChanged(subject) {
+        recorded.changedObjects.push(subject);
+      },
       forConversation(conversationId) {
         return {
           async upsert(annotation) {

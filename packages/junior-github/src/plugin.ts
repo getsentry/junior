@@ -504,6 +504,7 @@ export function githubPlugin(
         });
         await reconcileGitHubPullRequests({
           botEmail: readEnv(botEmailEnv),
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,
           db,
@@ -515,6 +516,8 @@ export function githubPlugin(
           log: ctx.log,
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
+          objectChanged: async (subject) =>
+            await ctx.annotations.objectChanged(subject),
           state: ctx.state,
         });
         await startGitHubRepositoryNameRepair({

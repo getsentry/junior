@@ -13,6 +13,8 @@
  */
 import type {
   EventPublisher,
+  ObjectSubject,
+  PluginCache,
   PluginConversationChanges,
   PluginConversationInboxItems,
   PluginCodeChanges,
@@ -23,6 +25,12 @@ import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
 import { closeGitHubConflictItem } from "../merge-conflict-checks/policy.js";
+import { GITHUB_INBOX_SUBJECTS } from "../inbox-subjects.js";
+import {
+  GITHUB_PULL_REQUEST_CACHE,
+  githubObjectCacheKey,
+  type GitHubPullRequestFields,
+} from "../object-cache.js";
 import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
@@ -85,6 +93,7 @@ const lifecyclesResponseSchema = z.object({
 
 interface ReconcileArgs {
   botEmail?: string | undefined;
+  cache: PluginCache;
   codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
@@ -104,6 +113,8 @@ interface ReconcileArgs {
   log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
   inboxItems: PluginConversationInboxItems;
+  /** Marks the Conversations that annotate a changed object as changed. */
+  objectChanged(subject: ObjectSubject): Promise<void>;
   state: PluginState;
 }
 
@@ -236,12 +247,43 @@ async function reconcilePullRequest(
           status: "dismissed",
         }),
   });
+  await closeCachedPullRequest(args, nameWithOwner, pullRequest);
   await applyGitHubPullRequestOutcome({
     codeChanges: args.codeChanges,
     conversationChanges: args.conversationChanges,
     db: args.db,
     log: args.log,
     outcome,
+  });
+}
+
+/**
+ * No webhook refreshed the card's cache entry either. Mark a cached entry
+ * closed, as the webhook does, and have open pages read the card again.
+ */
+async function closeCachedPullRequest(
+  args: ReconcileArgs,
+  nameWithOwner: string,
+  pullRequest: z.output<typeof lifecycleSchema>,
+): Promise<void> {
+  await args.cache.update<GitHubPullRequestFields | null>(
+    githubObjectCacheKey("pulls", nameWithOwner, pullRequest.number),
+    (current) =>
+      current
+        ? {
+            ...GITHUB_PULL_REQUEST_CACHE,
+            value: {
+              ...current,
+              merged: pullRequest.merged,
+              state: "closed",
+              updated_at: pullRequest.updatedAt,
+            },
+          }
+        : undefined,
+  );
+  await args.objectChanged({
+    id: String(pullRequest.databaseId),
+    kind: GITHUB_INBOX_SUBJECTS.pullRequest,
   });
 }
 
