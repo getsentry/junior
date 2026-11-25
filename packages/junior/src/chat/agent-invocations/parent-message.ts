@@ -338,10 +338,15 @@ export async function commitParentMessageFork(args: {
 /**
  * Apply the agent config of a child agent to one of its Turns on the root
  * Turn code. Every Turn keeps the reasoning level. A parent message is the
- * child's instruction, also when its Turn resumes (`fromParent`).
+ * child's instruction, also when its Turn resumes (`fromParent`). A reply or
+ * message from the Conversation's own child agent is context with the Turn's
+ * Actor (`fromChildAgent`): it is data, not that person's instruction, and
+ * the person's earlier messages keep their authority.
  */
 export async function childAgentTurnOptions(args: {
+  actor: Actor;
   conversationId: string;
+  fromChildAgent: boolean;
   fromParent: boolean;
 }): Promise<{
   instruction: Pick<AgentInstruction, "provenance">;
@@ -351,7 +356,9 @@ export async function childAgentTurnOptions(args: {
   return {
     instruction: args.fromParent
       ? { provenance: agentInstructionProvenance }
-      : {},
+      : args.fromChildAgent
+        ? { provenance: { authority: "context", actor: args.actor } }
+        : {},
     run: options?.reasoningLevel ? { reasoning: options.reasoningLevel } : {},
   };
 }
