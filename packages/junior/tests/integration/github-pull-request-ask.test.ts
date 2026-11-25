@@ -465,6 +465,25 @@ describe("the ask of a Junior pull request", () => {
       // changes nothing on GitHub and says nothing more.
       expect(items[0]!.subject).not.toHaveProperty("dismissNote");
       expect(cardReads).toBe(1);
+
+      // A dismissed review drops the approval. Pat's item asks for a
+      // review again, but GitHub asks no review of Pat, so their dismiss
+      // still says nothing more.
+      github.approved = false;
+      await sendGitHubWebhook("pull_request_review", {
+        action: "dismissed",
+        pull_request: { number: 1592, user: { login: BOT } },
+        review: { state: "dismissed", user: { login: "pat" } },
+      });
+      const again = (await (
+        await api.request("http://localhost/api/inbox-items?for=viewer")
+      ).json()) as {
+        items: Array<{ id: string; subject: Record<string, unknown> }>;
+      };
+      expect(again.items[0]!.subject).toMatchObject({
+        label: "Review requested",
+      });
+      expect(again.items[0]!.subject).not.toHaveProperty("dismissNote");
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

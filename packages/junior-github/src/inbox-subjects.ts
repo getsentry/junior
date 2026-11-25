@@ -37,12 +37,15 @@ export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
     : "Review requested";
 }
 
+// The card lists at most this many requested reviewers.
+const CARD_REVIEWER_LIMIT = 5;
+
 /**
  * Say what a dismiss of a pull request's item also changes on GitHub for
- * the viewer: a requested reviewer leaves the reviewers. While the item
- * asks for a review, everyone on it holds a review request, also past the
- * five reviewers that the card lists. Once it asks for the merge, only a
- * reviewer on the card still holds one, and the requester holds none.
+ * the viewer: a requested reviewer leaves the reviewers. The requester is
+ * on the item too, with no review request. The card's list decides, and a
+ * full list may leave out a reviewer past its five, so a full list warns
+ * everyone on an item that asks for a review.
  */
 function pullRequestDismissNote(
   object: ObjectAnnotation | undefined,
@@ -52,8 +55,9 @@ function pullRequestDismissNote(
   if (!object || !handle) return undefined;
   const reviewers =
     object.facts?.type === "code_change" ? (object.facts.reviewers ?? []) : [];
-  return pullRequestAsk(object) === "Review requested" ||
-    reviewers.some((login) => login.toLowerCase() === handle)
+  return reviewers.some((login) => login.toLowerCase() === handle) ||
+    (reviewers.length >= CARD_REVIEWER_LIMIT &&
+      pullRequestAsk(object) === "Review requested")
     ? "Also removes you from the reviewers on GitHub."
     : undefined;
 }
