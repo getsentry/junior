@@ -45,6 +45,7 @@ import {
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
+import { moveGitHubRepositoryAnnotations } from "./repository-move.js";
 import {
   pullRequestActionTargets,
   syncGitHubPullRequestActions,
@@ -226,6 +227,13 @@ export function createGitHubWebhookRoute(args: {
         return new Response(scheduled ? "Accepted" : "Ignored", {
           status: 202,
         });
+      }
+      if (eventName === "repository") {
+        const moved = await moveGitHubRepositoryAnnotations(
+          args.annotations,
+          body,
+        );
+        return new Response(moved ? "Accepted" : "Ignored", { status: 202 });
       }
       await refreshGitHubObjectCache({
         body,

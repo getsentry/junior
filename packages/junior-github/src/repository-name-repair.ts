@@ -6,7 +6,8 @@
  * its old name. Reads that find a pull request by repository name miss it
  * until a lifecycle webhook records the new name. This task reads the
  * current name of each stored repository from GitHub by its id, once, and
- * records the names that changed.
+ * records the names that changed. The repository's Annotations get the new
+ * name too.
  */
 import pLimit from "p-limit";
 import type {
@@ -15,6 +16,7 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { githubRepositoryMove } from "./annotations.js";
 
 export const GITHUB_REPOSITORY_NAME_REPAIR_TASK = "repairRepositoryNames";
 
@@ -70,6 +72,9 @@ export function githubRepositoryNameRepairTask(
                 providerId,
                 updatedAt,
               });
+              await ctx.annotations.objectsMoved(
+                githubRepositoryMove(name, fullName),
+              );
             } catch (error) {
               ctx.log.error(
                 "GitHub repository name repair failed",

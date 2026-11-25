@@ -57,6 +57,9 @@ const label = z.union([z.string(), z.object({ name: z.string() })]);
 const objectFields = {
   body: z.string().nullable().optional(),
   html_url: z.string(),
+  // GitHub's id of the object, which names it when its repository is
+  // renamed. An entry that an older release cached has none.
+  id: z.number().int().positive().optional(),
   number: z.number().int().positive(),
   state: z.string(),
   title: z.string(),
