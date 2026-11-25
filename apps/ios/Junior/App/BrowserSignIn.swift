@@ -2,21 +2,26 @@ import AuthenticationServices
 import JuniorKit
 import UIKit
 
-/// Sign in to Junior's MCP server in the system browser sheet. The same
-/// consent gives the dashboard API session. Junior knows this app, and
-/// redirects to the app's `junior-ios` URL scheme; the sheet gives that
-/// redirect back only to this app.
+/// Sign in to Junior in the system browser sheet, then get the MCP tokens
+/// with the session. Junior knows this app, and redirects to the app's
+/// `junior-ios` URL scheme; the sheet gives that redirect back only to this
+/// app.
 @MainActor
 final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
   private static let callbackScheme = "junior-ios"
   private var session: ASWebAuthenticationSession?
 
   func run(_ oauth: OAuthClient, session: SessionSignInClient) async throws -> (OAuthCredentials, SessionCredentials) {
-    let signIn = try await oauth.begin(redirectURI: "\(Self.callbackScheme)://oauth/callback", withSession: true)
+    let signIn = session.begin(clientID: oauth.clientID, redirectURI: "\(Self.callbackScheme)://oauth/callback")
     let callback = try await open(signIn.authorizeURL)
-    let credentials = try await oauth.finish(signIn, callback: callback)
-    let dashboardSession = try await session.finish(signIn, callback: callback)
-    return (credentials, dashboardSession)
+    let appSession = try await session.finish(signIn, callback: callback)
+    do {
+      return (try await oauth.tokens(for: appSession), appSession)
+    } catch {
+      // Do not leave a session that the app will not keep.
+      await session.signOut(appSession)
+      throw error
+    }
   }
 
   /// Open `url` in the sheet and return the `junior-ios` URL it ends on.

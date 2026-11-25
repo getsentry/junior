@@ -92,16 +92,16 @@ use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 ## Sign-in
 
-Sign-in is Junior's MCP OAuth flow: authorization code with PKCE, Google
-sign-in and the consent page in a browser sheet, and tokens in the Keychain
-(an access token lasts an hour; refresh tokens rotate; a sign-in lasts 30
-days). Every Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
-`packages/junior/src/api/mcp/oauth/client-metadata.ts`, so sign-in needs no
-hosted Client ID Metadata Document. The redirect goes to
+Sign-in opens `/_junior/client/sign-in/authorize` in a browser sheet: Google
+sign-in, then the user confirms the app. The redirect carries a one-time code
+(with PKCE) that `SessionSignInClient` trades for a 30-day session. The
+session calls the dashboard API and gets MCP tokens at `/api/client/mcp-token`.
+They refresh at the MCP token endpoint (an access token lasts an hour; refresh
+tokens rotate) and end with the session. Both are in the Keychain. Every
+Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
+`packages/junior/src/api/mcp/oauth/client-metadata.ts`. The redirect goes to
 `junior-ios://oauth/callback`, which only this client may use. A server that
-runs an older Junior rejects the app's client ID.
-The same consent also returns a code that `SessionSignInClient` trades for a
-30-day dashboard API session, a separate credential from the MCP grant.
+runs an older Junior rejects the app's sign-in.
 
 ## Design sources
 

@@ -165,35 +165,4 @@ let tokens = #"{"access_token":"a2","token_type":"Bearer","expires_in":3600,"ref
     #expect(store.load() == nil)
     #expect(await client.isSignedIn == false)
   }
-
-  @Test func signInChecksTheResponse() async throws {
-    let metadata =
-      #"{"issuer":"https://junior.example.com","authorization_endpoint":"https://junior.example.com/api/mcp/oauth/authorize","token_endpoint":"https://junior.example.com/api/mcp/oauth/token"}"#
-    let session = StubServer.serve { request in
-      request.url.path.hasPrefix("/.well-known") ? (200, metadata) : (200, tokens)
-    }
-    let oauth = OAuthClient(server: server, clientID: "https://example.com/client.json", session: session)
-    let signIn = try await oauth.begin(redirectURI: "http://127.0.0.1:5555/callback")
-    let query = URLComponents(url: signIn.authorizeURL, resolvingAgainstBaseURL: false)!.queryItems!
-    func value(_ name: String) -> String? { query.first { $0.name == name }?.value }
-    #expect(value("code_challenge_method") == "S256")
-    #expect(value("resource") == "https://junior.example.com/api/mcp")
-    #expect(value("scope")?.contains("conversations:write") == true)
-
-    await #expect(throws: JuniorAPIError.signIn("The sign-in response did not match.")) {
-      try await oauth.finish(signIn, callback: URL(string: "http://127.0.0.1:5555/callback?code=c&state=wrong")!)
-    }
-    await #expect(throws: JuniorAPIError.signIn("You did not allow access.")) {
-      try await oauth.finish(
-        signIn, callback: URL(string: "http://127.0.0.1:5555/callback?error=access_denied&state=\(value("state")!)")!)
-    }
-    let signedIn = try await oauth.finish(
-      signIn,
-      callback: URL(
-        string: "http://127.0.0.1:5555/callback?code=c&state=\(value("state")!)&iss=https%3A%2F%2Fjunior.example.com")!)
-    #expect(signedIn.accessToken == "a2")
-    let exchange = try #require(StubServer.requests.last)
-    #expect(exchange.form["code_verifier"].map(codeChallenge) == value("code_challenge"))
-    #expect(exchange.form["redirect_uri"] == "http://127.0.0.1:5555/callback")
-  }
 }

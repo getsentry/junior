@@ -1,7 +1,7 @@
 // Serves the built dashboard with its mock reporting data, so the iOS app can
 // run against real API shapes without Slack, a database, or a sign-in. It
 // also serves a mock of the MCP server at `/api/mcp` and its OAuth endpoints,
-// and the iOS app's session codes.
+// and the iOS app's sign-in.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
@@ -218,21 +218,7 @@ function handleAuthorize(request) {
     scope: scopes.join(" "),
     used: false,
   });
-  // The iOS app also asks for a dashboard session code.
-  const sessionChallenge = params.get("session_code_challenge");
-  if (
-    sessionChallenge !== null &&
-    !CODE_CHALLENGE_PATTERN.test(sessionChallenge)
-  ) {
-    return fail("invalid_request", "The session code challenge is not valid.");
-  }
-  return authorizationRedirect(
-    redirectUri,
-    sessionChallenge
-      ? { code, session_code: issueSessionCode(sessionChallenge) }
-      : { code },
-    state,
-  );
+  return authorizationRedirect(redirectUri, { code }, state);
 }
 
 function tokenError(error, description, status = 400) {
@@ -704,13 +690,41 @@ async function handleMcp(request) {
   return await handleMcpRpc(request, scopes);
 }
 
-// Session codes that the mock consent issued for `session_code_challenge`.
+const IOS_CLIENT_ID = "https://junior.sentry.dev/clients/ios";
+const IOS_REDIRECT_URI = "junior-ios://oauth/callback";
+const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+// One-time codes from the app sign-in, and the sessions they gave.
 const sessionCodes = new Map();
+const sessions = new Map();
 
-function issueSessionCode(challenge) {
+// The real page asks for Google sign-in and for the user to confirm the app.
+// The mock confirms at once.
+function handleClientSignInAuthorize(request) {
+  const params = new URL(request.url).searchParams;
+  if (
+    params.get("client_id") !== IOS_CLIENT_ID ||
+    params.get("redirect_uri") !== IOS_REDIRECT_URI
+  ) {
+    return invalidClientPage("Only the iOS app can sign in here.");
+  }
+  const state = params.get("state") ?? undefined;
+  const challenge = params.get("code_challenge") ?? "";
+  if (
+    params.get("code_challenge_method") !== "S256" ||
+    !CODE_CHALLENGE_PATTERN.test(challenge)
+  ) {
+    return authorizationRedirect(
+      IOS_REDIRECT_URI,
+      {
+        error: "invalid_request",
+        error_description: "PKCE with S256 is required.",
+      },
+      state,
+    );
+  }
   const code = randomBytes(32).toString("base64url");
   sessionCodes.set(code, { challenge, expiresAtMs: Date.now() + CODE_TTL_MS });
-  return code;
+  return authorizationRedirect(IOS_REDIRECT_URI, { code }, state);
 }
 
 async function handleClientSignInToken(request) {
@@ -729,14 +743,53 @@ async function handleClientSignInToken(request) {
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }
-  // The mock dashboard accepts every request, so any token works.
+  // The mock dashboard accepts every request, so any token works there.
+  const token = `jr_ses_${randomBytes(32).toString("base64url")}`;
+  const expiresAtMs = Date.now() + SESSION_LIFETIME_MS;
+  sessions.set(token, { expiresAtMs, grantIds: [] });
   return Response.json(
-    {
-      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      token: `jr_ses_${randomBytes(32).toString("base64url")}`,
-    },
+    { expires_at: new Date(expiresAtMs).toISOString(), token },
     { headers: { "cache-control": "no-store" } },
   );
+}
+
+function bearerSession(request) {
+  const token = request.headers
+    .get("authorization")
+    ?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  const session = token ? sessions.get(token) : undefined;
+  return session && session.expiresAtMs > Date.now()
+    ? { session, token }
+    : undefined;
+}
+
+// A grant that ends with the session and is revoked with it.
+function handleClientMcpToken(request) {
+  const found = bearerSession(request);
+  if (!found) {
+    return tokenError("invalid_token", "Sign in again.", 401);
+  }
+  const grantId = randomUUID();
+  found.session.grantIds.push(grantId);
+  return issueTokens(grantId, {
+    clientId: IOS_CLIENT_ID,
+    expiresAtMs: Math.min(
+      Date.now() + GRANT_MAX_AGE_MS,
+      found.session.expiresAtMs,
+    ),
+    resource: urls.resource,
+    revoked: false,
+    scope: ALL_SCOPES,
+  });
+}
+
+function handleClientSignOut(request) {
+  const found = bearerSession(request);
+  if (found) {
+    sessions.delete(found.token);
+    for (const grantId of found.session.grantIds) revokeGrant(grantId);
+  }
+  return new Response(null, { status: 204 });
 }
 
 // The paths that the mock answers itself, and their methods. The built
@@ -753,17 +806,19 @@ const MOCK_ROUTES = {
   [AUTHORIZE_PATH]: { methods: ["GET"], handle: handleAuthorize },
   [TOKEN_PATH]: { methods: ["POST"], handle: handleToken },
   [MCP_PATH]: { methods: ["GET", "POST", "DELETE"], handle: handleMcp },
+  "/_junior/client/sign-in/authorize": {
+    methods: ["GET"],
+    handle: handleClientSignInAuthorize,
+  },
   "/api/client/sign-in/token": {
     methods: ["POST"],
     handle: handleClientSignInToken,
   },
-  "/api/client/sign-out": {
-    methods: ["POST"],
-    handle: () => new Response(null, { status: 204 }),
-  },
+  "/api/client/mcp-token": { methods: ["POST"], handle: handleClientMcpToken },
+  "/api/client/sign-out": { methods: ["POST"], handle: handleClientSignOut },
 };
 
-/** Answer an MCP, OAuth, or iOS session path, or return undefined for the dashboard. */
+/** Answer an MCP, OAuth, or iOS sign-in path, or return undefined for the dashboard. */
 function routeMcp(request) {
   const { pathname } = new URL(request.url);
   if (!Object.hasOwn(MOCK_ROUTES, pathname)) return undefined;

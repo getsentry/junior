@@ -136,7 +136,7 @@ final class AppModel {
   }
 
   /// Sign in to `baseURL` in the system browser sheet, then load the shell.
-  /// One consent gives the MCP grant and the dashboard session.
+  /// The session gets the MCP tokens.
   func signIn(to baseURL: URL) async throws {
     let server = JuniorServer(baseURL: baseURL)
     let (credentials, session) = try await BrowserSignIn().run(
