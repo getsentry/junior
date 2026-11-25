@@ -42,7 +42,8 @@ function toolContext(
   response?: Response,
   // GitHub sends `in_reply_to_id: null` on the first comment of a thread.
   replyTarget: { in_reply_to_id: number | null } = { in_reply_to_id: null },
-  workOwner: PluginWorkOwner | undefined = requester,
+  resolveWorkOwner: () => Promise<PluginWorkOwner | undefined> = async () =>
+    requester,
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
     if (request.method === "GET") {
@@ -71,7 +72,7 @@ function toolContext(
       db: dbFixture.db(),
       egress: { fetch },
       log: { error() {}, info() {}, warn() {} },
-      resolveWorkOwner: async () => workOwner,
+      resolveWorkOwner,
     }),
   };
 }
@@ -196,9 +197,7 @@ describe("commentOnPullRequest", () => {
     },
   ] as const)("asks nobody when $case", async ({ number, seed, ...rest }) => {
     if (seed) await seedOpener(number);
-    const { fetch, tool } = toolContext(
-      undefined,
-      undefined,
+    const { fetch, tool } = toolContext(undefined, undefined, async () =>
       "workOwner" in rest ? rest.workOwner : requester,
     );
 
@@ -214,6 +213,25 @@ describe("commentOnPullRequest", () => {
       ),
     ).resolves.toMatchObject({ requester_asked: false });
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the posted comment when the requester lookup fails", async () => {
+    const { tool } = toolContext(undefined, undefined, async () => {
+      throw new Error("identity store is down");
+    });
+
+    // The comment is already on GitHub, so a retry would post it twice.
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 704,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ comment_id: 88, requester_asked: false });
   });
 
   it("returns GitHub validation errors to the agent", async () => {

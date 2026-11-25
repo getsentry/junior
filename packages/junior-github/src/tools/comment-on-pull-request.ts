@@ -108,22 +108,22 @@ async function askRequester(
   ctx: CommentContext,
   target: { number: number; prefix: string; repo: string },
 ): Promise<boolean> {
-  const [opener, owner] = await Promise.all([
-    listGitHubPullRequestOpeners(gitHubDbSchema.parse(ctx.db), {
-      numbers: [target.number],
-      repositoryFullName: target.repo,
-    }).then((openers) => openers.get(target.number)),
-    ctx.resolveWorkOwner().then(requesterPerson),
-  ]);
-  // The opener row stores the work owner's identity when Junior opened the
-  // pull request, so only that person, in their own work, is asked.
-  const login =
-    opener && owner?.identity?.id === opener.identityId
-      ? linkedGitHubLogin(owner.user)
-      : undefined;
-  if (!login) return false;
   const fields = { number: target.number, repo: target.repo };
   try {
+    const [opener, owner] = await Promise.all([
+      listGitHubPullRequestOpeners(gitHubDbSchema.parse(ctx.db), {
+        numbers: [target.number],
+        repositoryFullName: target.repo,
+      }).then((openers) => openers.get(target.number)),
+      ctx.resolveWorkOwner().then(requesterPerson),
+    ]);
+    // The opener row stores the work owner's identity when Junior opened the
+    // pull request, so only that person, in their own work, is asked.
+    const login =
+      opener && owner?.identity?.id === opener.identityId
+        ? linkedGitHubLogin(owner.user)
+        : undefined;
+    if (!login) return false;
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.request_reviewers",
       method: "POST",
@@ -133,10 +133,7 @@ async function askRequester(
     if (response.ok) return true;
     ctx.log.warn(
       "github.pull_request.request_reviewers_after_question.rejected",
-      {
-        ...fields,
-        status: response.status,
-      },
+      { ...fields, status: response.status },
     );
   } catch (error) {
     ctx.log.warn(
