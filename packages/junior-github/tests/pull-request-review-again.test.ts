@@ -799,4 +799,58 @@ describe("review again after a change request", () => {
       await fixture.close();
     }
   });
+
+  it("asks again on a held draft after the requester's comment-only review once Junior answers and the checks pass", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const state = memoryState();
+    const github: GitHubState = {
+      checks: [{ conclusion: null, name: "test", status: "QUEUED" }],
+      draft: true,
+      mergeableStates: ["draft"],
+      merged: false,
+      requestedReviewers: [],
+      requiredChecks: ["test"],
+      reviewRequests: [{ at: "2026-07-02T09:00:00Z", login: "Requester" }],
+      reviews: [
+        {
+          body: "Why this name?",
+          id: 701,
+          state: "COMMENTED",
+          submitted_at: "2026-07-02T10:00:00Z",
+          user: { login: "Requester" },
+        },
+      ],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], state);
+      // Junior answers, but the checks still run, so the ask waits.
+      await markFeedback(
+        state,
+        { id: 701, kind: "review_body" },
+        "addressed",
+        fixture,
+      );
+      expect(requests).not.toContain("request Requester");
+
+      github.checks = [
+        { conclusion: "SUCCESS", name: "test", status: "COMPLETED" },
+      ];
+      await webhook.handler(checkSuiteCompleted());
+      expect(requests).toContain("request Requester");
+      await webhook.handler(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00Z"),
+      );
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: { title: "Review requested · #946" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });
