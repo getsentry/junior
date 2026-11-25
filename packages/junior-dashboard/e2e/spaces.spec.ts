@@ -336,7 +336,7 @@ test("creating a private Space shows its lock, and its last member cannot leave"
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
 });
 
-test("a member adds a person to a private Space by email", async ({
+test("a member adds people to a private Space with the people picker", async ({
   dashboard,
   page,
 }) => {
@@ -346,14 +346,39 @@ test("a member adds a person to a private Space by email", async ({
     .getByRole("complementary", { name: "Space details" })
     .getByRole("region", { name: "Members" });
   await members.getByRole("button", { name: "Add" }).click();
-  const email = members.getByRole("textbox", { name: "Email" });
-  await email.fill("nobody@example.com");
-  await members.getByRole("button", { name: "Add member" }).click();
-  await expect(members.getByText("No person has that email.")).toBeVisible();
-  await email.fill("casey@example.com");
-  await members.getByRole("button", { name: "Add member" }).click();
+  const search = members.getByRole("combobox", { name: "Add members" });
+  const settled = members.getByRole("listbox", { includeHidden: true });
+  await expect(search).toBeFocused();
+  // Part of an email finds a person.
+  await search.fill("casey@ex");
+  await expect(settled).toHaveAttribute("aria-busy", "false");
+  await expect(
+    members.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toHaveAttribute("aria-selected", "true");
+  await search.press("Enter");
+  await expect(
+    members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
+  ).toHaveText(["Casey Nguyen"]);
+  // A Member shows, but cannot be chosen.
+  await search.fill("avery");
+  await expect(settled).toHaveAttribute("aria-busy", "false");
+  const avery = members.getByRole("option", { name: /Avery Chen/ });
+  await expect(avery).toHaveAttribute("aria-disabled", "true");
+  await expect(avery).toContainText("Member");
+  await screenshot(page, "space-add-members", {
+    lightTheme: true,
+    target: members,
+    view: "desktop",
+  });
+  await search.press("Enter");
+  await search.press("Escape");
+  await expect(
+    members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
+  ).toHaveText(["Casey Nguyen"]);
+
+  await members.getByRole("button", { exact: true, name: "Add" }).click();
+  await expect(search).toHaveCount(0);
   await expect(members.getByText("Casey Nguyen")).toBeVisible();
-  await expect(email).toHaveCount(0);
 });
 
 test("leaving a private Space leaves the page, and a non-member cannot find it", async ({
