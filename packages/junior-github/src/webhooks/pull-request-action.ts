@@ -15,6 +15,12 @@
  * the action ends, even while GitHub still asks them, because Junior acts
  * next.
  *
+ * A review that GitHub asks for on a draft is "review_draft": the requester
+ * reviews it and marks it ready. Junior keeps a draft for its requester when
+ * marking it ready would ask the code owners, and asks only the requester on
+ * GitHub (`github_updatePullRequest` `request_review`). When the draft
+ * becomes ready, the same item says that GitHub asks for the review.
+ *
  * After a change request, only an explicit signal asks the requester again:
  * Junior marks every comment of it addressed or declined, and the required
  * checks pass (`pull-request-review-again.ts`). Pushes, base-branch syncs,
@@ -271,12 +277,13 @@ function nextAction(
   // GitHub has not computed the merge state yet, such as after a push. The
   // merge can still be the action, so it stays until a later event decides.
   if (canMerge && !state.mergeableState && saved === "merge") return undefined;
-  if (requester.askedAgain) return { action: "review" };
+  const review = state.draft ? "review_draft" : "review";
+  if (requester.askedAgain) return { action: review };
   const requested = isRequested(state, requester.login);
   // A reply to the change request ends the review that Junior asked for,
   // though GitHub still asks for it, because Junior acts next.
   if (requested && (!requester.actedLast || !state.changesRequested)) {
-    return { action: "review" };
+    return { action: review };
   }
   if (canMerge && !state.mergeableState) return undefined;
   return {};
@@ -317,7 +324,7 @@ function closeReason(
 ): CloseReason {
   const ended = endedReason(state.state);
   if (ended) return ended;
-  if (previous === "review") {
+  if (previous !== "merge") {
     return { reason: "The review request ended.", status: "done" };
   }
   if (state.autoMerge) {
@@ -341,16 +348,19 @@ function actionText(
   reason: GitHubReviewAskReason | undefined,
   state: GitHubPullRequestMergeState,
 ): string {
-  if (action === "review") {
-    return reason
-      ? REVIEW_AGAIN_TEXT[reason]
-      : `GitHub asks you to review #${number}.`;
+  if (action === "merge") {
+    // The text stays true when someone approves later, because the item
+    // changes only when the action changes.
+    return state.reviewOutcome === "approved"
+      ? `#${number} is approved, and GitHub says that it can merge.`
+      : `GitHub says that #${number} can merge with no review. Review it, then merge it.`;
   }
-  // The text stays true when someone approves later, because the item
-  // changes only when the action changes.
-  return state.reviewOutcome === "approved"
-    ? `#${number} is approved, and GitHub says that it can merge.`
-    : `GitHub says that #${number} can merge with no review. Review it, then merge it.`;
+  const asked = reason ? REVIEW_AGAIN_TEXT[reason] : undefined;
+  if (action === "review") {
+    return asked ?? `GitHub asks you to review #${number}.`;
+  }
+  const step = `#${number} is a draft. Review it, then mark it ready for review.`;
+  return asked ? `${asked} ${step}` : step;
 }
 
 async function showAction(
@@ -658,7 +668,7 @@ async function syncOne(
           })
         : undefined,
     ]);
-    if (changed && next.action === "review" && reason === "handled") {
+    if (changed && next.action !== "merge" && reason === "handled") {
       await dropGitHubReviewAsked(args.state, target);
     }
     if (!changed) return previous;

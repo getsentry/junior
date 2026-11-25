@@ -58,10 +58,13 @@ const drafts: DraftFixture[] = [
 ];
 
 const readied = new Set<number>();
+// The logins that the scenario asked to review each draft.
+const reviewers = new Map<number, string[]>();
 
-/** Reset the drafts that the scenario marked ready. */
+/** Reset the drafts that the scenario marked ready or asked reviewers for. */
 export function resetTestGitHubDraftFixtures(): void {
   readied.clear();
+  reviewers.clear();
 }
 
 function checkRuns(draft: DraftFixture) {
@@ -140,6 +143,12 @@ function graphqlPullRequest(draft: DraftFixture) {
     mergeStateStatus: readied.has(draft.number) ? "BLOCKED" : "DRAFT",
     number: draft.number,
     reviewDecision: null,
+    reviewRequests: {
+      nodes: (reviewers.get(draft.number) ?? []).map((login) => ({
+        requestedReviewer: { __typename: "User", login },
+      })),
+    },
+    reviews: { nodes: [] },
     state: "OPEN",
     statusCheckRollup: commits,
     title: draftTitle,
@@ -160,7 +169,10 @@ function draftFromGraphql(body: {
   );
 }
 
-/** Serve the draft scenario's pull requests, checks, and ready mutation. */
+/**
+ * Serve the draft scenario's pull requests, checks, ready mutation, and
+ * review requests.
+ */
 export async function interceptTestGitHubDraftsHttp(
   request: Request,
   url: URL,
@@ -191,6 +203,19 @@ export async function interceptTestGitHubDraftsHttp(
         repository: { agents, docs: null, github, pullRequest, root: null },
       },
     });
+  }
+  if (request.method === "POST") {
+    const draft = drafts.find(
+      (candidate) =>
+        url.pathname === `${api}/pulls/${candidate.number}/requested_reviewers`,
+    );
+    if (!draft) return undefined;
+    const body = (await request.clone().json()) as { reviewers: string[] };
+    reviewers.set(draft.number, [
+      ...(reviewers.get(draft.number) ?? []),
+      ...body.reviewers,
+    ]);
+    return Response.json(restPullRequest(draft), { status: 201 });
   }
   if (request.method !== "GET") return undefined;
   for (const draft of drafts) {

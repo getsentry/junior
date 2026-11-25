@@ -187,6 +187,25 @@ export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
   }
 `);
 
+/**
+ * Read whether GitHub asks one person to review a pull request, and their
+ * latest submitted review. A pending review is not submitted.
+ */
+export const PULL_REQUEST_REVIEWER = githubGraphql(`
+  query PullRequestReviewer($owner: String!, $name: String!, $number: Int!, $login: String!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        reviewRequests(first: 100) {
+          nodes { requestedReviewer { __typename ... on User { login } } }
+        }
+        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
+          nodes { state }
+        }
+      }
+    }
+  }
+`);
+
 /** Read one page of a pull request search, with mergeability. */
 export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
   query OpenPullRequestMergeability($query: String!, $after: String) {

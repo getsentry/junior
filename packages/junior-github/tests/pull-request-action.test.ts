@@ -395,6 +395,66 @@ describe("next action item", () => {
     }
   });
 
+  it("asks the requester to review a draft and mark it ready, then to review it", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: true,
+      mergeableStates: ["draft"],
+      merged: false,
+      // Junior kept the draft for the requester and asked only them.
+      requestedReviewers: ["requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(pullRequestAction("review_requested"));
+      const subject = {
+        id: PULL_URL,
+        title: "Add the Inbox notice (#946)",
+        url: PULL_URL,
+      };
+      expect(calls).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          kind: "upsert",
+          notice: {
+            assigneeIdentityIds: ["identity-requester"],
+            body: `#946 is a draft. Review it, then mark it ready for review.\n\n${PULL_URL}`,
+            dedupeKey: DEDUPE_KEY,
+            subject,
+            title: "Review requested · #946",
+            waitsOnAssignees: true,
+          },
+        },
+      ]);
+
+      // The requester marks it ready without a review. GitHub still asks
+      // them, so the same item now says only that.
+      github.draft = false;
+      github.mergeableStates = ["blocked"];
+      await webhook.handler(pullRequestAction("ready_for_review"));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject,
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      });
+      expect(calls).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reuses one installation token for later webhooks", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];
