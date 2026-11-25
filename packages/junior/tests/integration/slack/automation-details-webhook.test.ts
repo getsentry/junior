@@ -21,7 +21,10 @@ import {
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import {
+  resetSlackApiMockState,
+  setSlackChannelMembers,
+} from "../../msw/handlers/slack-api";
 
 const SIGNING_SECRET = "test-signing-secret";
 const ORIGINAL_ENV = { ...process.env };
@@ -141,6 +144,8 @@ describe("Slack Work Object details", () => {
       destination: { platform: "slack", teamId: "T123", channelId: "D123" },
       visibility: "private",
     });
+    // U123 is in the DM.
+    setSlackChannelMembers("D123", ["U123"]);
     await createPluginAnnotations({
       conversationId,
       plugin: "objects",

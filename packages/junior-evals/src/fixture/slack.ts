@@ -3,7 +3,8 @@
  *
  * Shared MSW handlers mock the Slack Web API. This module adds the parts a
  * Conversation needs: the bot identity, unique reply timestamps, thread
- * history for `conversations.replies`, and profiles for `users.info`. It also
+ * history for `conversations.replies`, channel members for
+ * `conversations.members`, and profiles for `users.info`. It also
  * signs Events API webhooks and App Home actions for the app route.
  */
 import { createHash, createHmac } from "node:crypto";
@@ -15,6 +16,7 @@ import {
   authTestOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
+  conversationsMembersPage,
   conversationsRepliesPage,
   slackError,
   usersInfoOk,
@@ -329,6 +331,15 @@ export function installSlackMock(testName: string): SlackMock {
           }),
         );
       },
+    ),
+    // Every person in the eval is in every channel, so a private Slack
+    // Conversation is readable by the people who post in it.
+    http.post("https://slack.com/api/conversations.members", () =>
+      HttpResponse.json(
+        conversationsMembersPage({
+          members: [SLACK_BOT_USER_ID, ...authors.keys()],
+        }),
+      ),
     ),
     http.get(
       "https://files.slack.com/files-pri/:fileKey/:name",

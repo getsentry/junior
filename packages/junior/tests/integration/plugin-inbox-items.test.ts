@@ -28,6 +28,7 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { setSlackChannelMembers } from "../msw/handlers/slack-api";
 
 const TENANT = { provider: "slack", providerTenantId: "T123" };
 
@@ -363,6 +364,8 @@ describe("plugin inbox items", () => {
       const ana = await person("ana@example.com");
       const ben = await person("ben@example.com");
       await participant("slack:D1:1.000001", ana.user);
+      // Ana is in the Slack channel. Her Slack user id is her email here.
+      setSlackChannelMembers("C1", ["ana@example.com"]);
       const items = createPluginInboxItems({
         conversationId: "slack:D1:1.000001",
         plugin: "github",

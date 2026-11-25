@@ -26,6 +26,14 @@ interface SlackTokenContext {
   token: string;
 }
 
+/** No Slack installation token is stored for the workspace. */
+export class SlackInstallationMissingError extends Error {
+  constructor(installationId: string) {
+    super(`Slack installation token was not found for ${installationId}`);
+    this.name = "SlackInstallationMissingError";
+  }
+}
+
 export interface SlackInstallationContext {
   enterpriseId?: string | undefined;
   isEnterpriseInstall?: boolean | undefined;
@@ -120,9 +128,7 @@ export async function runWithSlackInstallation<T>(args: {
     args.installation.isEnterpriseInstall,
   );
   if (!tokenContext) {
-    throw new Error(
-      `Slack installation token was not found for ${installationId}`,
-    );
+    throw new SlackInstallationMissingError(installationId);
   }
 
   return await internals.requestContext.run(

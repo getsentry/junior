@@ -1,8 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { getProductionSlackAdapter } from "@/chat/app/production";
 import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import { logWarn } from "@/chat/logging";
-import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
+import {
+  runWithSlackInstallation,
+  SlackInstallationMissingError,
+} from "@/chat/slack/adapter-context";
 import { isConversationMember } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import {
@@ -27,7 +29,8 @@ import {
  * The dashboard reads a detail every few seconds, so each answer is shared
  * across instances for a short time. A person removed from the channel
  * loses access within that time. Only answers from Slack are shared, so a
- * failed check denies access for that request only.
+ * failed check, or a workspace with no installation, denies access for that
+ * request only.
  */
 const MEMBERSHIP_TTL_MS = 60 * 1000;
 
@@ -150,6 +153,9 @@ async function checkMembership(
   channelId: SlackChannelId,
   userId: string,
 ): Promise<boolean | undefined> {
+  // Access checks are imported widely. Load the Slack app only when a
+  // Slack-backed private row needs it.
+  const { getProductionSlackAdapter } = await import("@/chat/app/production");
   try {
     return await runWithSlackInstallation({
       adapter: getProductionSlackAdapter(),
@@ -157,7 +163,12 @@ async function checkMembership(
       task: () => isConversationMember(channelId, userId),
     });
   } catch (error) {
-    if (!(error instanceof SlackActionError)) throw error;
+    if (
+      !(error instanceof SlackActionError) &&
+      !(error instanceof SlackInstallationMissingError)
+    ) {
+      throw error;
+    }
     logWarn("conversation_access.slack_membership.unavailable", {
       "app.slack.team_id": teamId,
       "exception.message": error.message,
