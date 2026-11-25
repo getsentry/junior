@@ -84,12 +84,14 @@ export function resolveMessageCards(
   annotations: readonly LiveAnnotation[],
 ): OwnedObjectAnnotation[] {
   return refs.map((ref) => {
-    const annotation = annotations.find(
-      (item) =>
-        item.kind === ref.kind &&
-        item.plugin === ref.plugin &&
-        item.key === ref.key,
+    const named = annotations.filter(
+      (item) => item.plugin === ref.plugin && item.key === ref.key,
     );
+    // An object that the viewer cannot read comes back as its label and
+    // link, with the `resource_link` kind.
+    const annotation =
+      named.find((item) => item.kind === ref.kind) ??
+      named.find((item) => item.kind === "resource_link");
     return annotation
       ? annotationCard(annotation)
       : {
