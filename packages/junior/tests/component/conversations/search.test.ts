@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { storeConversationEmbedding } from "@/chat/conversations/embedding";
 import { searchConversations } from "@/chat/conversations/search";
+import { resolveAnnotationFilter } from "@/chat/conversations/sql/annotation-filter";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -284,7 +285,7 @@ describe("Conversation search", () => {
             rootsOnly: true,
             limit: 10,
             afterMs: Date.parse("2026-07-02T00:00:00.000Z"),
-            annotation: "ACME/WIDGET",
+            annotation: await resolveAnnotationFilter(db, "ACME/WIDGET"),
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
           },

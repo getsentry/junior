@@ -2,7 +2,6 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias, union, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
 import {
   juniorCodeChanges,
   juniorInboxItems,
@@ -31,7 +30,7 @@ import {
   inboxItemReaderForUser,
   inboxItemVisibleTo,
 } from "./access";
-import { codeChangeSubjectProvider } from "./subject-links";
+import { codeChangeSubjectKinds } from "./subject-links";
 import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 /** An Inbox item that matches a search. */
@@ -39,18 +38,6 @@ export type InboxItemSearchMatch = Pick<
   typeof juniorInboxItems.$inferSelect,
   "id" | "status"
 > & { title: string };
-
-// The subject kinds whose objects are code changes. Each one searches its
-// objects through the code change index, so a pull request title finds its
-// item, and the item stores no copy of the title.
-function codeChangeSubjectKinds(): string[] {
-  return getPlugins().flatMap((plugin) =>
-    (plugin.inboxSubjects ?? []).flatMap((subject) => {
-      const kind = `${plugin.manifest.name}:${subject.kind}`;
-      return codeChangeSubjectProvider(kind) ? [kind] : [];
-    }),
-  );
-}
 
 // The code change of an item subject: the kind's plugin is its provider, and
 // the subject id is its provider id.
@@ -127,6 +114,9 @@ export async function searchInboxItemsForUser(
     )
     .orderBy(desc(items.updatedAt), desc(items.id))
     .limit(SEARCH_RANK_WINDOW);
+  // Each code change kind searches its objects through the code change
+  // index, so a pull request title finds its item, and the item stores no
+  // copy of the title.
   const kinds = codeChangeSubjectKinds();
   const subjectMatches = db
     .select({ id: items.id })

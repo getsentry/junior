@@ -1,6 +1,5 @@
 import type { GitHubStatusIncident } from "../github-status.js";
 import type { InstallationTokens } from "../installation-tokens.js";
-import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   PluginCache,
@@ -25,7 +24,6 @@ import {
   githubPullRequestOutcomeTaskKey,
 } from "../pull-request-outcomes/apply-task.js";
 import { recordGitHubPullRequestOutcome } from "../pull-request-outcomes/store.js";
-import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubIssueItemEvent,
   syncGitHubIssueItem,
@@ -35,7 +33,6 @@ import {
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
-import { refreshGitHubPullRequestPreview } from "./pull-request-preview.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -235,6 +232,8 @@ export function createGitHubWebhookRoute(args: {
         cache: args.cache,
         eventName,
         nowMs: Date.now(),
+        objectChanged: async (subject) =>
+          await args.annotations.objectChanged(subject),
         state: args.state,
         tasks: args.tasks,
       });
@@ -242,10 +241,6 @@ export function createGitHubWebhookRoute(args: {
       const pullRequestOutcome =
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
-          : undefined;
-      const closedIssue =
-        eventName === "issues"
-          ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
       const issueItemEvent =
         eventName === "issues"
@@ -261,7 +256,6 @@ export function createGitHubWebhookRoute(args: {
           | undefined;
         try {
           recordedOutcome = await applyGitHubPullRequestOutcome({
-            annotations: args.annotations,
             codeChanges: args.codeChanges,
             conversationChanges: args.conversationChanges,
             db: args.db,
@@ -311,21 +305,6 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (closedIssue) {
-        await updateGitHubAnnotations({
-          annotations: args.annotations,
-          conversationIds: closedIssue.conversationIds,
-          // A person can edit the footer, so it cannot add a card.
-          existingOnly: true,
-          log: args.log,
-          update: {
-            repo: closedIssue.repositoryFullName,
-            number: closedIssue.number,
-            objectType: "task",
-            status: "closed",
-          },
-        });
-      }
       if (issueItemEvent) {
         await syncGitHubIssueItem({
           annotations: args.annotations,
@@ -339,14 +318,6 @@ export function createGitHubWebhookRoute(args: {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
-        });
-      }
-      if (eventName === "pull_request") {
-        await refreshGitHubPullRequestPreview({
-          annotations: args.annotations,
-          body,
-          codeChanges: args.codeChanges,
-          log: args.log,
         });
       }
       const pullRequestActivity = normalizeGitHubPullRequestActivity({
@@ -516,7 +487,6 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !closedIssue &&
         !issueItemEvent &&
         !pullRequestConversations &&
         events.length === 0

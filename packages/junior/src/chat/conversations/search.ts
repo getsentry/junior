@@ -31,8 +31,9 @@ import {
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
-  hasAnnotationKey,
-  treeHasAnnotationKey,
+  hasMatchingAnnotation,
+  treeHasMatchingAnnotation,
+  type AnnotationFilter,
 } from "@/chat/conversations/sql/annotation-filter";
 import type {
   ConversationKind,
@@ -107,11 +108,11 @@ export interface ConversationSearchChannelPort {
 export interface ConversationSearch {
   /** Only Conversations with activity at or after this time. */
   afterMs?: number;
-  /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
-  annotation?: string;
+  /** Only Conversations with an Annotation of these objects. */
+  annotation?: AnnotationFilter;
   /**
    * Match `annotation` only on the Conversation itself. Without it, a root
-   * also matches when one of its child agents has the key.
+   * also matches when one of its child agents has the Annotation.
    */
   annotationOnSelf?: boolean;
   /** Only Conversations with activity before this time. */
@@ -240,14 +241,18 @@ export async function searchConversations(
     ),
     search.annotation
       ? or(
-          // A root matches when any Conversation in its tree has the key.
+          // A root matches when any Conversation in its tree has the
+          // Annotation.
           search.annotationOnSelf
             ? undefined
-            : treeHasAnnotationKey(
+            : treeHasMatchingAnnotation(
                 conversations.conversationId,
                 search.annotation,
               ),
-          hasAnnotationKey(conversations.conversationId, search.annotation),
+          hasMatchingAnnotation(
+            conversations.conversationId,
+            search.annotation,
+          ),
         )
       : undefined,
     search.statuses

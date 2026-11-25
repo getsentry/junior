@@ -231,9 +231,14 @@ export function stubGraphql(answers: {
         name.startsWith("number") ? [Number(value)] : [],
       );
       queries.push({ numbers, operationName });
+      // A patch read also names each pull request by GitHub's id, as the
+      // `pullRequest` payloads do.
       const cards =
         operationName === "PullRequestHeadFacts"
-          ? (answers.patches?.shift() ?? [])
+          ? (answers.patches?.shift() ?? []).map((node) => ({
+              databaseId: (node as { number: number }).number * 1000,
+              ...(node as object),
+            }))
           : typeof answers.cards === "function"
             ? answers.cards(numbers)
             : (answers.cards ?? []);

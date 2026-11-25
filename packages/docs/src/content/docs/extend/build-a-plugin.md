@@ -575,14 +575,14 @@ A plugin that records code changes with `ctx.codeChanges` also sets
 `codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
 link each code change and repository.
 
-Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
-Inbox item changes together, such as a chip that shows a merged pull request
-and the close of its ask. Junior saves the batch in one write. When one entry
-fails, Junior saves no entry. A batch has at most 100 entries.
+Use `ctx.conversationChanges.apply(...)` when readers must see Inbox item
+changes together, such as the close of every ask of a merged pull request.
+Junior saves the batch in one write. When one entry fails, Junior saves no
+entry. A batch has at most 100 entries. A change at the provider changes no
+annotation: cards read the object live.
 
 ```ts
 await ctx.conversationChanges.apply({
-  annotations: [{ conversationId, upsert: annotation }],
   inboxItems: [
     { conversationId, close: { subject, reason, status: "done" } },
   ],
@@ -778,6 +778,10 @@ defineJuniorPlugin({
   and does not save it on a Conversation. When your webhooks keep the object
   entry current, set `cacheCards: false`. Junior then reads your entry on
   each card read, after `canView`, so a change shows at once.
+  When a webhook changes an object, call
+  `ctx.annotations.objectChanged(subject)` with the object's subject. An
+  open page that shows the object then reads its card again. Call it only
+  when the object changed, such as when your cache entry changed.
 - **Subject ids.** When the viewer's own read names the stable id of an
   object that older Annotations name by another id, call
   `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations

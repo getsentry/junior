@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
   inboxItemOwnerConversationId,
+  todoItemOwnerConversationId,
   inboxItemTenantId,
   inboxItemTenantProvider,
   inboxItemVisibility,
@@ -146,9 +147,14 @@ function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
  * the item. This is the rule of `conversationAccessFromRows`: the User is a
  * Participant of the owner when it has no parent, even with no stored root.
  * Otherwise the owner needs a valid stored root, whose Destination is public
- * or whose Participants include the User.
+ * or whose Participants include the User. Pass the narrowest expression
+ * of the owner id that fits the item's subject kind, since each owner
+ * check runs once per Conversation in the version reads.
  */
-function ownerConversationOpenTo(userId: string): SQL {
+function ownerConversationOpenTo(
+  userId: string,
+  ownerConversationId: SQL<string | null>,
+): SQL {
   return exists(
     getDb()
       .select({ one: sql`1` })
@@ -168,7 +174,7 @@ function ownerConversationOpenTo(userId: string): SQL {
       .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
-          eq(todoOwner.conversationId, inboxItemOwnerConversationId()),
+          eq(todoOwner.conversationId, ownerConversationId),
           or(
             and(
               isNull(todoOwner.parentConversationId),
@@ -197,7 +203,7 @@ export function inboxItemAssignedTo(userId: string): SQL {
     sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
     or(
       ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
-      ownerConversationOpenTo(userId),
+      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
     ),
   )!;
 }
@@ -260,7 +266,7 @@ function inboxItemForEveryoneOfOwner(userId: string): SQL {
       eq(juniorInboxItems.assignedToEveryone, true),
       sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
     ),
-    ownerConversationOpenTo(userId),
+    ownerConversationOpenTo(userId, inboxItemOwnerConversationId()),
   )!;
 }
 

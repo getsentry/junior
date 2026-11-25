@@ -8,14 +8,21 @@ import {
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import { afterEach, expect, it } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { http, HttpResponse } from "msw";
+import { afterEach, expect, it, vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   createPluginAnnotations,
   listConversationAnnotations,
 } from "@/chat/plugins/annotations";
-import { getConversationEventStore, getDb } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { juniorConversationAnnotations } from "@/db/schema";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { sendSlackReply } from "@/chat/slack/reply";
@@ -23,7 +30,15 @@ import {
   closeConversationFixture,
   createConversationWebHarness,
 } from "../fixtures/conversation";
+import {
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  pullRequest,
+  stubGitHubApp,
+} from "../fixtures/github-objects";
 import { createModelStream } from "../fixtures/model-stream";
+import { mswServer } from "../msw/server";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 const annotation: ObjectAnnotation = {
@@ -544,5 +559,95 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
   } finally {
     setPlugins(previous);
     setDashboardConversationLinkOptions(previousDashboard);
+  }
+});
+
+it("reads each delivered card once with the access of the person who started the Conversation, and keeps the saved facts when it cannot read it", async () => {
+  stubGitHubApp();
+  let githubUp = false;
+  mswServer.use(
+    http.get(`${GITHUB_API}/pulls/38`, () =>
+      githubUp
+        ? HttpResponse.json(
+            pullRequest(38, {
+              merged: true,
+              state: "closed",
+              title: "Retry uploads",
+            }),
+          )
+        : HttpResponse.json({ message: "Unavailable" }, { status: 503 }),
+    ),
+  );
+  try {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    // Alice starts the Conversation. She sees the repository on GitHub.
+    await linkGitHubMember();
+    const conversationId = "slack:CALICE:1712345.0038";
+    await getConversationStore().recordActivity({
+      actor: { platform: "slack", slackUserId: "UALICE", teamId: "T123" },
+      conversationId,
+      destination: { channelId: "CALICE", platform: "slack", teamId: "T123" },
+      nowMs: Date.now(),
+      source: "slack",
+      visibility: "public",
+    });
+    const saved = {
+      kind: "object" as const,
+      objectType: "code_change" as const,
+      key: "getsentry/junior#38",
+      // A posted card never shows the stored label. GitHub makes it.
+      label: "Saved label",
+      title: "Draft: retry uploads",
+      status: "open",
+      url: `${GITHUB_REPO}/pull/38`,
+    };
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "github",
+      db: getDb(),
+    }).upsert(saved);
+    // The Turn that opened the pull request selected its card.
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: Date.now(),
+        data: {
+          type: "turn_started",
+          turnId: "turn-38",
+          inputMessageIds: ["msg-38"],
+          surface: "slack",
+        },
+      },
+      {
+        createdAtMs: Date.now(),
+        data: {
+          type: "tool_result",
+          toolName: "github_createPullRequest",
+          details: {
+            objectCards: [{ kind: "object", plugin: "github", key: saved.key }],
+          },
+        },
+      },
+    ]);
+
+    // GitHub is down, so the card posts what Junior saved.
+    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
+      { ...saved, label: "getsentry/junior#38", plugin: "github" },
+    ]);
+    githubUp = true;
+    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
+      expect.objectContaining({
+        key: saved.key,
+        label: "getsentry/junior#38",
+        plugin: "github",
+        status: "merged",
+        title: "Retry uploads",
+      }),
+    ]);
+    // Delivery stores nothing: the Annotation keeps what the tool saved.
+    await expect(
+      listConversationAnnotations(getDb(), conversationId),
+    ).resolves.toMatchObject([{ status: "open", title: saved.title }]);
+  } finally {
+    vi.unstubAllEnvs();
   }
 });

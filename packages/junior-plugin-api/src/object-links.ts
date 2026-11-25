@@ -216,6 +216,13 @@ export interface PluginObjectLinkDefinition {
   canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
   /**
+   * Name the object from its link alone, such as `owner/repo#12`. A card
+   * shows it when Junior cannot read the object, such as for a viewer who
+   * cannot see it or when the provider is down. Without it, the card shows
+   * the host of the link.
+   */
+  label?(url: URL): string | undefined;
+  /**
    * The object types that `resolve` can return. One URL can open more than
    * one type, such as a GitHub issue URL that opens a pull request.
    */
