@@ -4,7 +4,9 @@ import {
   exists,
   inArray,
   isNotNull,
+  isNull,
   not,
+  notInArray,
   or,
   type SQL,
 } from "drizzle-orm";
@@ -14,6 +16,8 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 
@@ -61,15 +65,66 @@ export function conversationHasParticipantUser(userId: string): SQL {
   return exists(memberParticipantRow({ userId }));
 }
 
+function privateSpaceIds() {
+  return getDb()
+    .select({ id: juniorSpaces.id })
+    .from(juniorSpaces)
+    .where(eq(juniorSpaces.visibility, "private"));
+}
+
+/** The private Spaces that the person is a member of. */
+function memberPrivateSpaceIds(member: ConversationMember) {
+  const rows = getDb()
+    .select({ id: juniorSpaceMembers.spaceId })
+    .from(juniorSpaceMembers)
+    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorSpaceMembers.spaceId));
+  const isPrivate = eq(juniorSpaces.visibility, "private");
+  return "userId" in member
+    ? rows.where(and(eq(juniorSpaceMembers.userId, member.userId), isPrivate))
+    : rows
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorSpaceMembers.userId))
+        .where(
+          and(eq(juniorUsers.primaryEmailNormalized, member.email), isPrivate),
+        );
+}
+
+/**
+ * True when the outer root conversation is in no Space, in a public Space,
+ * or in a private Space that the person is a member of. A participant who
+ * leaves a private Space no longer reads its roots.
+ */
+export function rootSpaceReadableBy(member: ConversationMember): SQL {
+  return or(
+    isNull(juniorConversations.spaceId),
+    notInArray(juniorConversations.spaceId, privateSpaceIds()),
+    inArray(juniorConversations.spaceId, memberPrivateSpaceIds(member)),
+  )!;
+}
+
 /**
  * True when the viewer may find the outer root conversation by a link to
  * it: its Destination, joined as `juniorDestinations`, is public, or the
- * viewer is a Participant.
+ * viewer is a Participant. A root in a private Space is visible only to the
+ * Space's members, and to all of them.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
-    eq(juniorDestinations.visibility, "public"),
-    viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+    and(
+      or(
+        isNull(juniorConversations.spaceId),
+        notInArray(juniorConversations.spaceId, privateSpaceIds()),
+      ),
+      or(
+        eq(juniorDestinations.visibility, "public"),
+        viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+      ),
+    ),
+    viewerUserId
+      ? inArray(
+          juniorConversations.spaceId,
+          memberPrivateSpaceIds({ userId: viewerUserId }),
+        )
+      : undefined,
   )!;
 }
 

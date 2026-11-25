@@ -31,7 +31,11 @@ export const juniorTurnInbox = pgTable(
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
+    // Where the input came from. Core stores it and does not read it.
     source: jsonb("source").$type<Source>().notNull(),
+    // The host's grouping of inputs: an input joins only a Turn whose inputs
+    // have the same key. Core compares it and never reads its parts.
+    groupKey: text("group_key").notNull(),
     // Where the answer to the input goes, set by the code that sent it. Null
     // when the Conversation history is the only answer, as for the dashboard.
     destination: jsonb("destination").$type<Destination>(),

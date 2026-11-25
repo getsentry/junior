@@ -399,6 +399,20 @@ describe("transcript bottom pinning", () => {
     ).toBe("follow");
   });
 
+  it("keeps the follow state when shrinking content clamps the scroll", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 2_108,
+        snapshot: {
+          clientHeight: 594,
+          scrollHeight: 2_576,
+          scrollTop: 1_982,
+        },
+        source: "scroll",
+      }),
+    ).toBe("preserve");
+  });
+
   it("pauses follow when the reader scrolls up inside bottom slack", () => {
     expect(
       transcriptFollowIntent({

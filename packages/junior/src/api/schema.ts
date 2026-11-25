@@ -392,14 +392,17 @@ export {
   spaceParamsSchema,
   spaceRefSchema,
   spaceSchema,
+  spaceVisibilitySchema,
   updateSpaceBodySchema,
 } from "./schema/space";
 export type {
   SpaceListReport,
   SpaceRefReport,
   SpaceReport,
+  SpaceVisibilityReport,
 } from "./schema/space";
 export {
+  addSpaceMemberBodySchema,
   spaceMemberListSchema,
   spaceMemberSchema,
 } from "./schema/space-member";
@@ -544,5 +547,10 @@ export type {
   SearchSource,
   SearchTodo,
 } from "./schema/search";
-export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
+export {
+  VERSIONS_CONVERSATION_LIMIT,
+  VERSIONS_STREAM_HEADER,
+  VERSIONS_STREAM_KEEPALIVE_EVENT,
+  versionsSchema,
+} from "./schema/versions";
 export type { Versions } from "./schema/versions";

@@ -10,8 +10,10 @@ import { InboxItemActions } from "../src/client/inbox/InboxItemActions";
 import { readMockInboxItems } from "../src/mock-reporting/inbox-items";
 
 const items = readMockInboxItems(Date.now(), {});
+// A notice that links nothing, so its card shows only its actions.
+const { related: _related, request: _request, ...first } = items[0]!;
 const item: InboxItemPayload = {
-  ...items[0]!,
+  ...first,
   canTake: true,
   kind: "notice",
 };
@@ -66,5 +68,22 @@ describe("inbox item actions", () => {
     expect(render({}, { ...reader, canAnswer: false })).toContain(
       "Only an assignee can act on this item.",
     );
+  });
+
+  it("shows a notice's related links to a person who cannot act on it", () => {
+    const shown = render(
+      {},
+      {
+        ...item,
+        canAct: false,
+        canAnswer: false,
+        canTake: false,
+        request: {
+          related: [{ label: "Deploy log", url: "https://example.com/log" }],
+        },
+      },
+    );
+    expect(shown).toContain("Only an assignee can act on this item.");
+    expect(shown).toContain("Deploy log");
   });
 });

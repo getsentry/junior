@@ -110,7 +110,6 @@ async function seedTurn(
   await executor.db().insert(juniorTurns).values({
     id: turnId,
     conversationId,
-    actorIdentityId: "identity:turn-actor",
     state: "queued",
     priority: 0,
   });
@@ -121,6 +120,7 @@ async function seedTurn(
       id: randomUUID(),
       conversationId,
       actorIdentityId: "identity:turn-actor",
+      groupKey: "group:turn-actor",
       source: {
         kind: "slack",
         teamId: "T123",

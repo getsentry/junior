@@ -15,6 +15,14 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
+  isWindowRoot,
+  preferredExplicitScrollBehavior,
+  scrollRootFor,
+  scrollSnapshot,
+  setScrollTop,
+  viewportBounds,
+} from "./transcriptScrollRoot";
+import {
   captureScrollAnchor,
   scrollAnchorShift,
   type ScrollAnchor,
@@ -30,10 +38,15 @@ const UNREAD_START_OFFSET_PX = 48;
 // Leave a little earlier context above a row taller than the viewport.
 const TALL_ROW_TOP_GAP_PX = 48;
 
-type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
 
 export type TranscriptFollowIntent = "follow" | "pause" | "preserve";
+
+/** Show a row, and leave follow when the row is not at the latest. */
+export type ShowTranscriptRow = (
+  row: Element,
+  options?: { instant?: boolean },
+) => boolean;
 
 export type ScrollSnapshot = {
   clientHeight: number;
@@ -53,7 +66,7 @@ type BottomPinResult = {
    * `instant` move skips smooth scrolling. Returns false when the row does
    * not show.
    */
-  showRow: (row: Element, options?: { instant?: boolean }) => boolean;
+  showRow: ShowTranscriptRow;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -300,6 +313,11 @@ export function isFarFromScrollBottom(snapshot: ScrollSnapshot): boolean {
   return remaining > snapshot.clientHeight * FAR_FROM_BOTTOM_VIEWPORTS;
 }
 
+/** True when the viewport touches the end of the content. */
+function isAtScrollEnd(snapshot: ScrollSnapshot): boolean {
+  return snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight < 1;
+}
+
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
 export function transcriptFollowIntent(input: {
   previousScrollTop: number | null;
@@ -311,7 +329,10 @@ export function transcriptFollowIntent(input: {
     input.previousScrollTop != null &&
     input.snapshot.scrollTop < input.previousScrollTop - USER_SCROLL_DELTA_PX
   ) {
-    return "pause";
+    // Content that shrinks, or a viewport that grows, clamps scrollTop down
+    // to the new end. A reader who scrolls up never lands there, so a clamp
+    // keeps the follow state. A jump leaves follow itself, in `showRow`.
+    return isAtScrollEnd(input.snapshot) ? "preserve" : "pause";
   }
 
   if (input.source === "scroll" && isNearScrollBottom(input.snapshot)) {
@@ -439,14 +460,18 @@ export function usePinnedTranscriptBottom(input: {
     rememberPlace();
   }, [rememberPlace]);
 
-  const leaveBottom = useCallback(() => {
+  const stopFollowing = useCallback(() => {
     if (!followingRef.current) return;
-    const root = scrollRootFor(contentElementRef.current);
-    // Content that fits the viewport has nothing above to read.
-    if (!root || scrollSnapshot(root).scrollTop <= 0) return;
     programmaticScrollGenerationRef.current = 0;
     setFollowingIntent(false);
   }, [setFollowingIntent]);
+
+  const leaveBottom = useCallback(() => {
+    const root = scrollRootFor(contentElementRef.current);
+    // Content that fits the viewport has nothing above to read.
+    if (!root || scrollSnapshot(root).scrollTop <= 0) return;
+    stopFollowing();
+  }, [stopFollowing]);
 
   const measurePosition = useCallback(
     (source: PositionMeasureSource) => {
@@ -559,16 +584,17 @@ export function usePinnedTranscriptBottom(input: {
           ? TALL_ROW_TOP_GAP_PX
           : (viewportHeight - rect.height) / 2);
       if (Math.abs(offset) < 1) return true;
+      const before = scrollSnapshot(root);
+      const scrollTop = Math.max(0, before.scrollTop + offset);
       // The reader goes to the row, so the latest must not pull them back.
+      // A row below the viewport can also sit above the latest, such as
+      // after a search shrank the content and then cleared.
       if (offset < 0) leaveBottom();
+      else if (!isNearScrollBottom({ ...before, scrollTop })) stopFollowing();
       const behavior = options?.instant
         ? "auto"
         : preferredExplicitScrollBehavior();
-      setScrollTop(
-        root,
-        Math.max(0, scrollSnapshot(root).scrollTop + offset),
-        behavior,
-      );
+      setScrollTop(root, scrollTop, behavior);
       // A layout change must not restore the place that the reader left.
       // A smooth scroll remembers each new place on its scroll events.
       if (behavior === "smooth") {
@@ -581,7 +607,7 @@ export function usePinnedTranscriptBottom(input: {
       rememberPlace();
       return true;
     },
-    [leaveBottom, rememberPlace],
+    [leaveBottom, rememberPlace, stopFollowing],
   );
 
   /** Scroll to the "New" marker, if the transcript has one. */
@@ -920,70 +946,4 @@ export function useAutoLoadHistoryPage(input: {
   }, [input.edge, input.enabled, input.historyVersion, sentinel]);
 
   return setSentinel;
-}
-
-/** Find the nearest element that scrolls the transcript, or the window. */
-export function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
-  if (typeof window === "undefined") return null;
-  if (!element) return window;
-
-  let current = element.parentElement;
-  while (current && current !== document.body) {
-    const style = window.getComputedStyle(current);
-    if (/(auto|scroll|overlay)/.test(style.overflowY)) return current;
-    current = current.parentElement;
-  }
-
-  return window;
-}
-
-function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {
-  if (isWindowRoot(root)) {
-    const element = document.scrollingElement ?? document.documentElement;
-    return {
-      clientHeight: window.innerHeight,
-      scrollHeight: element.scrollHeight,
-      scrollTop: window.scrollY || element.scrollTop,
-    };
-  }
-
-  return {
-    clientHeight: root.clientHeight,
-    scrollHeight: root.scrollHeight,
-    scrollTop: root.scrollTop,
-  };
-}
-
-function setScrollTop(
-  root: ScrollRoot,
-  scrollTop: number,
-  behavior: ScrollBehavior = "auto",
-): void {
-  if (isWindowRoot(root)) {
-    window.scrollTo({ behavior, top: scrollTop });
-    return;
-  }
-  root.scrollTo({ behavior, top: scrollTop });
-}
-
-/** Read the visible band of a scroll root in client coordinates. */
-function viewportBounds(root: ScrollRoot): { bottom: number; top: number } {
-  if (isWindowRoot(root)) return { bottom: window.innerHeight, top: 0 };
-  const top = root.getBoundingClientRect().top;
-  return { bottom: top + root.clientHeight, top };
-}
-
-function isWindowRoot(root: ScrollRoot): root is Window {
-  return root === window;
-}
-
-function preferredExplicitScrollBehavior(): ScrollBehavior {
-  if (typeof window === "undefined") return "auto";
-  if (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
-    return "auto";
-  }
-  return "smooth";
 }

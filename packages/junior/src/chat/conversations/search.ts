@@ -45,6 +45,7 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaces,
 } from "@/db/schema";
 
 const MAX_LINKS = 5;
@@ -218,6 +219,23 @@ export async function searchConversations(
         db
           .select({ destinationId: requesterRoot.destinationId })
           .from(requesterRoot)
+          .where(eq(requesterRoot.conversationId, requesterRootId)),
+      ),
+      // The Conversations of a private Space share one audience, the members.
+      // A private Space's roots have their own Destinations, so only this
+      // match reaches them.
+      eq(
+        roots.spaceId,
+        db
+          .select({ id: juniorSpaces.id })
+          .from(requesterRoot)
+          .innerJoin(
+            juniorSpaces,
+            and(
+              eq(juniorSpaces.id, requesterRoot.spaceId),
+              eq(juniorSpaces.visibility, "private"),
+            ),
+          )
           .where(eq(requesterRoot.conversationId, requesterRootId)),
       ),
     ),

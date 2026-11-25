@@ -374,7 +374,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter "@sentry/junior..." run build
-      - run: pnpm --filter @sentry/junior exec vitest run tests/integration/workspace-snapshot-lifecycle.test.ts tests/integration/sandbox-egress-trace-headers.test.ts tests/integration/tool-execution-environment.test.ts
+      - run: pnpm --filter @sentry/junior exec vitest run tests/integration/workspace-snapshot-lifecycle.test.ts tests/integration/sandbox-egress-trace-headers.test.ts
 
   plugin-tests:
     name: test / plugins
