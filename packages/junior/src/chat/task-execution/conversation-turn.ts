@@ -120,7 +120,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createSteeringDrain } from "@/chat/task-execution/steering";
 import { webSteeringSource } from "@/chat/task-execution/web-steering";
 import { parentSteeringSource } from "@/chat/agent-invocations/parent-steering";
-import { teamSteeringSource } from "@/chat/agent-invocations/team-steering";
+import { agentMessageSteeringSource } from "@/chat/agent-invocations/agent-message-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   type eventBatchMessageMeta,
@@ -619,6 +619,10 @@ export function createConversationTurnWorker(
             actor,
             credentialSubject,
           );
+          // The Turn's own input waits in the mailbox until it commits.
+          const turnInputIds = new Set(
+            context.attempt.messages.map((message) => message.inboundMessageId),
+          );
           const drainSteeringMessages = createSteeringDrain({
             context,
             conversation,
@@ -634,25 +638,17 @@ export function createConversationTurnWorker(
                       actor,
                       author,
                       credentialContext,
-                      turnInputIds: new Set(
-                        context.attempt.messages.map(
-                          (message) => message.inboundMessageId,
-                        ),
-                      ),
+                      turnInputIds,
                     }),
                   ]
                 : []),
-              // A Turn of a root in a Space also reads the later messages
-              // that the Space's Lead sends for the Turn's Actor.
-              ...(storedConversation?.spaceId
-                ? [
-                    teamSteeringSource({
-                      actor,
-                      credentialContext,
-                      spaceId: storedConversation.spaceId,
-                    }),
-                  ]
-                : []),
+              // Every Turn reads the later messages of other agents that
+              // act for its Actor.
+              agentMessageSteeringSource({
+                actor,
+                credentialContext,
+                turnInputIds,
+              }),
             ],
             turnId,
           });

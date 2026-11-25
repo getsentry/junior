@@ -4,10 +4,12 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { MailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import {
   childAgentInput,
   getChildAgentInputSender,
   isDroppedChildInput,
+  type ChildAgentInput,
 } from "./child-input";
 import { logDroppedParentMessage, parentMessageText } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
@@ -18,9 +20,9 @@ const senderActorMetadataSchema = z.object({ actor: actorSchema });
  * Return the Inbound message author id for results sent by one Actor.
  * `selectContiguousTurnBatch` in `task-execution/worker.ts` puts messages in
  * one attempt only when their author ids and sources match. Mid-Turn drains
- * take only `interrupt` messages, parent messages, and a Lead's messages,
- * and results are `defer` Events. So results never share a Turn and its
- * credentials with another Actor or with watch Events.
+ * take only `interrupt` messages and agent messages, and results are
+ * `defer` Events. So results never share a Turn and its credentials with
+ * another Actor or with watch Events.
  * Keep this id unique per Actor if either rule changes.
  */
 export function resultAuthorId(actor: Actor): string {
@@ -38,6 +40,22 @@ export function resultAuthorId(actor: Actor): string {
 function senderActorFromMetadata(metadata: unknown): Actor | undefined {
   const parsed = senderActorMetadataSchema.safeParse(metadata);
   return parsed.success ? parsed.data.actor : undefined;
+}
+
+/**
+ * Return the Actor of the child Turn that sent a reply or message to this
+ * Conversation. Returns nothing when the input names no child of this
+ * Conversation, or when its Actor and author id do not match.
+ */
+export async function readChildInputActor(
+  message: InboundMessage,
+  input: ChildAgentInput,
+): Promise<Actor | undefined> {
+  const sender = await getChildAgentInputSender(message, input);
+  const actor = senderActorFromMetadata(message.input.metadata);
+  return sender && actor && message.input.authorId === resultAuthorId(actor)
+    ? actor
+    : undefined;
 }
 
 /**
@@ -83,16 +101,8 @@ export async function withAgentInvocationResultActors(
     if (await isDroppedChildInput(entry.message)) {
       return undefined;
     }
-    const sender = await getChildAgentInputSender(entry.message, input);
-    const actor = senderActorFromMetadata(entry.message.input.metadata);
-    if (
-      !sender ||
-      !actor ||
-      entry.message.input.authorId !== resultAuthorId(actor)
-    ) {
-      return { ...entry, actor: EVENT_SYSTEM_ACTOR };
-    }
-    return { ...entry, actor };
+    const actor = await readChildInputActor(entry.message, input);
+    return { ...entry, actor: actor ?? EVENT_SYSTEM_ACTOR };
   });
   const kept = batch.filter((entry) => entry !== undefined);
   return kept.length > 0 ? { kind: "mailbox", batch: kept } : undefined;

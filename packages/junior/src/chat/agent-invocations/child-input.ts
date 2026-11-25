@@ -22,7 +22,7 @@ import type { ChildAgentSender } from "./types";
  * One reply or message that a child agent sent to its parent. `senderId` is
  * the child Conversation.
  */
-type ChildAgentInput = {
+export type ChildAgentInput = {
   kind: "message" | "reply";
   senderId: string;
 };

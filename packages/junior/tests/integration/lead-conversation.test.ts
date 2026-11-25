@@ -322,8 +322,8 @@ describe("Lead", () => {
     await expect(send(boOutside, "call-bo")).rejects.toThrow(
       "is outside this Space",
     );
-    // Only a message to a root of its team can steer a running Turn, so
-    // only that message carries the Actor of the Lead's Turn.
+    // Each message carries the Actor of the Lead's Turn, so it can steer a
+    // running Turn of that Actor only.
     const leadMessageActors = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId }))?.messages
         .filter((message) => message.source === "event")
@@ -331,7 +331,9 @@ describe("Lead", () => {
           (message) => (message.input.metadata as { actor?: unknown }).actor,
         );
     expect(await leadMessageActors(boInSpace)).toEqual([webActorFromUser(ana)]);
-    expect(await leadMessageActors(anaOutside)).toEqual([undefined]);
+    expect(await leadMessageActors(anaOutside)).toEqual([
+      webActorFromUser(ana),
+    ]);
     // A Turn that no member started writes only inside the Space.
     await expect(send(anaOutside, "call-watch", WATCH_SOURCE)).rejects.toThrow(
       "is outside this Space",

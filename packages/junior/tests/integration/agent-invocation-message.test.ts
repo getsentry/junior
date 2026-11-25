@@ -2,8 +2,17 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { stopChildAgent } from "@/chat/agent-invocations/stop";
-import type { AgentRun } from "@/chat/agent/types";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import {
+  createSlackSource,
+  createWebSource,
+  type User,
+} from "@sentry/junior-plugin-api";
+import {
+  createAndEnqueueConversation,
+  webActorFromUser,
+} from "@/chat/conversations/web-input";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { getConversationStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -24,6 +33,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
+import { signedInViewer } from "../fixtures/user";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import {
   loadSubagentEvents,
@@ -378,6 +388,183 @@ describe("messageAgent", () => {
       expect(
         (await getConversationWorkState({ conversationId: childId }))?.messages,
       ).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("steers a child's messages into the parent's running Turn for the same Actor", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const { queue, state } = harness;
+    const otherActor = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U999",
+    } as const;
+    try {
+      const childId = await spawnChild(harness, "steer-parent-child", {
+        agentName: "researcher",
+      });
+      const send = async (
+        actor: AgentRun["actor"],
+        key: string,
+        text: string,
+      ) =>
+        await createMessageAgentTool(
+          bindMessageAgent({ ...childRun(childId), actor }, { queue, state })!,
+        ).execute!({ text, to: "parent" }, { toolCallId: key });
+      // The first message starts the parent's Turn after the Event window.
+      await send(parentActor, "call-first", "Started on the deploy.");
+      vi.setSystemTime(Date.now() + EVENT_WAIT_MS + 10);
+
+      const drained: AgentSteeringMessage[][] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        const startedAtMs = Date.now();
+        // The child sends these while the parent's model call runs.
+        await send(parentActor, "call-retry", "The retry path is fine.");
+        vi.setSystemTime(Date.now() + 1);
+        await send(parentActor, "call-timeout", "The timeout is fine.");
+        // A child Turn for another person never steers this Turn.
+        vi.setSystemTime(Date.now() + 1);
+        await send(otherActor, "call-billing", "Billing looks off.");
+        // The fake run saves its prompt with the time that it started at.
+        vi.setSystemTime(startedAtMs);
+        const steered = await steerRun(run, (messages) => {
+          drained.push(messages);
+        });
+        await steerRun(run, (messages) => drained.push(messages), steered);
+        const outcome = await finishRun(
+          run,
+          { noReply: {} },
+          undefined,
+          steered,
+        );
+        // The other message waits out the Event window, then runs.
+        vi.setSystemTime(startedAtMs + EVENT_WAIT_MS + 10);
+        return outcome;
+      });
+      await harness.drain(slackParentConversationId);
+
+      // Both messages join the next model call together, as context with
+      // the child Turn's Actor.
+      expect(drained).toHaveLength(1);
+      expect(drained[0]!.map((message) => message.provenance)).toEqual([
+        { authority: "context", actor: parentActor },
+        { authority: "context", actor: parentActor },
+      ]);
+      expect(drained[0]!.map((message) => message.text)).toEqual([
+        expect.stringMatching(
+          /source="child_agent"[\s\S]*The retry path is fine\./,
+        ),
+        expect.stringMatching(
+          /source="child_agent"[\s\S]*The timeout is fine\./,
+        ),
+      ]);
+      expect(harness.runs.map((run) => run.actor)).toEqual([
+        parentActor,
+        otherActor,
+      ]);
+      expect(harness.runs[1]!.instruction.text).toContain("Billing looks off.");
+      expect(await eventMessages(slackParentConversationId)).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("steers a top-level agent's messages into a running root for the same Actor", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const { queue, state } = harness;
+    try {
+      const ana = await signedInViewer("top-level-steer@example.com");
+      const bo = await signedInViewer("top-level-steer-other@example.com");
+      const root = async (person: User, key: string) =>
+        (
+          await createAndEnqueueConversation(
+            {
+              actor: webActorFromUser(person),
+              idempotencyKey: key,
+              message: "Check the deploy.",
+            },
+            { queue, state },
+          )
+        ).conversationId;
+      const target = await root(ana, "top-level-steer-target");
+      const anaSender = await root(ana, "top-level-steer-ana");
+      const boSender = await root(bo, "top-level-steer-bo");
+      // A Turn of a public root outside any Space, that a person started.
+      const send = async (
+        person: User,
+        sender: string,
+        key: string,
+        text: string,
+      ) =>
+        await createMessageAgentTool(
+          bindMessageAgent(
+            {
+              actor: webActorFromUser(person),
+              conversationId: sender,
+              destination: (await getConversationStore().get({
+                conversationId: sender,
+              }))!.destination!,
+              instruction: { text: "Steer the deploy check." },
+              source: createWebSource(sender, "public"),
+              turnId: `turn-${key}`,
+            },
+            { queue, state },
+          )!,
+        ).execute!({ text, to: target }, { toolCallId: key });
+
+      const drained: AgentSteeringMessage[][] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        const startedAtMs = Date.now();
+        await expect(
+          send(ana, anaSender, "call-retry", "Also check the retry path."),
+        ).resolves.toEqual({ conversation_id: target, delivery: "queued" });
+        vi.setSystemTime(Date.now() + 1);
+        await send(ana, anaSender, "call-timeout", "Also check the timeout.");
+        vi.setSystemTime(Date.now() + 1);
+        await send(bo, boSender, "call-billing", "Check billing.");
+        vi.setSystemTime(startedAtMs);
+        const steered = await steerRun(run, (messages) => {
+          drained.push(messages);
+        });
+        const outcome = await finishRun(
+          run,
+          { noReply: {} },
+          undefined,
+          steered,
+        );
+        vi.setSystemTime(startedAtMs + EVENT_WAIT_MS + 10);
+        return outcome;
+      });
+      await harness.drain(target);
+
+      // Both of ana's messages join together, as data.
+      expect(drained).toHaveLength(1);
+      expect(drained[0]!.map((message) => message.provenance)).toEqual([
+        { authority: "context" },
+        { authority: "context" },
+      ]);
+      expect(drained[0]!.map((message) => message.text)).toEqual([
+        expect.stringMatching(
+          /source="top_level_agent"[\s\S]*Also check the retry path\./,
+        ),
+        expect.stringMatching(
+          /source="top_level_agent"[\s\S]*Also check the timeout\./,
+        ),
+      ]);
+      // bo's message runs its own Turn, as the event system Actor.
+      expect(harness.runs.map((run) => run.actor)).toEqual([
+        expect.objectContaining({ platform: "web", userId: ana.id }),
+        EVENT_SYSTEM_ACTOR,
+      ]);
+      expect(harness.runs[1]!.instruction.text).toContain("Check billing.");
     } finally {
       await harness.close();
     }

@@ -2,7 +2,8 @@
  * Agent messages between top-level agents: root Conversations that are not
  * in the same agent tree. A message wakes the target like any other Event.
  * The target runs it as the event system Actor, so the sender's Actor and
- * credentials never reach the target.
+ * credentials never reach the target. It joins a running Turn of the target
+ * only when that Turn already acts for the sender's Actor.
  */
 import type { StateAdapter } from "chat";
 import { actorSchema } from "@sentry/junior-plugin-api";
@@ -46,7 +47,7 @@ async function requireTopLevelAgentAccess(args: {
   askingActor?: Actor | undefined;
   senderConversationId: string;
   to: string;
-}): Promise<{ toTeam: boolean }> {
+}): Promise<void> {
   const notReachable = new AgentMessageTargetError(
     `"${args.to}" is not "${PARENT_AGENT_TARGET}", a child agent of this conversation, or a top-level agent that you can message`,
   );
@@ -88,12 +89,7 @@ async function requireTopLevelAgentAccess(args: {
     );
   }
   const leadSpaceId = (await readLeadSpace(args.senderConversationId))?.id;
-  // A root stores no link to the Lead that started it, so the Lead's team is
-  // the roots in its Space.
-  if (leadSpaceId && target.spaceId === leadSpaceId) {
-    return { toTeam: true };
-  }
-  if (leadSpaceId) {
+  if (leadSpaceId && target.spaceId !== leadSpaceId) {
     const person = args.askingActor
       ? (await readActorIdentity(args.askingActor))?.user
       : undefined;
@@ -108,7 +104,6 @@ async function requireTopLevelAgentAccess(args: {
       );
     }
   }
-  return { toTeam: false };
 }
 
 // Another agent wrote the text, so it is escaped data. The system prompt
@@ -132,7 +127,7 @@ function topLevelMessageAuthorId(senderConversationId: string): string {
   return `agent-message:${senderConversationId}`;
 }
 
-const leadMessageMetadataSchema = z.object({
+const senderActorMetadataSchema = z.object({
   actor: actorSchema,
   event: z.object({
     eventType: z.literal(TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE),
@@ -143,22 +138,19 @@ const leadMessageMetadataSchema = z.object({
 });
 
 /**
- * Read the sender of a message that a Lead sent to a root in its Space: the
- * Lead's Conversation id and the Actor of the Lead's Turn. Returns nothing
- * for any other input, also a top-level message that carries no Actor.
+ * Read the Actor of the Turn that sent a message from another top-level
+ * agent. Returns nothing for any other input, also a message from a Turn
+ * that no person started.
  */
-export function readTeamMessageSender(
+export function readTopLevelMessageActor(
   message: InboundMessage,
-): { actor: Actor; senderConversationId: string } | undefined {
+): Actor | undefined {
   if (message.source !== "event") return undefined;
-  const parsed = leadMessageMetadataSchema.safeParse(message.input.metadata);
+  const parsed = senderActorMetadataSchema.safeParse(message.input.metadata);
   return parsed.success &&
     message.input.authorId ===
       topLevelMessageAuthorId(parsed.data.event.identifier)
-    ? {
-        actor: parsed.data.actor,
-        senderConversationId: parsed.data.event.identifier,
-      }
+    ? parsed.data.actor
     : undefined;
 }
 
@@ -176,9 +168,9 @@ export function isTopLevelAgentMessage(message: InboundMessage): boolean {
  * Send one message from a top-level agent to another top-level agent and
  * wake the target. The access check runs on each call. A stopped target
  * holds the message, so once the automated-turn limit stops one of two
- * agents, they cannot keep each other running. A Lead's message to a root
- * in its Space also carries the Actor of the Lead's Turn, so a running Turn
- * of that root for the same Actor can take it at its next model call. Repeat
+ * agents, they cannot keep each other running. A message from a Turn that a
+ * person started also carries that Turn's Actor, so a running Turn of the
+ * target for the same Actor can take it at its next model call. Repeat
  * calls with the same `messageKey` are safe.
  */
 export async function enqueueTopLevelAgentMessage(args: {
@@ -192,7 +184,7 @@ export async function enqueueTopLevelAgentMessage(args: {
   text: string;
   to: string;
 }): Promise<void> {
-  const { toTeam } = await requireTopLevelAgentAccess(args);
+  await requireTopLevelAgentAccess(args);
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = `agent-message:${args.senderConversationId}:${args.messageKey}`;
   const summary = `Top-level agent ${args.senderConversationId} sent a message.`;
@@ -207,7 +199,7 @@ export async function enqueueTopLevelAgentMessage(args: {
     },
     // Only a running Turn's steering drain reads it. The queued message
     // still runs as the event system Actor.
-    ...(toTeam && args.askingActor ? { actor: args.askingActor } : undefined),
+    ...(args.askingActor ? { actor: args.askingActor } : undefined),
   };
   await enqueueAutomatedInput({
     message: {
