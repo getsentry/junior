@@ -46,7 +46,10 @@
  * The requester takes one action, not both, so one item per pull request
  * shows it. Each webhook that can change one of these facts reads them
  * again from GitHub. Junior saves the derived action and changes the item
- * only when the action changes.
+ * only when the action changes. GitHub does not send a failed webhook
+ * again, so when GitHub fails the read for a while, such as when the
+ * installation is out of GraphQL rate limit, a started task syncs the pull
+ * request again later.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. It is assigned to that person only when they are in that
@@ -59,13 +62,17 @@ import type {
   PluginConversationInboxItems,
   PluginLogger,
   PluginInboxItems,
+  PluginStartedTaskContext,
+  PluginStartedTaskDefinition,
   PluginState,
+  PluginTaskStarter,
   InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
 import { loadGitHubTitleParts } from "./title-parts.js";
-import type { GitHubDb } from "../db/database.js";
+import { GitHubRequestError } from "../credential-support.js";
+import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
   claimGitHubPullRequestReadySync,
@@ -86,9 +93,12 @@ import {
   readHeldGitHubReviewAsk,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
+import { linkedGitHubLogin } from "../tool-support/attribution.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
+import { GitHubGraphqlError } from "./graphql-request.js";
 import {
+  loadGraphqlRateLimitReset,
   loadPullRequestMergeState,
   loadReviewAgainReader,
   requestPullRequestReviewers,
@@ -586,20 +596,28 @@ async function askReason(
     : undefined;
 }
 
+/** What a sync of the next action reads and writes. */
+interface PullRequestActionSyncContext {
+  /**
+   * Ask for the requester's review on each pull request in limbo. Only the
+   * one-off backfill asks.
+   */
+  askInLimbo?: boolean | undefined;
+  botEmail: string | undefined;
+  codeChanges: Pick<PluginCodeChanges, "list">;
+  db: GitHubDb;
+  env: GitHubInstallationEnv;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
+  inboxItems: PluginConversationInboxItems;
+  /** Holds the review asks that wait for the required checks. */
+  state: PluginState;
+}
+
 async function syncOne(
-  args: {
-    askInLimbo?: boolean | undefined;
-    botEmail: string | undefined;
-    codeChanges: Pick<PluginCodeChanges, "list">;
-    db: GitHubDb;
-    env: GitHubInstallationEnv;
-    loadGitHubLogin?:
-      | ((identityId: string) => Promise<string | undefined>)
-      | undefined;
-    log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-    inboxItems: PluginConversationInboxItems;
-    state: PluginState;
-  },
+  args: PullRequestActionSyncContext,
   target: GitHubPullRequestActionTarget,
 ): Promise<"busy" | undefined> {
   const opener = (
@@ -750,33 +768,71 @@ async function syncOne(
   return undefined;
 }
 
+/** The task that syncs one pull request again after a webhook's sync failed. */
+export const GITHUB_PULL_REQUEST_ACTION_SYNC_TASK = "syncPullRequestAction";
+
+const syncTaskPayloadSchema = z
+  .object({
+    number: z.number().int().positive(),
+    repositoryFullName: z.string().min(1),
+  })
+  .strict();
+
+// The queue can deliver a task a little before the rate limit resets.
+const RATE_LIMIT_RESET_MARGIN_SECONDS = 5;
+
+/**
+ * Return when to sync again after a failure that GitHub causes for a
+ * while: after the GraphQL rate limit resets, or after the task backoff
+ * for a GitHub outage. Return undefined for other failures, which a retry
+ * cannot fix.
+ */
+async function retryAfterFailure(
+  env: GitHubInstallationEnv,
+  target: GitHubPullRequestTarget,
+  error: unknown,
+): Promise<{ delaySeconds?: number } | undefined> {
+  if (error instanceof GitHubGraphqlError) {
+    // GitHub sends `RATE_LIMIT`, and its docs name `RATE_LIMITED`.
+    if (
+      !error.types.some(
+        (type) => type === "RATE_LIMIT" || type === "RATE_LIMITED",
+      )
+    ) {
+      // GitHub's own failures, such as a query timeout, have no type.
+      return error.types.length === 0 ? {} : undefined;
+    }
+    // Without the reset time, the task backoff still retries.
+    const reset = await loadGraphqlRateLimitReset(
+      env,
+      target.repositoryFullName,
+    ).catch(() => undefined);
+    if (!reset) return {};
+    const seconds = Math.ceil((reset.getTime() - Date.now()) / 1000);
+    return {
+      delaySeconds: Math.max(seconds, 0) + RATE_LIMIT_RESET_MARGIN_SECONDS,
+    };
+  }
+  return error instanceof GitHubRequestError && error.status >= 500
+    ? {}
+    : undefined;
+}
+
 /**
  * Add, change, or close the next-action item of each Junior pull request that
- * a webhook delivery can change. The item is optional, so a failure is logged
- * and does not fail the delivery. Return the pull requests that another
- * webhook was checking. That webhook checks them again, but without
- * `askInLimbo`.
+ * a webhook delivery can change. The item is optional, so a failure does not
+ * fail the delivery. A failure that GitHub causes for a while starts a task
+ * that syncs the pull request again, when `tasks` is given. Other failures
+ * are logged. Return the pull requests that another webhook was checking.
+ * That webhook checks them again, but without `askInLimbo`.
  */
-export async function syncGitHubPullRequestActions(args: {
-  /**
-   * Ask for the requester's review on each pull request in limbo. Only the
-   * one-off backfill asks.
-   */
-  askInLimbo?: boolean;
-  botEmail: string | undefined;
-  codeChanges: Pick<PluginCodeChanges, "list">;
-  db: GitHubDb;
-  deliveryId: string;
-  env: GitHubInstallationEnv;
-  loadGitHubLogin?:
-    | ((identityId: string) => Promise<string | undefined>)
-    | undefined;
-  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-  inboxItems: PluginConversationInboxItems;
-  /** Holds the review asks that wait for the required checks. */
-  state: PluginState;
-  targets: GitHubPullRequestActionTarget[];
-}): Promise<GitHubPullRequestActionTarget[]> {
+export async function syncGitHubPullRequestActions(
+  args: PullRequestActionSyncContext & {
+    deliveryId: string;
+    targets: GitHubPullRequestActionTarget[];
+    tasks?: PluginTaskStarter | undefined;
+  },
+): Promise<GitHubPullRequestActionTarget[]> {
   const busy: GitHubPullRequestActionTarget[] = [];
   await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(
     args.targets,
@@ -784,18 +840,87 @@ export async function syncGitHubPullRequestActions(args: {
       try {
         if ((await syncOne(args, target)) === "busy") busy.push(target);
       } catch (error) {
-        logFailOpenFailure(
-          args.log,
-          "GitHub pull request action failed",
-          error,
+        const metadata = {
+          deliveryId: args.deliveryId,
+          number: target.number,
+          repository: target.repositoryFullName,
+        };
+        const retry = args.tasks
+          ? await retryAfterFailure(args.env, target, error)
+          : undefined;
+        if (!args.tasks || !retry) {
+          logFailOpenFailure(
+            args.log,
+            "GitHub pull request action failed",
+            error,
+            metadata,
+          );
+          return;
+        }
+        args.log?.warn(
+          "GitHub pull request action failed; retrying in a task",
           {
-            deliveryId: args.deliveryId,
-            number: target.number,
-            repository: target.repositoryFullName,
+            ...metadata,
+            errorType: error instanceof Error ? error.name : "UnknownError",
           },
         );
+        // Failures that start their task in the same minute share it, so a
+        // burst of webhooks during a rate limit syncs again once.
+        const startsAt = Date.now() + (retry.delaySeconds ?? 0) * 1000;
+        await args.tasks.start({
+          ...retry,
+          key: `pull-request-action-sync:${itemName(target)}:${Math.floor(startsAt / 60_000)}`,
+          name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+          payload: {
+            number: target.number,
+            repositoryFullName: target.repositoryFullName,
+          },
+        });
       }
     },
   );
   return busy;
+}
+
+/** The sync context of a started task, with fresh installation tokens. */
+export function startedTaskSyncContext(
+  ctx: PluginStartedTaskContext,
+  options: {
+    botEmail: string | undefined;
+    env: Omit<GitHubInstallationEnv, "responses" | "tokens">;
+  },
+): PullRequestActionSyncContext {
+  return {
+    botEmail: options.botEmail,
+    codeChanges: ctx.codeChanges,
+    db: gitHubDbSchema.parse(ctx.db),
+    env: { ...options.env, responses: ctx.state, tokens: new Map() },
+    loadGitHubLogin: async (identityId) =>
+      linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
+    log: ctx.log,
+    inboxItems: ctx.inboxItems,
+    state: ctx.state,
+  };
+}
+
+/**
+ * Sync the next action of one pull request again. A failure throws, so the
+ * task queue runs it again after its backoff, a bounded number of times.
+ */
+export function githubPullRequestActionSyncTask(options: {
+  botEmail: () => string | undefined;
+  env: Omit<GitHubInstallationEnv, "responses" | "tokens">;
+}): PluginStartedTaskDefinition<typeof syncTaskPayloadSchema> {
+  return {
+    payload: syncTaskPayloadSchema,
+    async run(ctx) {
+      await syncOne(
+        startedTaskSyncContext(ctx, {
+          botEmail: options.botEmail(),
+          env: options.env,
+        }),
+        ctx.payload,
+      );
+    },
+  };
 }

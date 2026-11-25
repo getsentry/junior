@@ -23,10 +23,11 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { gitHubDbSchema } from "./db/database.js";
-import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
-import { syncGitHubPullRequestActions } from "./webhooks/pull-request-action.js";
+import {
+  startedTaskSyncContext,
+  syncGitHubPullRequestActions,
+} from "./webhooks/pull-request-action.js";
 
 export const GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK =
   "backfillPullRequestActions";
@@ -83,16 +84,11 @@ export function githubPullRequestActionBackfillTask(args: {
         .slice(0, PAGE_SIZE);
       const busy = await syncGitHubPullRequestActions({
         askInLimbo: true,
-        botEmail: args.botEmail(),
-        codeChanges: ctx.codeChanges,
-        db: gitHubDbSchema.parse(ctx.db),
+        ...startedTaskSyncContext(ctx, {
+          botEmail: args.botEmail(),
+          env: args.env,
+        }),
         deliveryId: `pull-request-action-backfill:${VERSION}`,
-        env: { ...args.env, responses: ctx.state, tokens: new Map() },
-        loadGitHubLogin: async (identityId) =>
-          linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
-        log: ctx.log,
-        inboxItems: ctx.inboxItems,
-        state: ctx.state,
         targets: page.map(({ change }) => ({
           number: change.number,
           repositoryFullName: change.repository.name,
