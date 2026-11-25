@@ -62,6 +62,67 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
+test("a member changes a Space's settings, and a non-member only reads them", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  const details = page.getByRole("complementary", { name: "Space details" });
+  const settings = details.getByRole("region", { name: "Settings" });
+  await expect(settings.getByText("github.repo")).toBeVisible();
+  await expect(settings.getByText("getsentry/junior")).toBeVisible();
+
+  const key = settings.getByRole("combobox", { name: "Key" });
+  const value = settings.getByRole("textbox", { name: "Value" });
+  const save = settings.getByRole("button", { name: "Save" });
+  // Add a value.
+  await key.fill("sentry.org");
+  await value.fill("sentry");
+  await save.click();
+  await expect(settings.getByText("sentry.org")).toBeVisible();
+  await expect(key).toHaveValue("");
+  await screenshot(page, "space-settings", {
+    target: settings,
+    view: "desktop",
+  });
+
+  // A set key takes the new value.
+  await key.fill("sentry.org");
+  await value.fill("sentry-test");
+  await save.click();
+  await expect(settings.getByText("sentry-test")).toBeVisible();
+  await expect(settings.getByText("sentry", { exact: true })).toHaveCount(0);
+
+  // A secret-looking key shows the API's error.
+  await key.fill("github.token");
+  await value.fill("abc");
+  await save.click();
+  await expect(settings.getByRole("alert")).toContainText(
+    "appears to be secret-related",
+  );
+  await expect(
+    settings.getByRole("list").getByText("github.token"),
+  ).toHaveCount(0);
+
+  await settings.getByRole("button", { name: "Remove sentry.org" }).click();
+  await expect(settings.getByText("sentry.org")).toHaveCount(0);
+  await expect(settings.getByText("github.repo")).toBeVisible();
+
+  // A non-member reads the settings but cannot change them.
+  await page.goto(`${dashboard.baseURL}${DOCS}`);
+  const docsSettings = page
+    .getByRole("complementary", { name: "Space details" })
+    .getByRole("region", { name: "Settings" });
+  await expect(
+    docsSettings.getByText(
+      "No settings. Conversations use the channel and install defaults.",
+    ),
+  ).toBeVisible();
+  await expect(docsSettings.getByRole("button")).toHaveCount(0);
+  await expect(docsSettings.getByRole("textbox")).toHaveCount(0);
+});
+
 test("another Space's page does not show the last Space's Conversations", async ({
   dashboard,
   page,

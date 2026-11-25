@@ -7,6 +7,7 @@ import {
 import {
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
+  spaceConfigurationSchema,
   spaceListSchema,
   spaceMemberListSchema,
   spaceSchema,
@@ -23,6 +24,8 @@ const spaceKey = (spaceId: string | undefined) =>
   [...spacesKey, "space", spaceId] as const;
 const spaceMembersKey = (spaceId: string | undefined) =>
   [...spaceKey(spaceId), "members"] as const;
+const spaceConfigurationKey = (spaceId: string | undefined) =>
+  [...spaceKey(spaceId), "configuration"] as const;
 
 /** The query key of a Space's Lead. */
 export const spaceLeadKey = (spaceId: string | undefined) =>
@@ -66,6 +69,48 @@ export function useSpaceMembersData(spaceId: string | undefined) {
         signal,
       ),
     retry: false,
+  });
+}
+
+/** Fetch a Space's configuration and the keys that plugins read. */
+export function useSpaceConfigurationData(spaceId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(spaceId),
+    queryKey: spaceConfigurationKey(spaceId),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        spaceConfigurationSchema,
+        `${spaceApiPath(spaceId!)}/configuration`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+const spaceConfigKeyPath = (spaceId: string, key: string) =>
+  `${spaceApiPath(spaceId)}/configuration/${encodeURIComponent(key)}`;
+
+/** Set one configuration value of a Space. Only members change it. */
+export function useSetSpaceConfiguration(spaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { key: string; value: string }) =>
+      put(spaceConfigurationSchema, spaceConfigKeyPath(spaceId, args.key), {
+        value: args.value,
+      }),
+    onSuccess: (configuration) =>
+      queryClient.setQueryData(spaceConfigurationKey(spaceId), configuration),
+  });
+}
+
+/** Remove one configuration value of a Space. Only members change it. */
+export function useRemoveSpaceConfiguration(spaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) =>
+      del(spaceConfigurationSchema, spaceConfigKeyPath(spaceId, key)),
+    onSuccess: (configuration) =>
+      queryClient.setQueryData(spaceConfigurationKey(spaceId), configuration),
   });
 }
 

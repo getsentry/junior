@@ -22,12 +22,13 @@ import {
   useSpaceData,
   useSpaceMembersData,
 } from "../../../spaces/queries";
+import { SpaceSettings } from "../../../spaces/SpaceSettings";
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
 
 /**
- * The Space beside its Lead: what the Space is for, its Conversations, and
- * its members. On a phone it is a bottom sheet.
+ * The Space beside its Lead: what the Space is for, its Conversations, its
+ * members, and its settings. On a phone it is a bottom sheet.
  */
 export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   const space = useSpaceData(props.spaceId).data;
@@ -52,7 +53,7 @@ export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   );
 }
 
-/** A Space's description, its Conversations, and its members. */
+/** A Space's description, its Conversations, its members, and its settings. */
 export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
@@ -64,6 +65,7 @@ export function SpaceOverview(props: { space: SpaceReport }) {
       ) : null}
       <SpaceConversations spaceId={space.id} />
       <SpaceMembers space={space} />
+      <SpaceSettings space={space} />
     </>
   );
 }
