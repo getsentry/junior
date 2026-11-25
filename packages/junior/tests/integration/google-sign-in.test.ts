@@ -217,6 +217,10 @@ describe("Google sign-in", () => {
       }),
     );
     expect(signedOut.status).toBe(200);
+    // A browser drops a `__Host-` clear that is not Secure.
+    expect(signedOut.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^__Host-junior_session=;.*Secure/),
+    );
     expect(await auth.getSession(session)).toBeNull();
     expect(await auth.getSession(bearer)).toBeNull();
   });
