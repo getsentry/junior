@@ -42,13 +42,18 @@ function unreadable(
 }
 
 async function grantForGraphql(input: {
+  actorHasStoredTokens?: () => Promise<boolean>;
   graphql?: PluginGraphqlRequest;
   method?: string;
   operation?: string;
+  url?: string;
   warn?: (message: string) => void;
   withoutCredential?: true;
 }) {
   return await githubPlugin().hooks?.grantForEgress?.({
+    ...(input.actorHasStoredTokens
+      ? { actorHasStoredTokens: input.actorHasStoredTokens }
+      : undefined),
     db: undefined,
     log: { error() {}, info() {}, warn: input.warn ?? (() => {}) },
     plugin: { name: "github" },
@@ -56,7 +61,7 @@ async function grantForGraphql(input: {
       ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method ?? "POST",
       ...(input.operation ? { operation: input.operation } : undefined),
-      url: GRAPHQL_URL,
+      url: input.url ?? GRAPHQL_URL,
       ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     },
   });
@@ -355,5 +360,79 @@ describe("GitHub GraphQL policy", () => {
       "github.egress.graphql_cost.unknown",
       expect.anything(),
     );
+  });
+
+  describe("with a linked GitHub account", () => {
+    const linked = async () => true;
+
+    it.each([
+      ["a GraphQL query", { graphql: costedQuery(1) }],
+      [
+        "a REST GET",
+        {
+          method: "GET",
+          url: "https://api.github.com/repos/getsentry/junior/pulls/1",
+        },
+      ],
+    ])(
+      "sends %s from the Sandbox with the Actor's token",
+      async (_name, input) => {
+        await expect(
+          grantForGraphql({ ...input, actorHasStoredTokens: linked }),
+        ).resolves.toMatchObject({ access: "read", name: "user-read" });
+      },
+    );
+
+    it.each([
+      [
+        "a host tool query",
+        {
+          graphql: costedQuery(1),
+          operation: "github.pull.get:getsentry/junior",
+        },
+        "installation-read",
+      ],
+      [
+        "a host tool mutation",
+        {
+          graphql: single(
+            operation("mutation", ["resolveReviewThread"], {
+              name: "ResolveReviewThread",
+            }),
+          ),
+          operation: "github.pull.review-thread.resolve:getsentry/junior",
+        },
+        "installation-write",
+      ],
+      [
+        "a Git push",
+        {
+          method: "GET",
+          url: "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
+        },
+        "installation-write",
+      ],
+      [
+        "a Git fetch",
+        {
+          method: "GET",
+          url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
+        },
+        "installation-read",
+      ],
+    ])("keeps %s on the App", async (_name, input, name) => {
+      await expect(
+        grantForGraphql({ ...input, actorHasStoredTokens: linked }),
+      ).resolves.toMatchObject({ name });
+    });
+  });
+
+  it("reads with the App when the Actor has no linked GitHub account", async () => {
+    await expect(
+      grantForGraphql({
+        actorHasStoredTokens: async () => false,
+        graphql: costedQuery(1),
+      }),
+    ).resolves.toMatchObject({ name: "installation-read" });
   });
 });

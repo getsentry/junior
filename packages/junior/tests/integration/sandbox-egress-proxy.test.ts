@@ -1192,6 +1192,167 @@ describe("sandbox egress proxy integration", () => {
     },
   );
 
+  /** Link a GitHub account for the Actor, as the OAuth callback stores it. */
+  async function linkGitHubAccount(expiresAt = Date.now() + 60 * 60_000) {
+    await new StateAdapterTokenStore(modules.state.getStateAdapter()).set(
+      ACTOR_ID,
+      "github",
+      {
+        account: {
+          id: "12345",
+          label: "actor",
+          url: "https://github.com/actor",
+        },
+        accessToken: "ghu_user-token",
+        expiresAt,
+        refreshToken: "github-refresh-token",
+      },
+    );
+  }
+
+  /** Send one Sandbox GitHub read and return the response and its upstream calls. */
+  async function sendGitHubRead(input: {
+    /** A system Actor, such as an Automation run. Default: the person Actor. */
+    systemActor?: string;
+    graphqlQuery?: string;
+    upstream?: () => Response;
+  }) {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: input.systemActor
+        ? { actor: { name: input.systemActor, platform: "system" } }
+        : { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) =>
+        input.upstream
+          ? input.upstream()
+          : Response.json({
+              authorization: new Headers(init?.headers).get("authorization"),
+            }),
+    );
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        ...(input.graphqlQuery
+          ? {
+              body: JSON.stringify({ query: input.graphqlQuery }),
+              method: "POST",
+              upstreamPath: "/graphql",
+            }
+          : { upstreamPath: "/repos/getsentry/junior/pulls/1" }),
+        forwardURL: forwardUrlFor(
+          buildVercelNetworkPolicy({ credentialToken }),
+          GITHUB_API_HOST,
+        ),
+        upstreamHost: GITHUB_API_HOST,
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    return { response, upstreamFetch };
+  }
+
+  it.each([
+    ["a GraphQL query", GH_PR_CHECKS_QUERY],
+    ["a REST GET", undefined],
+  ])(
+    "sends %s with the Actor's linked GitHub account",
+    async (_name, graphqlQuery) => {
+      configureGitHubAppEnv();
+      const installationTokenRequests = mockGitHubInstallationToken();
+      await registerGitHubPlugin();
+      await linkGitHubAccount();
+
+      const { response } = await sendGitHubRead({
+        ...(graphqlQuery ? { graphqlQuery } : undefined),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        authorization: "Bearer ghu_user-token",
+      });
+      expect(installationTokenRequests).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["has no linked GitHub account", false, undefined],
+    ["is a system Actor", true, "scheduled-automation"],
+  ])(
+    "reads GitHub with the App when the Actor %s",
+    async (_name, linked, systemActor) => {
+      configureGitHubAppEnv();
+      mockGitHubInstallationToken();
+      await registerGitHubPlugin();
+      if (linked) await linkGitHubAccount();
+
+      const { response } = await sendGitHubRead({
+        ...(systemActor ? { systemActor } : undefined),
+        graphqlQuery: GH_PR_CHECKS_QUERY,
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        authorization: "Bearer installation-token",
+      });
+    },
+  );
+
+  it("asks the Actor to connect GitHub again when their token refresh fails", async () => {
+    configureGitHubAppEnv();
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
+    const installationTokenRequests = mockGitHubInstallationToken();
+    mswServer.use(
+      http.post("https://github.com/login/oauth/access_token", () =>
+        HttpResponse.json({ error: "bad_refresh_token" }),
+      ),
+    );
+    await registerGitHubPlugin();
+    await linkGitHubAccount(Date.now() - 60_000);
+
+    const { response, upstreamFetch } = await sendGitHubRead({
+      graphqlQuery: GH_PR_CHECKS_QUERY,
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toContain(
+      "Your GitHub authorization has expired.",
+    );
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(installationTokenRequests).toHaveLength(0);
+  });
+
+  it.each([401, 403, 404])(
+    "fails a GitHub %i for the Actor's token without a retry on the App",
+    async (status) => {
+      configureGitHubAppEnv();
+      const installationTokenRequests = mockGitHubInstallationToken();
+      await registerGitHubPlugin();
+      await linkGitHubAccount();
+
+      const { response, upstreamFetch } = await sendGitHubRead({
+        upstream: () => Response.json({ message: "Refused" }, { status }),
+      });
+
+      expect(response.status).toBe(status);
+      expect(installationTokenRequests).toHaveLength(0);
+      expect(
+        upstreamFetch.mock.calls.map(([, init]) =>
+          new Headers(init?.headers).get("authorization"),
+        ),
+      ).toEqual(
+        // Core sends a 403 once more with a new lease from the same grant.
+        status === 403
+          ? ["Bearer ghu_user-token", "Bearer ghu_user-token"]
+          : ["Bearer ghu_user-token"],
+      );
+    },
+  );
+
   it("uploads GitHub user attachments with the requesting user's credential", async () => {
     await registerGitHubPlugin({ additionalUserScopes: ["repo"] });
     const tokenStore = new StateAdapterTokenStore(

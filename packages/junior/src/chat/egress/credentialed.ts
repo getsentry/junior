@@ -604,6 +604,7 @@ export async function executeCredentialedEgressRequest(input: {
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
+      actor: credentialContext.credentials.actor,
       ...(isGitHubPullRequestReviewPost({
         provider,
         requestMethod: request.method,

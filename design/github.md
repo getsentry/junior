@@ -71,3 +71,7 @@ also wake a Conversation or run an Event automation.
 - A request for the signed-in GitHub user reads it with the requester's
   account. This breaks "acts as its own App … not by using their
   credentials".
+- In a Conversation, a sandbox read from GitHub uses the requester's linked
+  account when they have one, so its cost comes from their rate limit, not
+  the App's. Writes and Junior's own calls stay on the App. This breaks
+  "acts as its own App … not by using their credentials".

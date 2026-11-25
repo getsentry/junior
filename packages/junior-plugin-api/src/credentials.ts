@@ -280,6 +280,12 @@ export interface PluginEgressRequest {
 }
 
 export interface EgressHookContext extends PluginContext {
+  /**
+   * Report whether the Actor has stored user tokens for this plugin, which
+   * is a linked provider account. Set only when the Actor is a person, so a
+   * system Actor, such as an Automation run, has none.
+   */
+  actorHasStoredTokens?: () => Promise<boolean>;
   request: PluginEgressRequest;
 }
 
