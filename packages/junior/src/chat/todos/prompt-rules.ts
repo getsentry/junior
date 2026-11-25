@@ -22,3 +22,11 @@ export const TODO_POLICY_SECTION: ToolPolicySection = {
 export const TODO_CHILD_AGENT_RUN_RULES = [
   "- The parent entry of `listAgents` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with `updateTodos`. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.",
 ];
+
+/**
+ * Block 2 lines of `<task-execution>`: a reply that leaves work for a person
+ * carries an item, an Inbox item or a To-do assigned to them.
+ */
+export const TODO_TASK_EXECUTION_RULES = [
+  "- When your reply leaves a decision or a task for a person in this Conversation, it carries an item, not only text: an action item with `addInboxItem` for a decision that is theirs, or a To-do assigned to them with `updateTodos` for a task that only they can do. This holds even when an Event's instructions say to tell or remind the person. Waiting for the person to ask you to act is their decision too, so ask it now with an action item. For a person who is not in the Conversation, name who can act instead. A confirmation that a child agent or Guardian asks for is the person's decision, even when their request already named the change.",
+];
