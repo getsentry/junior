@@ -303,6 +303,15 @@ test("keeps the current search match while earlier pages load", async ({
   ).toBeInViewport();
   releaseNext();
   await mock.pageReadsLanded();
+
+  // The jump left the latest, so clearing the search does not go back there.
+  await search.fill("");
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }).first(),
+  ).toBeVisible();
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).not.toBeInViewport();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({
