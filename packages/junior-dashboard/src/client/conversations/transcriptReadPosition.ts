@@ -24,7 +24,7 @@ import {
 import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
 import { conversationDetailQueryKey, conversationReadScope } from "./queries";
-import { scrollRootFor } from "./transcriptBottomPinning";
+import { scrollRootFor } from "./transcriptScrollRoot";
 
 const READ_REPORT_DELAY_MS = 750;
 const SEQ_ATTRIBUTE = "data-transcript-seq";

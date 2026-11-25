@@ -1,6 +1,7 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
 import * as z from "zod";
 import {
+  getDashboardConversationLink,
   getDashboardInboxItemLink,
   getDashboardInboxItemSnoozeLink,
 } from "@/chat/dashboard-link";
@@ -36,6 +37,9 @@ const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
 const SNOOZE_ACTION_ID = `${ACTION_ID_PREFIX}snooze`;
 // Slack allows 12,000 characters in all markdown blocks of one message.
 const MAX_BODY_CHARS = 3_000;
+// The related links leave room for the body and the question.
+const MAX_RELATED_CHARS = 3_000;
+const RELATED_SEPARATOR = " · ";
 // Slack allows 3,000 characters in one context element.
 const MAX_CONTEXT_CHARS = 3_000;
 
@@ -66,19 +70,54 @@ function assigneeText(item: InboxItem): string {
  */
 function titleText(item: InboxItem, subjectUrl: string | undefined): string {
   const href = safeLinkUrl(subjectUrl);
-  if (!href) return `**${item.title}**`;
-  const label = item.title.replace(/[[\]\\]/g, "\\$&");
-  return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
+  return href ? `**${markdownLink(item.title, href)}**` : `**${item.title}**`;
+}
+
+function markdownLink(label: string, href: string): string {
+  const text = label.replace(/[[\]\\]/g, "\\$&");
+  return `[${text}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})`;
 }
 
 /**
- * The title, body, and question of an item, in Slack markdown. The card is
+ * The item's related links as one line of plain links. They show on the
+ * card but never decide it, so the title does not link to them. A link
+ * that shows twice shows once.
+ */
+function relatedText(item: InboxItem): string | undefined {
+  const links = new Map<string, string>();
+  let length = 0;
+  for (const entry of item.request?.related ?? []) {
+    const href = safeLinkUrl(
+      entry.url ??
+        (entry.conversationId
+          ? getDashboardConversationLink(entry.conversationId)
+          : undefined),
+    );
+    const key = href ?? entry.label;
+    if (links.has(key)) continue;
+    const link = href
+      ? markdownLink(entry.label, href)
+      : escapeSlackMrkdwnText(entry.label);
+    // The Inbox shows every link, so a link that would make the line too
+    // long for the card is left out.
+    if (length + link.length > MAX_RELATED_CHARS) continue;
+    length += link.length + RELATED_SEPARATOR.length;
+    links.set(key, link);
+  }
+  return links.size
+    ? `Related: ${[...links.values()].join(RELATED_SEPARATOR)}`
+    : undefined;
+}
+
+/**
+ * The title, body, related links, and question of an item, in Slack markdown. The card is
  * one message that changes in place, so it cannot post the rest of a long
  * item as another message. When the whole item is over Slack's markdown
  * limit, the body gets shorter, and the Inbox shows all of it.
  */
 function itemText(item: InboxItem, subjectUrl: string | undefined): string {
   const question = inboxItemQuestion(item.request);
+  const related = relatedText(item);
   const render = (bodyChars: number) =>
     normalizeSlackReplyMarkdown(
       [
@@ -87,6 +126,7 @@ function itemText(item: InboxItem, subjectUrl: string | undefined): string {
         ...(question?.question === item.body
           ? []
           : [truncate(item.body, bodyChars)]),
+        ...(related ? [related] : []),
         ...(question ? [slackUserInputText(question)] : []),
       ].join("\n\n"),
     );

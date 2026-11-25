@@ -14,11 +14,15 @@ import {
   spaceSchema,
   versionsSchema,
 } from "@/api/schema";
+import { canReadConversation } from "@/api/conversations/access";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
-import { juniorConversations } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
@@ -98,14 +102,18 @@ async function spaceFeed(
   return conversationFeedSchema.parse(await response.json()).conversations;
 }
 
-async function detailSpace(app: Hono<JuniorApiEnv>, conversationId: string) {
+async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
     app,
     "GET",
     `/conversations/${encodeURIComponent(conversationId)}`,
   );
   expect(response.status).toBe(200);
-  return conversationDetailReportSchema.parse(await response.json()).space;
+  return conversationDetailReportSchema.parse(await response.json());
+}
+
+async function detailSpace(app: Hono<JuniorApiEnv>, conversationId: string) {
+  return (await detail(app, conversationId)).space;
 }
 
 async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
@@ -338,6 +346,149 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+  });
+
+  it("keeps a private Space and its Conversations with its members", async () => {
+    const ana = apiFor("spaces-private-ana@example.com");
+    const bo = apiFor("spaces-private-bo@example.com");
+    const cy = apiFor("spaces-private-cy@example.com");
+    const created = await send(ana, "POST", "", {
+      name: "Payroll audit",
+      visibility: "private",
+    });
+    expect(created.status).toBe(201);
+    const space = spaceSchema.parse(await created.json());
+    expect(space.visibility).toBe("private");
+
+    // A person who is not a member cannot find, read, or join it.
+    expect(await listNames(bo, "?membership=all")).not.toContain(
+      "Payroll audit",
+    );
+    expect((await send(bo, "GET", `/${space.id}`)).status).toBe(404);
+    expect((await send(bo, "PUT", `/${space.id}/members/me`)).status).toBe(404);
+
+    // Its Conversations take its visibility, and only members read them.
+    expect(
+      (
+        await request(ana, "POST", "/conversations", {
+          idempotencyKey: "payroll-public",
+          message: "Hi",
+          spaceId: space.id,
+          visibility: "public",
+        })
+      ).status,
+    ).toBe(400);
+    const inSpace = await startConversation(ana, "payroll-plan", {
+      spaceId: space.id,
+    });
+    const oneOff = await startConversation(ana, "payroll-one-off");
+    const spaceRef = { id: space.id, name: "Payroll audit" };
+    expect(await detailSpace(bo, inSpace)).toBeNull();
+    // Its change token does not carry the Space's name either.
+    expect(await detailVersion(bo, inSpace)).not.toContain("Payroll audit");
+    expect(await spaceFeed(bo, space.id)).toEqual([]);
+
+    // A member adds people, and every member reads every Conversation.
+    expect(
+      (
+        await send(bo, "POST", `/${space.id}/members`, {
+          email: "spaces-private-bo@example.com",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await send(ana, "POST", `/${space.id}/members`, {
+          email: "nobody@example.com",
+        })
+      ).status,
+    ).toBe(404);
+    const added = await send(ana, "POST", `/${space.id}/members`, {
+      email: "spaces-private-bo@example.com",
+    });
+    expect(spaceSchema.parse(await added.json()).memberCount).toBe(2);
+    expect(await detail(bo, inSpace)).toMatchObject({
+      space: spaceRef,
+      visibility: "private",
+    });
+    expect(
+      (await spaceFeed(bo, space.id)).map((row) => row.conversationId),
+    ).toEqual([inSpace]);
+
+    // Data stays in the Space: Conversations in it read each other, and a
+    // Conversation outside it reads none of them.
+    expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
+    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
+    const outside = await startConversation(ana, "payroll-outside");
+    expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);
+    expect(await canReadConversation(getDb(), inSpace, outside)).toBe(true);
+    expect((await moveTo(ana, oneOff, null)).status).toBe(409);
+
+    // A Space keeps the visibility it was created with.
+    expect(
+      (await send(ana, "PATCH", `/${space.id}`, { visibility: "public" }))
+        .status,
+    ).toBe(400);
+    expect(await detailSpace(cy, inSpace)).toBeNull();
+
+    // A participant who leaves no longer finds its Conversations.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: inSpace,
+        userId: (await signedInViewer("spaces-private-bo@example.com")).id,
+      });
+    const inbox = async () =>
+      conversationFeedSchema
+        .parse(await (await request(bo, "GET", "/conversations")).json())
+        .conversations.map((row) => row.conversationId);
+    expect(await inbox()).toContain(inSpace);
+    expect((await send(bo, "DELETE", `/${space.id}/members/me`)).status).toBe(
+      200,
+    );
+    expect(await inbox()).not.toContain(inSpace);
+
+    // The last member stays, so somebody can always read it, even when the
+    // last two leave at once.
+    await send(ana, "POST", `/${space.id}/members`, {
+      email: "spaces-private-bo@example.com",
+    });
+    const leaves = await Promise.all(
+      [ana, bo].map((app) => send(app, "DELETE", `/${space.id}/members/me`)),
+    );
+    expect(leaves.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
+  });
+
+  it("keeps a Slack Conversation out of a private Space", async () => {
+    const ana = apiFor("spaces-slack-ana@example.com");
+    const conversationId = "slack:CSPACES:1700000000.000100";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CSPACES" },
+      nowMs: 1_000,
+      source: "slack",
+      visibility: "public",
+    });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: (await signedInViewer("spaces-slack-ana@example.com")).id,
+      });
+
+    const hidden = spaceSchema.parse(
+      await (
+        await send(ana, "POST", "", {
+          name: "Support escalations",
+          visibility: "private",
+        })
+      ).json(),
+    );
+    expect((await moveTo(ana, conversationId, hidden.id)).status).toBe(409);
   });
 
   it("lets members ask Junior to set the configuration that a Space's Conversations use", async () => {

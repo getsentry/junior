@@ -77,9 +77,9 @@ Actions:
   stack has no other row, the next row of the list opens.
 - When a stack shrinks to one row, the tray goes and the row stays. An
   open row stays open.
-- A stack's Snooze and Dismiss put the whole stack away with the same leave
-  motion as a row. When a row of the stack was open, the next row after the
-  stack opens.
+- A stack's Snooze puts the whole stack away with the same leave motion as
+  a row. A stack's Dismiss does the same, but its To-do rows stay. When a
+  row of the stack was open, the next row after the stack opens.
 - In To do, a stack leaves with its last row that waits on the viewer, and
   the next row of the list opens.
 - A notice about the subject of an ask folds into the ask's row. Other

@@ -164,7 +164,7 @@ describe("Lead API", () => {
       identifier: "slack:C1:1.0",
       label: "Conversation Checkout latency",
       namespace: "junior",
-      resourceType: "conversation",
+      resourceType: "agent",
     });
     // A Watch on another kind of resource is not a watched Conversation.
     await createWatch({

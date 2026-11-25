@@ -11,7 +11,11 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations, juniorSpaces } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorDestinations,
+  juniorSpaces,
+} from "@/db/schema";
 
 /** The id and name that label a Conversation's Space. */
 export interface SpaceRef {
@@ -35,25 +39,88 @@ export async function readSpaceRefs(
   return new Map(rows.map((row) => [row.id, row]));
 }
 
+/** Why `setConversationSpace` did not move a root. */
+export type SpaceMoveRefusal =
+  /** No root has the id. */
+  | "not_found"
+  /** Another move changed the root's Space after the caller checked it. */
+  | "moved"
+  /** The root is in a private Space, and its data stays with the members. */
+  | "leaves_private"
+  /**
+   * The Space is private, and the root shares its Location, such as a Slack
+   * channel, with people who are not members.
+   */
+  | "shared_location";
+
 /**
- * Put one root in a Space, or take it out of every Space with null. Returns
- * false when no root has the id. The caller checks who may move it.
+ * Put one root in a Space, or take it out of every Space with null. The root
+ * gets the Space's visibility on its own Location. The caller checks who may
+ * move it out of `fromSpaceId`, the Space that it read before the move.
  */
 export async function setConversationSpace(
   conversationId: string,
   spaceId: string | null,
-): Promise<boolean> {
-  const rows = await getDb()
-    .update(juniorConversations)
-    .set({ spaceId, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        eq(juniorConversations.conversationId, conversationId),
-        isNull(juniorConversations.parentConversationId),
-      ),
-    )
-    .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+  fromSpaceId: string | null,
+): Promise<SpaceMoveRefusal | undefined> {
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // Lock the root, so two moves of it run one after the other. A Space
+    // keeps its visibility, so the Spaces need no lock.
+    const [root] = await db
+      .select({
+        locationId: juniorConversations.destinationId,
+        provider: juniorDestinations.provider,
+        spaceId: juniorConversations.spaceId,
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(
+          eq(juniorConversations.conversationId, conversationId),
+          isNull(juniorConversations.parentConversationId),
+        ),
+      )
+      .limit(1)
+      .for("update", { of: juniorConversations });
+    if (!root) return "not_found";
+    // The caller's membership check covers only the Space that it read.
+    if (root.spaceId !== fromSpaceId) return "moved";
+    const spaceIds = [root.spaceId, spaceId].filter(
+      (id): id is string => id !== null,
+    );
+    const spaces =
+      spaceIds.length > 0
+        ? await db
+            .select({
+              id: juniorSpaces.id,
+              visibility: juniorSpaces.visibility,
+            })
+            .from(juniorSpaces)
+            .where(inArray(juniorSpaces.id, spaceIds))
+        : [];
+    const source = spaces.find((space) => space.id === root.spaceId);
+    if (source?.visibility === "private") return "leaves_private";
+    const target = spaces.find((space) => space.id === spaceId);
+    if (target?.visibility === "private") {
+      if (root.provider !== "local" || !root.locationId) {
+        return "shared_location";
+      }
+      await db
+        .update(juniorDestinations)
+        .set({ visibility: "private", updatedAt: new Date() })
+        .where(eq(juniorDestinations.id, root.locationId));
+    }
+    await db
+      .update(juniorConversations)
+      .set({ spaceId, detailVersion: nextDetailVersion })
+      .where(eq(juniorConversations.conversationId, conversationId));
+    return undefined;
+  });
 }
 
 /**
