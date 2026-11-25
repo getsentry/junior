@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { juniorConversationParticipants } from "@/db/schema";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
@@ -121,5 +124,87 @@ describe("inbox item with no assignees", () => {
         { type: "mrkdwn", text: "For Everyone" },
       ]),
     });
+  });
+});
+
+describe("inbox item for Everyone in a private Conversation", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("is for the people who can see the Conversation", async () => {
+    const fixture = await createConversationFixture();
+    const privateId = "slack:CPRIV:1.000001";
+    await getConversationStore().recordActivity({
+      conversationId: privateId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CPRIV" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "private",
+    });
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    // Ana takes part in the private Conversation. Ben does not.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date("2026-10-01T12:00:00.000Z"),
+        rootConversationId: privateId,
+        userId: ana.id,
+      });
+    const add = createAddInboxItemTool(
+      {
+        conversationId: privateId,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${ana.id}` } as any,
+          user: ana,
+        }),
+        source: { kind: "slack" } as any,
+      },
+      createSlackInboxItemToolServices(() => fixture.queue),
+    ) as any;
+    const added = await add.execute(
+      add.prepareArguments({
+        kind: "action",
+        title: "Pick a rollout day",
+        body: "The deploy waits on a day.",
+        assignees: ["everyone"],
+        request: {
+          question: "Which day?",
+          fields: [
+            {
+              id: "day",
+              kind: "choice",
+              label: "Day",
+              options: [{ label: "Monday" }, { label: "Tuesday" }],
+            },
+          ],
+        },
+      }),
+      {} as any,
+    );
+    expect(added.item).toMatchObject({
+      assignees: ["everyone"],
+      visibility: "private",
+    });
+
+    // Ana sees it up for grabs. It waits on no one, so her count leaves it
+    // out.
+    const anas = await api(fixture, ana)("?for=viewer&sort=waiting");
+    expect(anas.items).toMatchObject([
+      { id: added.item.id, assignedToEveryone: true, canAct: true },
+    ]);
+    expect(await api(fixture, ana)("/count")).toMatchObject({
+      needsViewer: 0,
+    });
+    expect(await api(fixture, ana)(`/${added.item.id}`)).toMatchObject({
+      id: added.item.id,
+      canAct: true,
+    });
+    // Ben cannot see the Conversation, so Everyone does not include him.
+    expect((await api(fixture, ben)("?for=viewer&sort=waiting")).items).toEqual(
+      [],
+    );
+    expect((await api(fixture, ben)(`/${added.item.id}`)).id).toBeUndefined();
   });
 });
