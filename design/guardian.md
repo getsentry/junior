@@ -14,9 +14,8 @@ untrusted text set up, does not run.
 - When the agent wants to do something that nobody asked for, the person
   who gave the instruction gets one Inbox item that names the exact action,
   so they decide once and the confirmed action runs as them.
-- When work moves to a child agent, a Lead start, a hand-off, a Watch Turn,
-  or an Automation run, the person's own words and answers go with it, so
-  no step asks again for what the person said.
+- When work moves to another agent, the person's own words and answers go
+  with it, so no step asks again for what the person said.
 - When text from a tool, a file, an issue, an agent, or another person
   tries to steer the agent, it is not approval, so injected or retold text
   never makes a risky action run.
