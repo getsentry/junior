@@ -1,7 +1,9 @@
+import { lazy, Suspense, useState } from "react";
 import type { SpaceReport } from "@sentry/junior/api/schema";
 
 import { ActorAvatar } from "../../../components/ActorAvatar";
 import { DetailsPanel } from "../../../components/DetailsPanel";
+import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { conversationPath } from "../../../conversations/conversationRoutes";
 import { newestFirst } from "../../../conversations/conversationSections";
@@ -24,6 +26,14 @@ import {
 } from "../../../spaces/queries";
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
+
+// The form opens only after a click, so it loads with the first open
+// instead of with every Space page.
+const AddSpaceMemberForm = lazy(() =>
+  import("../../../spaces/AddSpaceMemberForm").then((module) => ({
+    default: module.AddSpaceMemberForm,
+  })),
+);
 
 /**
  * The Space beside its Lead: what the Space is for, its Conversations, and
@@ -134,12 +144,34 @@ function StateIcon(props: { state: LeadWorkState | undefined }) {
 
 function SpaceMembers(props: { space: SpaceReport }) {
   const members = useSpaceMembersData(props.space.id);
+  const [adding, setAdding] = useState(false);
   return (
     <DetailsCard
+      action={
+        props.space.viewerIsMember ? (
+          <Button
+            aria-expanded={adding}
+            className="rounded-md px-1.5 py-0.5 text-xs"
+            onClick={() => setAdding((value) => !value)}
+            size="bare"
+            variant="ghost"
+          >
+            {adding ? "Cancel" : "Add"}
+          </Button>
+        ) : null
+      }
       count={props.space.memberCount}
       label="Members"
       title="Members"
     >
+      {adding ? (
+        <Suspense fallback={null}>
+          <AddSpaceMemberForm
+            onAdded={() => setAdding(false)}
+            spaceId={props.space.id}
+          />
+        </Suspense>
+      ) : null}
       {members.data ? (
         <DetailsList
           itemKey={(member) => member.userId}

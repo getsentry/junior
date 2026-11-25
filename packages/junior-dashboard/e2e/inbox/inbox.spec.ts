@@ -85,6 +85,7 @@ test.describe("new UI", () => {
       // The viewer's Spaces.
       /Billing migration$/,
       /Mobile app$/,
+      /Pricing launch$/,
       new RegExp(checkout),
     ]);
     // A filter counts what waits on the viewer, like the badge: the

@@ -1,5 +1,9 @@
+import { LockKeyhole } from "lucide-react";
 import { Link } from "react-router";
-import type { SpaceRefReport } from "@sentry/junior/api/schema";
+import type {
+  SpaceRefReport,
+  SpaceVisibilityReport,
+} from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -24,6 +28,14 @@ const TILE_SIZES = {
   lg: "size-10 rounded-lg text-lg",
 } as const;
 
+// The lock sits on the bottom-right corner. The top-right corner and the
+// row's trailing column stay free for activity and needs-you marks.
+const LOCK_SIZES = {
+  sm: "size-2.5 p-px",
+  md: "size-3 p-0.5",
+  lg: "size-4 p-0.5",
+} as const;
+
 /** The same Space gets the same color on every surface. */
 function tileColor(spaceId: string): string {
   let hash = 0;
@@ -31,23 +43,42 @@ function tileColor(spaceId: string): string {
   return TILE_COLORS[hash % TILE_COLORS.length]!;
 }
 
-/** A Space's colored tile with the first letter of its name. */
+/**
+ * A Space's colored tile with the first letter of its name, and a lock on
+ * its corner when the Space is private.
+ */
 export function SpaceTile(props: {
   className?: string;
   size: keyof typeof TILE_SIZES;
-  space: SpaceRefReport;
+  space: SpaceRefReport & { visibility?: SpaceVisibilityReport };
 }) {
-  return (
+  const isPrivate = props.space.visibility === "private";
+  const tile = (
     <span
       aria-hidden="true"
       className={cn(
         "grid shrink-0 place-items-center font-sans font-semibold leading-none select-none",
         TILE_SIZES[props.size],
         tileColor(props.space.id),
-        props.className,
+        !isPrivate && props.className,
       )}
     >
       {props.space.name.trim().charAt(0).toUpperCase()}
+    </span>
+  );
+  if (!isPrivate) return tile;
+  return (
+    <span className={cn("relative grid shrink-0", props.className)}>
+      {tile}
+      <LockKeyhole
+        aria-label="Private Space"
+        className={cn(
+          "absolute -right-1 -bottom-1 rounded-full bg-dashboard-bg text-dashboard-text-muted",
+          LOCK_SIZES[props.size],
+        )}
+        role="img"
+        strokeWidth={2.5}
+      />
     </span>
   );
 }

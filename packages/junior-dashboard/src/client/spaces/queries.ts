@@ -11,6 +11,7 @@ import {
   spaceMemberListSchema,
   spaceSchema,
   type SpaceReport,
+  type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
 
 import { invalidateConversationFeeds } from "../conversations/conversationFeedCache";
@@ -43,7 +44,10 @@ export function useMemberSpacesData(enabled: boolean) {
   });
 }
 
-/** Fetch one Space. Every Space is public, so anyone can read it. */
+/**
+ * Fetch one Space. Anyone can read a public Space, and only members read a
+ * private one.
+ */
 export function useSpaceData(spaceId: string | undefined) {
   return useQuery({
     enabled: Boolean(spaceId),
@@ -97,8 +101,11 @@ function storeSpace(queryClient: QueryClient, space: SpaceReport) {
 export function useCreateSpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { description: string | null; name: string }) =>
-      post(spaceSchema, "/api/spaces", body),
+    mutationFn: (body: {
+      description: string | null;
+      name: string;
+      visibility: SpaceVisibilityReport;
+    }) => post(spaceSchema, "/api/spaces", body),
     onSuccess: (space) => storeSpace(queryClient, space),
   });
 }
@@ -119,6 +126,37 @@ export function useSpaceMembership(spaceId: string) {
         storeSpace(queryClient, space),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
         queryClient.invalidateQueries({ queryKey: spaceLeadKey(spaceId) }),
+      ]),
+  });
+}
+
+/**
+ * Make one Space private or public. The API also changes the visibility of
+ * its Conversations, so the feeds refresh too.
+ */
+export function useSpaceVisibility(spaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (visibility: SpaceVisibilityReport) =>
+      patch(spaceSchema, spaceApiPath(spaceId), { visibility }),
+    onSuccess: (space) =>
+      Promise.all([
+        storeSpace(queryClient, space),
+        invalidateConversationFeeds(queryClient),
+      ]),
+  });
+}
+
+/** Add one person to a Space by their email. */
+export function useAddSpaceMember(spaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) =>
+      post(spaceSchema, `${spaceApiPath(spaceId)}/members`, { email }),
+    onSuccess: (space) =>
+      Promise.all([
+        storeSpace(queryClient, space),
+        queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
       ]),
   });
 }

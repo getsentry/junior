@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
+  addSpaceMemberBodySchema,
   archiveSpaceBodySchema,
   conversationParamsSchema,
   createSpaceBodySchema,
@@ -11,10 +12,12 @@ import {
   spaceMemberListSchema,
   spaceParamsSchema,
   spaceSchema,
+  updateSpaceBodySchema,
   type ConversationDetailReport,
   type ConversationFeed,
   type SpaceRefReport,
   type SpaceReport,
+  type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
 import type { User } from "@sentry/junior-plugin-api";
 import { errorResponse } from "./errors";
@@ -42,6 +45,7 @@ type MockSpace = {
   /** Members other than the viewer. */
   others: MockMember[];
   viewerMember: boolean;
+  visibility: SpaceVisibilityReport;
 };
 
 /** A member of every seeded Space but Docs refresh. */
@@ -57,11 +61,25 @@ export const RILEY: MockMember = {
   email: "riley@sentry.io",
 };
 
-/** The seeded Spaces. The viewer is a member of the first two. */
+/** A person who is in no seeded Space, whom a member can add. */
+const CASEY: MockMember = {
+  avatarUrl: null,
+  displayName: "Casey Nguyen",
+  email: "casey@example.com",
+};
+
+/** The people whom a member can add by email, other than the viewer. */
+const MOCK_PEOPLE = [AVERY, RILEY, CASEY];
+
+/**
+ * The seeded Spaces. The viewer is a member of all but Docs refresh. Pricing
+ * launch is private.
+ */
 export const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
+  pricing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a24",
 } as const;
 
 function seedSpaces(): MockSpace[] {
@@ -78,6 +96,7 @@ function seedSpaces(): MockSpace[] {
       name: "Billing migration",
       others: [AVERY],
       viewerMember: true,
+      visibility: "public",
     },
     {
       archived: [],
@@ -88,6 +107,7 @@ function seedSpaces(): MockSpace[] {
       name: "Mobile app",
       others: [AVERY, RILEY],
       viewerMember: true,
+      visibility: "public",
     },
     {
       archived: [],
@@ -98,6 +118,18 @@ function seedSpaces(): MockSpace[] {
       name: "Docs refresh",
       others: [RILEY],
       viewerMember: false,
+      visibility: "public",
+    },
+    {
+      archived: [],
+      archivedAt: null,
+      createdAt: at(5),
+      description: "Plan the new pricing tiers before the announcement.",
+      id: MOCK_SPACE_IDS.pricing,
+      name: "Pricing launch",
+      others: [AVERY],
+      viewerMember: true,
+      visibility: "private",
     },
   ];
 }
@@ -107,6 +139,8 @@ const SEEDED_CONVERSATION_SPACES = [
   ["internal:history-6", MOCK_SPACE_IDS.billing],
   ["internal:history-8", MOCK_SPACE_IDS.ios],
   ["internal:history-4", MOCK_SPACE_IDS.docs],
+  // A Slack root, so Docs refresh cannot be made private.
+  ["slack:CQA999:1770010800.000400", MOCK_SPACE_IDS.docs],
 ] as const;
 
 // Only a public Conversation can join a Space, so the seeded ones are public.
@@ -114,16 +148,20 @@ const SEEDED_PUBLIC_IDS = new Set<string>(
   SEEDED_CONVERSATION_SPACES.map(([conversationId]) => conversationId),
 );
 
+const mockSpaces = new Map<string, MockSpace>();
+/** The Space of each root, by Conversation id. */
+const mockConversationSpaces = new Map<string, string>();
+
+/** A root in a private Space is private, as the API makes it. */
 function visibilityOf(
   conversationId: string,
   visibility: "private" | "public" | undefined,
 ) {
+  const spaceId = mockConversationSpaces.get(conversationId);
+  if (spaceId && mockSpaces.get(spaceId)?.visibility === "private")
+    return "private";
   return SEEDED_PUBLIC_IDS.has(conversationId) ? "public" : visibility;
 }
-
-const mockSpaces = new Map<string, MockSpace>();
-/** The Space of each root, by Conversation id. */
-const mockConversationSpaces = new Map<string, string>();
 
 /** Put the mock Spaces back to their seeds between tests. */
 export function resetMockSpaces(): void {
@@ -138,7 +176,7 @@ export function resetMockSpaces(): void {
 resetMockSpaces();
 
 function spaceRef(spaceId: string | undefined): SpaceRefReport | null {
-  const space = spaceId ? mockSpaces.get(spaceId) : undefined;
+  const space = spaceId ? readMockSpace(spaceId) : undefined;
   return space ? { id: space.id, name: space.name } : null;
 }
 
@@ -184,9 +222,17 @@ export function withMockSpace<T extends ConversationDetailReport>(
   };
 }
 
-/** Read one mock Space, as the routes see it. */
+/**
+ * Read one mock Space, as the routes see it. A private Space is missing to
+ * a person who is not a member, as in the API.
+ */
 export function readMockSpace(spaceId: string): MockSpace | undefined {
-  return mockSpaces.get(spaceId);
+  const space = mockSpaces.get(spaceId);
+  return space && readable(space) ? space : undefined;
+}
+
+function readable(space: MockSpace): boolean {
+  return space.visibility === "public" || space.viewerMember;
 }
 
 /**
@@ -196,7 +242,7 @@ export function readMockSpace(spaceId: string): MockSpace | undefined {
 export function mockSpaceForWork(
   spaceId: string,
 ): { space: MockSpace } | { error: string; status: 403 | 404 | 409 } {
-  const space = mockSpaces.get(spaceId);
+  const space = readMockSpace(spaceId);
   if (!space) return { error: "Space was not found.", status: 404 };
   if (space.archivedAt)
     return {
@@ -238,12 +284,26 @@ export function addMockConversationSpaceRoute(
         409,
       );
     const { spaceId } = body.data;
+    const from = mockConversationSpaces.get(conversationId);
+    if (from && mockSpaces.get(from)?.visibility === "private")
+      return errorResponse(
+        "A conversation in a private Space stays in it.",
+        409,
+      );
     if (spaceId) {
       const target = mockSpaceForWork(spaceId);
       if ("error" in target) return errorResponse(target.error, target.status);
       if (visibilityOf(conversationId, conversation.visibility) !== "public")
         return errorResponse(
           "Only a public conversation can join a Space.",
+          409,
+        );
+      if (
+        target.space.visibility === "private" &&
+        conversation.surface === "slack"
+      )
+        return errorResponse(
+          "A Slack conversation can't join a private Space.",
           409,
         );
       mockConversationSpaces.set(conversationId, spaceId);
@@ -266,6 +326,7 @@ function view(space: MockSpace): SpaceReport {
     name: space.name,
     updatedAt: space.archivedAt ?? space.createdAt,
     viewerIsMember: space.viewerMember,
+    visibility: space.visibility,
   };
 }
 
@@ -323,12 +384,24 @@ function findSpace(param: Record<string, string>): MockSpace | Response {
   const params = spaceParamsSchema.safeParse(param);
   if (!params.success) return errorResponse("Invalid route parameters.", 400);
   return (
-    mockSpaces.get(params.data.spaceId) ??
+    readMockSpace(params.data.spaceId) ??
     errorResponse("Space was not found.", 404)
   );
 }
 
-/** Create the mock `/api/spaces` routes. Every Space is public. */
+/** Whether a root in the Space shares a Slack conversation. */
+function holdsSlackRoot(space: MockSpace): boolean {
+  return [...mockConversationSpaces].some(
+    ([conversationId, spaceId]) =>
+      spaceId === space.id &&
+      readMockConversationDetail(conversationId, 1)?.surface === "slack",
+  );
+}
+
+/**
+ * Create the mock `/api/spaces` routes. A private Space is missing to a
+ * person who is not a member.
+ */
 export function createMockSpaceRoutes(): Hono<{
   Variables: JuniorApiVariables;
 }> {
@@ -344,6 +417,7 @@ export function createMockSpaceRoutes(): Hono<{
       .filter(
         (space) =>
           (query.data.membership === "all" || space.viewerMember) &&
+          readable(space) &&
           Boolean(space.archivedAt) === query.data.archived,
       )
       .sort((left, right) => left.name.localeCompare(right.name));
@@ -361,6 +435,7 @@ export function createMockSpaceRoutes(): Hono<{
       name: body.data.name,
       others: [],
       viewerMember: true,
+      visibility: body.data.visibility,
     };
     mockSpaces.set(space.id, space);
     return jsonResponse(spaceSchema, view(space), { status: 201 });
@@ -379,18 +454,60 @@ export function createMockSpaceRoutes(): Hono<{
           members: members(space, c.get("viewer")!),
         });
   });
+  app.patch("/:spaceId", async (c) => {
+    const space = findSpace(c.req.param());
+    if (space instanceof Response) return space;
+    if (!space.viewerMember)
+      return errorResponse("Join the Space to change it.", 403);
+    const body = updateSpaceBodySchema.safeParse(await c.req.json());
+    if (!body.success) return errorResponse("Invalid request body.", 400);
+    const { description, name, visibility } = body.data;
+    if (visibility === "private" && holdsSlackRoot(space))
+      return errorResponse(
+        "A Space with a Slack conversation can't be private.",
+        409,
+      );
+    if (name !== undefined) space.name = name;
+    if (description !== undefined) space.description = description;
+    if (visibility !== undefined) space.visibility = visibility;
+    return jsonResponse(spaceSchema, view(space));
+  });
+  // A person cannot find a private Space to join it, so a member adds them.
+  app.post("/:spaceId/members", async (c) => {
+    const space = findSpace(c.req.param());
+    if (space instanceof Response) return space;
+    if (!space.viewerMember)
+      return errorResponse("Join the Space to change it.", 403);
+    const body = addSpaceMemberBodySchema.safeParse(await c.req.json());
+    if (!body.success) return errorResponse("Invalid request body.", 400);
+    const email = body.data.email.toLowerCase();
+    const viewer = c.get("viewer")!;
+    const person = MOCK_PEOPLE.find((member) => member.email === email);
+    if (!person && email !== viewer.email.toLowerCase())
+      return errorResponse("No person has that email.", 404);
+    if (person && !space.others.includes(person)) space.others.push(person);
+    return jsonResponse(spaceSchema, view(space));
+  });
   // An archived Space can be joined too, as in the API.
-  for (const [method, join] of [
-    ["put", true],
-    ["delete", false],
-  ] as const) {
-    app[method]("/:spaceId/members/me", (c) => {
-      const space = findSpace(c.req.param());
-      if (space instanceof Response) return space;
-      space.viewerMember = join;
-      return jsonResponse(spaceSchema, view(space));
-    });
-  }
+  app.put("/:spaceId/members/me", (c) => {
+    const space = findSpace(c.req.param());
+    if (space instanceof Response) return space;
+    space.viewerMember = true;
+    return jsonResponse(spaceSchema, view(space));
+  });
+  app.delete("/:spaceId/members/me", (c) => {
+    const space = findSpace(c.req.param());
+    if (space instanceof Response) return space;
+    // Nobody could read a private Space with no members.
+    if (
+      space.visibility === "private" &&
+      space.viewerMember &&
+      space.others.length === 0
+    )
+      return errorResponse("The last member can't leave a private Space.", 409);
+    space.viewerMember = false;
+    return jsonResponse(spaceSchema, view(space));
+  });
   app.patch("/:spaceId/archive", async (c) => {
     const space = findSpace(c.req.param());
     if (space instanceof Response) return space;
