@@ -58,6 +58,10 @@ not need a home stays a one-off Conversation.
   the work there.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
+- Each Space in the sidebar shows what its Conversations need from the
+  member, the first that applies: a Conversation needs them, one failed, or
+  one works. A Space with none of these shows nothing. Its Conversations
+  still show in In flight, so each one stays one click away.
 - Any member can archive a Space.
 - Configuration resolves in this order: an explicit target in the request,
   then the Space, then the Slack channel, then the install-wide defaults.
