@@ -62,6 +62,9 @@ also wake a Conversation or run an Event automation.
   it too, and the item tells the requester to review it before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+- When GitHub fails the next-action read for a while (rate limit or
+  outage), Junior syncs the pull request again later, after the rate limit
+  resets. A failed webhook never leaves a stale action in place.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. When GitHub is down,
