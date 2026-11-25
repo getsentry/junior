@@ -13,6 +13,8 @@ inputs:
   viewer.requester: bool
   viewer.requested: bool
   viewer.asked_again: bool
+  viewer.approved: bool
+  viewer.replied_since_ask: bool
   viewer.requests_changes: bool
   viewer.replied: bool
   viewer.shown: [nothing, merge, review]
@@ -28,8 +30,7 @@ rules:
     text: >-
       When it is open, not a draft, auto-merge is off, no review is pending,
       its merge state is clean, and no reviewer requests changes, the
-      requester gets "Ready to merge". A reviewer whose review GitHub still
-      requests gets it too.
+      requester gets "Ready to merge".
     rows:
       - when:
           viewer.requester: true
@@ -37,15 +38,6 @@ rules:
           draft: false
           auto_merge: false
           review_pending: false
-          merge_state: clean
-          review_outcome: not(changes_requested)
-        output: { ask: { label: Ready to merge } }
-      - when:
-          viewer.requester: false
-          viewer.requested: true
-          state: open
-          draft: false
-          auto_merge: false
           merge_state: clean
           review_outcome: not(changes_requested)
         output: { ask: { label: Ready to merge } }
@@ -65,12 +57,31 @@ rules:
           merge_state: unknown
           viewer.asked_again: false
         output: keep
+  - id: pr-merge-reviewer
+    text: >-
+      When it is approved, GitHub reports that it can merge, and it is not a
+      draft, a reviewer whose review GitHub still requests gets "Ready to
+      merge".
+    rows:
+      - when:
+          viewer.requester: false
+          viewer.requested: true
+          draft: false
+          merge_state: clean
+          review_outcome: approved
+        output: { ask: { label: Ready to merge } }
   - id: pr-review-again
     text: >-
       When Junior handled every comment of the requester's change request and
-      the required checks pass, the requester gets "Review requested".
+      the required checks pass, the requester gets "Review requested". A
+      requester who approved since is not asked. When the requester comments
+      or reviews after that, Junior acts next, and they no longer get it.
     rows:
-      - when: { viewer.requester: true, viewer.asked_again: true }
+      - when:
+          viewer.requester: true
+          viewer.asked_again: true
+          viewer.approved: false
+          viewer.replied_since_ask: false
         output: { ask: { label: Review requested } }
   - id: pr-review
     text: >-

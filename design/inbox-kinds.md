@@ -96,8 +96,8 @@ triggers.
 
 ## Gaps
 
-- `kind-table`: no kind is a table yet. The rules of each kind are prose,
-  and people write its code.
+- `kind-table`: only `github:pull_request` is a table. The rules of the
+  other kinds are prose, and people write their code.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.

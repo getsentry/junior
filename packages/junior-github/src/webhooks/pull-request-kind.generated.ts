@@ -13,6 +13,8 @@ export interface Inputs {
     requester: boolean;
     requested: boolean;
     asked_again: boolean;
+    approved: boolean;
+    replied_since_ask: boolean;
     requests_changes: boolean;
     replied: boolean;
     shown: "nothing" | "merge" | "review";
@@ -32,6 +34,7 @@ export type Outcome =
   | { kind: "close"; rule: "pr-ended"; status: "dismissed" }
   | { kind: "ask"; rule: "pr-merge"; label: "Ready to merge" }
   | { kind: "keep"; rule: "pr-merge" }
+  | { kind: "ask"; rule: "pr-merge-reviewer"; label: "Ready to merge" }
   | { kind: "ask"; rule: "pr-review-again"; label: "Review requested" }
   | {
       kind: "ask";
@@ -67,25 +70,13 @@ export function decide(inputs: Inputs): Outcome {
     inputs.state === "open" &&
     !inputs.draft &&
     !inputs.auto_merge &&
-    inputs.merge_state === "clean" &&
-    inputs.review_outcome !== "changes_requested" &&
-    !inputs.viewer.requester &&
-    inputs.viewer.requested
-  ) {
-    return { kind: "ask", rule: "pr-merge", label: "Ready to merge" };
-  }
-  // `pr-merge` row 3
-  if (
-    inputs.state === "open" &&
-    !inputs.draft &&
-    !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
     inputs.viewer.shown === "merge"
   ) {
     return { kind: "keep", rule: "pr-merge" };
   }
-  // `pr-merge` row 4
+  // `pr-merge` row 3
   if (
     inputs.state === "open" &&
     !inputs.draft &&
@@ -96,8 +87,23 @@ export function decide(inputs: Inputs): Outcome {
   ) {
     return { kind: "keep", rule: "pr-merge" };
   }
+  // `pr-merge-reviewer` row 1
+  if (
+    !inputs.draft &&
+    inputs.merge_state === "clean" &&
+    inputs.review_outcome === "approved" &&
+    !inputs.viewer.requester &&
+    inputs.viewer.requested
+  ) {
+    return { kind: "ask", rule: "pr-merge-reviewer", label: "Ready to merge" };
+  }
   // `pr-review-again` row 1
-  if (inputs.viewer.requester && inputs.viewer.asked_again) {
+  if (
+    inputs.viewer.requester &&
+    inputs.viewer.asked_again &&
+    !inputs.viewer.approved &&
+    !inputs.viewer.replied_since_ask
+  ) {
     return { kind: "ask", rule: "pr-review-again", label: "Review requested" };
   }
   // `pr-review` row 1
