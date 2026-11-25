@@ -1,5 +1,11 @@
+import type { User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
+import { juniorConversations } from "@/db/schema";
 import { listChildMessages } from "@/chat/agent-invocations/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
@@ -107,7 +113,33 @@ async function selectChildResultCards(
   }
 }
 
-/** Select undelivered cards and load their latest saved facts. */
+const root = alias(juniorConversations, "pending_cards_root");
+
+// The person who started the root of the Conversation, when Junior knows
+// their User. System work, such as an Automation run, has none.
+async function readConversationOwner(
+  conversationId: string,
+): Promise<User | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select({ identityId: root.actorIdentityId })
+    .from(juniorConversations)
+    .innerJoin(
+      root,
+      eq(root.conversationId, juniorConversations.rootConversationId),
+    )
+    .where(eq(juniorConversations.conversationId, conversationId));
+  return row?.identityId
+    ? (await readIdentityByIdFromSql(db, row.identityId))?.user
+    : undefined;
+}
+
+/**
+ * Select undelivered cards and read each object once, with the access of
+ * the person who started the Conversation. The delivered Message keeps
+ * that copy. A card whose object cannot be read that way shows its saved
+ * facts.
+ */
 export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
@@ -115,8 +147,25 @@ export async function loadPendingMessageCards(
   const inputMessageIds = await selectTurnCards(conversationId, selection);
   await selectChildResultCards(conversationId, inputMessageIds, selection);
   if (selection.cards.size === 0) return [];
+  const refs = [...selection.cards.values()].reverse();
+  const selected = new Set(
+    refs.map((ref) => JSON.stringify([ref.plugin, ref.key])),
+  );
+  const annotations = (
+    await listConversationAnnotations(getDb(), conversationId)
+  ).filter(
+    (annotation) =>
+      annotation.kind === "object" &&
+      selected.has(JSON.stringify([annotation.plugin, annotation.key])),
+  );
   return resolveMessageCards(
-    [...selection.cards.values()].reverse(),
-    await listConversationAnnotations(getDb(), conversationId),
+    refs,
+    annotations.length > 0
+      ? await readLiveAnnotations(
+          await readConversationOwner(conversationId),
+          annotations,
+          "saved",
+        )
+      : [],
   );
 }

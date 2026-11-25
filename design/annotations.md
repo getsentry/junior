@@ -15,8 +15,9 @@ on the Conversation row, as a Message card, and in search.
 ## Rules
 
 - An Annotation stores the kind and the id of the object, what the
-  Conversation did, and when. It also stores a short label and a link, so
-  that a card can show when the provider is down.
+  Conversation did, and when. It also stores the title and a link, so that
+  search can find the object and a card can show when the provider is
+  down. The plugin makes the short label from the object.
 - A card reads the title and the state of the object live, with the same
   renderer as the Inbox. The cache keeps the last good value.
 - A read adds no Annotation. A change at the provider, such as a merge,
