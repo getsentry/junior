@@ -204,6 +204,14 @@ export interface PluginGraphqlField {
 /** The GraphQL operation that one request runs. */
 export interface PluginGraphqlOperation {
   /**
+   * Most requests that the operation's connections can need: each field with
+   * a `first` or `last` page size counts once for each item that the page
+   * sizes above it can return. A provider can predict a query's cost from
+   * it. Unset when a page size is not an integer literal or an integer
+   * variable.
+   */
+  connectionRequests?: number;
+  /**
    * Each distinct field that the operation selects at any depth, also through
    * fragments.
    */

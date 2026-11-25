@@ -42,6 +42,7 @@ describe("readGraphqlRequest", () => {
     ).toEqual({
       kind: "operation",
       operation: {
+        connectionRequests: 1,
         fields: [
           { arguments: ["owner", "name"], name: "repository" },
           { arguments: ["first"], name: "issues" },
@@ -176,6 +177,48 @@ describe("readGraphqlRequest", () => {
       kind: "operation",
       operation: { rootFields: ["viewer"], type: "query" },
     });
+  });
+
+  it("counts connection requests the way GitHub predicts query cost", async () => {
+    // The example in GitHub's GraphQL rate limit docs needs 5,101 requests.
+    expect(
+      await read({
+        query:
+          "{ viewer { login repositories(first: 100) { edges { node { id issues(first: 50) { edges { node { id labels(first: 60) { edges { node { name } } } } } } } } } } }",
+      }),
+    ).toMatchObject({ operation: { connectionRequests: 5101 } });
+  });
+
+  it("counts page sizes from variables, defaults, and fragments", async () => {
+    expect(
+      await read({
+        query:
+          "fragment issues on Repository { issues(first: $issues) { nodes { labels(last: 10) { nodes { name } } } } } query($repos: Int!, $issues: Int = 5) { viewer { repositories(first: $repos) { nodes { ...issues } } } }",
+        variables: { repos: 20 },
+      }),
+    ).toMatchObject({ operation: { connectionRequests: 1 + 20 * (1 + 5) } });
+  });
+
+  it("counts each fragment once however often it is spread", async () => {
+    const levels = Array.from(
+      { length: 30 },
+      (_, index) =>
+        `fragment f${index} on Query { ...f${index + 1} ...f${index + 1} }`,
+    ).join(" ");
+    expect(
+      await read({
+        query: `${levels} fragment f30 on Query { viewer { repositories(first: 1) { nodes { name } } } } query { ...f0 }`,
+      }),
+    ).toMatchObject({ operation: { connectionRequests: 2 ** 30 } });
+  });
+
+  it("leaves the count unset for a page size it cannot resolve", async () => {
+    const result = await read({
+      query:
+        "query($n: Int) { viewer { repositories(first: $n) { nodes { name } } } }",
+    });
+    expect(result).toMatchObject({ kind: "operation" });
+    expect(result).not.toHaveProperty("operation.connectionRequests");
   });
 
   it("reads subscriptions", async () => {

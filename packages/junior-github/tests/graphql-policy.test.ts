@@ -4,7 +4,7 @@ import type {
   PluginGraphqlRequest,
   PluginGraphqlUnreadableReason,
 } from "@sentry/junior-plugin-api";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
 
 const GRAPHQL_URL = "https://api.github.com/graphql";
@@ -13,9 +13,16 @@ const MUTATIONS_DISABLED = "GraphQL mutations are not enabled";
 function operation(
   type: PluginGraphqlOperation["type"],
   rootFields: string[],
-  input?: { fields?: PluginGraphqlField[]; name?: string },
+  input?: {
+    connectionRequests?: number;
+    fields?: PluginGraphqlField[];
+    name?: string;
+  },
 ): PluginGraphqlOperation {
   return {
+    ...(input?.connectionRequests !== undefined
+      ? { connectionRequests: input.connectionRequests }
+      : undefined),
     fields:
       input?.fields ?? rootFields.map((name) => ({ arguments: [], name })),
     ...(input?.name ? { name: input.name } : undefined),
@@ -38,18 +45,39 @@ async function grantForGraphql(input: {
   graphql?: PluginGraphqlRequest;
   method?: string;
   operation?: string;
+  warn?: (message: string) => void;
+  withoutCredential?: true;
 }) {
   return await githubPlugin().hooks?.grantForEgress?.({
     db: undefined,
-    log: { error() {}, info() {}, warn() {} },
+    log: { error() {}, info() {}, warn: input.warn ?? (() => {}) },
     plugin: { name: "github" },
     request: {
       ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method ?? "POST",
       ...(input.operation ? { operation: input.operation } : undefined),
       url: GRAPHQL_URL,
+      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     },
   });
+}
+
+function costedQuery(
+  connectionRequests: number | undefined,
+  fields: PluginGraphqlField[] = [{ arguments: ["first"], name: "search" }],
+): PluginGraphqlRequest {
+  return single(
+    operation(
+      "query",
+      fields.map((field) => field.name),
+      {
+        ...(connectionRequests !== undefined
+          ? { connectionRequests }
+          : undefined),
+        fields,
+      },
+    ),
+  );
 }
 
 const HOST_MUTATIONS = [
@@ -269,5 +297,63 @@ describe("GitHub GraphQL policy", () => {
         ),
       }),
     ).resolves.toMatchObject({ access: "read" });
+  });
+
+  it.each([1, 2049])(
+    "allows a Sandbox query with %i connection requests",
+    async (connectionRequests) => {
+      await expect(
+        grantForGraphql({ graphql: costedQuery(connectionRequests) }),
+      ).resolves.toMatchObject({ access: "read" });
+    },
+  );
+
+  it.each([
+    [2050, 21],
+    [11_011, 110],
+  ])(
+    "denies a Sandbox query with %i connection requests",
+    async (connectionRequests, cost) => {
+      await expect(
+        grantForGraphql({ graphql: costedQuery(connectionRequests) }),
+      ).rejects.toThrow(
+        `it can cost about ${cost} points, and the Sandbox limit is 20 points a query`,
+      );
+    },
+  );
+
+  it("does not cap host tool queries or requests with their own credential", async () => {
+    const graphql = costedQuery(11_011);
+    await expect(
+      grantForGraphql({
+        graphql,
+        operation: "github.pull.get:getsentry/junior",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForGraphql({ graphql, withoutCredential: true }),
+    ).resolves.toMatchObject({ access: "read" });
+  });
+
+  it("allows a rateLimit dry run of an expensive query", async () => {
+    await expect(
+      grantForGraphql({
+        graphql: costedQuery(11_011, [
+          { arguments: ["first"], name: "search" },
+          { arguments: ["dryRun"], name: "rateLimit" },
+        ]),
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+  });
+
+  it("allows and logs a query whose cost was not counted", async () => {
+    const warn = vi.fn();
+    await expect(
+      grantForGraphql({ graphql: costedQuery(undefined), warn }),
+    ).resolves.toMatchObject({ access: "read" });
+    expect(warn).toHaveBeenCalledWith(
+      "github.egress.graphql_cost.unknown",
+      expect.anything(),
+    );
   });
 });

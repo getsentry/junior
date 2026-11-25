@@ -340,6 +340,16 @@ function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
   ]);
 }
 
+/** The nested check-run search that spent the GraphQL budget on 2026-11-24. */
+const CHECK_RUN_SEARCH_QUERY =
+  "query($q: String!) { search(query: $q, type: ISSUE, first: 10) { nodes { ... on PullRequest { number commits(first: 100) { nodes { commit { checkSuites(first: 10) { nodes { app { slug } checkRuns(first: 20) { nodes { name conclusion } } } } } } } } } } }";
+
+/** The shape of `gh pr view` and `gh pr checks` queries. */
+const GH_PR_VIEW_QUERY =
+  "query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr_number) { number title assignees(first: 100) { nodes { login } } labels(first: 100) { nodes { name } } reviewRequests(first: 100) { nodes { requestedReviewer { ... on User { login } } } } reviews(first: 100) { nodes { state } } comments(last: 1) { nodes { body } } reactionGroups { content users { totalCount } } } } }";
+const GH_PR_CHECKS_QUERY =
+  "query PullRequestStatusChecks($id: ID!, $endCursor: String) { node(id: $id) { ... on PullRequest { statusCheckRollup: commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $endCursor) { nodes { __typename ... on CheckRun { name checkSuite { workflowRun { workflow { name } } } } } } } } } } } } }";
+
 describe("sandbox egress proxy integration", () => {
   let modules: LoadedModules;
   // Vercel is the sandbox provider whose forwarded requests these tests send.
@@ -1130,6 +1140,57 @@ describe("sandbox egress proxy integration", () => {
     await expect(response.text()).resolves.toBe("Bearer installation-token");
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
+
+  const COST_DENIED = {
+    error: expect.stringContaining(
+      "it can cost about 110 points, and the Sandbox limit is 20 points a query",
+    ),
+  };
+
+  it.each([
+    ["gh pr view", GH_PR_VIEW_QUERY, 200, { data: {} }, 1],
+    ["gh pr checks", GH_PR_CHECKS_QUERY, 200, { data: {} }, 1],
+    ["a nested check-run search", CHECK_RUN_SEARCH_QUERY, 403, COST_DENIED, 0],
+  ])(
+    "caps the GraphQL cost of %s",
+    async (_name, query, status, body, calls) => {
+      configureGitHubAppEnv();
+      mockGitHubInstallationToken();
+      await registerGitHubPlugin();
+      const credentialToken =
+        modules.session.createSandboxEgressCredentialToken({
+          credentials: { actor: { type: "user", userId: ACTOR_ID } },
+          egressId: EGRESS_ID,
+          ttlMs: 60_000,
+        });
+      const forwardURL = forwardUrlFor(
+        buildVercelNetworkPolicy({ credentialToken }),
+        GITHUB_API_HOST,
+      );
+      const upstreamFetch = vi.fn(async () => HttpResponse.json({ data: {} }));
+
+      const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+        proxiedRequest({
+          body: JSON.stringify({
+            query,
+            variables: { q: "repo:getsentry/junior" },
+          }),
+          forwardURL,
+          method: "POST",
+          upstreamHost: GITHUB_API_HOST,
+          upstreamPath: "/graphql",
+        }),
+        {
+          fetch: upstreamFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        },
+      );
+
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toEqual(body);
+      expect(upstreamFetch).toHaveBeenCalledTimes(calls);
+    },
+  );
 
   it("uploads GitHub user attachments with the requesting user's credential", async () => {
     await registerGitHubPlugin({ additionalUserScopes: ["repo"] });

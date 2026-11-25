@@ -18,6 +18,7 @@ import type {
   DocumentNode,
   FragmentDefinitionNode,
   FragmentSpreadNode,
+  FieldNode,
   InlineFragmentNode,
   OperationDefinitionNode,
   SelectionSetNode,
@@ -92,7 +93,7 @@ async function readOperation(
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return "json";
   }
-  const { operationName, query } = entry as Record<string, unknown>;
+  const { operationName, query, variables } = entry as Record<string, unknown>;
   if (typeof query !== "string") {
     return "query";
   }
@@ -140,7 +141,13 @@ async function readOperation(
   ) {
     return "document";
   }
+  const connectionRequests = countConnectionRequests(
+    operation,
+    fragments,
+    variables,
+  );
   return {
+    ...(connectionRequests !== undefined ? { connectionRequests } : undefined),
     fields: [...fields.values()],
     ...(operation.name ? { name: operation.name.value } : undefined),
     rootFields,
@@ -225,4 +232,94 @@ function fragmentSelectionSet(
   }
   seen.add(name);
   return fragments.get(name)?.selectionSet ?? false;
+}
+
+/**
+ * Count the connection requests of an operation: each field with a `first`
+ * or `last` page size counts once for each item that the page sizes above it
+ * can return. Returns undefined when a page size is not an integer literal or
+ * an integer variable.
+ *
+ * The count is linear in the items above a selection, so each fragment is
+ * counted once and reused, and repeated spreads cannot make it slow.
+ */
+function countConnectionRequests(
+  operation: OperationDefinitionNode,
+  fragments: Fragments,
+  variables: unknown,
+): number | undefined {
+  const values = integerVariables(operation, variables);
+  const counted = new Map<string, number | undefined>();
+  const count = (selectionSet: SelectionSetNode): number | undefined => {
+    let total = 0;
+    for (const selection of selectionSet.selections) {
+      let inner: number | undefined;
+      if (selection.kind === "Field") {
+        inner = countField(selection);
+      } else if (selection.kind === "InlineFragment") {
+        inner = count(selection.selectionSet);
+      } else {
+        const name = selection.name.value;
+        if (!counted.has(name)) {
+          // A cycle counts as empty here. GraphQL rejects it before it runs.
+          counted.set(name, 0);
+          const fragment = fragments.get(name);
+          counted.set(name, fragment ? count(fragment.selectionSet) : 0);
+        }
+        inner = counted.get(name);
+      }
+      if (inner === undefined) return undefined;
+      total += inner;
+    }
+    return total;
+  };
+  const countField = (field: FieldNode): number | undefined => {
+    const below = field.selectionSet ? count(field.selectionSet) : 0;
+    if (below === undefined) return undefined;
+    const pageSizes = (field.arguments ?? []).filter(
+      (arg) => arg.name.value === "first" || arg.name.value === "last",
+    );
+    if (pageSizes.length === 0) return below;
+    let pageSize = 0;
+    for (const arg of pageSizes) {
+      const value =
+        arg.value.kind === "IntValue"
+          ? Number.parseInt(arg.value.value, 10)
+          : arg.value.kind === "Variable"
+            ? values.get(arg.value.name.value)
+            : undefined;
+      if (value === undefined) return undefined;
+      pageSize = Math.max(pageSize, value);
+    }
+    // One request for this connection, then the requests below it for each
+    // item of its page.
+    return 1 + pageSize * below;
+  };
+  return count(operation.selectionSet);
+}
+
+/** Integer variable values of a request, with the operation's defaults. */
+function integerVariables(
+  operation: OperationDefinitionNode,
+  variables: unknown,
+): Map<string, number> {
+  const given = new Map<string, unknown>(
+    variables && typeof variables === "object" && !Array.isArray(variables)
+      ? Object.entries(variables)
+      : [],
+  );
+  const values = new Map<string, number>();
+  for (const definition of operation.variableDefinitions ?? []) {
+    const name = definition.variable.name.value;
+    const value = given.get(name);
+    if (typeof value === "number" && Number.isInteger(value)) {
+      values.set(name, value);
+    } else if (
+      value === undefined &&
+      definition.defaultValue?.kind === "IntValue"
+    ) {
+      values.set(name, Number.parseInt(definition.defaultValue.value, 10));
+    }
+  }
+  return values;
 }

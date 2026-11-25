@@ -17,6 +17,7 @@ import {
   type PluginGraphqlRequest,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { assertGitHubGraphqlCostAllowed } from "./graphql-cost.js";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
@@ -692,6 +693,9 @@ async function selectGitHubGrant(
       : undefined),
     upstreamUrl,
   });
+  if (isGitHubGraphqlUrl(upstreamUrl)) {
+    assertGitHubGraphqlCostAllowed(ctx);
+  }
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
     return grantForAccess("write", "github.asset-upload", "user-write");
   }
