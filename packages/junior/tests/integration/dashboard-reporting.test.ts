@@ -11,7 +11,6 @@ import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
   juniorConversationEvents,
   juniorConversations,
-  juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
 import { deferred } from "../fixtures/conversation-work";
@@ -344,22 +343,17 @@ describe("dashboard canonical event reporting", () => {
     });
     const { getConversationStore, getDb } = await import("@/chat/db");
     const { resolveViewerUser } = await import("@/chat/plugins/viewer");
-    const [rootRow] = await getDb()
-      .select({ destinationId: juniorConversations.destinationId })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, publicRoot));
-    if (!rootRow?.destinationId) throw new Error("Missing root destination");
     await getDb()
-      .update(juniorDestinations)
+      .update(juniorConversations)
       .set({ visibility: "private" })
-      .where(eq(juniorDestinations.id, rootRow.destinationId));
+      .where(eq(juniorConversations.conversationId, publicRoot));
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
     );
     await getDb()
-      .update(juniorDestinations)
+      .update(juniorConversations)
       .set({ visibility: "public" })
-      .where(eq(juniorDestinations.id, rootRow.destinationId));
+      .where(eq(juniorConversations.conversationId, publicRoot));
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "available",
     );
@@ -405,7 +399,12 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      .set({ kind: "task", parentConversationId: cyclicChild })
+      // Only a root stores visibility, so the forged child drops it.
+      .set({
+        kind: "task",
+        parentConversationId: cyclicChild,
+        visibility: null,
+      })
       .where(eq(juniorConversations.conversationId, cyclicRoot));
 
     await expect(

@@ -122,6 +122,7 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
+          visibility: null,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));
       await fixture.sql
@@ -131,6 +132,7 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
+          visibility: null,
         })
         .where(
           eq(juniorConversations.conversationId, ownerChildConversationId),
@@ -331,10 +333,11 @@ describe("people profile API", () => {
         "needs_input",
         "working",
       ]);
+      // A Slack root with no confirmed visibility is private.
       expect(report.recentConversations[0]).toMatchObject({
-        channelName: "Private Conversation",
+        channelName: "Private Channel",
         channelNameRedacted: true,
-        displayTitle: "Private Conversation",
+        displayTitle: "Private Channel",
       });
       expect(report.recentConversations[1]).toMatchObject({
         conversationId: "slack:C1:123",

@@ -20,11 +20,14 @@ rule, and it does not add a surface or tenant check to public access.
 
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
-- The root Conversation decides visibility. Child Conversations,
-  events, Messages, Conversation metadata, Annotations, artifacts, and plugin records use
-  the values of their root. Missing or unknown visibility is private. A
-  direct message is private. When the root or its Destination is missing,
-  rows 2 and 3 do not match, and row 4 denies.
+- **Visibility**: `public` or `private`, stored on the root Conversation.
+  A root takes the visibility of its Destination and follows a live change
+  to it, such as a Slack channel that becomes private. A direct message is
+  private. Child Conversations, events, Messages, Conversation metadata,
+  Annotations, artifacts, and plugin records use the values of their root.
+  Missing visibility is private. Read it from the root, not from the
+  Destination. When the root is missing, rows 2 and 3 do not match, and
+  row 4 denies.
 
 ## Rule between Conversations
 
@@ -82,9 +85,11 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. A participant of a private Conversation may read
-and act on it there (`canViewPrivateContent`, `isParticipant`). This rule
-never lets one Conversation read another.
+is not a Conversation. Anyone may read a public Conversation. Only the
+Participants of a private Conversation may read it, and they may act on it
+there (`canViewPrivateContent`, `isParticipant`). The Participant rows of a
+root are its access list. This rule never lets one Conversation read
+another.
 
 ## Surfaces
 

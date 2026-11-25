@@ -217,6 +217,7 @@ describe("child agent spawn and result delivery", () => {
         .set({
           kind: "task",
           parentConversationId: grandchild.childConversationId,
+          visibility: null,
         })
         .where(eq(juniorConversations.conversationId, parentConversationId));
       await expect(

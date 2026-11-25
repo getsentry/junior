@@ -733,9 +733,10 @@ describe("Conversation mailbox Turn work", () => {
         source,
       }),
     );
+    // No live signal confirmed the channel, so the root is private.
     expect(agentRuns[1]).toEqual(
       expect.objectContaining({
-        source: createWebSource(conversationId),
+        source: createWebSource(conversationId, "private"),
       }),
     );
     expect(deliverMessage).toHaveBeenCalledOnce();

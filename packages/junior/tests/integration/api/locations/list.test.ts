@@ -73,6 +73,7 @@ describe("locations API", () => {
         buildJuniorSqlConversation({
           conversationId: `slack:C1:aggregate:${index}`,
           destinationId: destination?.id,
+          visibility: "public",
           durationMs: 2,
           createdAt: aggregateNow,
           lastActivityAt: aggregateNow,

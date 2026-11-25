@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
@@ -33,7 +33,7 @@ import {
 } from "@/db/schema";
 import {
   destinationUpsertFromDestination,
-  type DestinationUpsert,
+  upsertDestination,
 } from "./destination-upsert";
 import {
   bindProviderConversation,
@@ -47,17 +47,16 @@ import {
   resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
-import {
-  locationForWrite,
-  locationFromRow,
-  visibilityFromLocationRow,
-} from "./location";
+import { locationForWrite, locationFromRow } from "./location";
 import {
   conversationKindFromRow,
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import {
+  isTopLevelKind,
+  storesVisibility,
+} from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -66,7 +65,11 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
+  /** Visibility of the root. A child reads the value of its root. */
+  rootVisibility: ConversationPrivacy | null;
 }
+
+const readRoot = alias(juniorConversations, "read_root");
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
@@ -161,7 +164,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = visibilityFromLocationRow(readRow.destination);
+  const visibility = readRow.rootVisibility ?? undefined;
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -362,7 +365,7 @@ export class SqlStore implements ConversationStore {
             );
           }
           // A child stores its parent's Destination row and Location, so it
-          // reads visibility and Location from its own row, the same as a root.
+          // reads its Location from its own row, the same as a root.
           const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
@@ -587,6 +590,7 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        rootVisibility: juniorConversations.visibility,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -654,7 +658,8 @@ export class SqlStore implements ConversationStore {
     nowMs?: number;
     visibility: ConversationPrivacy;
   }): Promise<void> {
-    await this.upsertDestination(
+    await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination(args),
       args.nowMs ?? Date.now(),
     );
@@ -722,6 +727,7 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        rootVisibility: readRoot.visibility,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -733,6 +739,10 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(
+        readRoot,
+        eq(readRoot.conversationId, juniorConversations.rootConversationId),
+      )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
   }
@@ -767,7 +777,8 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const upsertedDestinationId = await this.upsertDestination(
+    const upsertedDestination = await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -778,7 +789,12 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const destinationId = upsertedDestinationId ?? args.destinationId;
+    const destinationId = upsertedDestination?.id ?? args.destinationId;
+    // A root takes the visibility of its Destination. A child stores none.
+    const visibility =
+      upsertedDestination && storesVisibility(conversation.kind)
+        ? upsertedDestination.visibility
+        : null;
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -834,6 +850,7 @@ export class SqlStore implements ConversationStore {
         kind: conversation.kind,
         rootConversationId,
         spaceId: conversation.spaceId ?? null,
+        visibility,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -862,6 +879,8 @@ export class SqlStore implements ConversationStore {
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           // Only a new root sends a Space. `setConversationSpace` moves it.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
+          // A write with a Destination brings its current value.
+          visibility: sql`coalesce(excluded.visibility, ${juniorConversations.visibility})`,
           detailVersion: nextDetailVersion,
         },
       })
@@ -891,53 +910,6 @@ export class SqlStore implements ConversationStore {
         atMs: conversation.lastActivityAtMs,
       });
     }
-  }
-
-  private async upsertDestination(
-    destination: DestinationUpsert | undefined,
-    nowMs: number,
-  ): Promise<string | undefined> {
-    if (!destination) {
-      return undefined;
-    }
-    const visibilityUpdate = destination.refreshVisibility
-      ? sql`excluded.visibility`
-      : juniorDestinations.visibility;
-    const rows = await this.executor
-      .db()
-      .insert(juniorDestinations)
-      .values({
-        id: randomUUID(),
-        provider: destination.provider,
-        providerTenantId: tenantId(destination.providerTenantId),
-        providerDestinationId: destination.providerDestinationId,
-        kind: destination.kind,
-        parentDestinationId: null,
-        displayName: destination.displayName ?? null,
-        visibility: destination.visibility,
-        metadata: destination.metadata ?? null,
-        createdAt: dateFromMs(nowMs),
-        updatedAt: dateFromMs(nowMs),
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorDestinations.provider,
-          juniorDestinations.providerTenantId,
-          juniorDestinations.providerDestinationId,
-        ],
-        set: {
-          kind: sql`excluded.kind`,
-          displayName: sql`coalesce(excluded.display_name, ${juniorDestinations.displayName})`,
-          // Signal-less writes remain unknown and must not clobber an existing
-          // public/private value. Live source signals refresh this field so
-          // converted channels converge on the next message.
-          visibility: visibilityUpdate,
-          metadata: sql`coalesce(excluded.metadata_json, ${juniorDestinations.metadata})`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      })
-      .returning({ id: juniorDestinations.id });
-    return rows[0]?.id;
   }
 }
 

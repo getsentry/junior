@@ -274,7 +274,7 @@ async function conversationRows(
               and(
                 includePrivateMatches
                   ? undefined
-                  : eq(juniorDestinations.visibility, "public"),
+                  : eq(juniorConversations.visibility, "public"),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
               annotationMatch(db, query, includePrivateMatches),
@@ -323,7 +323,7 @@ function annotationMatch(
           ),
           includePrivate
             ? undefined
-            : eq(juniorDestinations.visibility, "public"),
+            : eq(juniorConversations.visibility, "public"),
           sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
         ),
       ),

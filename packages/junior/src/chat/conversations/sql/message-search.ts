@@ -49,7 +49,7 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       isNull(juniorConversations.parentConversationId),
       isNull(juniorConversations.transcriptPurgedAt),
       ne(juniorConversations.conversationId, args.currentConversationId),
-      eq(juniorDestinations.visibility, "public"),
+      eq(juniorConversations.visibility, "public"),
       eq(juniorConversationEvents.type, "message"),
       sql`${role} in ('user', 'assistant')`,
     ];

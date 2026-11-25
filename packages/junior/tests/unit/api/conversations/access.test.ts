@@ -55,15 +55,9 @@ const scenarios: [
     false,
   ],
   [
-    "row 4: a direct message target",
-    reach({ visibility: "private" }),
-    reach({ visibility: "direct" }),
-    false,
-  ],
-  [
-    "unknown target visibility is private",
+    "missing target visibility is private",
     reach(),
-    reach({ visibility: "unknown" }),
+    reach({ visibility: null }),
     false,
   ],
   [

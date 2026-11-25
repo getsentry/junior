@@ -19,6 +19,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
+- **Visibility**: `public` or `private`, stored on a root Conversation. Anyone
+  can read a public Conversation. Only its Participants can read a private
+  one. A child uses the visibility of its root.
 - **Lead**: a Space's public top-level Conversation that finds, starts,
   and steers the Space's other Conversations. Each Space has one. It has no
   child agents and does no work itself. `startConversation` starts a root in

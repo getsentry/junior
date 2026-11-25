@@ -1,10 +1,9 @@
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversations, type juniorDestinations } from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import type { ProviderConversationBinding } from "./bindings";
 import { nextDetailVersion } from "./detail-version";
 
@@ -108,24 +107,11 @@ export function locationFromRow(
   });
 }
 
-/** Read confirmed visibility from one linked Location row. */
-export function visibilityFromLocationRow(
-  row: LocationRow | null,
-): ConversationPrivacy | undefined {
-  if (!row) {
-    return undefined;
-  }
-  if (row.visibility === "public" || row.visibility === "private") {
-    return row.visibility;
-  }
-  return undefined;
-}
-
 /**
  * Give a root Conversation with no Location its first one, in the caller's
- * SQL scope. The Location row becomes the Conversation Destination, so
- * visibility then comes from that channel. Returns false when the
- * Conversation already has a Location.
+ * SQL scope. The Location row becomes the Conversation Destination, and the
+ * root takes its visibility. Returns false when the Conversation already has
+ * a Location.
  */
 export async function setFirstConversationLocation(
   executor: JuniorSqlDatabase,
@@ -136,12 +122,19 @@ export async function setFirstConversationLocation(
   },
 ): Promise<boolean> {
   const location = locationSchema.parse(args.location);
-  const rows = await executor
-    .db()
+  const db = executor.db();
+  const visibility = db
+    .select({
+      visibility: sql`case when ${juniorDestinations.visibility} = 'public' then 'public' else 'private' end`,
+    })
+    .from(juniorDestinations)
+    .where(eq(juniorDestinations.id, location.id));
+  const rows = await db
     .update(juniorConversations)
     .set({
       location,
       destinationId: location.id,
+      visibility: sql`(${visibility})`,
       ...(args.channelName ? { channelName: args.channelName } : undefined),
       detailVersion: nextDetailVersion,
     })

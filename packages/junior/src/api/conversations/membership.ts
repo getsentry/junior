@@ -13,7 +13,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorUsers,
 } from "@/db/schema";
 
@@ -63,12 +62,11 @@ export function conversationHasParticipantUser(userId: string): SQL {
 
 /**
  * True when the viewer may find the outer root conversation by a link to
- * it: its Destination, joined as `juniorDestinations`, is public, or the
- * viewer is a Participant.
+ * it: the root is public, or the viewer is a Participant.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
-    eq(juniorDestinations.visibility, "public"),
+    eq(juniorConversations.visibility, "public"),
     viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
   )!;
 }

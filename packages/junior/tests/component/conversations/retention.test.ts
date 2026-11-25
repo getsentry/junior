@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   purgeConversation,
@@ -14,7 +14,6 @@ import {
   juniorConversationEvents,
   juniorConversationEmbeddings,
   juniorConversations,
-  juniorDestinations,
   juniorAgentBindings,
   juniorAutomations,
   juniorIdentities,
@@ -23,7 +22,6 @@ import {
   juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
 import {
@@ -71,16 +69,22 @@ async function readConversation(
   return rows[0]!;
 }
 
+/** Change the visibility of the roots at a Destination, as a live signal does. */
 async function setVisibility(
   executor: JuniorSqlDatabase,
   destinationId: string,
-  visibility: JuniorDestinationVisibility,
+  visibility: "public" | "private",
 ): Promise<void> {
   await executor
     .db()
-    .update(juniorDestinations)
+    .update(juniorConversations)
     .set({ visibility })
-    .where(eq(juniorDestinations.id, destinationId));
+    .where(
+      and(
+        eq(juniorConversations.destinationId, destinationId),
+        isNull(juniorConversations.parentConversationId),
+      ),
+    );
 }
 
 describe("retention purge job", () => {

@@ -337,6 +337,14 @@ export function canMoveToSpace(kind: ConversationKind): boolean {
 }
 
 /**
+ * Return whether a Conversation of this kind stores its own visibility. A
+ * child uses the visibility of its root.
+ */
+export function storesVisibility(kind: ConversationKind): boolean {
+  return isTopLevelKind(kind);
+}
+
+/**
  * Return whether only members of the Conversation's Space can send it a
  * Message. A Space's Lead talks only to its members.
  */

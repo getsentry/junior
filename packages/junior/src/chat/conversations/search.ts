@@ -210,7 +210,7 @@ export async function searchConversations(
       ? ne(conversations.conversationId, requesterConversationId)
       : ne(conversations.rootConversationId, requesterRootId),
     or(
-      eq(juniorDestinations.visibility, "public"),
+      eq(roots.visibility, "public"),
       // Conversations share a Destination only when they share an audience.
       eq(
         roots.destinationId,

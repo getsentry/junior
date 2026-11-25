@@ -135,7 +135,7 @@ function publicLocationWhere(locationId: string) {
           eq(juniorDestinations.id, locationId),
           ne(juniorDestinations.provider, "local"),
         ),
-    eq(juniorDestinations.visibility, "public"),
+    eq(juniorConversations.visibility, "public"),
   );
 }
 
@@ -271,34 +271,26 @@ async function directoryActivityRows(
   )`;
   const select = {
     conversations: sql<number>`COUNT(*)::integer`,
-    visibility: juniorDestinations.visibility,
+    visibility: juniorConversations.visibility,
   };
   const [dayRows, hourRows] = await Promise.all([
     db
       .select({ ...select, date: day })
       .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
       .where(
         and(topLevelWhere(), gte(juniorConversations.lastActivityAt, start)),
       )
-      .groupBy(day, juniorDestinations.visibility),
+      .groupBy(day, juniorConversations.visibility),
     db
       .select({ ...select, date: hour })
       .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
       .where(
         and(
           topLevelWhere(),
           gte(juniorConversations.lastActivityAt, hourStart),
         ),
       )
-      .groupBy(hour, juniorDestinations.visibility),
+      .groupBy(hour, juniorConversations.visibility),
   ]);
   return { dayRows, hourRows };
 }

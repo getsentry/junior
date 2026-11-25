@@ -250,7 +250,7 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // A child reads visibility from its own Destination row, the same as a root.
+  // A child reads the visibility of its root.
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });

@@ -2,7 +2,8 @@
 
 ## Intent
 
-Conversation privacy follows the stored destination visibility. Redaction
+Conversation privacy follows the visibility stored on the root
+Conversation (`./conversation-access.md`). Redaction
 protects raw payloads and telemetry. It does not change the product data a
 conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 
@@ -10,9 +11,9 @@ conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 
 ### Visibility
 
-- Public destinations may use approved public excerpts in diagnostics.
-- Private channels, DMs, local conversations, and unknown destinations are
-  private. Missing visibility never widens access.
+- Public Conversations may use approved public excerpts in diagnostics.
+- Conversations in private channels, DMs, local conversations, and unknown
+  destinations are private. Missing visibility never widens access.
 - Child conversations, events, artifacts, and plugin records inherit the
   visibility and actor edges of their owning conversation.
 - When one Conversation may read another follows

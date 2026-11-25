@@ -1,27 +1,28 @@
 import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 
 const privacyRoot = alias(juniorConversations, "privacy_root");
 
-interface PrivacyRootCandidate {
-  destinationId: string;
-  rootConversationId: string;
-}
-
-/** Root conversation identity and its normalized destination visibility. */
+/** Root conversation identity and its stored visibility. */
 export interface RootConversationVisibility {
   rootConversationId: string;
-  visibility: JuniorDestinationVisibility | null;
+  /** Null is private. */
+  visibility: ConversationPrivacy | null;
+}
+
+interface PrivacyRoot {
+  destinationId: string | null;
+  rootConversationId: string;
 }
 
 /** Accept only a structurally valid persisted root as privacy authority. */
-async function readRootCandidate(
+async function readRoot(
   executor: Pick<JuniorSqlDatabase, "db">,
   conversationId: string,
-): Promise<PrivacyRootCandidate | undefined> {
+): Promise<PrivacyRoot | undefined> {
   const rows = await executor
     .db()
     .select({
@@ -46,8 +47,7 @@ async function readRootCandidate(
       row.requestedRootConversationId === row.requestedConversationId) &&
     row.rootConversationId === row.requestedRootConversationId &&
     row.rootRootConversationId === row.rootConversationId &&
-    row.rootParentConversationId === null &&
-    row.rootDestinationId !== null
+    row.rootParentConversationId === null
     ? {
         destinationId: row.rootDestinationId,
         rootConversationId: row.rootConversationId,
@@ -55,37 +55,39 @@ async function readRootCandidate(
     : undefined;
 }
 
-async function readCandidateVisibility(
-  executor: Pick<JuniorSqlDatabase, "db">,
-  candidate: PrivacyRootCandidate,
-): Promise<RootConversationVisibility> {
-  const destinations = await executor
-    .db()
-    .select({ visibility: juniorDestinations.visibility })
-    .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, candidate.destinationId))
-    .for("share");
-  return {
-    rootConversationId: candidate.rootConversationId,
-    visibility: destinations[0]?.visibility ?? null,
-  };
-}
-
 /**
  * Resolve a conversation's privacy authority from its persisted root.
  *
- * Missing or structurally invalid root metadata fails closed. The root
- * destination is locked so callers that keep the transaction open receive a
- * stable visibility decision.
+ * Missing or structurally invalid root metadata fails closed. A visibility
+ * change locks the root's Destination row first (`upsertDestination`), so a
+ * share lock on it gives callers that keep the transaction open a stable
+ * decision. Locking the root row instead would deadlock two child writes that
+ * both update the root later in their transactions.
  */
 export async function resolveRootVisibility(
   executor: Pick<JuniorSqlDatabase, "db">,
   conversationId: string,
 ): Promise<RootConversationVisibility> {
-  const candidate = await readRootCandidate(executor, conversationId);
-  if (!candidate) {
+  const root = await readRoot(executor, conversationId);
+  if (!root) {
     return { rootConversationId: conversationId, visibility: null };
   }
-
-  return readCandidateVisibility(executor, candidate);
+  if (!root.destinationId) {
+    return { rootConversationId: root.rootConversationId, visibility: null };
+  }
+  await executor
+    .db()
+    .select({ id: juniorDestinations.id })
+    .from(juniorDestinations)
+    .where(eq(juniorDestinations.id, root.destinationId))
+    .for("share");
+  const [locked] = await executor
+    .db()
+    .select({ visibility: juniorConversations.visibility })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, root.rootConversationId));
+  return {
+    rootConversationId: root.rootConversationId,
+    visibility: locked?.visibility ?? null,
+  };
 }
