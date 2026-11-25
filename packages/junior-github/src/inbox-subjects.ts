@@ -39,17 +39,21 @@ export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
 
 /**
  * Say what a dismiss of a pull request's item also changes on GitHub for
- * the viewer: a requested reviewer on its card leaves the reviewers. A
- * requester who holds no review request changes nothing there.
+ * the viewer: a requested reviewer leaves the reviewers. While the item
+ * asks for a review, everyone on it holds a review request, also past the
+ * five reviewers that the card lists. Once it asks for the merge, only a
+ * reviewer on the card still holds one, and the requester holds none.
  */
 function pullRequestDismissNote(
   object: ObjectAnnotation | undefined,
   viewer: PluginInboxViewer,
 ): string | undefined {
   const handle = viewer.handle?.toLowerCase();
+  if (!object || !handle) return undefined;
   const reviewers =
-    object?.facts?.type === "code_change" ? object.facts.reviewers : [];
-  return handle && reviewers?.some((login) => login.toLowerCase() === handle)
+    object.facts?.type === "code_change" ? (object.facts.reviewers ?? []) : [];
+  return pullRequestAsk(object) === "Review requested" ||
+    reviewers.some((login) => login.toLowerCase() === handle)
     ? "Also removes you from the reviewers on GitHub."
     : undefined;
 }

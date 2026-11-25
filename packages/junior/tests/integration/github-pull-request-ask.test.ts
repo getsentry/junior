@@ -731,8 +731,17 @@ describe("the ask of a Junior pull request", () => {
                     merged: false,
                     number: 1592,
                     reviewDecision: null,
+                    // More reviewers than the card keeps, so Out is not
+                    // among the five that it lists.
                     reviewRequests: {
-                      nodes: github.reviewers.map((login) => ({
+                      nodes: [
+                        "r1",
+                        "r2",
+                        "r3",
+                        "r4",
+                        "r5",
+                        ...github.reviewers,
+                      ].map((login) => ({
                         requestedReviewer: { __typename: "User", login },
                       })),
                     },
