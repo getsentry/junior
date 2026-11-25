@@ -21,6 +21,10 @@ import {
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
 import {
+  setConversationSpaceBodySchema,
+  setConversationSpaceResponseSchema,
+} from "../schema/conversation-space";
+import {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -33,6 +37,7 @@ import {
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { pinConversation } from "./pin";
 import { renameConversation } from "./rename";
+import { setConversationSpaceForViewer } from "./space";
 import { stopConversationTurnForViewer } from "./stop";
 import { setConversationSubscription } from "./subscription";
 
@@ -100,6 +105,20 @@ export const renameConversationOperation = defineApiOperation({
     renameConversation(viewer, conversationId, body),
 });
 
+/** Put one root Conversation in a Space, or make it a one-off. */
+export const setConversationSpaceOperation = defineApiOperation({
+  name: "setConversationSpace",
+  title: "Set conversation Space",
+  description:
+    "Put one of your top-level conversations in a Space, or pass null to take it out of its Space. You must be a member of the Space that it joins and of the Space that it leaves. Only a public conversation can join a Space. Its child conversations move with it.",
+  scope: "conversations:manage",
+  input: setConversationSpaceBodySchema.extend(conversationIdInput),
+  output: setConversationSpaceResponseSchema,
+  annotations: writeAnnotations,
+  run: (viewer, { conversationId, ...body }) =>
+    setConversationSpaceForViewer(viewer, conversationId, body),
+});
+
 /** Override the viewer's auto-archive default for one Conversation. */
 export const setConversationAutoArchiveOperation = defineApiOperation({
   name: "setConversationAutoArchive",
@@ -165,6 +184,7 @@ export const conversationOperations = [
   pinConversationOperation,
   renameConversationOperation,
   setConversationAutoArchiveOperation,
+  setConversationSpaceOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
 ];

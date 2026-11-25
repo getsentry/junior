@@ -83,6 +83,15 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
+} from "./schema/conversation-create";
+export type {
+  AcceptedConversationMessage,
+  CreateConversationBody,
+  CreateConversationMessageBody,
+} from "./schema/conversation-create";
+export {
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -98,8 +107,6 @@ export {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
   conversationSummaryReportSchema,
-  createConversationBodySchema,
-  createConversationMessageBodySchema,
 } from "./schema/conversation";
 export {
   forkConversationBodySchema,
@@ -153,6 +160,7 @@ export type {
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
+  PersonSpendDay,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export {
@@ -220,7 +228,6 @@ export type {
   RenameConversationResponse,
 } from "./schema/conversation-title";
 export type {
-  AcceptedConversationMessage,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -241,8 +248,6 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
-  CreateConversationBody,
-  CreateConversationMessageBody,
 } from "./schema/conversation";
 export type {
   CancelConversationPendingMessagesBody,
@@ -376,6 +381,34 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export { leadSchema } from "./schema/lead";
+export {
+  archiveSpaceBodySchema,
+  createSpaceBodySchema,
+  spaceListQuerySchema,
+  spaceListSchema,
+  spaceParamsSchema,
+  spaceRefSchema,
+  spaceSchema,
+  updateSpaceBodySchema,
+} from "./schema/space";
+export type {
+  SpaceListReport,
+  SpaceRefReport,
+  SpaceReport,
+} from "./schema/space";
+export {
+  spaceMemberListSchema,
+  spaceMemberSchema,
+} from "./schema/space-member";
+export type { SpaceMemberListReport } from "./schema/space-member";
+export {
+  setConversationSpaceBodySchema,
+  setConversationSpaceResponseSchema,
+} from "./schema/conversation-space";
+export type {
+  SetConversationSpaceBody,
+  SetConversationSpaceResponse,
+} from "./schema/conversation-space";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

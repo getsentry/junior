@@ -44,6 +44,7 @@ import { juniorQuestions } from "./schema/questions";
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
+import { juniorSpaceMembers, juniorSpaces } from "./schema/spaces";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -84,6 +85,8 @@ export {
   juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
@@ -129,6 +132,8 @@ export const juniorSqlSchema = {
   juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
+  juniorSpaceMembers,
+  juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
   juniorAutomationVersions,

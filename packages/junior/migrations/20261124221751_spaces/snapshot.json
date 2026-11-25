@@ -1,0 +1,436 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "654dd93d-780a-4990-bb42-60b50c2ede9c",
+  "prevIds": ["90495786-2c2c-413b-9a2c-fdec2d790fc5"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_space_members"],
+      "writes": [
+        "s|tbl|public.junior_space_members",
+        "n|tbl|public.junior_space_members",
+        "e|tbl|public.junior_space_members",
+        "n|rel|public.junior_space_members",
+        "n|type|public.junior_space_members",
+        "n|rel|public.junior_space_members_space_user_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_spaces"],
+      "writes": [
+        "s|tbl|public.junior_spaces",
+        "n|tbl|public.junior_spaces",
+        "e|tbl|public.junior_spaces",
+        "n|rel|public.junior_spaces",
+        "n|type|public.junior_spaces",
+        "n|rel|public.junior_spaces_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_space_members",
+        "junior_space_members_user_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_space_members_user_idx",
+        "n|idx|public.junior_space_members_user_idx",
+        "e|idx|public.junior_space_members_user_idx",
+        "n|rel|public.junior_space_members_user_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_space_members",
+        "n|sch|public",
+        "n|col|public.junior_space_members.user_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_spaces",
+        "junior_spaces_updated_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_spaces_updated_idx",
+        "n|idx|public.junior_spaces_updated_idx",
+        "e|idx|public.junior_spaces_updated_idx",
+        "n|rel|public.junior_spaces_updated_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_spaces",
+        "n|sch|public",
+        "n|col|public.junior_spaces.updated_at",
+        "n|col|public.junior_spaces.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_space_members"],
+      "writes": [
+        "s|fk|public.junior_space_members.junior_space_members_space_id_junior_spaces_id_fkey",
+        "n|fk|public.junior_space_members.junior_space_members_space_id_junior_spaces_id_fkey",
+        "e|fk|public.junior_space_members.junior_space_members_space_id_junior_spaces_id_fkey",
+        "n|con|public.junior_space_members.junior_space_members_space_id_junior_spaces_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_space_members",
+        "n|sch|public",
+        "n|tbl|public.junior_spaces",
+        "n|sch|public",
+        "n|col|public.junior_space_members.space_id",
+        "n|col|public.junior_spaces.id",
+        "e|uniqueness|public.junior_spaces.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_space_members"],
+      "writes": [
+        "s|fk|public.junior_space_members.junior_space_members_user_id_junior_users_id_fkey",
+        "n|fk|public.junior_space_members.junior_space_members_user_id_junior_users_id_fkey",
+        "e|fk|public.junior_space_members.junior_space_members_user_id_junior_users_id_fkey",
+        "n|con|public.junior_space_members.junior_space_members_user_id_junior_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_space_members",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_space_members.user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_spaces"],
+      "writes": [
+        "s|fk|public.junior_spaces.junior_spaces_created_by_user_id_junior_users_id_fkey",
+        "n|fk|public.junior_spaces.junior_spaces_created_by_user_id_junior_users_id_fkey",
+        "e|fk|public.junior_spaces.junior_spaces_created_by_user_id_junior_users_id_fkey",
+        "n|con|public.junior_spaces.junior_spaces_created_by_user_id_junior_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_spaces",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_spaces.created_by_user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_space_members",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_spaces",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "space_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "joined_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "description",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "created_by_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "archived_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "junior_space_members_user_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "junior_spaces_updated_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "updated_at",
+            "isExpression": false,
+            "asc": false,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "junior_space_members_space_id_junior_spaces_id_fkey",
+        "nameExplicit": false,
+        "columns": ["space_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_spaces",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "junior_space_members_user_id_junior_users_id_fkey",
+        "nameExplicit": false,
+        "columns": ["user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "junior_spaces_created_by_user_id_junior_users_id_fkey",
+        "nameExplicit": false,
+        "columns": ["created_by_user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_space_members",
+        "name": "junior_space_members_space_user_pk",
+        "columns": ["space_id", "user_id"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_spaces",
+        "name": "junior_spaces_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

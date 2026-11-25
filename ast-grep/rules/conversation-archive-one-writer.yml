@@ -15,3 +15,8 @@ rule:
         regex: '^archivedAt\s*:'
       - kind: shorthand_property_identifier
         regex: ^archivedAt$
+# A Space has its own archived_at, written by the Spaces store.
+constraints:
+  DB:
+    not:
+      regex: juniorSpaces

@@ -687,7 +687,8 @@ describe("plugin manifest API headers", () => {
       userOAuth: false,
       serviceAccount: { operations: ["example.upload"] },
     });
-    expect(manifest.credentials?.authTokenEnv).toBeUndefined();
+    expect(manifest.credentials).toMatchObject({ type: "oauth-bearer" });
+    expect(manifest.credentials).not.toHaveProperty("authTokenEnv");
   });
 
   it("requires auth-token-env on credentials without OAuth", () => {

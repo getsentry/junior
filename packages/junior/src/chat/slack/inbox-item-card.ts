@@ -22,6 +22,7 @@ import {
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { SLACK_MAX_MARKDOWN_CHARS } from "./limits";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,
 // so these ids keep the name from before Review items became Inbox items.
@@ -70,19 +71,29 @@ function titleText(item: InboxItem, subjectUrl: string | undefined): string {
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
 }
 
-/** The title, body, and question of an item, in Slack markdown. */
+/**
+ * The title, body, and question of an item, in Slack markdown. The card is
+ * one message that changes in place, so it cannot post the rest of a long
+ * item as another message. When the whole item is over Slack's markdown
+ * limit, the body gets shorter, and the Inbox shows all of it.
+ */
 function itemText(item: InboxItem, subjectUrl: string | undefined): string {
   const question = inboxItemQuestion(item.request);
-  return normalizeSlackReplyMarkdown(
-    [
-      titleText(item, subjectUrl),
-      // A plugin item asks its body as the question, so it shows once.
-      ...(question?.question === item.body
-        ? []
-        : [truncate(item.body, MAX_BODY_CHARS)]),
-      ...(question ? [slackUserInputText(question)] : []),
-    ].join("\n\n"),
-  );
+  const render = (bodyChars: number) =>
+    normalizeSlackReplyMarkdown(
+      [
+        titleText(item, subjectUrl),
+        // A plugin item asks its body as the question, so it shows once.
+        ...(question?.question === item.body
+          ? []
+          : [truncate(item.body, bodyChars)]),
+        ...(question ? [slackUserInputText(question)] : []),
+      ].join("\n\n"),
+    );
+  const bodyChars = Math.min(item.body.length, MAX_BODY_CHARS);
+  const text = render(bodyChars);
+  const overflow = text.length - SLACK_MAX_MARKDOWN_CHARS;
+  return overflow > 0 ? render(bodyChars - overflow) : text;
 }
 
 /**

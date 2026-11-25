@@ -272,7 +272,6 @@ describe("static tool registry", () => {
           "stopAgent",
           "archiveAgent",
           "messageAgent",
-          "reply",
           "reportBlocked",
         ]),
       );
@@ -292,9 +291,13 @@ describe("static tool registry", () => {
       expect(
         Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
       ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
-      expect(agent.disabled).not.toContain("reply");
+      // Final text is the reply of every Thread Turn, so no Turn lists
+      // `reply`.
+      for (const turn of [person, agent]) {
+        expect(turn.piTools.map((tool) => tool.name)).not.toContain("reply");
+      }
 
-      for (const name of ["startAgent", "messageAgent", "reply"]) {
+      for (const name of ["startAgent", "messageAgent"]) {
         await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );

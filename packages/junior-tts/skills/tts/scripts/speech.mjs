@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-const PROFILE = new URL("../assets/junior-v1.json", import.meta.url);
+const PROFILE = new URL("../assets/junior-v2.json", import.meta.url);
 const ENDPOINT = "https://ai-gateway.vercel.sh/v4/ai/speech-model";
 const HELP = `Generate Gemini speech through Junior's host-managed AI Gateway key.
 node scripts/speech.mjs --text-file FILE --output FILE.wav [--delivery playful|plain]

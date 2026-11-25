@@ -306,8 +306,17 @@ describe("spawn and messageAgent", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       release.resolve();
 
-      await expect(last).resolves.toEqual(expect.any(String));
-      await expect(over).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      // Settle both at once: the over-limit spawn can reject while the last
+      // one still runs.
+      const [lastResult, overResult] = await Promise.allSettled([last, over]);
+      expect(lastResult).toEqual({
+        status: "fulfilled",
+        value: expect.any(String),
+      });
+      expect(overResult).toEqual({
+        status: "rejected",
+        reason: expect.any(AgentInvocationLimitError),
+      });
     } finally {
       await harness.close();
     }

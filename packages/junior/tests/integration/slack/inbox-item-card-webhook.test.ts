@@ -21,6 +21,7 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorInboxItems, juniorQuestions } from "@/db/schema";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { SLACK_MAX_MARKDOWN_CHARS } from "@/chat/slack/limits";
 import { mswServer } from "../../msw/server";
 import {
   createConversationWorkQueueTestAdapter,
@@ -539,6 +540,50 @@ describe("Slack webhook: Inbox item cards", () => {
     } finally {
       setDashboardConversationLinkOptions(undefined);
     }
+  });
+
+  it("shortens the body of a long item to fit Slack's markdown limit", async () => {
+    inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const question = "Which checks should block the release? "
+      .repeat(75)
+      .trim();
+    const field = (id: string) => ({
+      id,
+      kind: "multi_choice",
+      label: `Checks for ${id}`.padEnd(75, "."),
+      description: "Pick every check that must pass. ".repeat(6).trim(),
+      options: Array.from({ length: 10 }, (_, index) => ({
+        label: `Check ${index} of ${id}`.padEnd(75, "."),
+      })),
+    });
+    await addItem(ana, {
+      kind: "action",
+      title: "Choose the release checks".padEnd(200, "."),
+      // Under the body cap, so only the markdown limit shortens it.
+      body: "The release has many checks. ".repeat(100).trim(),
+      assignees: ["everyone"],
+      request: {
+        question,
+        fields: ["a", "b", "c", "d"].map(field),
+        related: [
+          {
+            label: "Release",
+            url: `https://example.com/releases/${"1.2.3/".repeat(320)}`,
+          },
+        ],
+      },
+    });
+
+    const [post] = slackApiOutbox.messages();
+    const markdown = blocksOf(post).find((block) => block.type === "markdown");
+    expect(markdown?.text?.length).toBeLessThanOrEqual(
+      SLACK_MAX_MARKDOWN_CHARS,
+    );
+    expect(markdown?.text).toContain("The release has many checks.");
+    expect(markdown?.text).toContain(`${question}\n\n`);
+    expect(markdown?.text).toContain("Check 9 of d");
   });
 
   // Which open question a reply answers is a decision model choice, so the

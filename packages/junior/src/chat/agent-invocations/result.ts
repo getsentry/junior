@@ -37,7 +37,7 @@ import {
   resultAuthorId,
   withAgentInvocationResultActors,
 } from "./result-actors";
-import { getAgentReplyMessageId, getTurnReplyKey } from "./ids";
+import { getAgentReplyMessageId } from "./ids";
 import {
   childMessageSenderMetadata,
   listChildMessages,
@@ -92,7 +92,7 @@ function siblingLabel(sibling: ChildAgent): string {
 
 /**
  * Render one `<agent-result>` under the parent's mailbox lock. `waiting_on`
- * then sees every `reply` that reached the parent, also one that a sibling
+ * then sees every result that reached the parent, also one that a sibling
  * sent at the same moment, so two siblings cannot each name the other.
  */
 function renderResultUnderLock(
@@ -113,7 +113,7 @@ function renderResultUnderLock(
 
 /**
  * Read every child reply and result that reached the parent's mailbox. A
- * sibling whose `reply` is among them has answered.
+ * sibling whose result is among them has answered.
  */
 async function readParentChildMessages(
   parentConversationId: string,
@@ -210,18 +210,16 @@ const RESULT_SUMMARIES = {
   blocked: "is blocked.",
   completed: "finished.",
   failed: "failed.",
-  reply: "replied.",
   stopped: "was stopped.",
 } as const;
 
 /**
  * Append the result of one child agent Turn to its parent mailbox and wake
- * the parent: a `reply`, which the parent reads as a completed
- * `<agent-result>` or, while the child still works, as a message, or a
- * completed, blocked, failed, or stopped result. `sender` names the child,
- * and `actor` is the Actor of the child's Turn; the parent never runs with
- * more authority than it. The key of the result, the `reply` tool call id or the
- * Turn id, keys the message, so a repeat call is safe.
+ * the parent: a completed, blocked, failed, or stopped result. A completed
+ * result while the child still works reaches the parent as a message.
+ * `sender` names the child, and `actor` is the Actor of the child's Turn;
+ * the parent never runs with more authority than it. The Turn id keys the
+ * message, so a repeat call is safe.
  */
 export async function enqueueChildResultToParent(args: {
   actor: Actor;
@@ -237,16 +235,12 @@ export async function enqueueChildResultToParent(args: {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.childConversationId;
   const inboundMessageId = getAgentReplyMessageId(senderId, args.messageKey);
-  const rendered =
-    args.result.kind === "reply"
-      ? { output: args.result.reply.text, status: "completed" as const }
-      : { output: args.result.text, status: args.result.kind };
-  // A child may message its parent more than once. A `reply`, or a person's
-  // final text, while the child still works is a message, not its result,
-  // and does not count as the child's answer for `waiting_on`.
+  const rendered = { output: args.result.text, status: args.result.kind };
+  // A child may message its parent more than once. Final text while the
+  // child still works is a message, not its result, and does not count as
+  // the child's answer for `waiting_on`.
   const stillWorks =
-    (args.result.kind === "reply" || args.result.kind === "completed") &&
-    (await childAgentStillWorks(senderId));
+    args.result.kind === "completed" && (await childAgentStillWorks(senderId));
   const text = stillWorks
     ? renderMessageInput(args.sender, rendered.output)
     : renderResultInput(args.sender, rendered, []);
@@ -303,7 +297,6 @@ const PARENT_RESULT_OUTCOMES = {
   blocked: "blocked",
   completed: "success",
   failed: "error",
-  reply: "success",
   stopped: "aborted",
 } as const satisfies Record<ParentResult["kind"], SubagentOutcome>;
 
@@ -328,10 +321,7 @@ export function createDeliverToParent(options: {
     await enqueueChildResultToParent({
       actor,
       result,
-      messageKey:
-        result.kind === "reply"
-          ? getTurnReplyKey(turnId, result.reply.toolCallId)
-          : turnId,
+      messageKey: turnId,
       queue: options.queue,
       sender,
       state: options.state,
@@ -366,8 +356,8 @@ export function createEndStoppedChildWork(options: {
       return;
     }
     const turns = await listActiveMailboxTurns(conversationId);
-    // A Turn sends its `reply` before it saves, so a lost worker can follow
-    // a reply that the parent already has. Its Turn id comes from its record
+    // A Turn sends its result before it saves, so a lost worker can follow
+    // a result that the parent already has. Its Turn id comes from its record
     // or, before the first save, from its input, which is still pending.
     // `inboundMessageIds` also holds the input of earlier Turns.
     const work = await getConversationWorkState({ conversationId });
