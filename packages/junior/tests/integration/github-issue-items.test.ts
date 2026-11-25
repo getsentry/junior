@@ -11,6 +11,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -30,6 +31,7 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
@@ -463,10 +465,19 @@ describe("the Inbox item of an issue that Junior created", () => {
         status: "open",
       });
 
-      // Pat's dismiss is the last one. Its webhook closes the item while
-      // the dismiss waits on GitHub, and the item still closes as Pat's
-      // dismiss.
-      expect(await dismissAs("pat@example.com", item!.id)).toBe(200);
+      // Pat's dismiss from a Slack card is the last one. Its webhook closes
+      // the item while the dismiss waits on GitHub, and the item still
+      // closes as Pat's dismiss, as the first close.
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: {
+          queue: createConversationWorkQueueTestAdapter(),
+          show: async () => {},
+        },
+        firstCloseOnly: true,
+        id: item!.id,
+        user: await signedInViewer("pat@example.com"),
+      });
       expect(unassigned).toEqual([
         { assignees: ["out"] },
         { assignees: ["pat"] },
