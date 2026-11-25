@@ -211,4 +211,75 @@ describe("inbox item subject migration", () => {
       await fixture.close();
     }
   });
+
+  it("finds a pull request's GitHub id through its Conversation after a repository rename", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const change = (
+        id: string,
+        repository: string,
+        number: number,
+        conversationId: string,
+      ) =>
+        fixture.sql.execute(
+          `INSERT INTO junior_code_changes (id, conversation_ids, number, opened_at, provider, provider_id, repository_id, state, updated_at) VALUES (gen_random_uuid(), ARRAY['${conversationId}'], ${number}, now(), 'github', '${id}', '${repository}', 'open', now())`,
+        );
+      // The repository of #946 was renamed after Junior opened it.
+      await fixture.sql.execute(
+        `INSERT INTO junior_code_repositories (id, name, provider, provider_id, updated_at) VALUES ('00000000-0000-4000-8000-000000000001', 'getsentry/junior-next', 'github', 'R_1', now()), ('00000000-0000-4000-8000-000000000002', 'getsentry/other', 'github', 'R_2', now())`,
+      );
+      await change(
+        "PR_946",
+        "00000000-0000-4000-8000-000000000001",
+        946,
+        "slack:C123:1.000001",
+      );
+      // Another Conversation opened #950 in two repositories, so the number
+      // names no one change.
+      await change(
+        "PR_950_A",
+        "00000000-0000-4000-8000-000000000001",
+        950,
+        "slack:C123:1.000009",
+      );
+      await change(
+        "PR_950_B",
+        "00000000-0000-4000-8000-000000000002",
+        950,
+        "slack:C123:1.000009",
+      );
+
+      // Workers of the last release add the asks with the old name.
+      await fixture.sql.execute(
+        legacyItem(
+          "renamed",
+          "pull-request-review-requested",
+          "2026-10-01T12:00:00Z",
+        ),
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, owner_id, created_at, updated_at) VALUES ('ambiguous', 'action', 'open', 'public', 'PR #950', 'GitHub asks about #950.', 'plugin:github:pull-request-ready:getsentry/junior#950', 'slack:C123:1.000009', now(), now())`,
+      );
+
+      expect(
+        await fixture.sql.query(
+          `SELECT id, subject_kind, subject_id FROM junior_inbox_items ORDER BY id`,
+        ),
+      ).toEqual([
+        {
+          id: "ambiguous",
+          subject_id: "getsentry/junior#950",
+          subject_kind: "github:pull_request",
+        },
+        {
+          id: "renamed",
+          subject_id: "PR_946",
+          subject_kind: "github:pull_request",
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

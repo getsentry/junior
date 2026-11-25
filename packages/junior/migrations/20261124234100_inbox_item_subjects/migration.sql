@@ -7,7 +7,8 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- subject kind and id now name the item, so new code writes no dedupe key.
 -- A GitHub pull request has one item for all of its asks, and its id is
 -- GitHub's id of the pull request, read from the code change records by the
--- repository and number in the old key. A plugin item uses its subject
+-- repository and number in the old key, or else by the number and the owner
+-- Conversation, after a repository rename. A plugin item uses its subject
 -- link as the id when it had one. An agent's item is a question, and its
 -- old key is its id, so two questions about one object stay two items. Its
 -- old subject link, in `subject_url` or else in `subject_id`, becomes its
@@ -57,6 +58,17 @@ BEGIN
       AND lower(r."name") = lower(split_part(github_ref, '#', 1))
       AND c."number" = split_part(github_ref, '#', 2)::integer
     LIMIT 1;
+    -- A renamed repository no longer matches the name in the key. Then the
+    -- change with that number that the owner Conversation opened names the
+    -- id, when only one change matches.
+    IF github_id IS NULL AND NEW."owner_kind" = 'conversation' THEN
+      SELECT min(c."provider_id") INTO github_id
+      FROM "junior_code_changes" c
+      WHERE c."provider" = 'github'
+        AND c."number" = split_part(github_ref, '#', 2)::integer
+        AND c."conversation_ids" @> ARRAY[NEW."owner_id"]
+      HAVING count(*) = 1;
+    END IF;
   END IF;
   NEW."subject_kind" := CASE
       WHEN NEW."owner_kind" = 'automation' THEN 'automation'
