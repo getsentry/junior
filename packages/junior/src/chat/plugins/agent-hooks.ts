@@ -818,7 +818,10 @@ export function getPluginTools(
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
-      conversations: createPluginConversations(context.conversationId),
+      conversations: createPluginConversations(
+        context.conversationId,
+        pluginName,
+      ),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,

@@ -6,6 +6,7 @@ import {
   type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
+import { resolveAnnotationFilter } from "@/chat/conversations/sql/annotation-filter";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -156,7 +157,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created or changed the resource.",
+          "Linked resource, by its reference such as owner/repo#123 or by its link. owner/repo matches each resource of the repository. Matches when the conversation or one of its child agents links it.",
         ),
       conversation_ids: z
         .array(z.string().trim().min(1))
@@ -256,7 +257,9 @@ export function createSearchConversationsTool(context: {
   return zodTool({
     ...searchConversationsToolDefinition(channels),
     execute: async (input) => {
-      const annotation = input.annotation ?? undefined;
+      const annotation = input.annotation
+        ? await resolveAnnotationFilter(getDb(), input.annotation)
+        : undefined;
       const conversationIds = input.conversation_ids ?? undefined;
       const query = input.query ?? undefined;
       // The schema accepts only ISO-8601 timestamps.

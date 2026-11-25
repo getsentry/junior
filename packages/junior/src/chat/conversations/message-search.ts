@@ -13,7 +13,7 @@ export interface ConversationMessageSearchResult {
 export interface ConversationMessageSearchFilters {
   /** Only conversations active at or after this time. */
   afterMs?: number;
-  /** Annotation key, matched case-insensitively. Nested keys may continue with `#`. */
+  /** An object that the Conversation links, by its reference or its link (`resolveAnnotationFilter`). */
   annotation?: string;
   /** Only conversations active before this time. */
   beforeMs?: number;
