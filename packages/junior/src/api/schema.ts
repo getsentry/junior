@@ -384,6 +384,8 @@ export { leadSchema } from "./schema/lead";
 export {
   archiveSpaceBodySchema,
   createSpaceBodySchema,
+  SPACE_DESCRIPTION_MAX_CHARS,
+  SPACE_NAME_MAX_CHARS,
   spaceListQuerySchema,
   spaceListSchema,
   spaceParamsSchema,

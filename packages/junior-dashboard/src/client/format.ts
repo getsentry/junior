@@ -739,6 +739,7 @@ export function buildConversations(
       latestTurnFailed: summary.latestTurnFailed,
       viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
+      space: summary.space,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }
