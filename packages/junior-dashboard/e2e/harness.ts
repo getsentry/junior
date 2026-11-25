@@ -76,32 +76,6 @@ export async function routeConversationVersion(
 }
 
 /**
- * Reads that the dashboard starts or repeats in the background, so one can be
- * open whenever a test ends. Only GET reads belong here: a test must await
- * every write that it causes, or the server may never see it.
- */
-const BACKGROUND_READS: readonly RegExp[] = [
-  // The versions poll runs for the whole visit (`useVersionsPoll`).
-  /^\/api\/versions$/,
-  // A live Conversation polls its detail. When idle, the versions poll
-  // refreshes it.
-  /^\/api\/conversations\/[^/]+$/,
-  // A detail with a new ETag refreshes its side reads
-  // (`refreshSideReadsOnChange`).
-  /^\/api\/conversations\/[^/]+\/(agents|todos|watches)$/,
-  /^\/api\/memory\/conversations\/[^/]+\/memories$/,
-  // A moved versions token refreshes the feeds, every Inbox item read (the
-  // lists, the count, the waiting Conversations, and each item), and the
-  // viewer's spend (`refreshChangedReads`).
-  /^\/api\/conversations$/,
-  /^\/api\/inbox-items(\/[^/]+)?$/,
-  /^\/api\/people\/me\/spend$/,
-  // A pointer that rests on an Automation row prefetches its page
-  // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
-  /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
-];
-
-/**
  * Wait until `count` versions checks are answered, then let the page finish
  * the work that the last answer started. A test that controls timers moves
  * the clock only after that, so the next poll timer is already set.
@@ -175,13 +149,32 @@ export async function dragScrollbarToTop(page: Page): Promise<void> {
   });
 }
 
-/** Whether a request is a background read that may outlive a test. */
-function isBackgroundRead(request: PageRequest): boolean {
-  const { pathname } = new URL(request.url());
-  return (
-    request.method() === "GET" &&
-    BACKGROUND_READS.some((path) => path.test(pathname))
-  );
+/** The requests that each page holds unanswered on purpose. */
+const heldRoutes = new WeakMap<Page, { released: boolean; routes: Route[] }>();
+
+/**
+ * Leave each request to `url` unanswered, such as a page that never loads.
+ * Teardown fails the held requests before the open-request check, so the
+ * check still sees every other request that the test caused.
+ */
+export async function holdRequests(
+  page: Page,
+  url: string | RegExp,
+): Promise<void> {
+  const held = heldRoutes.get(page) ?? { released: false, routes: [] };
+  heldRoutes.set(page, held);
+  await page.route(url, async (route) => {
+    if (held.released) await route.abort();
+    else held.routes.push(route);
+  });
+}
+
+/** Fail each request that a page holds, and each one that it starts after. */
+export async function releaseHeldRequests(page: Page): Promise<void> {
+  const held = heldRoutes.get(page);
+  if (!held) return;
+  held.released = true;
+  await Promise.all(held.routes.splice(0).map((route) => route.abort()));
 }
 
 // How long teardown waits for open requests to end. The requests that raced
@@ -197,8 +190,8 @@ const DRAIN_MS = 3_000;
  */
 export function trackOpenRequests(page: Page): {
   /**
-   * Wait for each open request other than a background read to end, and fail
-   * with each one still open after `DRAIN_MS`.
+   * Wait for each open request to end, and fail with each one still open
+   * after `DRAIN_MS`.
    */
   expectNoneOpen: () => Promise<void>;
 } {
@@ -216,14 +209,12 @@ export function trackOpenRequests(page: Page): {
   });
   page.on("requestfinished", end);
   page.on("requestfailed", end);
-  const unexpected = () =>
-    [...open].filter((request) => !isBackgroundRead(request));
   return {
     expectNoneOpen: async () => {
       // Wait until none is open, not only for those open now: a request can
       // start another as it ends, such as a read that a write refreshes.
       const drained = async () => {
-        while (unexpected().length > 0) {
+        while (open.size > 0) {
           await new Promise<void>((resolve) => (wake = resolve));
         }
       };
@@ -231,9 +222,8 @@ export function trackOpenRequests(page: Page): {
         drained(),
         delay(DRAIN_MS, undefined, { ref: false }),
       ]);
-      const stillOpen = unexpected();
-      if (stillOpen.length === 0) return;
-      const lines = stillOpen.map((request) => {
+      if (open.size === 0) return;
+      const lines = [...open].map((request) => {
         const { pathname, search } = new URL(request.url());
         return `  ${request.method()} ${pathname}${search}`;
       });

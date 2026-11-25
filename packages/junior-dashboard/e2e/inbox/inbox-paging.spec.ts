@@ -1,6 +1,7 @@
 /** The Inbox lists' pages: next pages, To do's own paging, and failed pages. */
 import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { holdRequests } from "../harness";
 import {
   answered,
   license,
@@ -122,7 +123,7 @@ test.describe("new UI", () => {
     await expect(row).toBeVisible();
     // A count that never answers does the same.
     await page.unroute("**/api/inbox-items/count**");
-    await page.route("**/api/inbox-items/count**", () => undefined);
+    await holdRequests(page, "**/api/inbox-items/count**");
     await page.reload();
     await expect(row).toBeVisible();
   });
@@ -221,7 +222,7 @@ test.describe("new UI", () => {
 
   /** Later pages of the Inbox item list never load. */
   async function holdLaterInboxItemPages(page: Page) {
-    await page.route(/\/api\/inbox-items\?.*cursor=/, () => undefined);
+    await holdRequests(page, /\/api\/inbox-items\?.*cursor=/);
   }
 
   test("To do's first page holds the new ask behind older notices", async ({
