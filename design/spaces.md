@@ -58,10 +58,3 @@ not need a home stays a one-off Conversation.
 - Any member can archive a Space.
 - Configuration resolves in this order: an explicit target in the request,
   then the Space, then the Slack channel, then the install-wide defaults.
-
-## Gaps
-
-- Spaces do not exist. Each person has one private Lead as the dashboard
-  home, and Conversations store no Space. This breaks every goal above.
-- Configuration can be set only on a Slack channel. This breaks "a Space
-  sets its own configuration".
