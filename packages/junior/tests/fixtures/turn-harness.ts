@@ -1,0 +1,250 @@
+// The harness of core's Turn engine integration tests. It runs the real path
+// from an input to a Slack post: `scheduleInput`, the host's Turn step
+// consumer with the host's prompt layouts, and the host's delivery consumer.
+// Only the edges outside Junior are fakes: the AI emulator answers the model
+// requests, MSW captures the Slack API calls, and an in-process queue holds
+// each message until the test delivers it. Postgres is real. Each harness has
+// its own Conversation, Actor and queue, so the ids keep tests apart in the
+// shared database.
+import { randomInt, randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { getChatConfig } from "@/chat/config";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import { DELIVERY_TOPIC } from "@/core/delivery/topic";
+import type { EngineContext } from "@/core/engine-context";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { scheduleInput } from "@/core/turn/schedule";
+import type { ToolDefinition } from "@/core/tool";
+import type { AdvanceTurnOptions } from "@/core/turn/advance";
+import {
+  juniorConversations,
+  juniorIdentities,
+  juniorTurnInbox,
+  juniorTurns,
+} from "@/db/schema";
+import { turnStepConsumer } from "@/turn-steps/consumer";
+import { staticTools } from "./turn-engine";
+import { deliveryConsumer } from "@/turn-steps/delivery";
+import { turnGroupKey } from "@/turn-steps/group-key";
+import type { TurnInputPayload } from "@/turn-steps/input-payload";
+import { emulatedModelClient } from "./ai-emulator";
+import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
+import {
+  createRecordingDelivery,
+  type RecordedSend,
+} from "./recording-delivery";
+import { buildJuniorSqlConversation, createJuniorSqlFixture } from "./sql";
+
+const LEASE_MS = 60_000;
+
+type SlackLocation = Extract<Location, { provider: "slack" }>;
+
+// A run that goes through more rounds than this is a loop, not a drain. One
+// round delivers every due step message, then every due delivery message.
+const MAX_ROUNDS = 20;
+
+/** The Actor that sends a harness's inputs unless a test names another. */
+export const ACTOR = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const satisfies TurnInputPayload["actor"];
+
+/** An input that `send` scheduled: its Turn and its inbox row. */
+type SentInput = { turnId: string; inputId: string };
+
+/** One Conversation on the real Turn engine path, and its queue. */
+export type TurnHarness = {
+  conversationId: string;
+  /** The Slack thread that the Conversation delivers to. */
+  location: SlackLocation;
+  /** The context that core runs with: the test database and this queue. */
+  engineCtx: EngineContext;
+  /** Holds the messages that core sends until the test delivers them. */
+  queue: InProcessQueue;
+  /** Schedules an input from the Actor, as a Source does. */
+  /**
+   * Sends an input from the Slack thread. `source` and `destination` replace
+   * the thread's, and a null `destination` answers only in the history.
+   */
+  send: (input: {
+    text: string;
+    actor?: TurnInputPayload["actor"];
+    source?: Source;
+    destination?: Destination | null;
+  }) => Promise<SentInput>;
+  /** Delivers the next due step message. Throws when none is due. */
+  runStep: () => Promise<void>;
+  /** Delivers due step and delivery messages until none is left. */
+  runUntilIdle: () => Promise<void>;
+  turn: (turnId: string) => Promise<typeof juniorTurns.$inferSelect>;
+  /** The stored history events of the Conversation, oldest first. */
+  events: () => ReturnType<
+    ReturnType<typeof createSqlConversationEventStore>["loadCurrentHistory"]
+  >;
+  /** The Conversation history as the model reads it. */
+  history: () => Promise<
+    ReturnType<typeof projectConversationEvents>["messages"]
+  >;
+  /** Where `send` says its inputs' answers go unless a test names another. */
+  destination: Destination;
+  /** Every try of a reply's send, oldest first. */
+  sends: () => RecordedSend[];
+  /** Makes the next try of a send throw `error`. */
+  failNextSend: (error: Error) => void;
+  close: () => Promise<void>;
+};
+
+/**
+ * Creates a root Slack Conversation and its queue for one test. The host's
+ * Turn steps give the model `tools`: the same list at every step, or what a
+ * tools builder, such as the host's own, gives each step.
+ */
+export async function createTurnHarness({
+  tools = [],
+}: {
+  tools?: ToolDefinition[] | AdvanceTurnOptions["tools"];
+} = {}): Promise<TurnHarness> {
+  const fixture = await createJuniorSqlFixture();
+  const db = fixture.sql.db();
+  const threadTs = `${randomInt(1e9, 2e9)}.${randomInt(1e5, 1e6)}`;
+  const conversationId = `slack:C123:${threadTs}`;
+  const location: SlackLocation = {
+    id: "location:slack:T123:C123",
+    provider: "slack",
+    teamId: "T123",
+    channelId: "C123",
+    threadTs,
+  };
+  const actorIdentityId = `identity:${randomUUID()}`;
+  await db.insert(juniorIdentities).values({
+    createdAt: new Date(),
+    id: actorIdentityId,
+    kind: "user",
+    provider: "slack",
+    providerSubjectId: `U${randomUUID()}`,
+    providerTenantId: ACTOR.teamId,
+    updatedAt: new Date(),
+  });
+  await db
+    .insert(juniorConversations)
+    .values(
+      buildJuniorSqlConversation({ conversationId, location, kind: "root" }),
+    );
+
+  const queue = createInProcessQueue();
+  const recording = createRecordingDelivery();
+  const engineCtx: EngineContext = {
+    executor: fixture.sql,
+    queue,
+    owner: "worker-a",
+    leaseMs: LEASE_MS,
+  };
+  queue.mount(
+    TURN_STEP_TOPIC,
+    await turnStepConsumer(engineCtx, {
+      client: emulatedModelClient(),
+      bot: getChatConfig().bot,
+      tools: typeof tools === "function" ? tools : staticTools(tools),
+    }),
+  );
+  queue.mount(DELIVERY_TOPIC, deliveryConsumer(engineCtx, recording.delivery));
+
+  const slackSource: Source = {
+    kind: "slack",
+    teamId: location.teamId,
+    channelId: location.channelId,
+    visibility: "public",
+    threadTs,
+  };
+  const slackDestination: Destination = {
+    platform: "slack",
+    teamId: location.teamId,
+    channelId: location.channelId,
+    threadTs,
+  };
+
+  async function send(input: {
+    text: string;
+    actor?: TurnInputPayload["actor"];
+    source?: Source;
+    destination?: Destination | null;
+  }): Promise<SentInput> {
+    const payload: TurnInputPayload = {
+      text: input.text,
+      actor: input.actor ?? ACTOR,
+    };
+    const idempotencyKey = `slack-event:${randomUUID()}`;
+    const source = input.source ?? slackSource;
+    const { turnId } = await scheduleInput(engineCtx, {
+      conversationId,
+      actorIdentityId,
+      groupKey: turnGroupKey(actorIdentityId, source),
+      payload,
+      idempotencyKey,
+      sentAt: new Date(),
+      source,
+      destination:
+        input.destination === undefined ? slackDestination : input.destination,
+      delivery: "interrupt",
+    });
+    const [row] = await db
+      .select({ id: juniorTurnInbox.id })
+      .from(juniorTurnInbox)
+      .where(eq(juniorTurnInbox.idempotencyKey, idempotencyKey));
+    return { turnId, inputId: row!.id };
+  }
+
+  async function runStep() {
+    if (!(await queue.deliverNext(TURN_STEP_TOPIC))) {
+      throw new Error("No step message is due");
+    }
+  }
+
+  async function runUntilIdle() {
+    for (let round = 0; round < MAX_ROUNDS; round += 1) {
+      const steps = await queue.runUntilIdle(TURN_STEP_TOPIC);
+      const deliveries = await queue.runUntilIdle(DELIVERY_TOPIC);
+      if (steps + deliveries === 0) {
+        return;
+      }
+    }
+    throw new Error(`The Turn engine was not idle after ${MAX_ROUNDS} rounds`);
+  }
+
+  async function turn(turnId: string) {
+    const [row] = await db
+      .select()
+      .from(juniorTurns)
+      .where(eq(juniorTurns.id, turnId));
+    if (!row) {
+      throw new Error(`No Turn ${turnId}`);
+    }
+    return row;
+  }
+
+  const events = () =>
+    createSqlConversationEventStore(fixture.sql).loadCurrentHistory(
+      conversationId,
+    );
+
+  return {
+    conversationId,
+    location,
+    engineCtx,
+    queue,
+    send,
+    runStep,
+    runUntilIdle,
+    turn,
+    events,
+    history: async () => projectConversationEvents(await events()).messages,
+    destination: slackDestination,
+    sends: recording.sends,
+    failNextSend: recording.failNext,
+    close: () => fixture.close(),
+  };
+}

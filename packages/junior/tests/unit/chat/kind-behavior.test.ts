@@ -33,7 +33,7 @@ const personInThreadTurn = {
   sender: "person",
   sessionTasks: false,
   relatedConversations: false,
-  tools: { ...rootTurn.tools, agents: "none" },
+  tools: { ...rootTurn.tools, agents: "children_and_parent" },
 };
 
 const agentInThreadTurn = {

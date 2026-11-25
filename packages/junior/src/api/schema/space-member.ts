@@ -16,4 +16,9 @@ export const spaceMemberListSchema = z
   .object({ members: z.array(spaceMemberSchema) })
   .strict();
 
+/** Add one person to a Space by the primary email of their User. */
+export const addSpaceMemberBodySchema = z
+  .object({ email: z.string().trim().min(1).max(320) })
+  .strict();
+
 export type SpaceMemberListReport = z.infer<typeof spaceMemberListSchema>;

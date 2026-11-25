@@ -94,8 +94,11 @@ describe("chat cli", () => {
     expect(await runChat(["--conversation"], io)).toBe(1);
     expect(await runChat(["-p"], io)).toBe(1);
     expect(await runChat(["unexpected"], io)).toBe(1);
+    expect(await runChat(["--engine", "core"], io)).toBe(1);
+    expect(await runChat(["--engine", "core", "-p"], io)).toBe(1);
+    expect(await runChat(["--engine", "other", "-p", "hi"], io)).toBe(1);
 
-    expect(lines).toEqual([CHAT_USAGE, CHAT_USAGE, CHAT_USAGE, CHAT_USAGE]);
+    expect(lines).toEqual(Array.from({ length: 7 }, () => CHAT_USAGE));
   });
 
   it("returns success for a successful prompt reply", async () => {
