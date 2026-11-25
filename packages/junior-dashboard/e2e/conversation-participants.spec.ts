@@ -2,6 +2,7 @@ import { conversationMenuRow } from "./conversationMenu";
 import { pickOption } from "./pick-option";
 import { desktop, mobile, screenshot } from "./screenshot";
 import type { Locator } from "@playwright/test";
+import { mockConversationDetail } from "./mock-reports";
 import { expect, test } from "./test";
 
 // A public Conversation.
@@ -138,10 +139,8 @@ for (const [name, change] of [
         url.pathname ===
         `/api/conversations/${encodeURIComponent(PARTICIPANT_CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
         await route.fulfill({
-          json: { ...(await response.json()), ...change },
-          response,
+          json: { ...(await mockConversationDetail(route)), ...change },
         });
       },
     );

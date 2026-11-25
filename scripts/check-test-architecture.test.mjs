@@ -327,6 +327,26 @@ test("rejects toPass retries and network idle waits in dashboard E2E specs and h
   );
 });
 
+test("rejects forwarded routes in dashboard E2E specs and helpers", () => {
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-route-forward",
+      "const response = await route.fetch();",
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+});
+
+test("rejects ignored route handler errors in dashboard E2E specs and helpers", () => {
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-ignore-route-errors",
+      'await page.unrouteAll({ behavior: "ignoreErrors" });',
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+});
+
 const EVAL_PATH = "packages/junior-evals/evals/conversation/new.eval.ts";
 
 test("rejects agent test contract violations above the baseline", () => {

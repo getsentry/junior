@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
+import { mockInboxItemCount } from "../mock-reports";
 
 /**
  * The day that Automation list groups read in tests: Weekly project summary
@@ -165,12 +166,11 @@ export function attentionCount(
 /** Serve the Automation collection and direct details from the same fixture. */
 export async function mockAutomationApis(page: Page) {
   await page.route("**/api/inbox-items/count**", async (route) => {
-    // A navigation can cancel the count read before the fetch here ends.
-    const response = await route.fetch().catch(() => undefined);
-    if (!response) return route.abort().catch(() => {});
     await route.fulfill({
-      response,
-      json: { ...(await response.json()), automations: attentionCount() },
+      json: {
+        ...(await mockInboxItemCount(route)),
+        automations: attentionCount(),
+      },
     });
   });
   await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {

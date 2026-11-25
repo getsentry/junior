@@ -212,8 +212,13 @@ async function settle(page: Page) {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   const remaining = () => Math.max(deadline - Date.now(), 1);
   let started: Request[] = [];
+  // A live page polls, and a poll for a read that already loaded in this
+  // settle shows nothing new. Only a read the page has not made yet waits
+  // for another round, or a poll every second keeps the page from settling.
+  const seen = new Set<string>();
+  const keyOf = (request: Request) => `${request.method()} ${request.url()}`;
   const onStart = (request: Request) => {
-    started.push(request);
+    if (!seen.has(keyOf(request))) started.push(request);
   };
   const urls = (requests: Iterable<Request>) =>
     [...requests].map((request) => request.url()).join(", ") || "unknown";
@@ -227,9 +232,11 @@ async function settle(page: Page) {
           `The page kept starting requests for ${SETTLE_TIMEOUT_MS}ms: ${urls(started)}`,
         );
       }
+      for (const request of started) seen.add(keyOf(request));
       started = [];
       await waitForRequestsToEnd(page, remaining());
       await loadAssets(page, remaining());
+      await waitForMarksToEnd(page, remaining());
       await waitForQuiet(page, remaining());
     } while (started.length > 0);
   } finally {
@@ -285,6 +292,29 @@ async function loadAssets(page: Page, timeout: number) {
       `Fonts, images, or videos were still loading after ${SETTLE_TIMEOUT_MS}ms.`,
     );
   }
+}
+
+/**
+ * Wait until no row shows a jump mark. A jump marks the row it lands on for
+ * a moment on a real timer, so a shot could catch the mark in one view and
+ * miss it in the next.
+ */
+async function waitForMarksToEnd(page: Page, timeout: number) {
+  await page
+    .waitForFunction(
+      // Menus also set data-highlighted on the active item, and keep it.
+      () =>
+        !document.querySelector(
+          "[data-transcript-seq][data-highlighted], [data-inbox-item-ask][data-highlighted]",
+        ),
+      undefined,
+      { timeout },
+    )
+    .catch(() => {
+      throw new Error(
+        `A jump mark (data-highlighted) was still showing after ${SETTLE_TIMEOUT_MS}ms.`,
+      );
+    });
 }
 
 /**

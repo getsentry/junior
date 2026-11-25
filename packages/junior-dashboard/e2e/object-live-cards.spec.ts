@@ -1,5 +1,6 @@
 import { desktop } from "./screenshot";
 import { expect, test } from "./test";
+import { mockObjectLinks } from "./mock-reports";
 
 // The mock release Conversation saves Annotations for these pull requests,
 // and its last reply links to them.
@@ -19,10 +20,9 @@ test("a live web page card does not replace a saved pull request card", async ({
   await page.route(
     (url) => url.pathname === "/api/objects",
     async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
+      const body = await mockObjectLinks(route);
       const items: { object?: Record<string, unknown>; url: string }[] =
-        body.objects ?? [];
+        body.objects;
       const blog = items.find((item) => item.url === BLOG_URL)?.object;
       for (const item of items) {
         if (item.object?.["objectType"] !== "code_change") continue;
@@ -35,7 +35,7 @@ test("a live web page card does not replace a saved pull request card", async ({
           url: item.url,
         };
       }
-      await route.fulfill({ json: body, response });
+      await route.fulfill({ json: body });
     },
   );
   await page.goto(

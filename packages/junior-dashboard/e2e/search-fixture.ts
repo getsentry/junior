@@ -6,6 +6,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { mockSearchReport } from "../src/mock-reporting/search";
+import { mockServerSearchRows } from "./mock-reports";
 
 /** The rows that a test's mocked lists hold, read at each search. */
 type SearchRows = {
@@ -20,7 +21,7 @@ const pageRows = new WeakMap<Page, SearchRows>();
 
 /**
  * Answer `/api/search` from a test's mocked rows, as the server matches
- * them. Sources that no test mocks keep the mock server's rows.
+ * them. Sources that no test mocks search the mock server's rows.
  */
 export async function mockSearchRows(
   page: Page,
@@ -34,32 +35,22 @@ export async function mockSearchRows(
   const mocked = { ...rows };
   pageRows.set(page, mocked);
   await page.route(/\/api\/search\?/, async (route) => {
-    const response = await route.fetch();
-    const served = await response.json();
+    const served = await mockServerSearchRows();
     const report = mockSearchReport(
       {
-        automations: mocked.automations?.() ?? [],
-        inboxItems: mocked.inboxItems?.() ?? [],
-        memories: mocked.memories?.() ?? [],
+        automations: mocked.automations?.() ?? served.automations,
+        inboxItems: mocked.inboxItems?.() ?? served.inboxItems,
+        memories: mocked.memories?.() ?? served.memories,
         // No spec mocks To-dos, so the mock server's To-dos answer.
-        todos: [],
+        todos: served.todos,
       },
       new URL(route.request().url()).searchParams,
     );
-    return route.fulfill({
-      json: {
-        ...served,
-        ...(mocked.automations && report?.automations
-          ? { automations: report.automations }
-          : undefined),
-        ...(mocked.inboxItems && report?.inboxItems
-          ? { inboxItems: report.inboxItems }
-          : undefined),
-        ...(mocked.memories && report?.memories
-          ? { memories: report.memories }
-          : undefined),
-      },
-      response,
-    });
+    return report
+      ? route.fulfill({ json: report })
+      : route.fulfill({
+          json: { error: "Invalid search query." },
+          status: 400,
+        });
   });
 }

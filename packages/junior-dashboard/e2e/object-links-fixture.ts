@@ -1,6 +1,7 @@
 /** The mock release Conversation and its object links, for link specs. */
 import type { Page } from "@playwright/test";
 import { expect } from "./test";
+import { mockConversationDetail } from "./mock-reports";
 
 // The mock release Conversation saves Annotations for these pull requests,
 // and its last reply links to them.
@@ -20,8 +21,7 @@ export async function viewAsParticipant(
       url.pathname ===
       `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
     async (route) => {
-      const response = await route.fetch();
-      const detail = await response.json();
+      const detail = await mockConversationDetail(route);
       await route.fulfill({
         json: {
           ...detail,
@@ -29,7 +29,6 @@ export async function viewAsParticipant(
           annotations: [...extraAnnotations, ...(detail.annotations ?? [])],
           isParticipant: true,
         },
-        response,
       });
     },
   );
