@@ -20,8 +20,10 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 
 ## Rules
 
-- A child agent is an ordinary Conversation. Its `kind`, `thread` or
-  `task`, is the only switch for its behavior, and it never changes.
+- A child agent is an ordinary Conversation. Its behavior depends only on
+  whether it is a `task` and on who sent the Turn. A child that is not a
+  `task` behaves like any Conversation that has a parent. Its kind and its
+  parent never change.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. `startAgent` and `messageAgent`
   pass the current Turn's Actor to the child, and the child's result

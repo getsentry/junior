@@ -2,7 +2,7 @@
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
   isPersonInput,
-  isTopLevelKind,
+  isTopLevel,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -240,7 +240,9 @@ export function createConversationTurnWorker(
     const kind = storedConversation?.kind ?? "root";
     // The parent's task can carry the root's private content, so a child
     // with missing visibility runs as private.
-    const visibility = isTopLevelKind(kind)
+    const visibility = isTopLevel({
+      parentConversationId: storedConversation?.parentConversationId,
+    })
       ? storedConversation?.visibility
       : (storedConversation?.visibility ?? "private");
     const mailboxDestination =

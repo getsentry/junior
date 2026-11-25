@@ -1,6 +1,9 @@
 import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
-import type { ConversationKind } from "@/chat/conversations/store";
+import type {
+  Conversation,
+  ConversationKind,
+} from "@/chat/conversations/store";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import type { StaticToolName } from "@/chat/tool-support/registry";
 
@@ -328,11 +331,13 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a person can put a Conversation of this kind in a Space. A
- * child is in the Space of its root, and a Lead never moves.
+ * Return whether a person can put a Conversation in a Space. A child is in
+ * the Space of its root, and a Lead never moves.
  */
-export function canMoveToSpace(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation";
+export function canMoveToSpace(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): boolean {
+  return isTopLevel(conversation) && conversation.kind !== "lead";
 }
 
 /**
@@ -341,6 +346,13 @@ export function canMoveToSpace(kind: ConversationKind): boolean {
  */
 export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
   return kind === "lead";
+}
+
+/** Return whether a Conversation has no parent. */
+export function isTopLevel(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !conversation.parentConversationId;
 }
 
 /** Return whether a Conversation of this kind has no parent. */
