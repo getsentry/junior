@@ -15,11 +15,11 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorSpaceMembers,
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 /** A person by User id, or by primary email when no User is known. */
 export type ConversationMember = { userId: string } | { email: string };
@@ -103,9 +103,8 @@ export function rootSpaceReadableBy(member: ConversationMember): SQL {
 
 /**
  * True when the viewer may find the outer root conversation by a link to
- * it: its Destination, joined as `juniorDestinations`, is public, or the
- * viewer is a Participant. A root in a private Space is visible only to the
- * Space's members, and to all of them.
+ * it: the root is public, or the viewer is a Participant. A root in a
+ * private Space is visible only to the Space's members, and to all of them.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
@@ -115,7 +114,7 @@ export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
         notInArray(juniorConversations.spaceId, privateSpaceIds()),
       ),
       or(
-        eq(juniorDestinations.visibility, "public"),
+        isPublicConversation(juniorConversations),
         viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
       ),
     ),

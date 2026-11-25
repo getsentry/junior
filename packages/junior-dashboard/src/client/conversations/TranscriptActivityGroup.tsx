@@ -13,6 +13,8 @@ import {
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
+import type { TranscriptViewMessage } from "../types";
+import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
@@ -48,7 +50,8 @@ export function isCollapsibleActivityEntry(
  * Keys of message rows that fold into activity: each quiet reply and the
  * Event messages that started its Turn, and each Event message whose Turn
  * ended without a reply. Event messages wait for the next reply; a message
- * from a person clears them.
+ * from a person clears them. Watch Events are left out: the routine rule
+ * decides those.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -59,6 +62,7 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
+      if (isWatchEventMessage(message)) continue;
       if (message.noReply) {
         keys.add(entry.key);
         continue;
@@ -72,6 +76,67 @@ export function quietTurnEntryKeys(
       for (const key of eventKeys) keys.add(key);
     }
     eventKeys = [];
+  }
+  return keys;
+}
+
+/** True for a message that a Watch delivered: a child update or a provider Event. */
+function isWatchEventMessage(message: TranscriptViewMessage): boolean {
+  return (
+    message.role === "user" &&
+    message.eventWatchId !== undefined &&
+    // A relay of a person change shows like the person's own message.
+    !message.reviewItemChanges?.length
+  );
+}
+
+/**
+ * Keys of routine Watch Event messages. Every Watch Event is routine except:
+ * the latest status of a watched Conversation, when it needs a person or
+ * failed; and the last Watch Event before a reply that Junior posted, since
+ * the reply answers it. Routine Events fold into activity like quiet ones,
+ * so a long run of child updates, bot comments, and check results is one
+ * row that opens in place.
+ */
+export function routineEventEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const messages = entries.flatMap((entry) =>
+    entry.kind === "message"
+      ? [{ key: entry.key, message: entry.message }]
+      : [],
+  );
+  // A message without an identifier is its own source.
+  const source = (entry: (typeof messages)[number]) =>
+    entry.message.eventIdentifier === undefined
+      ? entry.key
+      : `${entry.message.eventNamespace}\n${entry.message.eventIdentifier}`;
+  const latest = new Map<string, string>();
+  const replied = new Set<string>();
+  let lastEvent: string | undefined;
+  for (const entry of messages) {
+    if (isWatchEventMessage(entry.message)) {
+      latest.set(source(entry), entry.key);
+      lastEvent = entry.key;
+      continue;
+    }
+    const { message } = entry;
+    if (message.role === "assistant") {
+      if (!message.quiet && lastEvent !== undefined) replied.add(lastEvent);
+      lastEvent = undefined;
+    } else if (message.role === "user" && message.eventType === undefined) {
+      // A person's message is what the next reply answers. Other Turn
+      // inputs, such as an agent invocation result, keep the Event.
+      lastEvent = undefined;
+    }
+  }
+  const keys = new Set<string>();
+  for (const entry of messages) {
+    if (!isWatchEventMessage(entry.message) || replied.has(entry.key)) continue;
+    const state = watchReport(entry.message)?.state;
+    const attention = state === "needs_you" || state === "failed";
+    if (attention && latest.get(source(entry)) === entry.key) continue;
+    keys.add(entry.key);
   }
   return keys;
 }
@@ -132,6 +197,14 @@ export function activityGroupDurationMs(
 
 /** Build a uniform collapsed label for one activity group. */
 export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
+  // A run of Watch Events only took time between deliveries, not work.
+  if (
+    entries.every(
+      (entry) => entry.kind === "message" && isWatchEventMessage(entry.message),
+    )
+  ) {
+    return countLabel(entries.length, "1 routine update", "routine updates");
+  }
   const count = countLabel(entries.length, "1 event", "events");
   const durationMs = activityGroupDurationMs(entries);
   if (typeof durationMs !== "number" || durationMs <= 0) return count;

@@ -1,4 +1,5 @@
 import { expect, test } from "../test";
+import { waitForRequestsToEnd } from "../harness";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
@@ -579,7 +580,7 @@ test.describe("new UI", () => {
       await page.evaluate(() => {
         window.dispatchEvent(new Event("visibilitychange"));
       });
-      await page.waitForLoadState("networkidle");
+      await waitForRequestsToEnd(page);
       expect(directoryReads).toBe(1);
     });
   });
