@@ -47,10 +47,8 @@ also wake a Conversation or run an Event automation.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When GitHub says that it can merge
-  and no reviewer requests changes, the requester gets a "Ready to merge"
-  Inbox item. Where GitHub requires no review, a PR with no approval gets
-  it too, and the item tells the requester to review it before they merge.
+  replies in that Conversation know it. When it is approved and can merge,
+  the requester gets a "Ready to merge" Inbox item.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. Junior reads that state
