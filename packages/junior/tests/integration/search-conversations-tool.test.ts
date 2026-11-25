@@ -534,7 +534,6 @@ describe("searchConversations", () => {
     }).upsert({
       kind: "object",
       key: "getsentry/junior#691",
-      label: url,
       objectType: "code_change",
       title: "Add events",
       url,
