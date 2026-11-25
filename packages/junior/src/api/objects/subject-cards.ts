@@ -11,7 +11,7 @@ import type {
 import { getDb } from "@/chat/db";
 import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
 import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
-import { findObjectLinkType } from "./link-types";
+import { findObjectLinkType, type ObjectLinkType } from "./link-types";
 import { readObjectLinkTypes, resolveObjectLinks } from "./resolve";
 
 /** One object to show: its subject, its stored link, and its owner. */
@@ -37,6 +37,25 @@ export interface ObjectCardView {
   label?: string;
   object?: OwnedObjectAnnotation;
   url: string;
+}
+
+/**
+ * Return the label that a plugin makes from the link of its object, for a
+ * card that cannot read the object: the label of the plugin's link type for
+ * the link, else the host of the link. Undefined without a link.
+ */
+export function ownerLinkLabel(
+  plugin: string,
+  url: string | null | undefined,
+  linkTypes: readonly ObjectLinkType[] = readObjectLinkTypes(),
+): string | undefined {
+  const parsed = url ? URL.parse(url) : null;
+  if (!parsed) return undefined;
+  const linkType = findObjectLinkType(linkTypes, parsed);
+  return (
+    (linkType?.owner === plugin ? linkType.label?.(parsed) : undefined) ??
+    parsed.host
+  );
 }
 
 /**
@@ -77,7 +96,7 @@ export async function resolveObjectCards(
     ) {
       return undefined;
     }
-    labels[index] = linkType.label?.(parsed) ?? parsed.host;
+    labels[index] = ownerLinkLabel(plugin, url, [linkType]);
     return url;
   });
   const read = [...new Set(urls.filter((url) => url !== undefined))];

@@ -545,6 +545,30 @@ const SENTAUR_PULL_REQUEST: OwnedObjectAnnotation = {
   ].join("\n"),
 };
 
+// The mock release thread links to one Linear issue. Its card is what the
+// Linear link type reads from `get_issue`, with or without the title slug.
+const LINEAR_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "task",
+  key: "ENG-123",
+  label: "ENG-123",
+  subject: { id: "8a87ba83-4e33-4c81-8751-a885a554e2fd", kind: "issue" },
+  title: "Grow the GoCD agent pool for canary stages",
+  displayType: "Issue",
+  status: "In Progress",
+  description: "Canary deploys wait on a free agent for up to 20 minutes.",
+  sourceUpdatedAt: "2026-02-02T09:30:00.000Z",
+  facts: {
+    type: "task",
+    assignees: ["Morgan Lee"],
+    priority: "High",
+    project: "Deploy pipeline",
+    labels: ["infra"],
+  },
+  plugin: "linear",
+};
+const LINEAR_ISSUE_PATH = /^\/acme\/issue\/ENG-123(?:\/[^/]*)?$/;
+
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
@@ -603,6 +627,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url.pathname === SENTRY_DASHBOARD_PATH
   ) {
     return [{ object: { ...SENTRY_DASHBOARD, url: href }, url: href }];
+  }
+  if (url.hostname === "linear.app" && LINEAR_ISSUE_PATH.test(url.pathname)) {
+    return [{ object: { ...LINEAR_ISSUE, url: href }, url: href }];
   }
   if (url.hostname.endsWith(".slack.com")) {
     if (url.pathname !== SLACK_MESSAGE_PATH) return [];

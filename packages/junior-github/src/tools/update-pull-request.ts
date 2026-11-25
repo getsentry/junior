@@ -1,5 +1,4 @@
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
   type Actor,
   type PluginCodeChanges,
@@ -300,11 +299,7 @@ export function createGitHubUpdatePullRequestTool(
         objectAnnotations: [
           {
             action: "changed",
-            ...githubObjectAnnotation({
-              ...githubObjectFacts("code_change", {
-                ...(parsed as object),
-                draft: providerResult.draft,
-              }),
+            ...githubAnnotatedObject({
               repo: repo.ref,
               number: providerResult.number,
               id:
@@ -314,11 +309,6 @@ export function createGitHubUpdatePullRequestTool(
               title: providerResult.title,
               url: providerResult.html_url,
               objectType: "code_change",
-              status: providerResult.merged
-                ? "merged"
-                : providerResult.state === "open" && providerResult.draft
-                  ? "draft"
-                  : providerResult.state,
             }),
           },
         ],

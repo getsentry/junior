@@ -320,7 +320,6 @@ describe("conversation detail API", () => {
     }).upsert({
       kind: "resource_link",
       key: "getsentry/junior#1",
-      label: "getsentry/junior #1",
       url: "https://github.com/getsentry/junior/pull/1",
     });
     expect((await poll(childChangedEtag)).status).toBe(200);

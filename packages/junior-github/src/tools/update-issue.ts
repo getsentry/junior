@@ -1,5 +1,4 @@
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
   type Actor,
   type PluginWorkOwner,
@@ -240,8 +239,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       objectAnnotations: [
         {
           action: "changed",
-          ...githubObjectAnnotation({
-            ...githubObjectFacts("task", parsed),
+          ...githubAnnotatedObject({
             repo: repo.ref,
             number: providerResult.number,
             id:
@@ -251,7 +249,6 @@ export const gitHubUpdateIssueTool = definePluginTool({
             title: providerResult.title,
             url: providerResult.html_url,
             objectType: "task",
-            status: providerResult.state,
           }),
         },
       ],

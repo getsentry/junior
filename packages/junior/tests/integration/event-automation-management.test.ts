@@ -134,7 +134,7 @@ describe("event automation management", () => {
         { automation_id: created.automation.id, ...input },
       );
     await expect(update({ status: "paused" })).resolves.toMatchObject({
-      objectCards: [{ status: "paused", warning: undefined }],
+      automation: { status: "paused" },
     });
     // The paused task still uses the creator's credentials.
     await expect(update({ status: "active" })).rejects.toThrow(

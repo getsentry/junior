@@ -143,7 +143,6 @@ describe("Conversation search", () => {
       }).upsert({
         kind: "resource_link",
         key: "acme/widget#12",
-        label: "acme/widget#12",
         url: "https://example.com/acme/widget/12",
       });
 
@@ -251,10 +250,8 @@ describe("Conversation search", () => {
           channelName: "carchive-name",
           conversationId: targetConversationId,
           links: [
-            {
-              label: "acme/widget#12",
-              url: "https://example.com/acme/widget/12",
-            },
+            // No plugin reads the link, so its host is the label.
+            { label: "example.com", url: "https://example.com/acme/widget/12" },
           ],
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",

@@ -26,7 +26,9 @@ export function createPluginConversations(
       // status does not stand for the child's work.
       const search: ConversationSearch = {
         annotation: {
-          references: [],
+          // A card from a pasted link can lack the provider id, so it has
+          // only its link.
+          references: input.url ? [input.url.toLowerCase()] : [],
           subjects: [
             {
               id: input.subject.id,

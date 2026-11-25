@@ -13,6 +13,18 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
+
+/**
+ * What an Annotation keeps in its JSON: its shape and the type of its
+ * object. The columns hold the object's subject, title, and link. A card
+ * reads every other fact of the object live (design/annotations.md), and
+ * `annotation-fields:check` keeps it that way.
+ */
+export type StoredAnnotationJson = Pick<
+  ConversationAnnotationInput,
+  "key" | "kind" | "objectType"
+>;
+
 export const juniorConversationAnnotations = pgTable(
   "junior_conversation_annotations",
   {
@@ -27,8 +39,14 @@ export const juniorConversationAnnotations = pgTable(
     subjectKind: text("subject_kind"),
     subjectId: text("subject_id"),
     action: text("action").$type<AnnotationAction>(),
+    // The title and the link that search finds and a card shows when the
+    // provider is down. A link that a person attached has no title. Until
+    // the trigger of `20261125171856_annotation_title_url` moves them, an
+    // old worker writes them in the JSON.
+    title: text("title"),
+    url: text("url"),
     annotation: jsonb("annotation_json")
-      .$type<ConversationAnnotationInput>()
+      .$type<StoredAnnotationJson>()
       .notNull(),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),

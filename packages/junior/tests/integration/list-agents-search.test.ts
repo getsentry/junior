@@ -246,9 +246,7 @@ describe("listAgents query", () => {
       }).upsert({
         kind: "object",
         key,
-        label: key,
         objectType: "code_change",
-        status: "open",
         subject,
         title: "Add events",
         url: "https://github.com/getsentry/junior/pull/691",

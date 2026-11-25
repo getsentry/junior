@@ -207,7 +207,7 @@ export type PluginViewerMcpToolResult =
  */
 export interface PluginViewerMcp {
   /**
-   * Call one tool of this plugin's `allowedTools` that the provider marks
+   * Call one tool of this plugin's `viewerTools` that the provider marks
    * read-only, with only the viewer's own stored login. It never asks the
    * viewer to sign in: a viewer without a usable login gets
    * `not_connected`. Provider rejections return an error result. Transport
@@ -796,6 +796,8 @@ export interface PluginConversationToolContext {
   search(input: {
     limit?: number;
     subject: ObjectSubject;
+    /** The object's link, to also match a card saved without its subject. */
+    url?: string;
   }): Promise<PluginConversationMatch[]>;
 }
 

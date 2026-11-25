@@ -4,6 +4,7 @@ import {
   type OwnedObjectAnnotation,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
+import { loadAnnotationLabeler } from "@/chat/conversations/annotation-labels";
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import {
@@ -39,7 +40,10 @@ function assertSubjectKind(
   }
 }
 
-/** Save object annotations and retain returned facts in the tool result. */
+/**
+ * Save object annotations, and return each object with the label that its
+ * plugin makes, for the tool result and its Message cards.
+ */
 export async function saveObjectAnnotations(
   conversationId: string,
   plugin: string,
@@ -65,8 +69,10 @@ export async function saveObjectAnnotations(
     }
     /* oxlint-enable no-await-in-loop */
   });
+  const label = await loadAnnotationLabeler();
   return annotations.map(({ action: _action, ...annotation }) => ({
     ...annotation,
+    label: label({ ...annotation, plugin }),
     plugin,
   }));
 }

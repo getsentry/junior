@@ -1,8 +1,8 @@
 /**
  * The subject kinds that the Linear plugin names its objects with. Junior
  * stores each one as `linear:<kind>`. An Annotation of a Ticket names it by
- * its identifier, such as `ENG-123`: the hosted MCP server returns no other
- * stable id.
+ * Linear's uuid. An older one names it by its identifier, such as `ENG-123`,
+ * until a viewer's card read of the Ticket moves it to the uuid.
  */
 import type { PluginInboxSubjectKind } from "@sentry/junior-plugin-api";
 

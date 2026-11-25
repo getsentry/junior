@@ -19,10 +19,12 @@ import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
 import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { replaceAnnotationSubjectId } from "@/chat/plugins/annotations";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
+import { canViewAutomationLink, resolveAutomationLink } from "./automation";
 import {
   canViewConversationLink,
   resolveConversationLink,
@@ -62,15 +64,27 @@ function coreLinkTypes(): ObjectLinkType[] {
     owner: "junior",
     resolve: resolveSlackMessageLink,
   };
+  const automations = getDashboardLinkFilter("/automations/*");
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
   // Any other public page. Its filters are the least specific.
   const webPages = webPageLinkType();
   // These links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [slack, webPages];
+  if (!automations || !conversations || !people) return [slack, webPages];
   return [
     slack,
     webPages,
+    {
+      // The card reads the Automation from the database, so a change, such
+      // as a pause, shows at once.
+      cacheCards: false,
+      canView: canViewAutomationLink,
+      filters: [automations],
+      label: () => "Automation",
+      objectTypes: ["automation"],
+      owner: "junior",
+      resolve: resolveAutomationLink,
+    },
     {
       canView: canViewConversationLink,
       filters: [conversations],
@@ -119,6 +133,8 @@ function objectLinkContext(
       userOAuthOnly: true,
     }),
     viewerMcp: createViewerMcp(name, viewer.id),
+    replaceSubjectId: (subject) =>
+      replaceAnnotationSubjectId(getDb(), { ...subject, plugin: name }),
   };
 }
 
