@@ -43,6 +43,8 @@ export async function readSpaceRefs(
 export type SpaceMoveRefusal =
   /** No root has the id. */
   | "not_found"
+  /** Another move changed the root's Space after the caller checked it. */
+  | "moved"
   /** The root is in a private Space, and its data stays with the members. */
   | "leaves_private"
   /**
@@ -54,11 +56,12 @@ export type SpaceMoveRefusal =
 /**
  * Put one root in a Space, or take it out of every Space with null. The root
  * gets the Space's visibility on its own Location. The caller checks who may
- * move it.
+ * move it out of `fromSpaceId`, the Space that it read before the move.
  */
 export async function setConversationSpace(
   conversationId: string,
   spaceId: string | null,
+  fromSpaceId: string | null,
 ): Promise<SpaceMoveRefusal | undefined> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
@@ -85,6 +88,8 @@ export async function setConversationSpace(
       .limit(1)
       .for("update", { of: juniorConversations });
     if (!root) return "not_found";
+    // The caller's membership check covers only the Space that it read.
+    if (root.spaceId !== fromSpaceId) return "moved";
     const spaceIds = [root.spaceId, spaceId].filter(
       (id): id is string => id !== null,
     );

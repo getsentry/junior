@@ -369,6 +369,9 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
       .getByRole("list", { name: "Spaces" })
       .getByRole("link", { name: "Pricing launch" }),
   ).toHaveCount(0);
+  // Back does not return to the Space or show its cached Lead.
+  await page.goBack();
+  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   await expect(page.getByText("This Space is unavailable.")).toBeVisible();
 });

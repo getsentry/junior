@@ -39,7 +39,7 @@ export function SpaceMenu(props: { className?: string; space: SpaceReport }) {
     membership.mutateAsync(false).then(
       () => {
         if (space.visibility === "private")
-          void navigate(inboxViewPath("inbox"));
+          void navigate(inboxViewPath("inbox"), { replace: true });
       },
       (error: Error) =>
         toast.add({

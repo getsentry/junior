@@ -72,8 +72,15 @@ export async function setConversationSpaceForViewer(
   if (target && access.visibility !== "public") {
     throwApiError(409, "Only a public conversation can join a Space.");
   }
-  const refusal = await setConversationSpace(conversationId, body.spaceId);
+  const refusal = await setConversationSpace(
+    conversationId,
+    body.spaceId,
+    currentSpaceId,
+  );
   if (refusal === "not_found") throwApiError(404, "Conversation not found.");
+  if (refusal === "moved") {
+    throwApiError(409, "It moved to another Space. Reload and try again.");
+  }
   if (refusal === "leaves_private") {
     throwApiError(409, "A conversation in a private Space stays in it.");
   }
