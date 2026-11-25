@@ -14,7 +14,10 @@ function migrationFolders(directory) {
 /**
  * Return the schema that each package's migrations create, from the Drizzle
  * snapshots. A Drizzle v1 snapshot after the first holds only the changes of
- * its migration, so drizzle-kit rebuilds the schema from all of them. Each
+ * its migration, so drizzle-kit rebuilds the schema from all of them. Two PRs
+ * that each add a migration on the same parent leave two leaf snapshots on
+ * main until the next `db:generate` merges them. `drizzle-kit check` rejects
+ * leaves that conflict, so the schema is the union of every leaf. Each
  * schema has the shape `{ tables: { [key]: { name, columns: { [name]:
  * { name, type } } } } }`.
  */
@@ -41,10 +44,20 @@ export async function latestSnapshots(root) {
     const { reconstruct } = await import(
       require.resolve("drizzle-kit/api-postgres")
     );
-    const { ddl } = await reconstruct(files);
+    const ddl = [];
+    for (const id of leafIds(Object.values(files))) {
+      ddl.push(...(await reconstruct(files, id)).ddl);
+    }
     snapshots.push({ packageName, snapshotPath, snapshot: tablesOf(ddl) });
   }
   return snapshots;
+}
+
+function leafIds(snapshots) {
+  const parentIds = new Set(snapshots.flatMap((snapshot) => snapshot.prevIds));
+  return snapshots
+    .map((snapshot) => snapshot.id)
+    .filter((id) => !parentIds.has(id));
 }
 
 function tablesOf(ddl) {
