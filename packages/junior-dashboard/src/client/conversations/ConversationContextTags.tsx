@@ -7,7 +7,6 @@ import { cn } from "../styles";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { Conversation } from "../types";
 import { linkStatusLabel } from "./ConversationLinkedWork";
-import { GitHubMark } from "./GitHubMark";
 import { SlackMark } from "./SlackMark";
 import { OutboundLink } from "../components/OutboundLink";
 
@@ -181,35 +180,5 @@ function HiddenLinkCount(props: { className: string; count: number }) {
     >
       +{props.count}
     </span>
-  );
-}
-
-/**
- * Show source context and a repository tag when linked work points to one
- * repository. Annotations come from the detail: feed rows do not carry them.
- */
-export function conversationContextTags(
-  conversation: Conversation | undefined,
-  annotations: ConversationDetailReport["annotations"],
-) {
-  const location =
-    conversation && slackLocationLabel(conversation, { includeId: false });
-  const repository = singleGitHubRepository(annotations);
-  if (!location && !repository) return null;
-
-  return (
-    <div className="flex min-w-0 items-center gap-1.5">
-      {location && conversation ? (
-        <SlackLocationTag conversation={conversation} />
-      ) : null}
-      {repository ? (
-        <ContextTag
-          {...repository}
-          icon={
-            <GitHubMark className="size-3 shrink-0 transition-colors group-hover/context-tag:text-dashboard-text-solid group-focus-visible/context-tag:text-dashboard-text-solid" />
-          }
-        />
-      ) : null}
-    </div>
   );
 }

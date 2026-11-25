@@ -47,3 +47,8 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
   Actor's account. A repo script then acts as the Actor only because it
   calls GitHub. This breaks "Other code in the Sandbox does not act as the
   Actor only because it calls a provider domain".
+- The Google plugin refuses every Sandbox request to the Google APIs, also
+  a request that carries its own credential. A person cannot use their own
+  Google account in the Sandbox. This breaks "A credential that a request
+  carries itself is never replaced. A person can use another account in
+  the Sandbox".
