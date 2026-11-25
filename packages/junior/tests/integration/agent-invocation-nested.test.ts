@@ -65,8 +65,9 @@ describe("nested child agents", () => {
       const child = await spawn(harness, "nested-child");
       const helper = await spawn(harness, "nested-helper", child);
       const grandHelper = await spawn(harness, "nested-grand-helper", helper);
-      // Each child's own child agent still works, so these Turns end with no
-      // result.
+      // Each child's own child agent still works. These Turns end with no
+      // reply, and the child's update still reaches its parent as a
+      // message.
       for (const conversationId of [child, helper]) {
         await finishTask(harness, conversationId);
       }
@@ -101,11 +102,12 @@ describe("nested child agents", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(parentMessages).toHaveLength(1);
-      expect(parentMessages[0]!.input.text).toMatch(
-        /^<agent-result [^>]*status="done"/,
-      );
-      expect(parentMessages[0]!.input.text).toContain("Final answer: 42.");
+      expect(parentMessages.map((message) => message.input.text)).toEqual([
+        expect.stringMatching(/^<agent-message [^>]*source="child_agent"/),
+        expect.stringMatching(
+          /^<agent-result [^>]*status="done"[\s\S]*Final answer: 42\./,
+        ),
+      ]);
     } finally {
       await harness.close();
     }

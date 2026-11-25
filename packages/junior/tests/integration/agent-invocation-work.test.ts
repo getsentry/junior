@@ -525,7 +525,8 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // A Task that waits on its own Timer still works. It reports later.
+      // A Task that waits on its own Timer still works. Its `noReply` end
+      // still reports, and the parent decides.
       name: "quiet waiting",
       outputs: [
         {
@@ -537,7 +538,11 @@ describe("child agent task work", () => {
       ],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
-      parentMessages: [],
+      parentMessages: [
+        expect.stringMatching(
+          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
+        ),
+      ],
     },
     {
       // A Turn that sent its reply before its worker was lost already

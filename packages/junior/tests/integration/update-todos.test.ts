@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
 import { getSqlExecutor } from "@/chat/db";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  dropPendingMessages,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
 import { parseTodoRef } from "@/chat/todos/tool-output";
@@ -59,18 +63,32 @@ async function createHarness() {
     queue: work.queue,
     state: work.state,
   });
+  /** A child's Turn takes its input before it reports. */
+  const takeInput = async (conversationId: string) => {
+    const pending =
+      (await getConversationWorkState({ conversationId, state: work.state }))
+        ?.messages ?? [];
+    await dropPendingMessages({
+      conversationId,
+      inboundMessageIds: pending.map((message) => message.inboundMessageId),
+      state: work.state,
+    });
+  };
   return {
     childConversationId,
     spawn,
+    takeInput,
     work,
     /** Sends one child Turn's result to the parent, as its loop does. */
-    send: async (conversationId: string, update: AgentUpdate) =>
+    send: async (conversationId: string, update: AgentUpdate) => {
+      await takeInput(conversationId);
       await publishChildTurn({
         actor: invocationInput.actor,
         conversationId,
         turnId: "turn_child",
         update,
-      }),
+      });
+    },
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
       await tool.execute!(tool.prepareArguments!(input) as never, {}),
@@ -331,6 +349,7 @@ describe("updateTodos", () => {
       });
       vi.setSystemTime(Date.now() + 1_000);
       const child = harness.childConversationId;
+      await harness.takeInput(child);
       await appendAndEnqueueInboundMessage({
         message: {
           conversationId: parentConversationId,

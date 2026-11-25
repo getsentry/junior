@@ -29,13 +29,9 @@ export function readAgentUpdateStatus(
 
 /**
  * One agent update. `text` is what the Conversation said: its reply, its
- * `noReply` note, what blocks it, or its question to a person. A `quiet`
- * update has nothing new for the receivers, such as a `noReply` end while
- * the work goes on. It reaches each of them as a Conversation note and
- * starts no Turn.
+ * `noReply` note, what blocks it, or its question to a person.
  */
 export interface AgentUpdate {
-  quiet?: boolean;
   status: AgentUpdateStatus;
   text: string;
 }
