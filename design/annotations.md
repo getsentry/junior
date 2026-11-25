@@ -31,8 +31,6 @@ on the Conversation row, as a Message card, and in search.
 
 ## Gaps
 
-- An Annotation keeps a copy of the title, the state, and other facts, and
-  webhooks change that copy.
 - A GitHub Annotation names its object by the repository name. After a
   rename, search and updates do not find it.
 - A Linear Ticket has no live card.
