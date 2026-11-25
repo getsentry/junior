@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "cb8188fa-94eb-4816-83cf-a5b6977c7890",
+  "id": "270eee41-00a0-4830-b036-4652274a4d0b",
   "prevIds": ["ea6ceff2-dd47-41a2-a324-6ccf73ce5535"],
   "footprints": [
     {
@@ -55,7 +55,7 @@
         "name": "group_key",
         "type": "text",
         "typeSchema": null,
-        "notNull": true,
+        "notNull": false,
         "dimensions": 0,
         "default": null,
         "generated": null,
