@@ -160,7 +160,10 @@ export async function recordGitHubGraphqlSpend(
     conversationId && spendsSandboxBudget(ctx.request)
       ? conversationId
       : undefined;
-  if (sandboxConversationId) {
+  // Egress sends a request again after an HTTP 403, so a 403 response frees
+  // no slot: one request must not free the slot of another. A request that
+  // ends on a 403 holds its slot until it expires.
+  if (sandboxConversationId && ctx.response.status !== 403) {
     await ctx.cache.update<number[]>(
       inFlightKey(sandboxConversationId),
       (current) => ({
@@ -193,19 +196,21 @@ export async function recordGitHubGraphqlSpend(
     RATE_LIMIT_CACHE_KEY,
     (current) => {
       const sameWindow = current?.resetAtMs === resetAtMs;
-      // Without an earlier response in this window, the points used before
-      // are unknown, so the response costs the least that GitHub charges.
-      cost = sameWindow ? Math.max(1, used - current.used) : 1;
       if (sameWindow && used <= current.used) {
+        // A response that arrives after a later one: the later response
+        // already counted its points.
         return undefined;
       }
+      // Without an earlier response in this window, the points used before
+      // are unknown, so the response costs the least that GitHub charges.
+      cost = sameWindow ? used - current.used : 1;
       return {
         ttlMs: resetAtMs - nowMs,
         value: { remaining, resetAtMs, used },
       };
     },
   );
-  if (!sandboxConversationId) {
+  if (!sandboxConversationId || cost === 0) {
     return;
   }
   const hourStartMs = nowMs - (nowMs % HOUR_MS);

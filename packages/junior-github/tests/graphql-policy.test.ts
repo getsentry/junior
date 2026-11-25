@@ -89,6 +89,7 @@ async function respondToGraphql(input: {
   operation?: string;
   remaining: number;
   resetAtMs: number;
+  status?: number;
   used: number;
 }) {
   await githubPlugin().hooks?.onEgressResponse?.({
@@ -116,7 +117,7 @@ async function respondToGraphql(input: {
       async readText() {
         return undefined;
       },
-      status: 200,
+      status: input.status ?? 200,
     },
   });
 }
@@ -436,6 +437,57 @@ describe("GitHub GraphQL policy", () => {
       // A slot that no response frees expires.
       vi.advanceTimersByTime(60_000);
       await expect(send()).resolves.toMatchObject({ access: "read" });
+    });
+
+    it("charges nothing for a response that arrives after a later one", async () => {
+      vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
+      const cache = memoryCache();
+      const respond = (used: number) =>
+        respondToGraphql({
+          cache,
+          conversationId: "c1",
+          remaining: 12_500 - used,
+          resetAtMs,
+          used,
+        });
+      await respond(1_000);
+      await respond(2_998);
+      // The later response above already counted these points.
+      await respond(2_990);
+
+      await expect(
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
+      ).resolves.toMatchObject({ access: "read" });
+      await respond(2_999);
+      await expect(
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
+      ).rejects.toThrow("this Conversation has used 2000 of its 2000");
+    });
+
+    it("frees no in-flight slot for a denied request or a 403 response", async () => {
+      vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
+      const cache = memoryCache();
+      const send = () =>
+        grantForGraphql({ cache, conversationId: "c1", graphql: query });
+      const mutation = single(operation("mutation", ["addStar"]));
+      const denied = () =>
+        grantForGraphql({ cache, conversationId: "c1", graphql: mutation });
+      await expect(denied()).rejects.toThrow(MUTATIONS_DISABLED);
+      await expect(denied()).rejects.toThrow(MUTATIONS_DISABLED);
+
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+      await expect(send()).resolves.toMatchObject({ access: "read" });
+      // Egress can send the request again after a 403, so the 403 cannot
+      // say which request ended.
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        remaining: 11_500,
+        resetAtMs,
+        status: 403,
+        used: 1_000,
+      });
+      await expect(send()).rejects.toThrow("in flight");
     });
 
     it("keeps the host reserve of the installation's budget until it resets", async () => {

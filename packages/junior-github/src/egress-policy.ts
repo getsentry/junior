@@ -665,6 +665,11 @@ export async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const upstreamUrl = new URL(ctx.request.url);
   const grant = await selectGitHubGrant(ctx, env, upstreamUrl);
+  // Last, after every other denial, because the check takes an in-flight
+  // slot that only the response frees.
+  if (isGitHubGraphqlUrl(upstreamUrl)) {
+    await assertGitHubSandboxGraphqlBudgetLeft(ctx);
+  }
   const repository = githubRepositoryFromUrl(upstreamUrl);
   return repository
     ? {
@@ -694,9 +699,6 @@ async function selectGitHubGrant(
       : undefined),
     upstreamUrl,
   });
-  if (isGitHubGraphqlUrl(upstreamUrl)) {
-    await assertGitHubSandboxGraphqlBudgetLeft(ctx);
-  }
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
     return grantForAccess("write", "github.asset-upload", "user-write");
   }
