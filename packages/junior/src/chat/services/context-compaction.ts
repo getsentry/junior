@@ -8,7 +8,6 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import {
   escapeTagTextAndQuotes,
   findTag,
@@ -18,7 +17,10 @@ import {
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import { renderThreadContext } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
-import { foldSystemMessages } from "@/chat/pi/agent-history";
+import {
+  type SystemSections,
+  systemSectionsChange,
+} from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -26,7 +28,6 @@ import {
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
 import {
-  estimateMessagesTokens,
   estimateTextTokens,
   textCharsForTokens,
 } from "@/chat/services/token-estimate";
@@ -50,7 +51,6 @@ import {
 } from "@/chat/pi/conversation-events";
 import {
   COMPACTION_SUMMARY_PREFIX,
-  hasCompactedConversationContext,
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
@@ -69,6 +69,11 @@ import {
   withCompactionSpan,
   type CompactionMode,
 } from "@/chat/services/context-compaction-telemetry";
+import {
+  estimateHistoryTokens,
+  estimateReplacementTokens,
+  measuredReplacementTokens,
+} from "@/chat/services/context-compaction-tokens";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 
@@ -94,6 +99,11 @@ export interface CompactContextResult {
 /** Inputs of a capacity compaction or a prepared-summary swap. */
 export interface ActiveContextCompactionArgs {
   conversationId: string;
+  /**
+   * The Conversation's leading capability sections, part of the system
+   * prompt. None before the first Turn that saves them.
+   */
+  leadingSystemSections?: SystemSections | undefined;
   modelId: string;
   onCompactionStart?: () => void | Promise<void>;
   pendingMessages?:
@@ -250,8 +260,8 @@ function withoutRequestContext(text: string): string {
 
 /**
  * Remove the copies of capability sections that the Turn context of older
- * Turns held. Later system messages hold them now, and compaction folds
- * those.
+ * Turns held. The leading sections and later system messages hold them now,
+ * and compaction keeps their changes.
  */
 function withoutCapabilitySections(content: unknown[]): unknown[] {
   return content.map((part) => {
@@ -555,146 +565,6 @@ export function renderCompactionSummary(summary: string): string {
   ].join("\n");
 }
 
-function timestampOf(message: PiMessage): number | undefined {
-  const { timestamp } = message as { timestamp?: unknown };
-  return typeof timestamp === "number" ? timestamp : undefined;
-}
-
-/** Find the latest compaction summary in history. */
-function latestSummaryIndex(messages: PiMessage[]): number {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (
-      (message as { role?: unknown }).role === "user" &&
-      hasCompactedConversationContext([message])
-    ) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/** Find when the latest compaction summary in history was written. */
-function latestSummaryTimestamp(messages: PiMessage[]): number | undefined {
-  const index = latestSummaryIndex(messages);
-  return index < 0 ? undefined : timestampOf(messages[index]!);
-}
-
-/**
- * Read the input size that the provider reported for one model call. Output
- * is left out: it is not part of the request that the call measured.
- */
-function measuredInputTokens(message: PiMessage): number | undefined {
-  const { role, stopReason, usage } = message as {
-    role?: unknown;
-    stopReason?: unknown;
-    usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
-  };
-  if (
-    role !== "assistant" ||
-    !usage ||
-    stopReason === "aborted" ||
-    stopReason === "error"
-  ) {
-    return undefined;
-  }
-  const tokens =
-    (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-  return tokens > 0 ? tokens : undefined;
-}
-
-// Pi 1.0 removed `estimateContextTokens` from agent-core. pi-ai's version also
-// drops the usage of an assistant message that is stamped before any earlier
-// message, such as after clock skew, and then estimates all history by size.
-// Junior checks only the case that matters, a newer summary, below.
-function lastAssistantUsage(
-  messages: PiMessage[],
-): { tokens: number; index: number } | undefined {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]!;
-    if (
-      message.role !== "assistant" ||
-      message.stopReason === "aborted" ||
-      message.stopReason === "error" ||
-      !message.usage
-    ) {
-      continue;
-    }
-    const tokens = calculateContextTokens(message.usage);
-    if (tokens > 0) return { tokens, index };
-  }
-  return undefined;
-}
-
-/**
- * Measure provider-visible history without counting host-only message fields.
- *
- * Provider usage counts the request that produced it. A replacement keeps
- * assistant messages that are older than its summary, and their usage counts
- * the history before the replacement. So when the latest usage is older than
- * the latest summary, estimate each message by size.
- */
-export function estimateHistoryTokens(
-  messages: PiMessage[],
-  modelId: string,
-  requestOverheadTokens = 0,
-): number {
-  const usage = lastAssistantUsage(messages);
-  const summaryAt = latestSummaryTimestamp(messages);
-  const usageAt = usage ? timestampOf(messages[usage.index]!) : undefined;
-  if (
-    usage &&
-    usageAt !== undefined &&
-    (summaryAt === undefined || usageAt > summaryAt)
-  ) {
-    // The usage counts the request up to that call. Estimate the rest by size.
-    return (
-      usage.tokens +
-      estimateMessagesTokens(messages.slice(usage.index + 1), modelId)
-    );
-  }
-  return estimateReplacementTokens(messages, modelId, requestOverheadTokens);
-}
-
-/**
- * Read the provider-reported input of the first model call after the latest
- * full compaction. That request held only the summary and the kept context,
- * so another full compaction of the same context cannot get much below it.
- * A swap also keeps agent history from before its summary. A full compaction
- * can still drop that history, so a swap gives no such size.
- */
-function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
-  const summaryIndex = latestSummaryIndex(messages);
-  if (summaryIndex < 0) return undefined;
-  const summaryAt = timestampOf(messages[summaryIndex]!);
-  if (summaryAt === undefined) return undefined;
-  for (const message of messages.slice(summaryIndex + 1)) {
-    const timestamp = timestampOf(message);
-    if (timestamp === undefined || timestamp <= summaryAt) {
-      // A replacement adds only user messages and folded system state.
-      const role = (message as { role?: unknown }).role;
-      if (role !== "user" && role !== "system") return undefined;
-      continue;
-    }
-    const tokens = measuredInputTokens(message);
-    if (tokens !== undefined) return tokens;
-  }
-  return undefined;
-}
-
-/**
- * Estimate a replacement request from each message's own size. A kept
- * assistant message holds provider usage for the whole request before the
- * replacement, so usage is ignored here.
- */
-export function estimateReplacementTokens(
-  messages: PiMessage[],
-  modelId: string,
-  requestOverheadTokens = 0,
-): number {
-  return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
-}
-
 async function loadLastInstruction(conversationId: string) {
   const event =
     await getConversationEventStore().loadLatestInstruction(conversationId);
@@ -847,7 +717,10 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
-  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemMessage = systemSectionsChange(
+    args.leadingSystemSections ?? {},
+    args.piMessages,
+  );
   const systemEntries = systemMessage
     ? [{ message: systemMessage, provenance: contextProvenance }]
     : [];
@@ -904,10 +777,10 @@ async function compactActiveAboveThreshold(
     ),
     provenance: contextProvenance,
   };
-  // The current system state directly follows the summary of the history
-  // that held it. A system message must follow a user message. With no
-  // assistant message before it, the request folds it into the system
-  // prompt.
+  // The section changes directly follow the summary of the history that
+  // held them. A system message must follow a user message. Pi sends it
+  // right before the next assistant message; the system prompt stays the
+  // same.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;

@@ -124,8 +124,8 @@ describe("context summary", () => {
       assistant([{ type: "text", text: "Done." }]),
     ]);
     const agent = createAgent(streamFn);
-    // Capability sections before the first assistant message fold into the
-    // system prompt. The summary request must fold them the same way.
+    // A saved change to the capability sections stays in history. The
+    // summary request must send it in the same place.
     agent.state.messages = writeAgentHistory(agent.state.messages, [
       {
         role: "system",
@@ -143,7 +143,10 @@ describe("context summary", () => {
 
     expect(request.model).toBe(model);
     expect(request.context).toEqual(calls[0]!.context);
-    expect(request.context.messages.map(({ role }) => role)).toEqual(["user"]);
+    expect(request.context.messages.map(({ role }) => role)).toEqual([
+      "system",
+      "user",
+    ]);
     // Pi passes its whole loop config as options. Providers read only the
     // request fields, so compare those and skip the loop hooks.
     const requestOptions = (options: SimpleStreamOptions) =>

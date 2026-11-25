@@ -35,7 +35,7 @@ import {
   type PiConversationEventProjection,
 } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
-import { foldSystemMessages } from "@/chat/pi/agent-history";
+import { systemSectionsChange } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
@@ -46,8 +46,6 @@ import {
 import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
-  estimateHistoryTokens,
-  estimateReplacementTokens,
   renderCompactionSummary,
   replacementSeqs,
   selectRetainedUserMessageEntries,
@@ -57,6 +55,10 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
+import {
+  estimateHistoryTokens,
+  estimateReplacementTokens,
+} from "@/chat/services/context-compaction-tokens";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -385,9 +387,12 @@ async function applyPreparedSummary(
       : { message, provenance: contextProvenance };
   });
   const { entries: trimmedEntries, trimming } = trimToolResults(keptEntries);
-  // Kept system messages stay in place. The summarized ones fold into one
-  // that directly follows the summary, as in a full compaction.
-  const systemMessage = foldSystemMessages(summarized);
+  // Kept system messages stay in place. The changes of the summarized ones
+  // go into one that directly follows the summary, as in a full compaction.
+  const systemMessage = systemSectionsChange(
+    args.leadingSystemSections ?? {},
+    summarized,
+  );
   const replacement: ReplacementEntry[] = [
     ...(contextMessage
       ? [{ message: contextMessage, provenance: contextProvenance }]

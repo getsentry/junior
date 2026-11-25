@@ -268,7 +268,7 @@ async function requestAboveMark(args: {
   };
   const { messages, thinkingLevel, tools } = args.agent.state;
   // Not `agent.state.systemPrompt`: it also folds in saved system messages,
-  // and the job folds them again from the projection.
+  // which the job sends from the projection.
   const leading = getInitialSystemMessage(messages);
   const snapshot: RequestSnapshot = {
     // Unknown privacy is private, as in the Turn.

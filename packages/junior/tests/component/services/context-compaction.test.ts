@@ -152,6 +152,12 @@ describe("context compaction projection reset", () => {
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
+        // The system prompt holds these. The summarized history changed two.
+        leadingSystemSections: {
+          plan: "<plan>a</plan>",
+          repo: "<repo>x</repo>",
+          skills: "<skills>s</skills>",
+        },
         modelId: "openai/gpt-5.4",
         pendingMessages: [
           { message: prompt, provenance: { authority: "instruction" } },
@@ -173,11 +179,11 @@ describe("context compaction projection reset", () => {
       "<current-instruction>Also track the rollback plan.</current-instruction>",
     ]);
     expect(texts[2]).toContain("Open: migration approval and rollback plan.");
-    // The latest system state follows the summary.
+    // Only the changes to the leading sections follow the summary.
     expect(result.piMessages![3]).toEqual({
       role: "system",
       content: "Track blockers.",
-      sections: { plan: "<plan>b</plan>" },
+      sections: { plan: "<plan>b</plan>", repo: null },
       timestamp: 1,
     });
     expect(result.piMessages!.at(-1)).toEqual(prompt);
@@ -279,8 +285,14 @@ describe("context compaction projection reset", () => {
       "\n\n</runtime-turn-context>",
       "\n\n<script-tools>\ntools.a\n</script-tools>\n\n</runtime-turn-context>",
     );
-    const firstSections = systemSectionsUpdate([], sections(["skill-a"]), 1)!;
+    const firstSections = systemSectionsUpdate(
+      {},
+      [],
+      sections(["skill-a"]),
+      1,
+    )!;
     const laterSections = systemSectionsUpdate(
+      {},
       [firstSections],
       sections(["skill-a", "skill-b"]),
       2,

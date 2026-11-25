@@ -927,7 +927,6 @@ describe("agent run continuation", () => {
     expect(counters.continueCalls).toBe(1);
 
     expect(reply.piMessages?.map((message) => message.role)).toEqual([
-      "system",
       "user",
       "user",
       "assistant",
@@ -943,7 +942,6 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
-      "system",
       "user",
       "user",
       "assistant",
@@ -1247,7 +1245,6 @@ describe("agent run continuation", () => {
       "turn-delivery-steering-yield",
     );
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
-      "system",
       "user",
       "user",
       "assistant",
@@ -1264,7 +1261,7 @@ describe("agent run continuation", () => {
       errorMessage: "Agent turn yielded at a safe boundary",
       sliceId: 1,
       // A resumed Turn finds AGENTS.md only in context messages.
-      roles: ["system", "user", "user", "assistant", "toolResult", "user"],
+      roles: ["user", "user", "assistant", "toolResult", "user"],
       lastMessageText: "# AGENTS.md instructions for /vercel/sandbox/repo",
     },
     {
@@ -1280,7 +1277,7 @@ describe("agent run continuation", () => {
       // A retry uses a slice, so the slice limit stops repeated retries.
       sliceId: 2,
       // The saved tool result is kept, so the next slice calls the model.
-      roles: ["system", "user", "user", "assistant", "toolResult"],
+      roles: ["user", "user", "assistant", "toolResult"],
       lastMessageText: "yield-tool-call",
     },
   ])(
@@ -1331,7 +1328,7 @@ describe("agent run continuation", () => {
       expect(JSON.stringify(sessionRecord?.piMessages.at(-1))).toContain(
         lastMessageText,
       );
-      expect(sessionRecord?.piMessageProvenance[4]).toEqual({
+      expect(sessionRecord?.piMessageProvenance[3]).toEqual({
         authority: "context",
       });
       await expect(
@@ -1491,7 +1488,6 @@ describe("agent run continuation", () => {
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
-      "system",
       "user",
       "user",
       "assistant",

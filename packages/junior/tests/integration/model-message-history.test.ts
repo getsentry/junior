@@ -8,6 +8,7 @@ import { connectedState } from "@/chat/cache-warming/request";
 import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import { botConfig } from "@/chat/config";
 import { commitMessages } from "@/chat/conversations/projection";
+import { loadLeadingSystemSections } from "@/chat/conversations/leading-system-sections";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
@@ -100,9 +101,8 @@ describe("model message history", () => {
         stored.find((message) => message.role === "assistant")?.content,
       ),
     ).toBe(JSON.stringify(firstAssistant?.content));
-    // The request folds the first sections message into the system prompt.
-    expect(stored[0]?.role).toBe("system");
-    expect(stored.slice(1, first.messages.length + 1)).toEqual(first.messages);
+    // The first Turn's sections are the leading sections, not history.
+    expect(stored.slice(0, first.messages.length)).toEqual(first.messages);
     expect(requests).toHaveLength(3);
     expect(requests.map((request) => request.sessionAffinity)).toEqual(
       Array(3).fill(agent.conversationId()),
@@ -149,9 +149,7 @@ describe("model message history", () => {
     const third = agent.snapshot();
 
     expect((await agent.agentHistory())[firstHistory.length]).toEqual(saved);
-    // The request folds the first sections message into the system prompt,
-    // so the saved one is one message earlier there.
-    expect(second.messages[firstHistory.length - 1]).toEqual(saved);
+    expect(second.messages[firstHistory.length]).toEqual(saved);
     expect(
       JSON.stringify(third.messages.slice(0, second.messages.length)),
     ).toBe(JSON.stringify(second.messages));
@@ -176,13 +174,14 @@ describe("model message history", () => {
 
     await agent.run("first");
     const first = agent.snapshot();
-    const [initial] = await sectionUpdates();
-    expect(Object.keys(initial!)).toEqual(
+    // The first sections apply from the start, so they are the leading
+    // sections of the system prompt, not a message after the instruction.
+    const leading = await loadLeadingSystemSections(agent.conversationId());
+    expect(Object.keys(leading!)).toEqual(
       expect.arrayContaining(["available-skills", "script-tools"]),
     );
-    expect(initial).not.toHaveProperty("workspaces");
-    // The first sections apply from the start, so the request folds them
-    // into the system prompt instead of sending them after the instruction.
+    expect(leading).not.toHaveProperty("workspaces");
+    expect(await sectionUpdates()).toEqual([]);
     expect(first.messages.map((message) => message.role)).not.toContain(
       "system",
     );
@@ -215,15 +214,15 @@ describe("model message history", () => {
           .map((message) => message.role),
       ).toContain("system");
       const updates = await sectionUpdates();
-      expect(updates).toHaveLength(2);
-      expect(Object.keys(updates[1]!).sort()).toEqual([
+      expect(updates).toHaveLength(1);
+      expect(Object.keys(updates[0]!).sort()).toEqual([
         "available-skills",
         "workspaces",
       ]);
-      expect(updates[1]!["available-skills"]).toContain(
+      expect(updates[0]!["available-skills"]).toContain(
         "<name>release-notes</name>",
       );
-      expect(updates[1]!["workspaces"]).toContain("- docs: getsentry/docs");
+      expect(updates[0]!["workspaces"]).toContain("- docs: getsentry/docs");
     } finally {
       await removeSkills();
       await deleteWorkspace(workspace.id);
