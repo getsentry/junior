@@ -77,17 +77,26 @@ function toolContext(
   };
 }
 
-/** Save the requester as the person who asked Junior to open `number`. */
-async function seedOpener(number: number): Promise<void> {
+/**
+ * Save the requester as the first person who asked Junior about `number`.
+ * Only a pull request that Junior opened has the requester's Conversation.
+ */
+async function seedOpener(
+  number: number,
+  { opened }: { opened: boolean } = { opened: true },
+): Promise<void> {
   const at = new Date("2026-07-01T12:00:00.000Z");
-  await dbFixture.db().insert(juniorGitHubPullRequestRequesters).values({
-    conversationId: "slack:C123:1712345.0001",
-    createdAt: at,
-    identityId: "identity-requester",
-    number,
-    repositoryFullName: "getsentry/junior-comment-tests",
-    updatedAt: at,
-  });
+  await dbFixture
+    .db()
+    .insert(juniorGitHubPullRequestRequesters)
+    .values({
+      conversationId: opened ? "slack:C123:1712345.0001" : null,
+      createdAt: at,
+      identityId: "identity-requester",
+      number,
+      repositoryFullName: "getsentry/junior-comment-tests",
+      updatedAt: at,
+    });
 }
 
 describe("commentOnPullRequest", () => {
@@ -190,13 +199,18 @@ describe("commentOnPullRequest", () => {
   it.for([
     { case: "Junior did not open the pull request", number: 702, seed: false },
     {
+      case: "the requester only asked Junior to update it",
+      number: 705,
+      seed: "updated",
+    },
+    {
       case: "the Turn works for someone else",
       number: 703,
       seed: true,
       workOwner: { kind: "system", id: "automation-1", name: "automation" },
     },
   ] as const)("asks nobody when $case", async ({ number, seed, ...rest }) => {
-    if (seed) await seedOpener(number);
+    if (seed) await seedOpener(number, { opened: seed !== "updated" });
     const { fetch, tool } = toolContext(undefined, undefined, async () =>
       "workOwner" in rest ? rest.workOwner : requester,
     );

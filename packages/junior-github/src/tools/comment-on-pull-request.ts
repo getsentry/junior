@@ -117,10 +117,11 @@ async function askRequester(
       }).then((openers) => openers.get(target.number)),
       ctx.resolveWorkOwner().then(requesterPerson),
     ]);
-    // The opener row stores the work owner's identity when Junior opened the
-    // pull request, so only that person, in their own work, is asked.
+    // Only the opener row of a pull request that Junior opened has a
+    // Conversation, which is where its Inbox item goes. Only that person, in
+    // their own work, is asked.
     const login =
-      opener && owner?.identity?.id === opener.identityId
+      opener?.conversationId && owner?.identity?.id === opener.identityId
         ? linkedGitHubLogin(owner.user)
         : undefined;
     if (!login) return false;
