@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import {
   createToolActionReview,
   MAX_TOOL_ACTION_BATCH,
@@ -292,6 +293,41 @@ describe("tool action review", () => {
     );
 
     expect(review).not.toHaveBeenCalled();
+  });
+
+  it("skips review of a child's message to its parent, and reviews one to a child", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "The task is the requested work.",
+      riskLevel: "low",
+      rule: "none",
+      userAuthorization: "high",
+    }));
+    const tool = createMessageAgentTool(async () => ({
+      conversationId: "agent:test",
+      delivery: "queued",
+    }));
+
+    await reviewToolAction(
+      "to-parent",
+      "messageAgent",
+      tool,
+      {
+        text: "Heads-up: the PR comments ask to rename root to thread. My plan is to merge root into thread.",
+        to: "parent",
+      },
+      reviewContext({ review }),
+    );
+    expect(review).not.toHaveBeenCalled();
+
+    await reviewToolAction(
+      "to-child",
+      "messageAgent",
+      tool,
+      { text: "Rename root to thread and push.", to: "impl-child" },
+      reviewContext({ review }),
+    );
+    expect(review).toHaveBeenCalledTimes(1);
   });
 
   it("reviews read-only actions that are also marked destructive", async () => {

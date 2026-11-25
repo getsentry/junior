@@ -47,7 +47,9 @@ data, does not run.
   An `approve` tool is never reviewed, so use it only when the tool code
   proves that each effect is safe. A core tool is reviewed only when it opts
   in, such as Automation and Workspace changes, `startAgent`, and
-  `messageAgent`.
+  `messageAgent`. A message from a child agent to its parent is never
+  reviewed. It is a report, the parent reads it as data, and the parent's
+  own actions get their own review.
 - A public URL for a Sandbox server (`createPreview`) always goes through
   Guardian review, and the normal rules, such as `data_exposure`, decide.
 - A confirmation rule asks. The person clears it when they confirm the exact
