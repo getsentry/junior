@@ -22,7 +22,8 @@ import { isBotLogin } from "./ownership.js";
 // A footer names a few Conversations, but a person can edit it.
 const FOOTER_READ_CONCURRENCY = 4;
 
-const ITEM_ACTIONS = new Set(["assigned", "unassigned", "closed", "reopened"]);
+// A reopen does not bring a closed item back. A new assignment does.
+const ITEM_ACTIONS = new Set(["assigned", "unassigned", "closed"]);
 
 const login = z.object({ login: z.string().min(1) });
 
@@ -51,8 +52,6 @@ export interface GitHubIssueItemEvent {
   issueId: string;
   number: number;
   open: boolean;
-  /** The issue opened again, so each assignee joins again. */
-  reopened: boolean;
   url: string;
 }
 
@@ -82,7 +81,6 @@ export function normalizeGitHubIssueItemEvent(args: {
     issueId: String(issue.id),
     number: issue.number,
     open: issue.state === "open",
-    reopened: action === "reopened",
     url: issue.html_url,
   };
 }
@@ -154,14 +152,10 @@ export async function syncGitHubIssueItem(args: {
     });
     return;
   }
-  const askedIdentityIds = event.reopened
-    ? assigneeIdentityIds
-    : (event.assigned ? [identityOf(event.assigned)] : []).flatMap(
-        (identityId) => identityId ?? [],
-      );
+  const assigned = event.assigned ? identityOf(event.assigned) : undefined;
   await items.upsert({
     assigneeIdentityIds,
-    askedIdentityIds,
+    askedIdentityIds: assigned ? [assigned] : [],
     // The URL stands alone, so the dashboard shows the issue as one card.
     body: `You are assigned to #${event.number}.\n\n${event.url}`,
     subject,
