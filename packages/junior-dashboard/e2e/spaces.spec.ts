@@ -279,6 +279,9 @@ test("Move to Space moves a top-level Conversation", async ({
   // No Space takes it out of every Space.
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await conversationMenuRow(page, "Move to Space").click();
+  // The click returns before the dialog moves focus to its search. A key
+  // sent sooner misses the picker.
+  await expect(picker.getByRole("combobox", { name: "Space" })).toBeFocused();
   await page.keyboard.press("Home");
   await expect(
     picker.getByRole("option", { name: "No Space" }),
