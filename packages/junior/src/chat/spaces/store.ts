@@ -166,18 +166,6 @@ export async function updateSpace(
     .where(eq(juniorSpaces.id, spaceId));
 }
 
-/** Archive or restore a Space. */
-export async function setSpaceArchived(
-  spaceId: string,
-  archived: boolean,
-): Promise<void> {
-  const now = new Date();
-  await getDb()
-    .update(juniorSpaces)
-    .set({ archivedAt: archived ? now : null, updatedAt: now })
-    .where(eq(juniorSpaces.id, spaceId));
-}
-
 /** Add one person to a Space. Joining twice keeps the first join. */
 export async function joinSpace(
   spaceId: string,

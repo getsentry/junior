@@ -328,6 +328,14 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
   return kind !== "task";
 }
 
+/**
+ * Return whether a person can put a Conversation of this kind in a Space. A
+ * child is in the Space of its root, and a Lead never moves.
+ */
+export function canMoveToSpace(kind: ConversationKind): boolean {
+  return kind === "root" || kind === "automation";
+}
+
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation" || kind === "lead";
