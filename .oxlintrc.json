@@ -188,6 +188,7 @@
       "files": [
         "packages/junior/src/api/html.ts",
         "packages/junior/src/api/acp/authorization-page.ts",
+        "packages/junior/src/api/client-sign-in/authorize-page.ts",
         "packages/junior/src/api/mcp/oauth/consent-page.ts",
         "packages/junior/src/api/mcp/oauth/page.ts",
         "packages/junior/src/handlers/oauth-html.ts",

@@ -1,22 +1,28 @@
 /**
- * Own the dashboard API session of Junior's own app clients, such as the iOS
- * app.
+ * Own the sign-in session of Junior's own app clients, such as the iOS app.
  *
- * A client signs in once, through MCP OAuth. Its authorization request also
- * carries a `session_code_challenge`, and the consent redirect carries a
- * one-time session code next to the MCP code. The client trades that code
- * and its verifier at `CLIENT_SIGN_IN_TOKEN_PATH` for a stored session
- * token, which it sends as `Authorization: Bearer` on `/api/*`. The session
- * and the MCP grant stay separate credentials: neither one works where the
- * other does.
+ * The app opens `CLIENT_SIGN_IN_AUTHORIZE_PATH` in a browser sheet. After the
+ * user confirms there, the redirect carries a one-time code, which the app
+ * trades with its PKCE verifier at `CLIENT_SIGN_IN_TOKEN_PATH` for a stored
+ * session token. The app sends that token as `Authorization: Bearer` on
+ * `/api/*`, and at `CLIENT_MCP_TOKEN_PATH` to get MCP tokens. The session and
+ * the MCP grant stay separate credentials: neither one works where the other
+ * does. The grant ends with the session that minted it.
  */
 import type { StateAdapter } from "chat";
 import { createHash, randomBytes } from "node:crypto";
 import * as z from "zod";
 import type { User } from "@sentry/junior-plugin-api";
-import { JUNIOR_IOS_CLIENT } from "@/api/mcp/oauth/client-metadata";
+import {
+  JUNIOR_IOS_CLIENT,
+  type McpClient,
+} from "@/api/mcp/oauth/client-metadata";
+import { issueSessionGrant } from "@/api/mcp/oauth/grants";
+import { resolveMcpUrls } from "@/api/mcp/oauth/metadata";
+import type { McpState } from "@/api/mcp/oauth/state";
 import { PKCE_CODE_CHALLENGE_PATTERN, pkceVerifierMatches } from "@/api/pkce";
 import {
+  authenticateSignInSession,
   bearerSignInSessionToken,
   CLIENT_SESSION_LIFETIME_MS,
   createSignInSession,
@@ -24,28 +30,34 @@ import {
   type SignInSessionClient,
 } from "@/chat/sign-in/sessions";
 
+/**
+ * Dashboard-authenticated page where the user confirms an app sign-in. It is
+ * a page, not a JSON route, so it is not under `/api/`.
+ */
+export const CLIENT_SIGN_IN_AUTHORIZE_PATH =
+  "/_junior/client/sign-in/authorize";
 export const CLIENT_SIGN_IN_TOKEN_PATH = "/api/client/sign-in/token";
+export const CLIENT_MCP_TOKEN_PATH = "/api/client/mcp-token";
 export const CLIENT_SIGN_OUT_PATH = "/api/client/sign-out";
 /** Client session routes. They mount before the dashboard, which needs a session. */
 export const CLIENT_SIGN_IN_PUBLIC_PATHS = [
   CLIENT_SIGN_IN_TOKEN_PATH,
+  CLIENT_MCP_TOKEN_PATH,
   CLIENT_SIGN_OUT_PATH,
 ];
 
 type AppSessionClient = Exclude<SignInSessionClient, "web">;
 
-// Junior's own app clients, by MCP client ID. Only they may ask for a session.
-const APP_SESSION_CLIENTS: Record<string, AppSessionClient> = {
-  [JUNIOR_IOS_CLIENT.clientId]: "ios",
+/** Junior's own apps, by session client. Only they may ask for a session. */
+export const APP_CLIENTS: Record<AppSessionClient, McpClient> = {
+  ios: JUNIOR_IOS_CLIENT,
 };
 
 /** Return the session client of one of Junior's own apps, by MCP client ID. */
 export function appSessionClient(
   clientId: string,
 ): AppSessionClient | undefined {
-  return Object.hasOwn(APP_SESSION_CLIENTS, clientId)
-    ? APP_SESSION_CLIENTS[clientId]
-    : undefined;
+  return clientId === APP_CLIENTS.ios.clientId ? "ios" : undefined;
 }
 
 const CODE_TTL_MS = 60 * 1000;
@@ -68,8 +80,8 @@ function codeKey(code: string): string {
 }
 
 /**
- * Issue a one-time session code for the user who approved an app client's
- * MCP consent. The consent redirect carries it to the app with the MCP code.
+ * Issue a one-time session code for the user who confirmed an app sign-in.
+ * The sign-in redirect carries it to the app.
  */
 export async function issueClientSessionCode(args: {
   client: AppSessionClient;
@@ -135,6 +147,50 @@ export async function handleClientSignInToken(args: {
     { expires_at: session.expiresAt.toISOString(), token: session.token },
     { headers: NO_STORE },
   );
+}
+
+/**
+ * Issue MCP tokens to the app of the session that the request carries as a
+ * bearer token. The response has the shape of the MCP token endpoint, so the
+ * app refreshes there. The grant ends no later than the session, and
+ * revoking the session ends it at once.
+ */
+export async function handleClientMcpToken(args: {
+  baseURL?: string | undefined;
+  request: Request;
+  state: McpState;
+}): Promise<Response> {
+  const token = bearerSignInSessionToken(args.request);
+  const session = token ? await authenticateSignInSession(token) : undefined;
+  if (!session) {
+    return Response.json(
+      { error: "invalid_token", error_description: "Sign in again." },
+      { status: 401, headers: NO_STORE },
+    );
+  }
+  if (session.client === "web") {
+    return Response.json(
+      {
+        error: "unauthorized_client",
+        error_description: "Only an app session can get MCP tokens.",
+      },
+      { status: 403, headers: NO_STORE },
+    );
+  }
+  const result = await issueSessionGrant({
+    clientId: APP_CLIENTS[session.client].clientId,
+    email: session.user.email,
+    resource: resolveMcpUrls(args.request, args.baseURL).resource,
+    sessionExpiresAt: session.expiresAt,
+    sessionId: session.id,
+    state: args.state,
+  });
+  return result.ok
+    ? Response.json(result.tokens, { headers: NO_STORE })
+    : Response.json(
+        { error: result.error, error_description: result.description },
+        { status: 400, headers: NO_STORE },
+      );
 }
 
 /** End the client session whose token the request carries. */

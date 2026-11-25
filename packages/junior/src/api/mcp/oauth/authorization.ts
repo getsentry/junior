@@ -8,7 +8,6 @@
  */
 import { randomBytes } from "node:crypto";
 import * as z from "zod";
-import { appSessionClient } from "@/api/client-sign-in/routes";
 import { PKCE_CODE_CHALLENGE_PATTERN } from "@/api/pkce";
 import { redirectUriMatches, resolveMcpClient } from "./client-metadata";
 import type { McpUrls } from "./metadata";
@@ -30,14 +29,6 @@ const mcpAuthorizationSchema = z
     redirectUri: z.string().min(1),
     resource: z.string().min(1),
     scope: mcpScopeValueSchema,
-    /**
-     * PKCE challenge for a dashboard API session code. Only Junior's own
-     * apps send one, so one sign-in gives them both credentials.
-     */
-    sessionCodeChallenge: z
-      .string()
-      .regex(PKCE_CODE_CHALLENGE_PATTERN)
-      .optional(),
     state: z.string().max(STATE_MAX_LENGTH).optional(),
   })
   .strict();
@@ -222,18 +213,6 @@ export async function handleMcpAuthorize(args: {
   if (!scopes) {
     return fail("invalid_scope", `Use only these scopes: ${MCP_ALL_SCOPES}.`);
   }
-  const sessionCodeChallenge =
-    params.get("session_code_challenge") ?? undefined;
-  if (
-    sessionCodeChallenge !== undefined &&
-    (!appSessionClient(client.clientId) ||
-      !PKCE_CODE_CHALLENGE_PATTERN.test(sessionCodeChallenge))
-  ) {
-    return fail(
-      "invalid_request",
-      "Only Junior's own apps can ask for a dashboard session.",
-    );
-  }
   if (params.get("resource") !== args.urls.resource) {
     return fail(
       "invalid_target",
@@ -250,7 +229,6 @@ export async function handleMcpAuthorize(args: {
     redirectUri,
     resource: args.urls.resource,
     scope: scopes.join(" "),
-    sessionCodeChallenge,
     state: oauthState,
   };
   await args.state.set(

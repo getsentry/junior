@@ -2,13 +2,20 @@
  * Own MCP OAuth grants: authorization codes, access tokens, and refresh
  * tokens. Every secret is random, opaque, and stored only as a SHA-256 hash
  * in shared state with a TTL. A grant ends `GRANT_MAX_AGE_MS` after consent,
- * and refresh does not extend it.
+ * and refresh does not extend it. A grant that an app session minted also
+ * ends when that session ends or is revoked.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import * as z from "zod";
 import { pkceVerifierMatches } from "@/api/pkce";
 import { logWarn } from "@/chat/logging";
-import { mcpScopeValueSchema, parseMcpScopes, type McpScope } from "./scopes";
+import { signInSessionIsActive } from "@/chat/sign-in/sessions";
+import {
+  MCP_ALL_SCOPES,
+  mcpScopeValueSchema,
+  parseMcpScopes,
+  type McpScope,
+} from "./scopes";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const CODE_TTL_MS = 60 * 1000;
@@ -41,6 +48,8 @@ const grantSchema = z
     expiresAtMs: z.number().int().positive(),
     resource: z.string().min(1),
     scope: mcpScopeValueSchema,
+    /** App session that minted the grant. The grant works only while it does. */
+    sessionId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -142,7 +151,11 @@ async function readGrant(
 ): Promise<Grant | undefined> {
   if ((await state.get(revokedGrantKey(grantId))) !== null) return undefined;
   const grant = await readRecord(state, grantKey(grantId), grantSchema);
-  return grant && grant.expiresAtMs > Date.now() ? grant : undefined;
+  if (!grant || grant.expiresAtMs <= Date.now()) return undefined;
+  if (grant.sessionId && !(await signInSessionIsActive(grant.sessionId))) {
+    return undefined;
+  }
+  return grant;
 }
 
 /**
@@ -213,6 +226,32 @@ export async function exchangeAuthorizationCode(args: {
     expiresAtMs: Date.now() + GRANT_MAX_AGE_MS,
     resource: code.resource,
     scope: code.scope,
+  });
+}
+
+/**
+ * Issue a grant with every MCP scope to the app client of one sign-in
+ * session. The grant ends no later than the session, and it stops working
+ * when the session is revoked.
+ */
+export async function issueSessionGrant(args: {
+  clientId: string;
+  email: string;
+  resource: string;
+  sessionExpiresAt: Date;
+  sessionId: string;
+  state: McpState;
+}): Promise<McpTokenResult> {
+  return await issueTokens(args.state, randomUUID(), {
+    clientId: args.clientId,
+    email: args.email,
+    expiresAtMs: Math.min(
+      Date.now() + GRANT_MAX_AGE_MS,
+      args.sessionExpiresAt.getTime(),
+    ),
+    resource: args.resource,
+    scope: MCP_ALL_SCOPES,
+    sessionId: args.sessionId,
   });
 }
 
