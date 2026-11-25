@@ -180,6 +180,9 @@ test("previews conversation images and pages through them", async ({
 
   await image.click();
   await expect(preview.getByText("1 of 2")).toBeVisible();
+  // The preview shows at 95% scale until its first frame ends. A pinch that
+  // starts then measures the image there and zooms it a few pixels off.
+  await expect(preview).not.toHaveAttribute("data-starting-style");
   await pinch("touchStart", [
     { id: 1, x: 180, y: 450 },
     { id: 2, x: 210, y: 450 },
