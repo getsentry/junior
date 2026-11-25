@@ -35,6 +35,7 @@ import {
   listReplyActionItems,
   INBOX_ITEM_REPLIED_REASON,
   takeInboxItem,
+  takeOverAgentClose,
   type InboxItem,
 } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
@@ -307,6 +308,15 @@ async function leavePluginItemOnDismiss(
   }
   const outcome = await leavePluginInboxItem({ item, nowMs, userId: user.id });
   if (outcome === "closed") {
+    // The provider's webhook for this removal can close the item first,
+    // when it left nobody on it. That close is this dismiss.
+    const taken = await takeOverAgentClose(getDb(), {
+      id: item.id,
+      nowMs: Date.now(),
+      sinceMs: nowMs,
+      userId: user.id,
+    });
+    if (taken) return undefined;
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
   if (outcome === "last") return undefined;
