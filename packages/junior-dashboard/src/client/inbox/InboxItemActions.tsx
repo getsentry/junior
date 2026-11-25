@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import type {
-  InboxItemActionBody,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type InboxItemActionBody,
+  type InboxItemPayload,
+  type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
 import { clearAnswerDraft } from "../components/answerDrafts";
@@ -36,7 +38,7 @@ function actionError(error: unknown): string {
 /** Show the submitted answer as one line for each answered field. */
 export function AnswerSummary(props: {
   answer: NonNullable<InboxItemPayload["answer"]>;
-  request: NonNullable<InboxItemPayload["request"]>;
+  request: UserInputRequest;
 }) {
   const rows = answerRows(props.request, props.answer);
   return (
@@ -57,6 +59,7 @@ export function AnswerSummary(props: {
 function ClosedSummary(props: { item: InboxItemPayload }) {
   const { item } = props;
   const what = item.status === "dismissed" ? "dismissed" : "closed";
+  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-2 text-sm">
       <p className="m-0 text-dashboard-text-muted">
@@ -66,8 +69,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
-      {item.request && item.answer ? (
-        <AnswerSummary answer={item.answer} request={item.request} />
+      {question && item.answer ? (
+        <AnswerSummary answer={item.answer} request={question} />
       ) : null}
     </div>
   );
@@ -186,19 +189,20 @@ export function InboxItemActions(props: {
     </>
   );
 
+  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-3">
-      {item.kind === "action" && item.request ? (
+      {/* A notice asks nothing, but its related links say what it is
+          about. */}
+      {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+      {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
           {/* The question comes first and in full, then what Junior said
               around it. */}
           <section aria-label="Question" className="grid gap-1">
             <span className="text-xs text-dashboard-text-muted">Question</span>
             <div className="font-medium [&_p]:my-0">
-              <DisplayText
-                mentions={item.mentions}
-                text={item.request.question}
-              />
+              <DisplayText mentions={item.mentions} text={question.question} />
             </div>
           </section>
           {props.context}
@@ -215,7 +219,7 @@ export function InboxItemActions(props: {
                 },
               })
             }
-            request={item.request}
+            request={question}
             requestId={item.id}
             secondaryActions={secondaryActions}
             // Core takes an Automation alert's step and reads no words.

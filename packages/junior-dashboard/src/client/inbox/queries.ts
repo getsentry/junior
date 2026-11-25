@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-query";
 import {
   answeredChoices,
+  inboxItemQuestion,
   conversationDetailReportSchema,
   inboxItemActionSchema,
   inboxItemCountSchema,
@@ -362,7 +363,10 @@ function changeCounts(
             count.codeChanges +
               (item.subject?.objectType === "code_change" ? by : 0),
           ),
-          decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
+          decisions: Math.max(
+            0,
+            count.decisions + (inboxItemQuestion(item.request) ? by : 0),
+          ),
           needsViewer: Math.max(0, count.needsViewer + by),
           todos: Math.max(
             0,
@@ -472,9 +476,10 @@ async function showAnswerOnFeedRows(
   queryClient: QueryClient,
   item: InboxItemPayload,
 ): Promise<void> {
-  if (!item.answer || !item.request || !item.closedAt) return;
+  const question = inboxItemQuestion(item.request);
+  if (!item.answer || !question || !item.closedAt) return;
   const viewerAnswer = {
-    choices: answeredChoices(item.request, item.answer),
+    choices: answeredChoices(question, item.answer),
     closedAt: item.closedAt,
   };
   const feeds = { queryKey: ["dashboard", "conversations"] };

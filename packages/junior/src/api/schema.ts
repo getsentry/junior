@@ -20,6 +20,7 @@ export {
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
 } from "../chat/inbox-items/user-input-request";
+export { inboxItemQuestion } from "../chat/inbox-items/request";
 export type {
   UserInputAnswer,
   UserInputField,

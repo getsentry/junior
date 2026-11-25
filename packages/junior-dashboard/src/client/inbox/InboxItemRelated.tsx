@@ -79,10 +79,11 @@ function Note(props: { text: string | undefined }) {
 }
 
 /**
- * Show what is related to a question, beside its answer choices, in one
- * list: the links that the agent added, then the other open items and
- * Conversations on the same subject or linked work. Each target shows once,
- * with its first entry. The reader can check them before answering.
+ * Show what is related to a question, beside its answer choices, or to a
+ * notice, in one list: the links that the agent added, then the other open
+ * items and Conversations on the same subject or linked work. Each target
+ * shows once, with its first entry. The reader can check them before
+ * answering.
  */
 export function InboxItemRelated(props: { item: InboxItemPayload }) {
   const { item } = props;

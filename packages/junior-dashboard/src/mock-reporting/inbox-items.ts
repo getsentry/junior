@@ -5,6 +5,7 @@
  */
 import {
   answeredChoices,
+  inboxItemQuestion,
   type ConversationFeed,
   type ConversationFeedViewerAnswer,
   type InboxItemActionBody,
@@ -346,17 +347,18 @@ export function withMockViewerAnswers(
   for (const item of readMockInboxItems(nowMs, { closed: true })) {
     const conversationId =
       item.owner.kind === "conversation" ? item.owner.id : undefined;
+    const question = inboxItemQuestion(item.request);
     if (
       !conversationId ||
       !item.answer ||
-      !item.request ||
+      !question ||
       !item.closedAt ||
       item.closedBy?.userId !== viewer.userId ||
       answers.has(conversationId)
     )
       continue;
     answers.set(conversationId, {
-      choices: answeredChoices(item.request, item.answer),
+      choices: answeredChoices(question, item.answer),
       closedAt: item.closedAt,
     });
   }
@@ -379,8 +381,8 @@ export function answerMockInboxItemByReply(
   conversationId: string,
   text: string,
 ): void {
-  const item = readMockInboxItems(nowMs, { conversationId }).find(
-    (candidate) => candidate.request,
+  const item = readMockInboxItems(nowMs, { conversationId }).find((candidate) =>
+    inboxItemQuestion(candidate.request),
   );
   if (!item) return;
   changes.set(item.id, {
@@ -442,7 +444,8 @@ export function readMockInboxItemCounts(nowMs: number) {
     // Like the server: the alerts that the Automations To do lists.
     automations: needsViewer.filter((item) => item.owner.kind === "automation")
       .length,
-    decisions: needsViewer.filter((item) => item.request).length,
+    decisions: needsViewer.filter((item) => inboxItemQuestion(item.request))
+      .length,
     needsViewer: needsViewer.length,
     // Like the server: a code change's own asks. A question that cites one
     // is a decision.

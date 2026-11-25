@@ -39,9 +39,13 @@ export type InboxItemRequest = z.output<typeof inboxItemRequestSchema>;
  * about, such as a pull request. A notice asks nothing, so it has no
  * question.
  */
-export interface InboxItemNoticeRequest {
-  related: InboxItemRelatedLink[];
-}
+export const inboxItemNoticeRequestSchema = z
+  .object({ related: z.array(inboxItemRelatedLinkSchema) })
+  .strict();
+
+export type InboxItemNoticeRequest = z.output<
+  typeof inboxItemNoticeRequestSchema
+>;
 
 /**
  * Return the question of an item's request. A notice's request holds only

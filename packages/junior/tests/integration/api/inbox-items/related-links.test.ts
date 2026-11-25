@@ -323,7 +323,8 @@ describe("inbox item related links", () => {
       id: merged.item.subject.id,
       kind: "question",
     });
-    expect(listed(merged.item.id).request).toBeUndefined();
+    // Its card shows the related links instead.
+    expect(listed(merged.item.id).request).toEqual({ related: links });
     // Linking one pull request does not relate the two.
     expect(listed(rollout.item.id).related).toBeUndefined();
     expect(listed(merged.item.id).related).toBeUndefined();

@@ -283,7 +283,10 @@ function inboxItemPayload(
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
       : undefined),
-    ...(question ? { request: question } : undefined),
+    // A notice's request holds only related links. Its card shows them.
+    ...(item.request && (question || item.request.related?.length)
+      ? { request: question ?? item.request }
+      : undefined),
     ...(todo ? { todoId: todo.id } : undefined),
     ...(wake ? { wake: wakePayload(wake) } : undefined),
   };
