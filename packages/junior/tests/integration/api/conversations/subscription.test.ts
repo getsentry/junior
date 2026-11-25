@@ -469,6 +469,18 @@ describe("private conversation membership", () => {
     expect(await as(ana).reads()).toBe(true);
   });
 
+  it("the person who started it stays out after they leave", async () => {
+    const { ana, as, conversationId } = await privateDashboardConversation();
+    const ben = await person("ben");
+    await as(ana).invite("ben");
+    expect((await as(ana).leave()).status).toBe(200);
+
+    // A later Turn writes the root again.
+    await getConversationStore().recordActivity({ conversationId });
+    expect(await as(ana).reads()).toBe(false);
+    expect(await as(ben).reads()).toBe(true);
+  });
+
   it("the last subscriber leaving archives it for everyone", async () => {
     const { ana, as, conversationId } = await privateDashboardConversation();
     const ben = await person("ben");
