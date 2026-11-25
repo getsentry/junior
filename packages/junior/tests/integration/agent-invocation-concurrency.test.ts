@@ -420,7 +420,7 @@ describe("child agent identity and concurrency", () => {
               identifier: failing.childConversationId,
               namespace: "junior",
               suggested_events: ["agent.update"],
-              type: "conversation",
+              type: "agent",
             },
           },
         ],
