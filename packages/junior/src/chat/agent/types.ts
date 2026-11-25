@@ -336,6 +336,11 @@ export type AgentRun = {
    * unless a caller already bound credentials.
    */
   actor?: Actor;
+  /**
+   * The Actor is an app or bot that wrote the request, not a person. Tools
+   * that need a person, such as Inbox items, see no person in this Run.
+   */
+  actorIsApp?: boolean | undefined;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext | undefined;
   source: Source;
