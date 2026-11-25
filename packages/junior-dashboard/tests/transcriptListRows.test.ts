@@ -8,6 +8,7 @@ import {
   UNREAD_MARKER_KEY,
 } from "../src/client/conversations/transcriptListRows";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
+import { routineEventEntryKeys } from "../src/client/conversations/TranscriptActivityGroup";
 
 function entryRow(seq: number): TranscriptListRow {
   const key = `entry-${seq}`;
@@ -381,6 +382,19 @@ describe("transcriptListRows", () => {
         seq: 7,
       },
     ]);
+  });
+
+  it("keeps the answered Watch Event when another Turn input comes between", () => {
+    const result = messageEntry(2, "user");
+    if (result.kind === "message")
+      result.message.eventType = "agent_invocation.result";
+    const keys = routineEventEntryKeys([
+      watchEventEntry(1, "pr"),
+      result,
+      messageEntry(3),
+    ]);
+
+    expect(keys.has("1:message:0")).toBe(false);
   });
 
   it("shows each routine Watch Event as a row when all Events are chosen", () => {

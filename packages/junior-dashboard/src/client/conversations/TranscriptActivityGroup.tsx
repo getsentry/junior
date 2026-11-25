@@ -118,9 +118,15 @@ export function routineEventEntryKeys(
       lastEvent = entry.key;
       continue;
     }
-    const reply = entry.message.role === "assistant" && !entry.message.quiet;
-    if (reply && lastEvent !== undefined) replied.add(lastEvent);
-    lastEvent = undefined;
+    const { message } = entry;
+    if (message.role === "assistant") {
+      if (!message.quiet && lastEvent !== undefined) replied.add(lastEvent);
+      lastEvent = undefined;
+    } else if (message.role === "user" && message.eventType === undefined) {
+      // A person's message is what the next reply answers. Other Turn
+      // inputs, such as an agent invocation result, keep the Event.
+      lastEvent = undefined;
+    }
   }
   const keys = new Set<string>();
   for (const entry of messages) {
