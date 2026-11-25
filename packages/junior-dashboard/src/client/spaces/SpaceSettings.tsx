@@ -7,7 +7,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import {
-  DetailsCard,
   DetailsList,
   DetailsRow,
   DetailsRowLine,
@@ -33,60 +32,56 @@ export function SpaceSettings(props: { space: SpaceReport }) {
   const { space } = props;
   const configuration = useSpaceConfigurationData(space.id);
   const remove = useRemoveSpaceConfiguration(space.id);
-  const entries = configuration.data?.entries ?? [];
+  if (configuration.error) {
+    return <p className="m-0">Settings are unavailable.</p>;
+  }
+  if (!configuration.data) return <Skeleton className="h-4 w-1/2" />;
+  const { entries, keys } = configuration.data;
   return (
-    <DetailsCard count={entries.length} label="Settings" title="Settings">
-      {configuration.error ? (
-        <p className="m-0">Settings are unavailable.</p>
-      ) : !configuration.data ? (
-        <Skeleton className="h-4 w-1/2" />
+    <div className="grid gap-2">
+      {entries.length === 0 ? (
+        <p className="m-0">
+          No settings. Conversations use the channel and install defaults.
+        </p>
       ) : (
-        <div className="grid gap-2">
-          {entries.length === 0 ? (
-            <p className="m-0">
-              No settings. Conversations use the channel and install defaults.
-            </p>
-          ) : (
-            <DetailsList
-              itemKey={(entry) => entry.key}
-              items={entries}
-              renderItem={(entry) => (
-                <DetailsRow
-                  icon={<SlidersHorizontal aria-hidden="true" size={14} />}
-                  meta={
-                    space.viewerIsMember ? (
-                      <Button
-                        aria-label={`Remove ${entry.key}`}
-                        className="size-5 rounded"
-                        disabled={remove.isPending}
-                        onClick={() => remove.mutate(entry.key)}
-                        size="icon"
-                        variant="ghost"
-                      >
-                        <X aria-hidden="true" size={14} />
-                      </Button>
-                    ) : null
-                  }
-                  title={entry.key}
-                >
-                  <DetailsRowLine className="truncate">
-                    {typeof entry.value === "string"
-                      ? entry.value
-                      : JSON.stringify(entry.value)}
-                  </DetailsRowLine>
-                </DetailsRow>
-              )}
-            />
+        <DetailsList
+          itemKey={(entry) => entry.key}
+          items={entries}
+          renderItem={(entry) => (
+            <DetailsRow
+              icon={<SlidersHorizontal aria-hidden="true" size={14} />}
+              meta={
+                space.viewerIsMember ? (
+                  <Button
+                    aria-label={`Remove ${entry.key}`}
+                    className="size-5 rounded"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate(entry.key)}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <X aria-hidden="true" size={14} />
+                  </Button>
+                ) : null
+              }
+              title={entry.key}
+            >
+              <DetailsRowLine className="truncate">
+                {typeof entry.value === "string"
+                  ? entry.value
+                  : JSON.stringify(entry.value)}
+              </DetailsRowLine>
+            </DetailsRow>
           )}
-          {remove.error ? (
-            <InlineError>{errorText(remove.error)}</InlineError>
-          ) : null}
-          {space.viewerIsMember ? (
-            <SettingForm keys={configuration.data.keys} spaceId={space.id} />
-          ) : null}
-        </div>
+        />
       )}
-    </DetailsCard>
+      {remove.error ? (
+        <InlineError>{errorText(remove.error)}</InlineError>
+      ) : null}
+      {space.viewerIsMember ? (
+        <SettingForm keys={keys} spaceId={space.id} />
+      ) : null}
+    </div>
   );
 }
 

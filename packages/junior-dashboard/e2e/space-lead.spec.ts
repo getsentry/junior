@@ -126,7 +126,7 @@ test("loads a Space page within its request budget", async ({
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    { requests: 15, serialRounds: 3 },
+    { requests: 14, serialRounds: 3 },
   );
 });
 
