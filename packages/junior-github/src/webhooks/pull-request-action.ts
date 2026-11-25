@@ -39,9 +39,13 @@
  * no read.
  *
  * A pull request is in limbo when it waits on nobody: it is ready, the
- * action is none, and no person or rule moves it on (`inLimbo`). A sync that
- * may ask asks for the requester's review on GitHub, as Junior does when a
- * draft becomes ready, and the review request then shows the item.
+ * action is none, and no person or rule moves it on (`inLimbo`). Once its
+ * required checks pass, the sync asks for the requester's review on GitHub,
+ * as Junior does when a draft becomes ready, and the review request then
+ * shows the item. So each ready pull request that the requester has not
+ * seen has an item or a pending review request, also one opened before the
+ * requester linked GitHub. Pushes do not ask a requester who reviewed or
+ * commented again, so a webhook asks only one who has not.
  *
  * The requester takes one action, not both, so one item per pull request
  * shows it. Each webhook that can change one of these facts reads them
@@ -91,6 +95,7 @@ import {
   type GitHubReviewAskReason,
   readGitHubReviewAsked,
   readHeldGitHubReviewAsk,
+  readGitHubRequiredChecksPass,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
 import { linkedGitHubLogin } from "../tool-support/attribution.js";
@@ -599,10 +604,11 @@ async function askReason(
 /** What a sync of the next action reads and writes. */
 interface PullRequestActionSyncContext {
   /**
-   * Ask for the requester's review on each pull request in limbo. Only the
-   * one-off backfill asks.
+   * Also ask in limbo when the requester reviewed or commented before the
+   * last push. Only the one-off backfill does: pushes do not ask the
+   * requester again.
    */
-  askInLimbo?: boolean | undefined;
+  askAfterRequesterActed?: boolean | undefined;
   botEmail: string | undefined;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
@@ -687,16 +693,31 @@ async function syncOne(
       previous,
     );
     if (
-      args.askInLimbo &&
       !askedInLimbo &&
       requesterLogin &&
       next !== undefined &&
       next.action === undefined &&
-      inLimbo(state, { actedAt: activity.requesterAt, login: requesterLogin })
+      inLimbo(state, {
+        actedAt: activity.requesterAt,
+        login: requesterLogin,
+      }) &&
+      (args.askAfterRequesterActed ||
+        (activity.requesterAt === undefined &&
+          !state.reviewedBy.includes(requesterLogin.toLowerCase())))
     ) {
       askedInLimbo = true;
+      // Ask after the required checks pass, as a review ask again does. A
+      // later check suite webhook syncs again.
+      const [owner = "", name = ""] = target.repositoryFullName.split("/");
+      const checksPass = await readGitHubRequiredChecksPass(
+        await loadReviewAgainReader(args.env, target.repositoryFullName),
+        { name, number: target.number, owner },
+      );
       // The next read sees the request and shows its item.
-      if (await requestReviewAgain(args, target, requesterLogin)) {
+      if (
+        checksPass &&
+        (await requestReviewAgain(args, target, requesterLogin))
+      ) {
         return await check(previous);
       }
     }
@@ -837,7 +858,7 @@ async function retryAfterFailure(
  * fail the delivery. A failure that GitHub causes for a while starts a task
  * that syncs the pull request again, when `tasks` is given. Other failures
  * are logged. Return the pull requests that another webhook was checking.
- * That webhook checks them again, but without `askInLimbo`.
+ * That webhook checks them again, but without `askAfterRequesterActed`.
  */
 export async function syncGitHubPullRequestActions(
   args: PullRequestActionSyncContext & {

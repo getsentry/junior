@@ -477,6 +477,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
           },
         });
       }
+      if (operationName === "PullRequestRequiredChecks") {
+        return HttpResponse.json({
+          data: { repository: { pullRequest: reviewAgainPull(github, "") } },
+        });
+      }
       if (operationName === "ReviewReactions") {
         return HttpResponse.json({
           data: {

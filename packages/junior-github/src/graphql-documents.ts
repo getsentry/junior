@@ -295,6 +295,38 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
 `);
 
 /**
+ * Read whether the required checks of a pull request's head commit pass:
+ * the checks of the head commit and the branch protection's required checks
+ * of the base branch. `PULL_REQUEST_REVIEW_AGAIN` reads the same fields.
+ */
+export const PULL_REQUEST_REQUIRED_CHECKS = githubGraphql(`
+  query PullRequestRequiredChecks($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        baseRefName
+        baseRef { refUpdateRule { requiredStatusCheckContexts } }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes {
+                    __typename
+                    ... on CheckRun { name status conclusion }
+                    ... on StatusContext { context state }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
  * Read what decides whether a reviewer's change request is ready for their
  * review again: whether GitHub asks them, their latest review with the
  * reactors of its body and each of its comments, the checks of the head

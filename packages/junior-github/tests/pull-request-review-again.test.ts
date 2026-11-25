@@ -597,6 +597,7 @@ describe("review again after a change request", () => {
         reviews: reviews.map((review) => ({
           ...review,
           commit_id: "head-1",
+          submitted_at: "2026-07-02T11:00:00Z",
           user: { login: "requester" },
         })),
         state: "open",

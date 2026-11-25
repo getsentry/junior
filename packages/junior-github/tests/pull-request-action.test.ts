@@ -45,6 +45,8 @@ describe("next action item", () => {
       draft: false,
       mergeableStates: ["blocked"],
       merged: false,
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
       title: "feat(inbox): Add the Inbox notice",
@@ -57,7 +59,7 @@ describe("next action item", () => {
       // The repo requires a review, and no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
-      expect(requests).toEqual(["pull"]);
+      expect(requests).toEqual(["pull", "rules"]);
 
       // The change request is on the older page of reviews.
       github.reviews = [
@@ -320,6 +322,8 @@ describe("next action item", () => {
       merged: false,
       // Requests for other people or for a team do not wait on the requester.
       requestedReviewers: ["someone-else"],
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
     };
@@ -496,6 +500,8 @@ describe("next action item", () => {
         draft: false,
         mergeableStates: ["blocked"],
         merged: false,
+        // The requester commented, so no one asks them for a review.
+        comments: [{ at: "2026-07-02T11:00:00Z", login: "Requester" }],
         reviews: [],
         state: "open",
       },
@@ -914,6 +920,43 @@ describe("next action item", () => {
       await h.heartbeat(now + 60_000);
       expect(backfills()).toEqual([]);
       expect(requests).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("asks the requester's review on a ready pull request that waits on nobody once the required checks pass", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    // Junior opened it ready, but the requester linked GitHub only later,
+    // so no one asked them.
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requiredChecks: ["test"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(checkSuiteCompleted());
+      expect(requests).not.toContain("request Requester");
+      expect(calls).toEqual([]);
+
+      github.checks = [
+        { conclusion: "SUCCESS", name: "test", status: "COMPLETED" },
+      ];
+      await webhook.handler(checkSuiteCompleted());
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
     } finally {
       await fixture.close();
     }

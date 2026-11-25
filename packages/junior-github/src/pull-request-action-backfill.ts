@@ -9,11 +9,12 @@
  * item only when the derived action is not the saved one, so a pull request
  * whose saved action still holds keeps its item as it is, also one that a
  * person dismissed. A pull request in limbo, which waits on nobody, gets a
- * review request for its requester on GitHub, and so a review item.
+ * review request for its requester on GitHub once its required checks
+ * pass, and so a review item.
  *
  * The heartbeat starts one page at a time until the last page is done. A
  * page with a pull request that a webhook was checking runs again, because
- * that webhook does not ask in limbo. Bump
+ * that webhook does not ask a requester who acted before the last push. Bump
  * `VERSION` when a new derivation rule must reach pull requests that went
  * quiet before it.
  */
@@ -83,7 +84,7 @@ export function githubPullRequestActionBackfillTask(args: {
         .sort((a, b) => a.id - b.id)
         .slice(0, PAGE_SIZE);
       const busy = await syncGitHubPullRequestActions({
-        askInLimbo: true,
+        askAfterRequesterActed: true,
         ...startedTaskSyncContext(ctx, {
           botEmail: args.botEmail(),
           env: args.env,
