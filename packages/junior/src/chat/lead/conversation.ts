@@ -7,12 +7,14 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
+import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   recordWebConversationActivity,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
+import { readSpace } from "@/chat/spaces/store";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorConversations } from "@/db/schema";
 
@@ -85,4 +87,23 @@ export async function readLeadSpaceId(
     )
     .limit(1);
   return row?.spaceId ?? undefined;
+}
+
+/**
+ * Return whether a person may send a Message to a Conversation now, as far
+ * as its Space decides: only members of a Space that is not archived message
+ * its Lead. Every other Conversation leaves the decision to its access rules.
+ */
+export async function spaceTakesMessagesFrom(
+  conversation: Pick<Conversation, "kind" | "spaceId">,
+  userId: string,
+): Promise<boolean> {
+  if (
+    !messagesNeedSpaceMembership(conversation.kind) ||
+    !conversation.spaceId
+  ) {
+    return true;
+  }
+  const space = await readSpace(userId, conversation.spaceId);
+  return Boolean(space?.viewerIsMember && !space.archivedAt);
 }

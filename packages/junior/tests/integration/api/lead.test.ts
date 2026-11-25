@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createAcpConversations } from "@/api/acp/conversations";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
@@ -20,6 +21,7 @@ import {
 } from "@/chat/db";
 import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -118,6 +120,31 @@ describe("Lead API", () => {
     expect((await postMessage(bo, leadId, "lead-api-bo-joined")).status).toBe(
       200,
     );
+
+    // After Ana leaves, the Lead takes no more of her messages from any
+    // surface, though she still takes part in it.
+    const left = await ana.request(
+      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
+      { method: "DELETE" },
+    );
+    expect(left.status).toBe(200);
+    expect((await postMessage(ana, leadId, "lead-api-ana-left")).status).toBe(
+      403,
+    );
+    const state = getStateAdapter();
+    await state.connect();
+    await expect(
+      createAcpConversations({
+        eventStore: getConversationEventStore(),
+        queue,
+        state,
+      }).prompt({
+        conversationId: leadId,
+        idempotencyKey: "lead-api-ana-acp",
+        text: "Check the deploy.",
+        user: await signedInViewer("lead-api-ana@example.com"),
+      }),
+    ).resolves.toEqual({ status: "space_closed" });
   });
 
   it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {

@@ -44,17 +44,14 @@ export function SpacePage(props: {
       </section>
     );
   }
-  const error = space.error ?? lead.error;
-  // A non-member reads no Lead until a member makes it.
-  if (
-    space.data &&
-    !space.data.viewerIsMember &&
-    lead.error instanceof DashboardApiError &&
-    lead.error.status === 404
-  ) {
+  // A non-member reads no Lead until a member makes it. Only the Space read
+  // tells a missing Lead apart from a missing Space, so wait for it.
+  const leadMissing =
+    lead.error instanceof DashboardApiError && lead.error.status === 404;
+  if (space.data && !space.data.viewerIsMember && leadMissing) {
     return <SpaceWithoutLead space={space.data} />;
   }
-  if (error) {
+  if (space.error || (lead.error && !(leadMissing && space.isPending))) {
     return (
       <PageFrame title={space.data?.name ?? "Space"}>
         <EmptyTelemetry>This Space is unavailable.</EmptyTelemetry>
