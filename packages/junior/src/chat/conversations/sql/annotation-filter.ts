@@ -18,16 +18,6 @@ import {
 
 const annotations = juniorConversationAnnotations;
 
-/** The title that an Annotation stores for search. */
-export const storedAnnotationTitle = sql<
-  string | null
->`${annotations.annotation}->>'title'`;
-
-/** The link that an Annotation stores for search. */
-export const storedAnnotationUrl = sql<
-  string | null
->`${annotations.annotation}->>'url'`;
-
 /**
  * Which Annotations a filter matches:
  * - `references`: keys or links in lower case, such as `owner/repo#12`. A
@@ -161,7 +151,7 @@ export function annotationMatches(filter: AnnotationFilter): SQL {
     or(
       ...filter.references.map(
         (reference) =>
-          sql`(${key} = ${reference} or starts_with(${key}, ${`${reference}#`}) or lower(${storedAnnotationUrl}) = ${reference})`,
+          sql`(${key} = ${reference} or starts_with(${key}, ${`${reference}#`}) or lower(${annotations.url}) = ${reference})`,
       ),
       ...filter.subjects.map((subject) =>
         and(

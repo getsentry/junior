@@ -1,8 +1,5 @@
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
-  objectFactsSchema,
-  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -90,6 +87,8 @@ const createIssueStateSchema = Type.Union([
       id: Type.Optional(Type.Number()),
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
+      // A state saved before Annotations stopped saving facts has these.
+      // Nothing reads them.
       facts: Type.Optional(Type.Unknown()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
       sourceUpdatedAt: Type.Optional(Type.String()),
@@ -115,11 +114,8 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
-  facts?: ObjectAnnotation["facts"] | undefined;
   /** GitHub's id of the issue, which names its Inbox item. */
   id?: number | undefined;
-  description?: string | undefined;
-  sourceUpdatedAt?: string | undefined;
   number: number;
   url: string;
 }
@@ -180,17 +176,13 @@ async function gitHubIssueToolResult(
     objectAnnotations: [
       {
         action: "created",
-        ...githubObjectAnnotation({
-          facts: result.facts,
-          description: result.description,
-          sourceUpdatedAt: result.sourceUpdatedAt,
+        ...githubAnnotatedObject({
           repo: input.repo,
           number: result.number,
           id: result.id === undefined ? undefined : String(result.id),
           title: input.title,
           url: result.url,
           objectType: "task",
-          status: "open",
         }),
       },
     ],
@@ -314,7 +306,6 @@ async function createGitHubIssue(
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
-    ...githubObjectFacts("task", parsed),
     ...(typeof issue.id === "number" ? { id: issue.id } : undefined),
     number: issue.number,
     url: issue.html_url,
@@ -350,12 +341,6 @@ export const gitHubIssueTool = definePluginTool({
         if (state?.status === "completed") {
           const completedInput = state.input ?? parsedInput;
           const completedResult = {
-            facts:
-              state.facts === undefined
-                ? undefined
-                : objectFactsSchema.parse(state.facts),
-            sourceUpdatedAt: state.sourceUpdatedAt,
-            description: state.description,
             id: state.id,
             number: state.number,
             url: state.url,

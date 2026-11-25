@@ -1,7 +1,8 @@
 import * as z from "zod";
 import type { PluginContext } from "./context";
 import {
-  objectAnnotationSchema,
+  ownedObjectAnnotationSchema,
+  savedObjectAnnotationSchema,
   type ObjectSubject,
 } from "./object-annotations";
 import { objectTypeSchema } from "./object-presentation";
@@ -22,27 +23,23 @@ const httpUrlSchema = z
   .refine(usesHttpProtocol, "URL must use HTTP or HTTPS.");
 
 /**
- * Link an object to a Conversation when the owner has no typed object preview.
- * Keep a stable key, compact label, source URL, and optional short context or
- * status. Do not fetch a full object merely to save a link. Rich preview intent
- * belongs to objectAnnotationSchema, not a second set of resource-link fields.
+ * Link an object to a Conversation by its link alone, such as a link that a
+ * person attached. Junior stores no title for it: the title would show to
+ * readers who cannot open the object. Its card reads the object live.
  */
 export const resourceLinkAnnotationSchema = z
   .object({
     kind: z.literal("resource_link"),
     objectType: objectTypeSchema.optional(),
     key: z.string().trim().min(1).max(256),
-    label: z.string().trim().min(1).max(256),
     url: httpUrlSchema,
-    description: z.string().trim().min(1).max(512).optional(),
-    status: z.enum(["open", "draft", "closed", "merged", "warning"]).optional(),
   })
   .strict();
 
 /** Core-known annotation shapes that plugins may attach to a conversation. */
 export const conversationAnnotationInputSchema = z.discriminatedUnion("kind", [
   resourceLinkAnnotationSchema,
-  objectAnnotationSchema,
+  savedObjectAnnotationSchema,
 ]);
 export type ConversationAnnotationInput = z.output<
   typeof conversationAnnotationInputSchema
@@ -52,6 +49,36 @@ export type ConversationAnnotation = ConversationAnnotationInput & {
   createdAt: string;
   updatedAt: string;
 };
+
+/**
+ * The label and the link of an object that Junior cannot read for the
+ * viewer, such as when the viewer has no access or the provider is down.
+ * The plugin makes the label from the link. An object without a link, such
+ * as an Automation of an install without a dashboard, has no `url`.
+ */
+const annotationLabelSchema = resourceLinkAnnotationSchema.extend({
+  label: z.string().trim().min(1).max(256),
+  plugin: z.string().min(1),
+  url: httpUrlSchema.nullable(),
+});
+
+/**
+ * An Annotation as one viewer sees it: the live card of its object, else
+ * only its label and its link.
+ */
+export const liveAnnotationSchema = z
+  .discriminatedUnion("kind", [
+    annotationLabelSchema,
+    ownedObjectAnnotationSchema,
+  ])
+  .and(
+    z.object({
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+  );
+export type LiveAnnotation = z.output<typeof liveAnnotationSchema>;
+
 export interface PluginAnnotations {
   upsert(annotation: ConversationAnnotationInput): Promise<void>;
   remove(kind: ConversationAnnotationInput["kind"], key: string): Promise<void>;
@@ -101,8 +128,11 @@ export type ConversationSidebarAnnotation = z.output<
 >;
 
 export interface ConversationSidebarHookContext extends PluginContext {
-  /** Stored annotations owned by this plugin, keyed by candidate conversation. */
-  annotationsByConversationId: Record<string, ConversationAnnotation[]>;
+  /**
+   * The annotations of this plugin as the viewer sees them, keyed by
+   * candidate conversation.
+   */
+  annotationsByConversationId: Record<string, LiveAnnotation[]>;
   conversationIds: string[];
 }
 

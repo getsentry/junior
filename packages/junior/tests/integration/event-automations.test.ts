@@ -19,6 +19,7 @@ import { commitAssistantMessage } from "@/chat/task-execution/assistant-message"
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { seedLinkedPerson } from "../fixtures/slack-user";
 import { mockTitleModel } from "../fixtures/title-model";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
@@ -114,7 +115,15 @@ describe("event automations", () => {
       baseURL: "https://junior.example.com",
     });
     try {
+      // The creator starts the Conversation, so its cards read the
+      // Automation with the creator's access.
+      await seedLinkedPerson({
+        email: "creator@example.com",
+        slackTeamId: teamId,
+        slackUserId: "U123",
+      });
       await getConversationStore().recordActivity({
+        actor: { platform: "slack", slackUserId: "U123", teamId },
         conversationId,
         destination: { platform: "local", conversationId },
         source: "internal",

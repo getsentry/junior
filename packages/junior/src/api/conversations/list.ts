@@ -90,8 +90,6 @@ import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import {
   annotationMatches,
   resolveAnnotationFilter,
-  storedAnnotationTitle,
-  storedAnnotationUrl,
 } from "@/chat/conversations/sql/annotation-filter";
 import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
 import { feedMediaSql } from "./feed-media";
@@ -325,7 +323,7 @@ function annotationMatch(
     subjects: readonly InboxItemSubject[];
   },
 ) {
-  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${storedAnnotationTitle}, ${storedAnnotationUrl}))`;
+  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}, ${juniorConversationAnnotations.url}))`;
   return exists(
     db
       .select({ one: sql`1` })

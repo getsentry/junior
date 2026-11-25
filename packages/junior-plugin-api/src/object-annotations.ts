@@ -67,12 +67,13 @@ export const annotationActionSchema = z.enum([
 export type AnnotationAction = z.output<typeof annotationActionSchema>;
 
 /**
- * Verified facts shared by Conversation annotations and Message cards.
+ * The card of an object: verified facts that a link type reads for one
+ * viewer, shown on Annotations and Message cards. No Annotation saves it.
  * Plugins select small facts from responses they already have. Each surface owns
  * its layout. Omit unknown facts; do not infer approval or passing checks.
  *
  * These facts support both compact previews and full details. Each surface
- * selects the fields it needs; preview rules must not remove saved facts.
+ * selects the fields it needs; preview rules must not remove facts.
  *
  * Keep raw responses, diffs, logs, credentials, and comments out of this schema.
  * Return only facts that the Conversation audience may see. An annotation
@@ -113,7 +114,7 @@ export const objectAnnotationSchema = z
   );
 export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;
 
-/** A saved object snapshot with its trusted owner. */
+/** The card of an object with its trusted owner. */
 export const ownedObjectAnnotationSchema = objectAnnotationSchema.safeExtend({
   plugin: z.string().min(1),
 });
@@ -122,11 +123,34 @@ export type OwnedObjectAnnotation = z.output<
 >;
 
 /**
- * One object that a tool or hook created or changed, to save as an
- * Annotation of the Conversation. Set `subject` whenever the provider id is
- * known.
+ * The object of an Annotation, as Junior stores it: its subject, its type,
+ * its title, and its link. Search finds the object by its title and link,
+ * and a card shows them when the provider is down. A card reads every other
+ * fact of the object live. Set `subject` whenever the provider id is known.
  */
-export const annotatedObjectSchema = objectAnnotationSchema.safeExtend({
+export const savedObjectAnnotationSchema = z
+  .object({
+    kind: z.literal("object"),
+    key: z.string().trim().min(1).max(256),
+    subject: objectSubjectSchema.optional(),
+    objectType: objectTypeSchema,
+    title: z.string().trim().min(1).max(512),
+    url: z
+      .url()
+      .max(2048)
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol))
+      .nullable(),
+  })
+  .strict();
+export type SavedObjectAnnotation = z.output<
+  typeof savedObjectAnnotationSchema
+>;
+
+/**
+ * One object that a tool or hook created or changed, to save as an
+ * Annotation of the Conversation.
+ */
+export const annotatedObjectSchema = savedObjectAnnotationSchema.safeExtend({
   action: annotationActionSchema.exclude(["attached"]),
 });
 export type AnnotatedObject = z.output<typeof annotatedObjectSchema>;

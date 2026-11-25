@@ -175,7 +175,7 @@ describe("event automation blocking", () => {
     // The dashboard shows paused, so no second notice says blocked.
     expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
     await expect(setStatus("active")).resolves.toMatchObject({
-      objectCards: [{ status: "blocked", warning: reason }],
+      automation: { status: "blocked", status_reason: reason },
     });
     expect(await read()).toMatchObject({
       status: "blocked",

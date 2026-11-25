@@ -1,13 +1,12 @@
 import type {
-  ConversationAnnotation,
   ConversationSidebarAnnotation,
+  LiveAnnotation,
   ObjectAnnotation,
+  SavedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 
-function githubObjectType(
-  annotation: ConversationAnnotation,
-): "task" | "code_change" {
+function githubObjectType(annotation: LiveAnnotation): "task" | "code_change" {
   if (
     annotation.objectType === "task" ||
     annotation.objectType === "code_change"
@@ -21,9 +20,7 @@ function githubObjectType(
     : "task";
 }
 
-function repositoryName(
-  annotation: ConversationAnnotation,
-): string | undefined {
+function repositoryName(annotation: LiveAnnotation): string | undefined {
   try {
     const [, , repo] = new URL(annotation.url ?? "").pathname.split("/");
     return repo || undefined;
@@ -34,7 +31,7 @@ function repositoryName(
 
 /** Return GitHub annotations for a conversation row, newest first. */
 export function githubSidebarAnnotations(
-  annotations: ConversationAnnotation[],
+  annotations: LiveAnnotation[],
 ): ConversationSidebarAnnotation[] {
   return annotations
     .flatMap((annotation) => {
@@ -42,11 +39,11 @@ export function githubSidebarAnnotations(
       if (!label) return [];
       const sidebar: ConversationSidebarAnnotation = {
         objectType: githubObjectType(annotation),
-        status: annotation.status,
         key: annotation.key,
         label,
       };
       if (annotation.kind === "object") {
+        if (annotation.status) sidebar.status = annotation.status;
         sidebar.title = annotation.title;
         if (annotation.facts?.type === "code_change") {
           const image = annotation.facts.previewImageUrls?.[0];
@@ -65,8 +62,8 @@ export function githubObjectKey(repo: string, number: number): string {
   return `${repo.toLowerCase()}#${number}`;
 }
 
-/** Build the annotation returned by GitHub create and update tools. */
-export function githubObjectAnnotation(input: {
+/** Build the Annotation that GitHub create and update tools return. */
+export function githubAnnotatedObject(input: {
   repo: string;
   number: number;
   /**
@@ -77,11 +74,7 @@ export function githubObjectAnnotation(input: {
   title: string;
   url: string;
   objectType: "task" | "code_change";
-  status: string;
-  facts?: ObjectAnnotation["facts"] | undefined;
-  sourceUpdatedAt?: string | undefined;
-  description?: string | undefined;
-}): ObjectAnnotation {
+}): SavedObjectAnnotation {
   return {
     kind: "object",
     key: githubObjectKey(input.repo, input.number),
@@ -96,6 +89,27 @@ export function githubObjectAnnotation(input: {
           },
         }
       : undefined),
+    title: input.title.slice(0, 512),
+    url: input.url,
+    objectType: input.objectType,
+  };
+}
+
+/** Build the live card of a GitHub issue or pull request. */
+export function githubObjectCard(input: {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  objectType: "task" | "code_change";
+  status: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  sourceUpdatedAt?: string | undefined;
+  description?: string | undefined;
+}): ObjectAnnotation {
+  return {
+    kind: "object",
+    key: githubObjectKey(input.repo, input.number),
     label: `${input.repo}#${input.number}`,
     title: input.title.slice(0, 512),
     url: input.url,

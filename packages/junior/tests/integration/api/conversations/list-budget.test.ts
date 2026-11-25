@@ -1,7 +1,3 @@
-import {
-  OBJECT_FACTS_MAX_BYTES,
-  objectFactsBytes,
-} from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { conversationFeedSchema } from "@/api/schema";
@@ -75,20 +71,6 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
     throughSeq: await lastSeq(conversationId),
   });
   await addItem(conversationId, ACTION_ITEM);
-  const facts = {
-    type: "code_change" as const,
-    summary: text(280, "s"),
-    author: text(160, "a"),
-    sourceBranch: text(160, "b"),
-    targetBranch: text(160, "b"),
-    reviewers: Array.from({ length: 5 }, () => text(160, "r")),
-    previewImageUrls: Array.from({ length: 4 }, () => url(512)),
-  };
-  // One more image URL fills the facts to their limit. It adds its quotes
-  // and a comma.
-  facts.previewImageUrls.push(
-    url(OBJECT_FACTS_MAX_BYTES - objectFactsBytes(facts) - 3),
-  );
   const annotations = createPluginAnnotations({
     conversationId,
     db: getDb(),
@@ -97,25 +79,14 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
   await annotations.upsert({
     kind: "object",
     key: text(256, "k"),
-    label: text(256, "l"),
     objectType: "code_change",
     title: text(512, "t"),
     url: url(2048),
-    description: text(4000, "d"),
-    status: text(100, "s"),
-    trigger: text(4000, "r"),
-    warning: text(1000, "w"),
-    displayType: text(80, "p"),
-    sourceUpdatedAt: new Date().toISOString(),
-    facts,
   });
   await annotations.upsert({
     kind: "resource_link",
     key: text(256, "j"),
-    label: text(256, "l"),
     url: url(2048),
-    description: text(512, "d"),
-    status: "open",
   });
 }
 

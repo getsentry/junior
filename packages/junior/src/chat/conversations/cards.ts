@@ -1,6 +1,6 @@
 import {
   objectFactFields,
-  type ConversationAnnotation,
+  type LiveAnnotation,
   type OwnedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -78,10 +78,10 @@ export function readMessageCardRefs(value: {
   ];
 }
 
-/** Resolve current saved facts without fetching providers or changing history. */
+/** Match each reference to the Annotation as it was read, in reference order. */
 export function resolveMessageCards(
   refs: readonly MessageCardRef[],
-  annotations: readonly ConversationAnnotation[],
+  annotations: readonly LiveAnnotation[],
 ): OwnedObjectAnnotation[] {
   return refs.map((ref) => {
     const annotation = annotations.find(
@@ -103,9 +103,13 @@ export function resolveMessageCards(
   });
 }
 
-/** Copy saved annotation facts without storage timestamps for Message delivery. */
+/**
+ * Return the card of a read Annotation without its timestamps, for Message
+ * delivery. An Annotation that shows only its label gets that label as its
+ * title.
+ */
 export function annotationCard(
-  annotation: ConversationAnnotation,
+  annotation: LiveAnnotation,
 ): OwnedObjectAnnotation {
   const { createdAt: _createdAt, updatedAt: _updatedAt, ...value } = annotation;
   return value.kind === "object"

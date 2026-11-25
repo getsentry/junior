@@ -429,8 +429,7 @@ describe("Scheduled automation tools", () => {
           objectType: "automation",
           plugin: "junior",
           key: created.automation.id,
-          label: "Weekly issue digest",
-          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
+          title: "Weekly issue digest",
         },
       ],
     });
@@ -802,11 +801,6 @@ describe("Scheduled automation tools", () => {
           instruction: "Wash hands reminder: Remind David to wash his hands.",
         },
       },
-      objectCards: [
-        {
-          trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
-        },
-      ],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),

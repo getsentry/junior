@@ -97,11 +97,10 @@ export async function presentSlackAnnotationDetails(
   }
   // The posted card keeps its facts. Its details read the object live.
   const [annotation] = await readLiveAnnotations(identity.user, [saved]);
-  const entity = renderSlackObjectCard(
-    annotationCard(annotation ?? saved),
-    conversationId,
-    "details",
-  ).entity;
+  const entity =
+    annotation &&
+    renderSlackObjectCard(annotationCard(annotation), conversationId, "details")
+      .entity;
   if (!entity) {
     await missing();
     return;
