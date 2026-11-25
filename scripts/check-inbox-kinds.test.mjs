@@ -65,6 +65,22 @@ test("reads YAML 1.2, so `no` stays a string", () => {
   );
 });
 
+test("reads an input with a description", () => {
+  const parsed = table(
+    { state: STATES, asked: { values: "bool", text: "Junior asked." } },
+    [rule("asked", [{ when: { asked: true }, output: "keep" }])],
+  );
+  assert.deepEqual(parsed.inputs, [
+    { name: "state", bool: false, domain: STATES },
+    {
+      name: "asked",
+      bool: true,
+      domain: ["true", "false"],
+      text: "Junior asked.",
+    },
+  ]);
+});
+
 test("rejects rows that test an input the table does not declare", () => {
   assert.throws(
     () =>

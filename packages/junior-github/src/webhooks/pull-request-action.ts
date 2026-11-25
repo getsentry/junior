@@ -292,7 +292,6 @@ function nextAction(
     actedLast: boolean;
     askedAgain: boolean;
     login: string | undefined;
-    repliedSinceAsk: boolean;
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
@@ -307,10 +306,8 @@ function nextAction(
     review_pending: state.reviewPending,
     state: state.state,
     viewer: {
-      approved: state.requesterApproved,
       asked_again: requester.askedAgain,
       replied: requester.actedLast,
-      replied_since_ask: requester.repliedSinceAsk,
       requested: isRequested(state, requester.login),
       requester: true,
       requests_changes: state.changesRequested,
@@ -498,9 +495,9 @@ async function requestReviewAgain(
 
 /**
  * Ask the reviewer of a held review ask again once the required checks
- * pass, and return their login, the reason, and when Junior held the ask.
- * Keep the hold while the checks have not passed, or while GitHub does not
- * take the request, so a later webhook asks again. Drop it when the pull request ended, when the
+ * pass, and return their login and the reason. Keep the hold while the
+ * checks have not passed, or while GitHub does not take the request, so a
+ * later webhook asks again. Drop it when the pull request ended, when the
  * reviewer commented or reviewed since, or when their change request is no
  * longer ready.
  */
@@ -513,9 +510,7 @@ async function askHeldReview(
   },
   target: GitHubPullRequestTarget,
   state: GitHubPullRequestMergeState,
-): Promise<
-  { at: Date; reason: GitHubReviewAskReason; reviewer: string } | undefined
-> {
+): Promise<{ reason: GitHubReviewAskReason; reviewer: string } | undefined> {
   const held = await readHeldGitHubReviewAsk(args.state, target);
   if (!held) return undefined;
   const heldAt = new Date(held.at);
@@ -547,7 +542,7 @@ async function askHeldReview(
     if (await requestReviewAgain(args, target, held.reviewer)) {
       await dropHeldGitHubReviewAsk(args.state, target);
     }
-    return { at: heldAt, reason: held.reason, reviewer: held.reviewer };
+    return { reason: held.reason, reviewer: held.reviewer };
   }
   await dropHeldGitHubReviewAsk(args.state, target);
   return undefined;
@@ -654,9 +649,6 @@ async function syncOne(
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
         askedAgain: asked !== undefined && reason !== undefined,
         login: requesterLogin,
-        repliedSinceAsk:
-          asked !== undefined &&
-          timeOf(activity.requesterAt) > asked.at.getTime(),
       },
       previous,
     );

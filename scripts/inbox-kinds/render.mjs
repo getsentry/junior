@@ -98,21 +98,27 @@ function inputsType(table) {
     const type = input.bool
       ? "boolean"
       : input.domain.map((item) => `"${item}"`).join(" | ");
+    const field = { text: input.text, type };
     const [head, tail] = input.name.split(".");
     if (tail === undefined) {
-      fields.set(head, type);
+      fields.set(head, field);
     } else {
       if (!fields.has(head)) fields.set(head, new Map());
-      fields.get(head).set(tail, type);
+      fields.get(head).set(tail, field);
     }
   }
   const render = (map) =>
     [...map]
-      .map(
-        ([name, type]) =>
-          `${name}: ${typeof type === "string" ? type : `{ ${render(type)} }`};`,
-      )
-      .join(" ");
+      .map(([name, field]) => {
+        if (field instanceof Map) return `${name}: { ${render(field)} };`;
+        const doc = field.text
+          ? `/**\n${wrap(field.text.split(/\s+/), 70, "")
+              .map((line) => ` * ${line}`)
+              .join("\n")}\n */\n`
+          : "";
+        return `${doc}${name}: ${field.type};`;
+      })
+      .join("\n");
   return render(fields);
 }
 

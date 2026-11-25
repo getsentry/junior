@@ -548,11 +548,6 @@ export interface GitHubPullRequestMergeState {
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
   /**
-   * The requester's latest review approves. Read only when the pull request
-   * is open and not a draft.
-   */
-  requesterApproved: boolean;
-  /**
    * GitHub still requests a review from a person or a team. A team that
    * the App cannot read has no login, so `requestedReviewers` misses it.
    */
@@ -679,7 +674,6 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
-    requesterApproved: false,
     reviewPending: pull.reviewRequests.nodes.length > 0,
     reviewedBy: [],
     state:
@@ -726,6 +720,5 @@ export async function loadPullRequestMergeState(
   const login = requesterLogin?.toLowerCase();
   const requesterReview = login ? latest.get(login) : undefined;
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
-  state.requesterApproved = requesterReview?.state === "APPROVED";
   return state;
 }

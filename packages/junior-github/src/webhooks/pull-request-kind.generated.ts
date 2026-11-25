@@ -12,9 +12,15 @@ export interface Inputs {
   viewer: {
     requester: boolean;
     requested: boolean;
+    /**
+     * Junior handled every comment of the viewer's change request, the
+     * required checks pass, and Junior asks for their review again in this
+     * read. The source applies the guards of `pr-review-again`: it asks only
+     * while the viewer's latest review still requests changes, so a viewer
+     * who approved since is not asked, and it drops the ask once the viewer
+     * comments or reviews after it.
+     */
     asked_again: boolean;
-    approved: boolean;
-    replied_since_ask: boolean;
     requests_changes: boolean;
     replied: boolean;
     shown: "nothing" | "merge" | "review";
@@ -90,6 +96,7 @@ export function decide(inputs: Inputs): Outcome {
   // `pr-merge-reviewer` row 1
   if (
     !inputs.draft &&
+    !inputs.auto_merge &&
     inputs.merge_state === "clean" &&
     inputs.review_outcome === "approved" &&
     !inputs.viewer.requester &&
@@ -98,12 +105,7 @@ export function decide(inputs: Inputs): Outcome {
     return { kind: "ask", rule: "pr-merge-reviewer", label: "Ready to merge" };
   }
   // `pr-review-again` row 1
-  if (
-    inputs.viewer.requester &&
-    inputs.viewer.asked_again &&
-    !inputs.viewer.approved &&
-    !inputs.viewer.replied_since_ask
-  ) {
+  if (inputs.viewer.requester && inputs.viewer.asked_again) {
     return { kind: "ask", rule: "pr-review-again", label: "Review requested" };
   }
   // `pr-review` row 1

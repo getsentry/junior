@@ -24,6 +24,7 @@ const RULE_ID = /^[a-z][a-z0-9-]*$/;
 const value = z.string().regex(VALUE);
 const command = z.string().regex(COMMAND);
 const cell = z.union([z.boolean(), z.string()]);
+const domainSchema = z.union([z.literal("bool"), z.array(value).min(2)]);
 
 const outputSchema = z.union([
   z.literal("keep"),
@@ -49,7 +50,12 @@ const tableSchema = z.strictObject({
   code: z.string().regex(/^packages\/[^/]+\/src\/.+\.generated\.ts$/),
   inputs: z.record(
     z.string().regex(NAME),
-    z.union([z.literal("bool"), z.array(value).min(2)]),
+    z.union([
+      domainSchema,
+      // An input whose meaning its name and domain do not show, such as a
+      // fact that the source derives, says it in `text`.
+      z.strictObject({ values: domainSchema, text: z.string().min(1) }),
+    ]),
   ),
   rules: z
     .array(
@@ -102,11 +108,18 @@ export function parseCell(raw, domain) {
 export function parseTable(text) {
   // YAML 1.2 core schema, so `no`, `on`, and `off` stay strings.
   const table = tableSchema.parse(parse(text, { version: "1.2" }));
-  const inputs = Object.entries(table.inputs).map(([name, domain]) => ({
-    name,
-    bool: domain === "bool",
-    domain: domain === "bool" ? ["true", "false"] : domain,
-  }));
+  const inputs = Object.entries(table.inputs).map(([name, spec]) => {
+    // An array has a `values` method, so test for the plain domain first.
+    const described = spec !== "bool" && !Array.isArray(spec);
+    const domain = described ? spec.values : spec;
+    const input = {
+      name,
+      bool: domain === "bool",
+      domain: domain === "bool" ? ["true", "false"] : domain,
+    };
+    if (described) input.text = spec.text;
+    return input;
+  });
   for (const input of inputs) {
     const [head, tail] = input.name.split(".");
     if (tail !== undefined && head in table.inputs) {

@@ -12,9 +12,15 @@ inputs:
   review_outcome: [approved, changes_requested, none]
   viewer.requester: bool
   viewer.requested: bool
-  viewer.asked_again: bool
-  viewer.approved: bool
-  viewer.replied_since_ask: bool
+  viewer.asked_again:
+    values: bool
+    text: >-
+      Junior handled every comment of the viewer's change request, the
+      required checks pass, and Junior asks for their review again in this
+      read. The source applies the guards of `pr-review-again`: it asks only
+      while the viewer's latest review still requests changes, so a viewer
+      who approved since is not asked, and it drops the ask once the viewer
+      comments or reviews after it.
   viewer.requests_changes: bool
   viewer.replied: bool
   viewer.shown: [nothing, merge, review]
@@ -67,6 +73,7 @@ rules:
           viewer.requester: false
           viewer.requested: true
           draft: false
+          auto_merge: false
           merge_state: clean
           review_outcome: approved
         output: { ask: { label: Ready to merge } }
@@ -80,8 +87,6 @@ rules:
       - when:
           viewer.requester: true
           viewer.asked_again: true
-          viewer.approved: false
-          viewer.replied_since_ask: false
         output: { ask: { label: Review requested } }
   - id: pr-review
     text: >-
