@@ -567,12 +567,12 @@ async function syncOne(
     // changes. When the action cannot be known yet, a later event decides.
     // A new question from Junior is a change too: it can come while the
     // review item is already open, and its mark is dropped once it shows.
+    // Only a review item shows why Junior asked.
+    const showsAsk =
+      next?.action === "review" || next?.action === "review_draft";
     const changed =
       next !== undefined &&
-      (next.action !== previous ||
-        (reason === "question" &&
-          next.action !== undefined &&
-          next.action !== "merge"));
+      (next.action !== previous || (reason === "question" && showsAsk));
     if (changed) {
       await showAction(items, {
         action: next.action,
@@ -611,9 +611,12 @@ async function syncOne(
           })
         : undefined,
     ]);
+    // Keep the mark until an item shows it. A sync that closes the item,
+    // such as the one that GitHub's removal of a request starts, leaves it
+    // for the review request that follows.
     if (
       changed &&
-      next.action !== "merge" &&
+      showsAsk &&
       (reason === "handled" || reason === "question")
     ) {
       await dropGitHubReviewAsked(args.state, target);

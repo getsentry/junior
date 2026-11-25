@@ -137,20 +137,22 @@ async function askRequester(
     // GitHub records no new review request for a reviewer that it already
     // asks, so their last reply would still count after the question.
     // Removing the request first makes GitHub ask again.
-    if (await isRequested(ctx, path, login)) {
-      await githubApi(ctx.egress, {
-        operation: "github.pull.request_reviewers",
-        method: "DELETE",
-        path,
-        body: { reviewers: [login] },
-      });
+    const removed =
+      (await isRequested(ctx, path, login)) &&
+      (
+        await githubApi(ctx.egress, {
+          operation: "github.pull.request_reviewers",
+          method: "DELETE",
+          path,
+          body: { reviewers: [login] },
+        })
+      ).ok;
+    let response = await requestReviewer(ctx, path, login);
+    // A failed request after the removal would leave the requester unasked,
+    // though GitHub asked them before. A transient failure gets one more try.
+    if (removed && isTransient(response.status)) {
+      response = await requestReviewer(ctx, path, login);
     }
-    const response = await githubApi(ctx.egress, {
-      operation: "github.pull.request_reviewers",
-      method: "POST",
-      path,
-      body: { reviewers: [login] },
-    });
     if (response.ok) return true;
     ctx.log.warn(
       "github.pull_request.request_reviewers_after_question.rejected",
@@ -166,6 +168,20 @@ async function askRequester(
     );
   }
   return false;
+}
+
+function requestReviewer(ctx: CommentContext, path: string, login: string) {
+  return githubApi(ctx.egress, {
+    operation: "github.pull.request_reviewers",
+    method: "POST",
+    path,
+    body: { reviewers: [login] },
+  });
+}
+
+// GitHub's rate limit and server errors can pass on a second try.
+function isTransient(status: number): boolean {
+  return status === 429 || status >= 500;
 }
 
 /** Whether GitHub asks `login` for a review of the pull request now. */

@@ -747,4 +747,58 @@ describe("review again after a change request", () => {
       await fixture.close();
     }
   });
+
+  it("keeps the question mark while removing the requester's review request closes the item, so the request that follows shows it", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const state = memoryState();
+    // A draft, so the removal leaves nobody asked: the limbo ask is only
+    // for a pull request that is ready.
+    const github: GitHubState = {
+      draft: true,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], state);
+      await webhook.handler(
+        reviewRequested(github, "requester", "2026-07-02T10:00:00Z"),
+      );
+      expect(calls).toHaveLength(1);
+
+      // Junior asks a question. The tool removes the request that GitHub
+      // already has, and that removal's sync closes the item.
+      await markGitHubReviewAsked(
+        state,
+        { number: 946, repositoryFullName: "getsentry/junior" },
+        {
+          at: "2026-07-02T11:00:00.000Z",
+          reason: "question",
+          reviewer: "requester",
+        },
+      );
+      github.requestedReviewers = [];
+      await webhook.handler(pullRequestAction("review_request_removed"));
+      expect(calls.at(-1)).toMatchObject({ kind: "close" });
+
+      // GitHub asks again, and the item says why.
+      github.requestedReviewers = ["requester"];
+      await webhook.handler(
+        reviewRequested(github, "requester", "2026-07-02T11:00:01Z"),
+      );
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: {
+          body: expect.stringMatching(/^A comment asks you a question\. /),
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });

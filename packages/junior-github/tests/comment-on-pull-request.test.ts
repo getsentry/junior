@@ -48,6 +48,8 @@ function toolContext(
     requester,
   // The logins that GitHub already asks for a review.
   requested: string[] = [],
+  // The statuses of the review requests, in order. Later ones get 201.
+  requestStatuses: number[] = [],
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
     if (
@@ -63,7 +65,9 @@ function toolContext(
       });
     }
     if (request.url.endsWith("/requested_reviewers")) {
-      return new Response(JSON.stringify({}), { status: 201 });
+      const status =
+        request.method === "POST" ? (requestStatuses.shift() ?? 201) : 200;
+      return new Response(JSON.stringify({}), { status });
     }
     return (
       response ??
@@ -251,6 +255,30 @@ describe("commentOnPullRequest", () => {
     await expect(
       fetch.mock.calls[2]?.[0]?.request.clone().json(),
     ).resolves.toEqual({ reviewers: ["Requester"] });
+  });
+
+  it("tries the request once more when it fails after the removal, so the requester stays asked", async () => {
+    await seedOpener(707);
+    const { fetch, tool } = toolContext(
+      undefined,
+      undefined,
+      async () => requester,
+      ["requester"],
+      [502],
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 707,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ requester_asked: true });
+    expect(reviewerCalls(fetch)).toEqual(["GET", "DELETE", "POST", "POST"]);
   });
 
   it.for([
