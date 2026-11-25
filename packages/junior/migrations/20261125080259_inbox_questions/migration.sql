@@ -57,16 +57,10 @@ END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_inbox_items_legacy_subject_question" BEFORE INSERT OR UPDATE ON "junior_inbox_items" FOR EACH ROW WHEN (NEW."subject_kind" = 'question' AND (NEW."title" IS NOT NULL OR NEW."body" IS NOT NULL OR NEW."request" IS NOT NULL OR NEW."answer" IS NOT NULL)) EXECUTE FUNCTION "junior_inbox_items_legacy_question"();--> statement-breakpoint
 -- A question belongs to its Conversation. A question item whose owner
--- Conversation is gone has no place for its question, so the migration
--- stops and changes nothing. Junior keeps every Conversation row, so no
--- such item is expected.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM "junior_inbox_items" WHERE "subject_kind" = 'question' AND NOT EXISTS (SELECT 1 FROM "junior_conversations" WHERE "junior_conversations"."conversation_id" = "junior_inbox_items"."owner_id")) THEN
-    RAISE EXCEPTION 'A question item in junior_inbox_items has no owner Conversation in junior_conversations, so it cannot get its question. Find these items with: SELECT id FROM junior_inbox_items WHERE subject_kind = ''question'' AND owner_id NOT IN (SELECT conversation_id FROM junior_conversations)';
-  END IF;
-END
-$$;--> statement-breakpoint
+-- Conversation is gone has no place for its question, and nobody can see
+-- it, so the migration deletes it. Its snoozes and other rows go with it.
+-- junior:bounded-backfill: it deletes only the question items whose owner Conversation row is gone, which Junior does not expect to find, once.
+DELETE FROM "junior_inbox_items" WHERE "subject_kind" = 'question' AND NOT EXISTS (SELECT 1 FROM "junior_conversations" WHERE "junior_conversations"."conversation_id" = "junior_inbox_items"."owner_id");--> statement-breakpoint
 -- junior:bounded-backfill: each question item moves its content to a new question once, through the trigger above, and the question takes the item's id. It reads only the question items, which are asks and notices for people, and writes each row once.
 UPDATE "junior_inbox_items" SET "subject_id" = "id" WHERE "subject_kind" = 'question';--> statement-breakpoint
 -- NOT VALID: the backfill left no question item with an answer of its

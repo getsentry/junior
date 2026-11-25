@@ -13,11 +13,12 @@ const migration = readMigrationFiles({
     ),
   ),
 );
-// The steps of the `inbox_questions` migration that check the owner
-// Conversations and move each question item's content to its question.
+// The steps of the `inbox_questions` migration that delete the question
+// items without an owner Conversation and move each other question item's
+// content to its question.
 const check =
   migration?.sql.findIndex((statement) =>
-    statement.includes("RAISE EXCEPTION"),
+    statement.includes('DELETE FROM "junior_inbox_items"'),
   ) ?? -1;
 const backfill =
   migration?.sql.findIndex((statement) =>
@@ -77,19 +78,12 @@ describe("inbox question migration", () => {
       await fixture.sql.execute(
         legacyQuestion("heads-up", "slack:C123:1.000001", { kind: "notice" }),
       );
-      // A question needs its Conversation, so a question item whose owner is
-      // gone stops the migration before it changes a row.
+      // A question needs its Conversation, so the migration deletes a
+      // question item whose owner is gone.
       await fixture.sql.execute(legacyQuestion("lost", "slack:CGONE:1.000001"));
       await fixture.sql.execute(
         `ALTER TABLE junior_inbox_items ENABLE TRIGGER junior_inbox_items_legacy_subject_question`,
       );
-      await expect(run()).rejects.toThrow(/has no owner Conversation/);
-      expect(
-        await fixture.sql.query(
-          `SELECT count(*)::int AS n FROM junior_questions`,
-        ),
-      ).toEqual([{ n: 0 }]);
-      await fixture.sql.execute(conversation("slack:CGONE:1.000001"));
 
       await run();
 
@@ -99,7 +93,7 @@ describe("inbox question migration", () => {
           `SELECT id, subject_id, title, body, request, answer FROM junior_inbox_items ORDER BY id`,
         ),
       ).toEqual(
-        ["heads-up", "lost", "rollout", "shipped"].map((id) => ({
+        ["heads-up", "rollout", "shipped"].map((id) => ({
           answer: null,
           body: null,
           id,
@@ -121,15 +115,6 @@ describe("inbox question migration", () => {
           request: null,
           title: "Roll out heads-up?",
           turn_id: "turn-heads-up",
-        },
-        {
-          answer: null,
-          body: "The canary is clean.",
-          conversation_id: "slack:CGONE:1.000001",
-          id: "lost",
-          request: MOVED_REQUEST,
-          title: "Roll out lost?",
-          turn_id: "turn-lost",
         },
         {
           answer: null,
