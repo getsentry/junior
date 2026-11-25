@@ -108,12 +108,13 @@ describe("Implicit Delegation", () => {
 
   // A Lead's `startConversation` makes a web root whose first message is the
   // brief, sent as the person, so this web message is that root's first
-  // Turn. A small budget keeps the build short: the case measures only
-  // whether the root hands its one work item to a child agent.
+  // Turn. The case measures only whether the root hands its one work item to
+  // a child agent, which it does in its first calls, so a budget of 3 keeps
+  // the build short.
   test("when a Conversation is asked for one long code change, do it here and do not hand it to a child agent", async ({
     agent,
   }) => {
-    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 3 } });
     const conversation = await run(
       webMessage(
         [
