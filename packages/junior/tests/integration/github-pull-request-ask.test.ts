@@ -495,7 +495,7 @@ describe("the ask of a Junior pull request", () => {
           pluginName: "github",
         },
       ]);
-      const github = { refuse: true, reviewers: ["pat"] };
+      const github = { approved: false, refuse: true, reviewers: ["pat"] };
       const removed: unknown[] = [];
       mswServer.use(
         http.get(API, () =>
@@ -544,7 +544,17 @@ describe("the ask of a Junior pull request", () => {
                     })),
                   },
                   reviews: {
-                    nodes: [],
+                    // Sam approves after Pat dismissed the review ask.
+                    nodes: github.approved
+                      ? [
+                          {
+                            author: { __typename: "User", login: "sam" },
+                            commit: { oid: "head-1" },
+                            state: "APPROVED",
+                            submittedAt: "2026-07-02T12:00:00Z",
+                          },
+                        ]
+                      : [],
                     pageInfo: { hasPreviousPage: false, startCursor: null },
                   },
                   state: "OPEN",
@@ -606,6 +616,28 @@ describe("the ask of a Junior pull request", () => {
       expect(removed).toEqual([{ reviewers: ["pat"] }]);
       // Pat was the only person on it, so the item closes.
       expect(await status()).toBe("dismissed");
+
+      // Pat dismissed only the review that GitHub asked of them. They still
+      // own the pull request, so the merge ask comes to them once it is
+      // approved, on a new item.
+      github.approved = true;
+      await sendGitHubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 1592, user: { login: BOT } },
+        review: { state: "approved", user: { login: "sam" } },
+      });
+      const inbox = await api.request(
+        "http://localhost/api/inbox-items?for=viewer",
+      );
+      const { items } = (await inbox.json()) as {
+        items: Array<{ id: string; subject: { id: string } }>;
+      };
+      expect(items).toEqual([
+        expect.objectContaining({
+          subject: expect.objectContaining({ id: PULL_ID }),
+        }),
+      ]);
+      expect(items[0]!.id).not.toBe(review!.id);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
