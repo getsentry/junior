@@ -512,4 +512,44 @@ describe("searchConversations", () => {
       workingMatch,
     ]);
   });
+
+  it("lets plugin tools find a card saved without its subject by its link", async () => {
+    // A card from a pasted link can lack GitHub's id, so it has only its link.
+    const db = getDb();
+    const url = "https://github.com/getsentry/junior/pull/691";
+    const subject = { id: "2900691", kind: "pull_request" };
+    const record = async (channelId: string) => {
+      const conversationId = `slack:${channelId}:1700000000.100000`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId },
+        nowMs: Date.now(),
+        source: "slack",
+        title: `Work in ${channelId}`,
+        visibility: "public",
+      });
+      return conversationId;
+    };
+    const requester = await record("CREQUEST");
+    const linked = await record("CLINKED");
+    await createPluginAnnotations({
+      conversationId: linked,
+      db,
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      key: "getsentry/junior#691",
+      label: url,
+      objectType: "code_change",
+      title: "Add events",
+      url,
+    });
+
+    const conversations = createPluginConversations(requester, "github");
+
+    await expect(
+      conversations.search({ subject, url: url.toUpperCase() }),
+    ).resolves.toEqual([expect.objectContaining({ conversationId: linked })]);
+    await expect(conversations.search({ subject })).resolves.toEqual([]);
+  });
 });
