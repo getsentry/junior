@@ -188,7 +188,6 @@
   "packages/junior/src/chat/tool-support/zod-tool.ts": 6,
   "packages/junior/src/chat/tools/operator-sql.ts": 1,
   "packages/junior/src/chat/tools/read-conversation-event.ts": 1,
-  "packages/junior/src/chat/tools/watch-events.ts": 1,
   "packages/junior/src/chat/tools/web/search.ts": 2,
   "packages/junior/src/chat/workspaces/tool-support.ts": 2,
   "packages/junior/src/chat/workspaces/tools/update.ts": 1,

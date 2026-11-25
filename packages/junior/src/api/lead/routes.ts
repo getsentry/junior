@@ -6,7 +6,7 @@ import { leadSchema } from "../schema/lead";
 import { requireViewer } from "../viewer";
 import { getSqlExecutor } from "../../chat/db";
 import { getLeadConversation } from "../../chat/lead/conversation";
-import { CONVERSATION_RESOURCE_TYPE } from "../../chat/conversations/watch-events";
+import { isAgentResourceType } from "../../chat/conversations/watch-events";
 import { CORE_EVENT_NAMESPACE } from "../../chat/events/catalog";
 import { listWatches } from "../../chat/events/store";
 
@@ -29,7 +29,7 @@ export function createLeadRoutes(): Hono<JuniorApiEnv> {
           .filter(
             (watch) =>
               watch.namespace === CORE_EVENT_NAMESPACE &&
-              watch.resourceType === CONVERSATION_RESOURCE_TYPE,
+              isAgentResourceType(watch.resourceType),
           )
           .map((watch) => watch.identifier),
       ),

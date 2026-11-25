@@ -26,6 +26,8 @@ export interface EndedTurn {
   /** Seq of the Turn's terminal event. */
   terminalSeq: number;
   turnId: string;
+  /** The answer that the worker that ended the Turn saw, when it has one. */
+  answerText?: string | undefined;
 }
 
 async function readTurnEvents(
@@ -88,19 +90,32 @@ export async function readTurnUpdate(
 ): Promise<AgentUpdate | undefined> {
   switch (turn.outcome) {
     case "success":
-      return { status: "completed", text: await readReplyText(events, turn) };
+      return { status: "done", text: await readReplyText(events, turn) };
     case "no_reply":
-      return { status: "completed", text: await readAnswerText(events, turn) };
+      return {
+        status: "done",
+        text: turn.answerText ?? (await readAnswerText(events, turn)),
+      };
     case "blocked":
-      return { status: "blocked", text: await readAnswerText(events, turn) };
+      return {
+        status: "blocked",
+        text: turn.answerText ?? (await readAnswerText(events, turn)),
+      };
     case "cancelled":
       return undefined;
   }
 }
 
-/** Return the agent update of a failed Turn. Raw error text is not stored. */
+/**
+ * Return the agent update of a failed Turn. Raw error text is not stored, so
+ * only the worker that saw the failure has `failureText`.
+ */
 export function failedTurnUpdate(
   failureCode: ConversationTurnFailureCode,
+  failureText?: string,
 ): AgentUpdate {
-  return { status: "failed", text: `The Turn failed: ${failureCode}.` };
+  return {
+    status: "failed",
+    text: failureText?.trim() || `The Turn failed: ${failureCode}.`,
+  };
 }

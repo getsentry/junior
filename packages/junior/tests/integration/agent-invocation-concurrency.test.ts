@@ -192,8 +192,8 @@ describe("child agent identity and concurrency", () => {
       ]);
       // Each child's result reached the parent.
       await expect(mailboxTexts(parentConversationId)).resolves.toEqual([
-        expect.stringMatching(/status="completed"[\s\S]*first unnamed task/),
-        expect.stringMatching(/status="completed"[\s\S]*second unnamed task/),
+        expect.stringMatching(/status="done"[\s\S]*first unnamed task/),
+        expect.stringMatching(/status="done"[\s\S]*second unnamed task/),
       ]);
     } finally {
       await harness.close();
@@ -369,7 +369,7 @@ describe("child agent identity and concurrency", () => {
       expect(results).toEqual(
         expect.arrayContaining([
           expect.stringMatching(
-            /status="completed"[\s\S]*successful sibling result/,
+            /status="done"[\s\S]*successful sibling result/,
           ),
           expect.stringMatching(/status="failed"[\s\S]*sibling failed/),
         ]),

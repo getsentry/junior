@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -103,7 +103,7 @@ describe("nested child agents", () => {
         )?.messages ?? [];
       expect(parentMessages).toHaveLength(1);
       expect(parentMessages[0]!.input.text).toMatch(
-        /^<agent-result [^>]*status="completed"/,
+        /^<agent-result [^>]*status="done"/,
       );
       expect(parentMessages[0]!.input.text).toContain("Final answer: 42.");
     } finally {
@@ -119,9 +119,9 @@ describe("nested child agents", () => {
       parentConversationId: string,
       text: string,
     ) =>
-      await enqueueChildResultToParent({
+      await enqueueStarterUpdate({
         actor,
-        result: { kind: "completed", text },
+        update: { status: "done", text },
         messageKey: text,
         queue: harness.queue,
         sender: { childConversationId: sender, parentConversationId },
@@ -164,7 +164,7 @@ describe("nested child agents", () => {
       await finishTask(harness, done);
       await sendReply(done, slackParentConversationId, "Final answer.");
       expect(await lastText(slackParentConversationId)).toMatch(
-        /^<agent-result [^>]*status="completed"/,
+        /^<agent-result [^>]*status="done"/,
       );
     } finally {
       await harness.close();
@@ -195,7 +195,7 @@ describe("nested child agents", () => {
       await endWith(helper, { noReply: { note: "Helper found nothing." } });
       await expect(texts(child)).resolves.toEqual([
         expect.stringMatching(
-          /^<agent-result [^>]*status="completed">\n[\s\S]*\nHelper found nothing\.\n/,
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nHelper found nothing\.\n/,
         ),
       ]);
 
@@ -207,7 +207,7 @@ describe("nested child agents", () => {
           /^<agent-message [^>]*>\n[\s\S]*\nPartial findings\.\n/,
         ),
         expect.stringMatching(
-          /^<agent-result [^>]*status="completed">\n[\s\S]*\nThe findings stand\.\n/,
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nThe findings stand\.\n/,
         ),
       ]);
     } finally {
