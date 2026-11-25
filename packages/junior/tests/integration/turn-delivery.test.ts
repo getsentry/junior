@@ -178,6 +178,20 @@ describe("Turn delivery", () => {
     expect(harness.sends()).toHaveLength(2);
   });
 
+  it("waits at most a minute for a long Retry-After, so the sweep never takes a waiting reply", async () => {
+    const { queue } = harness;
+    harness.failNextSend(
+      new DeliveryRetryableError("Rate limited", { retryAfterMs: 600_000 }),
+    );
+
+    await sendForReply("Three.");
+    await harness.runUntilIdle();
+
+    expect(queue.pending(DELIVERY_TOPIC)).toEqual([
+      expect.objectContaining({ delaySeconds: 60, due: false }),
+    ]);
+  });
+
   it("records nothing for an input whose answer is only the history", async () => {
     const { engineCtx, conversationId, queue } = harness;
     await setModelReplies([reply("Three.")]);

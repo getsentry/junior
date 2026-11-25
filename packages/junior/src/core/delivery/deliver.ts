@@ -188,10 +188,13 @@ async function sendNextRow(
   }
 }
 
-/** The wait before the next try of a retryable send. */
+/**
+ * The wait before the next try of a retryable send. The cap keeps a row that
+ * waits for its retry well inside the sweep's stale window.
+ */
 function retryDelayMs(error: DeliveryRetryableError, attempts: number): number {
-  return (
-    error.retryAfterMs ??
-    Math.min(RETRY_BASE_DELAY_MS * 2 ** (attempts - 1), RETRY_MAX_DELAY_MS)
+  return Math.min(
+    error.retryAfterMs ?? RETRY_BASE_DELAY_MS * 2 ** (attempts - 1),
+    RETRY_MAX_DELAY_MS,
   );
 }
