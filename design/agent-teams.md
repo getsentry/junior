@@ -89,16 +89,23 @@ child agents add to this is in `./child-agents.md`.
 - A Turn that ends with `noReply` while the agent has a Watch sends no
   update, also after the Watch ends. This breaks "a quiet end still reaches
   the receiver".
-- The ungated path counts cut-off final text as a finished reply. This
-  breaks "final text that was cut off is a failure".
+- When a root, a Lead, or a person's Turn in a Thread ends with final text
+  that was cut off, Junior counts it as a reply. This breaks "final text
+  that was cut off is a failure".
 - A Lead asks people in its reply, not with an Inbox item. This breaks
   "one contract" and `./inbox.md`.
 - A root that a Lead starts stores no link to the Lead, and the Lead's task
-  counts as a person's message. So the Lead cannot stop or archive it, and
-  the archive guard would refuse it. This breaks "an agent manages only its
-  team".
+  counts as a person's message. So the Lead cannot stop or archive it. This
+  breaks "an agent manages only its team".
 - Few agent tool results say the next step for a working agent, so agents
   can poll. This breaks "push, not poll".
+- A parent cannot make the updates of its child agents quiet. This breaks
+  "a watch is the same as a start".
+- A Turn that only Watch Events started sends its watchers no update, also
+  when it replies. This breaks "one update".
+- When a person's Turn in a Thread adds an Inbox item, the parent gets no
+  `waiting` update. Only a watcher gets it. This breaks "the agent that
+  started it gets a `waiting` update".
 - Archiving does not stop work. `archiveAgent` refuses a working Thread,
   and the dashboard archives a working Conversation and leaves it running.
   This breaks "archiving a Conversation stops it and its child agents".
