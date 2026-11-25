@@ -2,6 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { githubObjectCacheKey } from "../src/object-cache";
 import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
@@ -202,7 +203,30 @@ describe("daily reconcile of open pull requests", () => {
       title: "Review requested · #949",
       waitsOnAssignees: true,
     });
+    // A card read cached 949 while it was open.
+    const cached949 = githubObjectCacheKey("pulls", "getsentry/junior", 949);
+    await h.cache.update(cached949, () => ({
+      value: {
+        html_url: "https://github.com/getsentry/junior/pull/949",
+        id: 9490,
+        number: 949,
+        state: "open",
+        title: "Pull request 949",
+      },
+    }));
     await h.heartbeat(now);
+    // No webhook refreshed the cached card either, so the close does, and
+    // open pages read both cards again.
+    expect(await h.cache.get(cached949)).toMatchObject({
+      merged: false,
+      state: "closed",
+    });
+    expect(h.changedObjects).toEqual(
+      expect.arrayContaining([
+        { id: "9460", kind: "pull_request" },
+        { id: "9490", kind: "pull_request" },
+      ]),
+    );
     // No webhook closes the ask after a missed close, so the close does.
     expect(h.closedNotices).toEqual([
       "merge_conflict:9490",

@@ -24,31 +24,64 @@ const pathPatternSchema = pathSchema.regex(
   "Use `/` segments. A `*` segment matches one segment.",
 );
 
+const urlFilterFields = {
+  /** Defaults to `https`. */
+  scheme: z.enum(["https", "http", "mailto"]).optional(),
+  /** An exact host, or `*.example.com` for its subdomains. */
+  host: hostSchema.optional(),
+  path: pathSchema.optional(),
+  pathPattern: pathPatternSchema.optional(),
+  pathPrefix: pathSchema.optional(),
+};
+
+type FilterFields = {
+  host?: string | undefined;
+  path?: string | undefined;
+  pathPattern?: string | undefined;
+  pathPrefix?: string | undefined;
+  scheme?: "https" | "http" | "mailto" | undefined;
+};
+
+function oneOrNoPath(filter: FilterFields): boolean {
+  return (
+    [filter.path, filter.pathPattern, filter.pathPrefix].filter(
+      (value) => value !== undefined,
+    ).length <= 1
+  );
+}
+
+function hostForScheme(filter: FilterFields): boolean {
+  return filter.scheme === "mailto"
+    ? filter.host === undefined && !hasPathFilter(filter)
+    : filter.host !== undefined;
+}
+
+const ONE_PATH = "Give at most one of path, pathPattern, and pathPrefix.";
+const HOST_FOR_SCHEME =
+  "An http or https filter needs a host. A mailto filter has no host or path.";
+
+const targetFilterSchema = z
+  .strictObject(urlFilterFields)
+  .refine(oneOrNoPath, ONE_PATH)
+  .refine(hostForScheme, HOST_FOR_SCHEME);
+
 /** Which URLs a link type claims. Give at most one path field. */
 export const objectLinkFilterSchema = z
   .strictObject({
-    /** Defaults to `https`. */
-    scheme: z.enum(["https", "http", "mailto"]).optional(),
-    /** An exact host, or `*.example.com` for its subdomains. */
-    host: hostSchema.optional(),
-    path: pathSchema.optional(),
-    pathPattern: pathPatternSchema.optional(),
-    pathPrefix: pathSchema.optional(),
+    ...urlFilterFields,
+    /**
+     * Claim the URL only when this query parameter holds a URL that one of
+     * these filters claims, such as a sign-in page's `continue` link.
+     */
+    target: z
+      .strictObject({
+        param: z.string().min(1).max(100),
+        filters: z.array(targetFilterSchema).min(1).max(20),
+      })
+      .optional(),
   })
-  .refine(
-    (filter) =>
-      [filter.path, filter.pathPattern, filter.pathPrefix].filter(
-        (value) => value !== undefined,
-      ).length <= 1,
-    "Give at most one of path, pathPattern, and pathPrefix.",
-  )
-  .refine(
-    (filter) =>
-      filter.scheme === "mailto"
-        ? filter.host === undefined && !hasPathFilter(filter)
-        : filter.host !== undefined,
-    "An http or https filter needs a host. A mailto filter has no host or path.",
-  );
+  .refine(oneOrNoPath, ONE_PATH)
+  .refine(hostForScheme, HOST_FOR_SCHEME);
 export type ObjectLinkFilter = z.output<typeof objectLinkFilterSchema>;
 
 function hasPathFilter(filter: {
@@ -81,7 +114,18 @@ export function objectLinkFilterMatches(
       : host === filter.host;
     if (!matches) return false;
   }
-  const path = normalizedPath(url);
+  if (!pathMatches(filter, normalizedPath(url))) return false;
+  if (filter.target === undefined) return true;
+  const target = URL.parse(url.searchParams.get(filter.target.param) ?? "");
+  return (
+    target !== null &&
+    filter.target.filters.some((inner) =>
+      objectLinkFilterMatches(inner, target),
+    )
+  );
+}
+
+function pathMatches(filter: FilterFields, path: string): boolean {
   if (filter.path !== undefined) return path === filter.path;
   if (filter.pathPrefix !== undefined) {
     return path.startsWith(filter.pathPrefix);
