@@ -400,7 +400,7 @@ test("creating a private Space shows its lock, and its last member cannot leave"
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
 });
 
-test("a member adds a person to a private Space by email", async ({
+test("a member adds people to a private Space with the people picker", async ({
   dashboard,
   page,
 }) => {
@@ -410,14 +410,42 @@ test("a member adds a person to a private Space by email", async ({
     .getByRole("complementary", { name: "Space details" })
     .getByRole("region", { name: "Members" });
   await members.getByRole("button", { name: "Add" }).click();
-  const email = members.getByRole("textbox", { name: "Email" });
-  await email.fill("nobody@example.com");
-  await members.getByRole("button", { name: "Add member" }).click();
-  await expect(members.getByText("No person has that email.")).toBeVisible();
-  await email.fill("casey@example.com");
-  await members.getByRole("button", { name: "Add member" }).click();
+  const search = members.getByRole("combobox", { name: "Add members" });
+  const settled = members.getByRole("listbox", { includeHidden: true });
+  await expect(search).toBeFocused();
+  // Part of an email finds a person.
+  await search.fill("casey@ex");
+  await expect(settled).toHaveAttribute("aria-busy", "false");
+  await expect(
+    members.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toHaveAttribute("aria-selected", "true");
+  await search.press("Enter");
+  await expect(
+    members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
+  ).toHaveText(["Casey Nguyen"]);
+  // A Member shows, but cannot be chosen.
+  await search.fill("avery");
+  await expect(settled).toHaveAttribute("aria-busy", "false");
+  const avery = members.getByRole("option", { name: /Avery Chen/ });
+  await expect(avery).toHaveAttribute("aria-disabled", "true");
+  await expect(avery).toContainText("Member");
+  await screenshot(page, "space-add-members", {
+    lightTheme: true,
+    target: members,
+    view: "desktop",
+  });
+  await search.press("Enter");
+  await search.press("Escape");
+  await expect(
+    members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
+  ).toHaveText(["Casey Nguyen"]);
+
+  await members.getByRole("button", { exact: true, name: "Add" }).click();
+  await expect(search).toHaveCount(0);
   await expect(members.getByText("Casey Nguyen")).toBeVisible();
-  await expect(email).toHaveCount(0);
+  await expect(
+    members.getByRole("heading", { level: 3, name: "Members 3" }),
+  ).toBeVisible();
 });
 
 test("leaving a private Space leaves the page, and a non-member cannot find it", async ({
@@ -441,4 +469,33 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
   await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   await expect(page.getByText("This Space is unavailable.")).toBeVisible();
+});
+
+test("leaving a private Space from the pane leaves a Conversation in it", async ({
+  dashboard,
+  page,
+}) => {
+  await viewAsParticipant(page);
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Move to Space").click();
+  const picker = page.getByRole("dialog", { name: "Move to Space" });
+  await picker.getByRole("combobox", { name: "Space" }).fill("pricing");
+  await expect(
+    picker.getByRole("option", { name: "Pricing launch" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("link", { name: "Space: Pricing launch" }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("list", { name: "Spaces" })
+    .getByRole("link", { name: "Pricing launch" })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Leave Space" }).click();
+  await expect(page).toHaveURL(/\/inbox$/);
 });

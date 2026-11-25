@@ -269,7 +269,7 @@
   "dashboard-spec-selector": {
     "packages/junior-dashboard/e2e/admin.spec.ts": 2,
     "packages/junior-dashboard/e2e/composer-references.spec.ts": 9,
-    "packages/junior-dashboard/e2e/composer-typeahead.spec.ts": 9,
+    "packages/junior-dashboard/e2e/composer-typeahead.spec.ts": 4,
     "packages/junior-dashboard/e2e/conversation-attachments.spec.ts": 2,
     "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts": 2,
     "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 18,
