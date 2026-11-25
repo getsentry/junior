@@ -333,6 +333,14 @@ export function canMoveToSpace(
 }
 
 /**
+ * Return whether a Conversation of this kind copies its root's visibility.
+ * A root takes the visibility of its Destination or Space.
+ */
+export function copiesRootVisibility(kind: ConversationKind): boolean {
+  return !isTopLevelKind(kind);
+}
+
+/**
  * Return whether only members of the Conversation's Space can send it a
  * Message. A Space's Lead talks only to its members.
  */

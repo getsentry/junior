@@ -280,7 +280,6 @@ test.describe("new UI", () => {
       async () => {
         await page.goto(
           `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
-          { waitUntil: "networkidle" },
         );
         await expect(
           page.getByRole("heading", {
