@@ -849,6 +849,10 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
+    /** The viewer can Invite a person to this conversation. */
+    canInvite: z.literal(true).optional(),
+    /** The viewer can leave this private conversation and lose access. */
+    canLeave: z.literal(true).optional(),
     /**
      * Event Turn replies stay out of the Location. Set only for a root with
      * a Location, when the viewer is a participant, who can change it.

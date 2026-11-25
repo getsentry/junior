@@ -9,6 +9,7 @@ import {
   Bell,
   BellOff,
   FolderInput,
+  LogOut,
   MessageSquareShare,
   MessagesSquare,
   Pencil,
@@ -49,6 +50,8 @@ export type ConversationMenu = {
     continueInSlack(): void;
     delivery(paused: boolean): void;
     eventLog(): void;
+    /** Set where the menu can leave a private Conversation. */
+    leave?: (() => void) | undefined;
     /** Set where the menu can move the Conversation to a Space. */
     moveToSpace?: (() => void) | undefined;
     pin(pinned: boolean): void;
@@ -63,6 +66,7 @@ export type ConversationMenu = {
     | Pick<
         ConversationDetailReport,
         | "canContinueInSlack"
+        | "canLeave"
         | "deliveryPaused"
         | "isParticipant"
         | "sentryConversationUrl"
@@ -254,7 +258,18 @@ export function useConversationMenuItems(
         : "Archive",
     onClick: actions.archive,
   };
-  return [actItems, notifyItems, viewItems, [archiveItem]];
+  const lastItems = [archiveItem];
+  // Only a Participant of a private Conversation with its own member list
+  // gets `canLeave`.
+  if (actions.leave && detail?.canLeave) {
+    lastItems.push({
+      icon: LogOut,
+      key: "leave",
+      label: "Leave",
+      onClick: actions.leave,
+    });
+  }
+  return [actItems, notifyItems, viewItems, lastItems];
 }
 
 function SlackIcon(props: { className?: string }) {

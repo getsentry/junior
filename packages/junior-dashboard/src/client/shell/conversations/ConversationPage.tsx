@@ -26,6 +26,8 @@ import {
 } from "../../conversations/conversationArchive";
 import { usePinConversation } from "../../conversations/usePinConversation";
 import { useConversationSubscription } from "../../conversations/useConversationSubscription";
+import { useLeaveConversation } from "../../conversations/useLeaveConversation";
+import { LeaveConversationDialog } from "../../conversations/LeaveConversationDialog";
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
 import {
@@ -302,6 +304,11 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  // Leaving removes access, so go back to the list once it is done.
+  const leave = useLeaveConversation(conversationId, {
+    onSuccess: () => void navigate(props.listPath ?? "/"),
+  });
   const delivery = useConversationDelivery(conversationId);
   const rename = useRenameConversation(conversationId);
   const [renaming, setRenaming] = useState(false);
@@ -707,6 +714,7 @@ export function ConversationPage(props: {
                 pin.error ? "Could not update pin." : "",
                 rename.error ? "Could not rename." : "",
                 subscription.error ? "Could not update subscription." : "",
+                leave.error ? "Could not leave." : "",
                 delivery.error ? "Could not change Slack updates." : "",
               ].filter(Boolean)}
               onDetailsClick={() => {
@@ -746,6 +754,7 @@ export function ConversationPage(props: {
                   continueInSlack: () => setContinueInSlackOpen(true),
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  leave: () => setConfirmLeave(true),
                   moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
@@ -926,6 +935,15 @@ export function ConversationPage(props: {
           onConfirm={() => {
             setConfirmChildArchive(false);
             setArchived(true);
+          }}
+        />
+      ) : null}
+      {confirmLeave ? (
+        <LeaveConversationDialog
+          onClose={() => setConfirmLeave(false)}
+          onConfirm={() => {
+            setConfirmLeave(false);
+            leave.mutate();
           }}
         />
       ) : null}

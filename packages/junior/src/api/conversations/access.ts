@@ -247,6 +247,44 @@ export function canAddConversationMessages(
 }
 
 /**
+ * Whether the viewer may add a person to a Conversation's Participants. In a
+ * public one, anyone who can post may Invite; it grants no access. In a
+ * private one, only a Participant may, and it shares the Conversation. A
+ * private Space owns its audience, and a Slack-backed private Conversation
+ * follows its Slack channel, so neither takes Invites.
+ */
+export function canInviteToConversation(
+  access: ConversationAccess | undefined,
+): boolean {
+  if (!access?.rootConversationId || access.privateSpaceId) return false;
+  if (access.visibility === "public") return true;
+  return access.isParticipant && !isSlackBacked(access);
+}
+
+/**
+ * Whether the viewer may leave a Conversation: remove their own Participant
+ * row and lose access. Only a private Conversation with an explicit
+ * Participant list has one to leave. A person leaves a public Conversation
+ * by unsubscribing, a private Space by leaving the Space, and a Slack-backed
+ * one by leaving the Slack channel.
+ */
+export function canLeaveConversation(
+  access: ConversationAccess | undefined,
+): boolean {
+  return Boolean(
+    access?.rootConversationId &&
+    access.visibility !== "public" &&
+    !access.privateSpaceId &&
+    access.isParticipant &&
+    !isSlackBacked(access),
+  );
+}
+
+function isSlackBacked(access: ConversationAccess): boolean {
+  return access.tenant?.provider === "slack";
+}
+
+/**
  * The Slack workspace of a Conversation that the viewer can read. A mention
  * in it must name a Slack user of that workspace.
  */
