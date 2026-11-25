@@ -2,8 +2,7 @@ import JuniorKit
 import SwiftUI
 
 /// One transcript message (`TranscriptMessageShell.tsx`): 24pt avatar column,
-/// name and time, and the Markdown body. The public API carries user and
-/// assistant messages only, not tool calls.
+/// name and time, and the Markdown body.
 struct MessageRow: View {
   @Environment(AppModel.self) private var app
   let message: MCPMessage

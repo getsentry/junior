@@ -1,0 +1,209 @@
+{
+  "events": [
+    {
+      "seq": 0,
+      "createdAt": "2026-08-07T11:54:00.000Z",
+      "data": {
+        "type": "message",
+        "messageId": "active-user",
+        "role": "user",
+        "text": "Find the slow checkout requests from the last deployment."
+      }
+    },
+    {
+      "seq": 1,
+      "createdAt": "2026-08-07T11:54:05.000Z",
+      "data": {
+        "type": "turn_lifecycle",
+        "turnId": "active-turn",
+        "state": "started"
+      }
+    },
+    {
+      "seq": 2,
+      "createdAt": "2026-08-07T11:54:08.000Z",
+      "data": {
+        "type": "turn_context",
+        "turnId": "active-turn",
+        "pluginName": "memory",
+        "kind": "recall",
+        "version": 1,
+        "content": {
+          "memories": [
+            {
+              "id": "memory-checkout-runbook",
+              "content": "Checkout latency investigations start with the deployment comparison dashboard.",
+              "observedAtMs": 1786017240000,
+              "scope": "conversation",
+              "kind": "procedure"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "createdAt": "2026-08-07T11:54:09.000Z",
+      "data": {
+        "type": "assistant_message",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "Compare the latest deploy with the previous baseline."
+          }
+        ]
+      },
+      "model": {
+        "modelId": "openai/gpt-5.6-sol"
+      },
+      "modelCall": {
+        "provider": "vercel-ai-gateway",
+        "api": "openai-responses",
+        "stopReason": "toolUse"
+      }
+    },
+    {
+      "seq": 4,
+      "createdAt": "2026-08-07T11:54:10.000Z",
+      "data": {
+        "type": "tool_calls",
+        "calls": [
+          {
+            "toolCallId": "active-search",
+            "name": "webSearch",
+            "status": "running"
+          }
+        ]
+      },
+      "model": {
+        "modelId": "openai/gpt-5.6-sol"
+      },
+      "modelCall": {
+        "provider": "vercel-ai-gateway",
+        "api": "openai-responses",
+        "stopReason": "toolUse",
+        "usage": {
+          "inputTokens": 12500,
+          "outputTokens": 800,
+          "cachedInputTokens": 32000,
+          "cacheCreationTokens": 2000,
+          "reasoningTokens": 600,
+          "totalTokens": 47300,
+          "cost": {
+            "input": 0.025,
+            "output": 0.008,
+            "cacheRead": 0.0064,
+            "cacheWrite": 0.005,
+            "total": 0.0444
+          }
+        }
+      }
+    },
+    {
+      "seq": 5,
+      "createdAt": "2026-08-07T11:54:14.000Z",
+      "data": {
+        "type": "tool_calls",
+        "calls": [
+          {
+            "toolCallId": "active-search",
+            "name": "webSearch",
+            "status": "completed",
+            "startedAt": "2026-08-07T11:54:10.000Z",
+            "startedSeq": 4,
+            "input": {
+              "query": "checkout latency last deployment"
+            },
+            "output": {
+              "results": [
+                {
+                  "title": "payments-v42 deploy notes",
+                  "url": "https://docs.sentry.io"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "model": {
+        "modelId": "openai/gpt-5.6-sol"
+      }
+    },
+    {
+      "seq": 6,
+      "createdAt": "2026-08-07T11:54:22.000Z",
+      "data": {
+        "type": "message",
+        "messageId": "active-assistant",
+        "role": "assistant",
+        "text": "Checkout p95 jumped after **payments-v42** landed.\n\nWhat I checked:\n- deploy marker `payments-v42` correlates with the spike\n- canary hosts show the same `checkout.latency` shape\n- error volume is flat, so this looks like slow path not hard fail\n\n| Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |\n| --- | --- | --- | ---: | ---: | ---: | ---: | --- |\n| pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |\n| post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |\n| canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |\n\nUseful query:\n```sql\nSELECT percentile(duration, 0.95) AS p95\nFROM transactions\nWHERE transaction = 'checkout.complete'\n  AND timestamp > now() - interval '2 hours'\nGROUP BY 1\nORDER BY p95 DESC;\n```\n\nNext step: compare the pre/post deploy spans, then decide whether to\nroll back or patch the slow serializer path."
+      }
+    },
+    {
+      "seq": 7,
+      "createdAt": "2026-08-07T11:54:40.000Z",
+      "data": {
+        "type": "message",
+        "messageId": "active-user-followup",
+        "role": "user",
+        "text": "> error volume is flat, so this looks like slow path not hard fail\n\nAgreed. Compare the pre/post deploy spans next:\n1. `checkout.complete` p95\n   - stable hosts\n   - canary hosts\n2. ~~error rate~~ serializer span time"
+      }
+    },
+    {
+      "seq": 8,
+      "createdAt": "2026-08-07T11:54:42.000Z",
+      "data": {
+        "type": "turn_lifecycle",
+        "turnId": "active-followup-turn",
+        "state": "started"
+      }
+    },
+    {
+      "seq": 9,
+      "createdAt": "2026-08-07T11:54:45.000Z",
+      "data": {
+        "type": "tool_calls",
+        "calls": [
+          {
+            "toolCallId": "active-span-compare",
+            "name": "executeTool",
+            "status": "running",
+            "input": {
+              "tool_name": "github_getPullRequest",
+              "arguments": {
+                "repo": "getsentry/payments",
+                "pull_request": 42
+              }
+            }
+          }
+        ],
+        "assistant": {
+          "parts": [
+            {
+              "type": "reasoning",
+              "text": "Read the payments-v42 pull request first, so the span comparison focuses on the serializer path it changed."
+            },
+            {
+              "type": "tool_call",
+              "toolCallId": "active-span-compare"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "seq": 10,
+      "createdAt": "2026-08-07T11:54:46.000Z",
+      "data": {
+        "type": "turn_context",
+        "turnId": "active-turn",
+        "pluginName": "junior",
+        "kind": "user_customization",
+        "version": 1,
+        "content": {
+          "text": "Keep replies short and simple.\nLead with the answer, then the evidence."
+        }
+      }
+    }
+  ]
+}

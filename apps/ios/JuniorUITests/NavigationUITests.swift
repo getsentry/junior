@@ -107,7 +107,17 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(row.waitForExistence(timeout: 10))
     row.tap()
     XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Junior is working…"].waitForExistence(timeout: 10))
+    // The running Turn counts its time from 11:54:45 to the fixed 12:00 and
+    // shows its latest reasoning.
+    XCTAssertTrue(app.buttons["Working for 5m 15s"].waitForExistence(timeout: 10))
+    let thinking = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Read the payments-v42'"))
+    XCTAssertTrue(thinking.firstMatch.exists)
+    // A finished Turn's activity opens to its reasoning.
+    let finished = app.buttons["2 events · 5.0s"]
+    XCTAssertTrue(finished.exists)
+    finished.tap()
+    let reasoning = app.buttons["Reasoning: Compare the latest deploy with the previous baseline."]
+    XCTAssertTrue(reasoning.waitForExistence(timeout: 5))
   }
 
   /// Open a Conversation and return its composer field, focused.

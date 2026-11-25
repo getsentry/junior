@@ -4,12 +4,19 @@ import SwiftUI
 
 /// One Conversation through the public API: `getConversation` for its state
 /// and a cursor to follow it, and `listConversationMessages` for history.
+/// The Turn activity between messages comes from the dashboard API.
 @MainActor
 @Observable
 final class ConversationModel {
   let conversationId: String
   var state: ConversationState?
   var messages: [MCPMessage] = []
+  private var activity: [ReportActivity] = []
+  /// Messages and the activity groups between them, oldest first.
+  private(set) var items: [TranscriptItem] = []
+  /// `appendCursor` and `previousCursor` of the activity read so far.
+  @ObservationIgnored private var newerActivity: String?
+  @ObservationIgnored private var olderActivity: String?
   /// `nextCursor` for older messages, when there are any.
   var olderCursor: String?
   var loadingEarlier = false
@@ -51,10 +58,11 @@ final class ConversationModel {
       let (state, newest) = try await (opened, page)
       self.state = state
       cursor = state.cursor
-      messages = mergeMessages(messages, newest.messages)
+      messages = mergeBySeq(messages, newest.messages)
       olderCursor = newest.nextCursor
       error = nil
       refreshFailed = false
+      await loadActivity(app, newer: false)
       rebuild()
       await markRead(app)
     } catch let error as JuniorAPIError {
@@ -73,7 +81,7 @@ final class ConversationModel {
       for _ in 0..<5 {
         let next = try await app.call(
           "getConversation", ["conversationId": id, "after": .string(after)], as: ConversationState.self)
-        messages = mergeMessages(messages, next.messages ?? [])
+        messages = mergeBySeq(messages, next.messages ?? [])
         // The conversation and its summary come with every read.
         state = next
         after = next.cursor
@@ -81,6 +89,7 @@ final class ConversationModel {
       }
       cursor = after
       refreshFailed = false
+      await loadActivity(app, newer: true)
       rebuild()
       await markRead(app)
     } catch JuniorAPIError.tool {
@@ -101,12 +110,43 @@ final class ConversationModel {
       let page = try await app.call(
         "listConversationMessages", ["conversationId": id, "before": .string(before), "limit": 30],
         as: MessagePage.self)
-      messages = mergeMessages(messages, page.messages)
+      messages = mergeBySeq(messages, page.messages)
       olderCursor = page.nextCursor
+      await loadEarlierActivity(app)
       rebuild()
     } catch {
       actionError = "Could not load earlier messages."
     }
+  }
+
+  /// The most report events that one activity read asks for.
+  private static let activityLimit = URLQueryItem(name: "limit", value: "200")
+
+  private var detailPath: String? {
+    "/api/conversations/\(conversationId)".addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+  }
+
+  /// Reasoning and tool calls from the dashboard detail: the newest events
+  /// on open, then only newer ones while `appendCursor` applies. A failed
+  /// read keeps what shows. The demo has no dashboard API, so it shows
+  /// messages only.
+  private func loadActivity(_ app: AppModel, newer: Bool) async {
+    guard !app.server.isDemo, let path = detailPath else { return }
+    var query = [Self.activityLimit]
+    if newer, let newerActivity { query.append(URLQueryItem(name: "after", value: newerActivity)) }
+    guard let page = try? await app.get(path, query: query, as: ReportActivityPage.self) else { return }
+    activity = mergeBySeq(activity, page.activity)
+    newerActivity = page.appendCursor
+    if !newer { olderActivity = page.previousCursor }
+  }
+
+  /// The activity before what shows, for "Show earlier messages".
+  private func loadEarlierActivity(_ app: AppModel) async {
+    guard !app.server.isDemo, let before = olderActivity, let path = detailPath else { return }
+    let query = [Self.activityLimit, URLQueryItem(name: "before", value: before)]
+    guard let page = try? await app.get(path + "/events", query: query, as: ReportActivityPage.self) else { return }
+    activity = mergeBySeq(activity, page.activity)
+    olderActivity = page.previousCursor
   }
 
   /// The page opens at the newest message, so reading it marks it read.
@@ -135,6 +175,14 @@ final class ConversationModel {
     }
     parsedByText = kept
     messageBlocks = blocks
+    items = transcriptItems(messages: messages, activity: activity)
+  }
+
+  /// The activity of the running Turn: the last group, when no message
+  /// follows it (`liveActivityIndex`).
+  var liveActivityId: Int? {
+    guard conversation?.turnActive == true, case .activity(let group) = items.last else { return nil }
+    return group.id
   }
 
   /// The draft's idempotency key. A retry after a timeout reuses it, so
