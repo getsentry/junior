@@ -9,9 +9,8 @@ import type { StaticToolName } from "@/chat/tool-support/registry";
  * when spawnAgent is available. `children_and_parent`: the same, but
  * messageAgent stays available to reach the parent when the Turn is too deep
  * to spawn. `lead`: only messageAgent, to other top-level agents.
- * `none`: neither.
  */
-export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
+export type AgentTools = "children" | "children_and_parent" | "lead";
 
 /**
  * What one Turn does that depends on the Conversation kind and on who opened
@@ -136,16 +135,16 @@ const ROOT_RUNTIME_TURN: TurnBehavior = {
   tools: { ...ROOT.tools, spaces: false },
 };
 
-// A person's Turn in a Thread runs like a Turn on a root, but it does not
-// start or message child agents: their results would report to the parent as
-// the wrong Actor.
+// A person's Turn in a Thread runs like a Turn on a root, and reports to the
+// parent like every Turn of a child. Its child agents run as the person, like
+// every child agent runs as the Actor of the Turn that started it.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
   relatedConversations: false,
-  tools: { ...ROOT.tools, agents: "none" },
+  tools: { ...ROOT.tools, agents: "children_and_parent" },
 };
 
 // A child agent's Turn comes from its parent, its child agents, or its
