@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { closeDb, getDb } from "@/chat/db";
 import { createSignInAuth } from "@/chat/sign-in/auth";
+import { createSignInSession } from "@/chat/sign-in/sessions";
 import { juniorIdentities } from "@/db/schema";
 import { mswServer } from "../msw/server";
 
@@ -201,14 +202,12 @@ describe("Google sign-in", () => {
       user: { email: "person@example.org", emailVerified: true },
     });
 
-    // The same token works as a bearer token, as the iOS app sends it.
+    // A web session works only as a cookie.
     const token = /__Host-junior_session=([^;]+)/.exec(cookie)?.[1] ?? "";
     const bearer = new Request(`${BASE_URL}/api/me`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(await auth.getSession(bearer)).toMatchObject({
-      credential: "bearer",
-    });
+    expect(await auth.getSession(bearer)).toBeNull();
 
     const signedOut = await auth.handler(
       new Request(`${BASE_URL}/api/auth/sign-out`, {
@@ -222,6 +221,37 @@ describe("Google sign-in", () => {
       expect.stringMatching(/^__Host-junior_session=;.*Secure/),
     );
     expect(await auth.getSession(session)).toBeNull();
-    expect(await auth.getSession(bearer)).toBeNull();
+  });
+
+  it("accepts an app session only as a bearer token", async () => {
+    const auth = createAuth(["example.org"]);
+    const app = await createSignInSession({
+      client: "ios",
+      email: "person@example.org",
+      lifetimeMs: 60 * 60 * 1000,
+    });
+    expect(
+      await auth.getSession(
+        new Request(`${BASE_URL}/api/me`, {
+          headers: { authorization: `Bearer ${app.token}` },
+        }),
+      ),
+    ).toMatchObject({
+      credential: "bearer",
+      user: { email: "person@example.org" },
+    });
+    // A stolen app token sent as the cookie must not pass as a browser
+    // session, which can manage personal tokens.
+    expect(
+      await auth.getSession(
+        new Request(`${BASE_URL}/api/personal-tokens`, {
+          method: "POST",
+          headers: {
+            cookie: `__Host-junior_session=${app.token}`,
+            origin: BASE_URL,
+          },
+        }),
+      ),
+    ).toBeNull();
   });
 });
