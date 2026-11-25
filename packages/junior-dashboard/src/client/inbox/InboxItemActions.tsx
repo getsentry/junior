@@ -229,6 +229,13 @@ export function InboxItemActions(props: {
         </div>
       ) : take || snooze || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
+          {/* Where tooltips are off (`TOOLTIP_MEDIA_QUERY`), such as on a
+              phone, Dismiss's note shows next to it. */}
+          {item.canAct && item.subject.dismissNote ? (
+            <p className="m-0 text-xs text-dashboard-text-muted [@media(min-width:48rem)_and_(hover:hover)_and_(pointer:fine)]:hidden">
+              {item.subject.dismissNote}
+            </p>
+          ) : null}
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}
