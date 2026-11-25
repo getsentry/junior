@@ -152,7 +152,8 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation and is its reply to
-// the parent.
+// the parent. It has no `noReply`: every Turn reports to the parent, and the
+// parent decides what to do with it.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
@@ -171,7 +172,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     spaces: false,
     reply: false,
     reportBlocked: "parent",
-    noReply: true,
+    noReply: false,
   },
 };
 
@@ -192,6 +193,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
   spaces: PERSON_IN_THREAD.tools.spaces,
+  noReply: PERSON_IN_THREAD.tools.noReply,
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must

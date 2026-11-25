@@ -449,10 +449,9 @@ describe("child agent task work", () => {
   });
 
   const blockedMissing = "Approval to open the PR. Ask the user.";
-  const quiet = {
-    type: "toolCall" as const,
-    name: "noReply",
-    arguments: { note: "Bot comment needs no change." },
+  const nothingChanged = {
+    type: "text" as const,
+    text: "Bot comment needs no change.",
   };
   const finalText = {
     type: "text" as const,
@@ -513,30 +512,18 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // A Task whose work ends reports to its parent. Its note is the result.
-      name: "quiet",
-      outputs: [quiet],
-      terminal: { outcome: "no_reply", type: "turn_completed" },
-      subagentOutcome: "success",
-      parentMessages: [
-        expect.stringMatching(
-          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
-        ),
-      ],
-    },
-    {
-      // A Task that waits on its own Timer still works. Its `noReply` end
-      // still reports, and the parent decides.
-      name: "quiet waiting",
+      // A Task that waits on its own Timer still works. Its final text still
+      // reports, and the parent decides.
+      name: "waiting",
       outputs: [
         {
           type: "toolCall" as const,
           name: "watchTimer",
           arguments: { after_ms: 60_000, intent: "Check the deploy again." },
         },
-        quiet,
+        nothingChanged,
       ],
-      terminal: { outcome: "no_reply", type: "turn_completed" },
+      terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(
@@ -547,26 +534,13 @@ describe("child agent task work", () => {
     {
       // A Turn that sent its reply before its worker was lost already
       // reported. Its retry sends no second result.
-      name: "quiet after a reply",
+      name: "retry after a reply",
       replied: true,
-      outputs: [quiet],
-      terminal: { outcome: "no_reply", type: "turn_completed" },
+      outputs: [nothingChanged],
+      terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [
         expect.stringMatching(/status="done">\n[\s\S]*\nLost reply\.\n/),
-      ],
-    },
-    {
-      // A Thread whose work ends reports like a Task.
-      name: "quiet thread",
-      kind: "thread" as const,
-      outputs: [quiet],
-      terminal: { outcome: "no_reply", type: "turn_completed" },
-      subagentOutcome: "success",
-      parentMessages: [
-        expect.stringMatching(
-          /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
-        ),
       ],
     },
     {

@@ -54,7 +54,8 @@ const agentInThreadTurn = {
     spaces: false,
     reply: false,
     reportBlocked: "parent",
-    noReply: true,
+    // An agent's Turn reports to its parent with its final text.
+    noReply: false,
   },
 };
 
@@ -129,6 +130,7 @@ describe("turnBehavior", () => {
       subscriptions: true,
       userCustomization: true,
       spaces: true,
+      noReply: true,
     });
   });
 

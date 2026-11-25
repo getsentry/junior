@@ -363,9 +363,9 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
-  // A Turn that only the Thread's own Watch Events started, and that ends
-  // with `noReply`, still sends its parent the update, and the parent
-  // decides what to do, whether or not a Watch is left. An Event that
+  // A Turn that only the Thread's own Watch Events started sends its parent
+  // its final text, and the parent decides what to do, whether or not a
+  // Watch is left. An Event that
   // arrives during the Turn runs next, and sends its own update. The Turn's
   // own input does not wait, even before the Turn acks it.
   it.each([
@@ -374,7 +374,7 @@ describe("child Turns on the Conversation loop", () => {
     { watchLeft: true, eventWaits: false, acked: true, updates: 1 },
     { watchLeft: false, eventWaits: true, acked: true, updates: 2 },
   ])(
-    "wakes the parent when a Thread's Watch Turn ends with noReply (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
+    "wakes the parent when a Thread's Watch Turn ends (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
     async ({ watchLeft, eventWaits, acked, updates }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
@@ -415,7 +415,7 @@ describe("child Turns on the Conversation loop", () => {
                     onInputCommitted: undefined,
                   },
                 },
-            { noReply: { note: "The deploy is green." } },
+            { finalText: "The deploy is green." },
           );
           if (eventWaits && harness.runs.length === runsBefore + 1) {
             await sendEvent("deploy-2");
@@ -454,51 +454,6 @@ describe("child Turns on the Conversation loop", () => {
       }
     },
   );
-
-  // Final text is news for the parent, so a Watch Turn that ends with it
-  // wakes the parent even though only the Thread's own Event started it.
-  it("wakes the parent when a Thread's Watch Turn ends with final text", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await startIdleChild(harness, "thread");
-      const before = await parentMessageTexts();
-      await appendAndEnqueueInboundMessage({
-        message: createEventInboundMessage({
-          event: {
-            eventKey: "deploy-1",
-            eventType: "deployment.failed",
-            identifier: "getsentry/junior",
-            namespace: "github",
-            occurredAtMs: Date.now(),
-            trustedSummary: "A deployment failed.",
-          },
-          subscription: { conversationId: childId, id: "watch-1" },
-          text: "Deploy failed.",
-        }),
-        queue: harness.queue,
-        state: harness.state,
-      });
-      vi.setSystemTime(Date.now() + 60_000);
-      harness.onRun((run) =>
-        finishRun(run, { finalText: "The deploy is green again." }),
-      );
-      await harness.drain(childId);
-
-      expect(
-        (await parentMessageTexts())
-          .slice(before.length)
-          .filter((text) => text.includes("The deploy is green again.")),
-      ).toEqual([expect.stringMatching(/status="done"/)]);
-      expect(
-        (await parentNoteTexts()).filter((text) =>
-          text.includes("The deploy is green again."),
-        ),
-      ).toEqual([]);
-    } finally {
-      await harness.close();
-    }
-  });
 
   // The parent already watches the child agents it starts, so watching one
   // returns that Watch and stores no second one. Each update reaches the

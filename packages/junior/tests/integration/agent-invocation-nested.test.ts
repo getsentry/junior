@@ -173,7 +173,7 @@ describe("nested child agents", () => {
     }
   });
 
-  it("reports a Task whose helper ended its work with noReply", async () => {
+  it("reports a Task after its helper ends its work", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     const endWith = async (
@@ -194,7 +194,7 @@ describe("nested child agents", () => {
       // The child replies while its helper works, so the parent reads a
       // message, not the child's result.
       await endWith(child, { finalText: "Partial findings." });
-      await endWith(helper, { noReply: { note: "Helper found nothing." } });
+      await endWith(helper, { finalText: "Helper found nothing." });
       await expect(texts(child)).resolves.toEqual([
         expect.stringMatching(
           /^<agent-result [^>]*status="done">\n[\s\S]*\nHelper found nothing\.\n/,
@@ -203,7 +203,7 @@ describe("nested child agents", () => {
 
       // The helper's result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      await endWith(child, { noReply: { note: "The findings stand." } });
+      await endWith(child, { finalText: "The findings stand." });
       await expect(texts(slackParentConversationId)).resolves.toEqual([
         expect.stringMatching(
           /^<agent-message [^>]*>\n[\s\S]*\nPartial findings\.\n/,
