@@ -50,6 +50,7 @@ describe("Linear MCP create annotations", () => {
             "https://linear.app/acme/issue/ENG-123/native-linear-issue";
           const issue = {
             id: "ENG-123",
+            uuid: "8a87ba83-4e33-4c81-8751-a885a554e2fd",
             title: input.title ?? "Linear MCP create issue",
             description: input.id ? null : input.description,
             status: input.state ?? "Todo",
@@ -162,6 +163,11 @@ describe("Linear MCP create annotations", () => {
             objectType: "task",
             key: "ENG-123",
             plugin: "linear",
+            // The saved card names the issue by Linear's uuid.
+            subject: {
+              id: "8a87ba83-4e33-4c81-8751-a885a554e2fd",
+              kind: "issue",
+            },
             title: "Linear MCP create issue",
             url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
           },

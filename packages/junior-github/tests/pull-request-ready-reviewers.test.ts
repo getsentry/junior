@@ -188,6 +188,7 @@ describe("review request when a draft is ready", () => {
       githubPlugin().hooks!.tools!()["createPullRequest"],
       {
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationId: CONVERSATION_ID,
         db: fixture.db(),
         destination: { platform: "local", conversationId: CONVERSATION_ID },

@@ -807,6 +807,7 @@ export function getPluginTools(
     const common = {
       ...basePluginContext(plugin),
       annotations,
+      codeChanges: createPluginCodeChanges(pluginName),
       resolveWorkOwner: async () =>
         await resolveWorkOwner({
           actor: context.actor,

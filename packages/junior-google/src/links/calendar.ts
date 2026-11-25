@@ -15,6 +15,7 @@ import * as z from "zod";
 import { readGoogleConfig } from "../config";
 import { googleApiError, googleApiRequest, isTimeZone } from "../google-api";
 import { formatInterval } from "../calendar/events";
+import { GOOGLE_SUBJECT_KINDS } from "../inbox-subjects";
 import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
@@ -40,6 +41,21 @@ const linkedEventSchema = z.object({
 });
 
 type LinkedEvent = z.infer<typeof linkedEventSchema>;
+
+const CALENDAR_HOSTS = new Set(["calendar.google.com", "www.google.com"]);
+
+/**
+ * Return the Calendar link itself, or the Calendar link that an
+ * AccountChooser link opens. Workspace event links use AccountChooser so
+ * that they open in the right account.
+ */
+function calendarLink(url: URL): URL | undefined {
+  if (url.hostname !== "accounts.google.com") return url;
+  const link = URL.parse(url.searchParams.get("continue") ?? "");
+  return link?.protocol === "https:" && CALENDAR_HOSTS.has(link.hostname)
+    ? link
+    : undefined;
+}
 
 /**
  * Return the event id when the link points to an event on the calendar of
@@ -105,14 +121,15 @@ const EVENT_READ_TTL_MS = 10_000;
 
 /**
  * Read the linked event from Junior's calendar. Nothing for an event on
- * another calendar, or a deleted or cancelled one.
+ * another calendar, or one that Google no longer returns.
  */
 async function readLinkedEvent(
   ctx: ObjectLinkContext,
   url: URL,
 ): Promise<LinkedEvent | null> {
   const config = readGoogleConfig();
-  const eventId = config && parseEventLink(url, config.accountEmail);
+  const link = calendarLink(url);
+  const eventId = config && link && parseEventLink(link, config.accountEmail);
   if (!eventId) return null;
   return await ctx.cache.getOrLoad(`calendar-event:${eventId}`, async () => ({
     value: await fetchLinkedEvent(ctx, eventId),
@@ -135,9 +152,7 @@ async function fetchLinkedEvent(
     throw googleApiError("google.calendar.event.get", response);
   }
   const parsed = linkedEventSchema.safeParse(response.body);
-  return parsed.success && parsed.data.status !== "cancelled"
-    ? parsed.data
-    : null;
+  return parsed.success ? parsed.data : null;
 }
 
 async function canViewGoogleCalendarLink(
@@ -159,10 +174,13 @@ async function resolveGoogleCalendarLink(
     kind: "object",
     objectType: "calendar_event",
     key: event.id,
+    subject: { id: event.id, kind: GOOGLE_SUBJECT_KINDS.calendarEvent },
     label: title.slice(0, 80),
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
+    // Google keeps a cancelled event, so its card shows the cancellation.
+    ...(event.status === "cancelled" ? { status: "cancelled" } : undefined),
     facts: {
       type: "calendar_event",
       summary: htmlSummary(event.description),
@@ -178,8 +196,10 @@ export const googleCalendarLinks: PluginObjectLinkDefinition = {
     { host: "www.google.com", path: "/calendar/event" },
     { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
     { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
+    { host: "accounts.google.com", path: "/AccountChooser" },
   ],
   canView: canViewGoogleCalendarLink,
+  label: (url) => (calendarLink(url) ? "Calendar event" : undefined),
   objectTypes: ["calendar_event"],
   resolve: resolveGoogleCalendarLink,
 };

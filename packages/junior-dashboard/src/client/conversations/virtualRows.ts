@@ -14,7 +14,7 @@ import {
   type RefObject,
 } from "react";
 
-import { scrollRootFor } from "./transcriptBottomPinning";
+import { scrollRootFor } from "./transcriptScrollRoot";
 
 /** Rows mounted beyond the viewport on each side. */
 const OVERSCAN_ROWS = 10;

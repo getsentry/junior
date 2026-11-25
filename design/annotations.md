@@ -28,7 +28,3 @@ on the Conversation row, as a Message card, and in search.
 - An Annotation never gives access to the object.
 - A card that Junior posted in Slack keeps the facts that it had then. Its
   details read the object live.
-
-## Gaps
-
-- A Linear Ticket has no live card.

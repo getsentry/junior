@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { History } from "lucide-react";
+import type { ShowTranscriptRow } from "./transcriptBottomPinning";
 import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
@@ -134,6 +135,11 @@ export const TranscriptAskRevealContext = createContext<
       showRow(row: Element): boolean;
     })
   | undefined
+>(undefined);
+
+/** The scroll owner that shows a row, such as a search match. */
+export const TranscriptShowRowContext = createContext<
+  ShowTranscriptRow | undefined
 >(undefined);
 
 function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
@@ -538,6 +544,7 @@ function TranscriptEntryList(
   // a reveal. Scroll only when the reader steps to another row. A new query
   // or a loaded page does not scroll: a scroll to the top match shows the
   // history sentinel, and each loaded page would then load the next one.
+  const showRow = use(TranscriptShowRowContext);
   const shownMatch = useRef<{
     firstKey?: string;
     matchKey?: string;
@@ -565,10 +572,10 @@ function TranscriptEntryList(
     ) {
       return;
     }
-    listRef.current
-      ?.querySelector(`[data-index="${current}"]`)
-      ?.scrollIntoView({ block: "center" });
-  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
+    const row = listRef.current?.querySelector(`[data-index="${current}"]`);
+    // A search moves the reader off the latest, like any jump.
+    if (row) showRow?.(row, { instant: true });
+  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery, showRow]);
   // The row of a shown question stays mounted, so it can scroll into view
   // and get its mark. A search can drop the row. Then nothing moves.
   const askReveal = use(TranscriptAskRevealContext);

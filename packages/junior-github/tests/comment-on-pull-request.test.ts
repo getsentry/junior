@@ -1,17 +1,58 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
-import { describe, expect, it, vi } from "vitest";
+import type { PluginWorkOwner } from "@sentry/junior-plugin-api";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
+import { createGitHubFixture, type GitHubFixture } from "./github-db";
+
+let dbFixture: GitHubFixture;
+
+beforeAll(async () => {
+  dbFixture = await createGitHubFixture();
+});
+
+afterAll(async () => {
+  await dbFixture.close();
+});
+
+// The person who asked Junior for the pull request, with a linked GitHub
+// account.
+const requester: PluginWorkOwner = {
+  kind: "person",
+  identity: {
+    id: "identity-requester",
+    provider: "slack",
+    providerSubjectId: "U123",
+  },
+  user: {
+    email: "requester@example.com",
+    id: "user-requester",
+    identities: [
+      {
+        handle: "Requester",
+        id: "identity-github",
+        provider: "github",
+        providerSubjectId: "1001",
+      },
+    ],
+  },
+};
 
 function toolContext(
   response?: Response,
   // GitHub sends `in_reply_to_id: null` on the first comment of a thread.
   replyTarget: { in_reply_to_id: number | null } = { in_reply_to_id: null },
+  resolveWorkOwner: () => Promise<PluginWorkOwner | undefined> = async () =>
+    requester,
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
     if (request.method === "GET") {
       return new Response(JSON.stringify({ id: 42, ...replyTarget }), {
         status: 200,
       });
+    }
+    if (request.url.endsWith("/requested_reviewers")) {
+      return new Response(JSON.stringify({}), { status: 201 });
     }
     return (
       response ??
@@ -27,8 +68,35 @@ function toolContext(
   });
   return {
     fetch,
-    tool: bindPluginTool(gitHubCommentOnPullRequestTool, { egress: { fetch } }),
+    tool: bindPluginTool(gitHubCommentOnPullRequestTool, {
+      db: dbFixture.db(),
+      egress: { fetch },
+      log: { error() {}, info() {}, warn() {} },
+      resolveWorkOwner,
+    }),
   };
+}
+
+/**
+ * Save the requester as the first person who asked Junior about `number`.
+ * Only a pull request that Junior opened has the requester's Conversation.
+ */
+async function seedOpener(
+  number: number,
+  { opened }: { opened: boolean } = { opened: true },
+): Promise<void> {
+  const at = new Date("2026-07-01T12:00:00.000Z");
+  await dbFixture
+    .db()
+    .insert(juniorGitHubPullRequestRequesters)
+    .values({
+      conversationId: opened ? "slack:C123:1712345.0001" : null,
+      createdAt: at,
+      identityId: "identity-requester",
+      number,
+      repositoryFullName: "getsentry/junior-comment-tests",
+      updatedAt: at,
+    });
 }
 
 describe("commentOnPullRequest", () => {
@@ -100,6 +168,84 @@ describe("commentOnPullRequest", () => {
     expect(fetch.mock.calls[0]?.[0]?.request.url).toBe(
       "https://api.github.com/repos/getsentry/junior/issues/691/comments",
     );
+  });
+
+  it("asks the requester for a review when the comment asks them", async () => {
+    await seedOpener(701);
+    const { fetch, tool } = toolContext();
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 701,
+          body: "Should the gate keep the flag, or should the workflow drop the push trigger?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ comment_id: 88, requester_asked: true });
+
+    const ask = fetch.mock.calls[1]?.[0];
+    expect(ask?.request.method).toBe("POST");
+    expect(ask?.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior-comment-tests/pulls/701/requested_reviewers",
+    );
+    await expect(ask?.request.clone().json()).resolves.toEqual({
+      reviewers: ["Requester"],
+    });
+  });
+
+  it.for([
+    { case: "Junior did not open the pull request", number: 702, seed: false },
+    {
+      case: "the requester only asked Junior to update it",
+      number: 705,
+      seed: "updated",
+    },
+    {
+      case: "the Turn works for someone else",
+      number: 703,
+      seed: true,
+      workOwner: { kind: "system", id: "automation-1", name: "automation" },
+    },
+  ] as const)("asks nobody when $case", async ({ number, seed, ...rest }) => {
+    if (seed) await seedOpener(number, { opened: seed !== "updated" });
+    const { fetch, tool } = toolContext(undefined, undefined, async () =>
+      "workOwner" in rest ? rest.workOwner : requester,
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: number,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ requester_asked: false });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the posted comment when the requester lookup fails", async () => {
+    const { tool } = toolContext(undefined, undefined, async () => {
+      throw new Error("identity store is down");
+    });
+
+    // The comment is already on GitHub, so a retry would post it twice.
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 704,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ comment_id: 88, requester_asked: false });
   });
 
   it("returns GitHub validation errors to the agent", async () => {

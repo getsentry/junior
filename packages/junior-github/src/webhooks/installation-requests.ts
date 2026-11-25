@@ -400,7 +400,10 @@ export async function requestPullRequestReviewers(
   );
 }
 
-/** Unassign people from one issue, with an issues write token. */
+/**
+ * Unassign people from one issue, with an issues write token. A gone issue
+ * has nobody left to unassign.
+ */
 export async function removeIssueAssignees(
   env: GitHubInstallationEnv,
   input: { assignees: string[]; number: number; repositoryFullName: string },
@@ -414,15 +417,20 @@ export async function removeIssueAssignees(
     permissions: { issues: "write" },
     repositories: [name],
   });
-  await githubRequest(
-    "https://api.github.com",
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
-    {
-      body: { assignees: input.assignees },
-      method: "DELETE",
-      token: token.token,
-    },
-  );
+  try {
+    await githubRequest(
+      "https://api.github.com",
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
+      {
+        body: { assignees: input.assignees },
+        method: "DELETE",
+        token: token.token,
+      },
+    );
+  } catch (error) {
+    if (error instanceof GitHubRequestError && error.status === 404) return;
+    throw error;
+  }
 }
 
 /**
@@ -659,11 +667,6 @@ export interface GitHubPullRequestMergeState {
    * returns the latest 100 comments and review requests.
    */
   activity: GitHubPullRequestActivity[];
-  /**
-   * At least one approval, and no reviewer still requests changes. Read
-   * only when GitHub says the pull request can merge cleanly.
-   */
-  approved: boolean;
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
   /**
@@ -681,11 +684,23 @@ export interface GitHubPullRequestMergeState {
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
   /**
+   * GitHub still requests a review from a person or a team. A team that
+   * the App cannot read has no login, so `requestedReviewers` misses it.
+   */
+  reviewPending: boolean;
+  /**
    * Logins of the people whose latest submitted review was not dismissed,
    * including a comment-only review. Read only when the pull request is open
    * and not a draft.
    */
   reviewedBy: string[];
+  /**
+   * `approved` with at least one approval and no reviewer who still
+   * requests changes. `changesRequested` while a reviewer still requests
+   * changes. Undefined with neither. Read only when GitHub says the pull
+   * request can merge cleanly and auto-merge is off.
+   */
+  reviewOutcome?: "approved" | "changesRequested";
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -785,7 +800,6 @@ export async function loadPullRequestMergeState(
     : pull.mergeStateStatus.toLowerCase();
   const state: GitHubPullRequestMergeState = {
     activity,
-    approved: false,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
     draft: pull.isDraft,
@@ -796,6 +810,7 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    reviewPending: pull.reviewRequests.nodes.length > 0,
     reviewedBy: [],
     state:
       pull.state === "MERGED"
@@ -832,9 +847,11 @@ export async function loadPullRequestMergeState(
   );
   const reviewStates = [...latest.values()].map((review) => review.state);
   if (!state.autoMerge && state.mergeableState === "clean") {
-    state.approved =
-      reviewStates.includes("APPROVED") &&
-      !reviewStates.includes("CHANGES_REQUESTED");
+    if (reviewStates.includes("CHANGES_REQUESTED")) {
+      state.reviewOutcome = "changesRequested";
+    } else if (reviewStates.includes("APPROVED")) {
+      state.reviewOutcome = "approved";
+    }
   }
   const login = requesterLogin?.toLowerCase();
   const requesterReview = login ? latest.get(login) : undefined;

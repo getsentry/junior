@@ -11,6 +11,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -30,6 +31,7 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
@@ -249,11 +251,18 @@ describe("the Inbox item of an issue that Junior created", () => {
       ]);
       const unassigned: unknown[] = [];
       const refuse = new Set<string>();
+      let gone = false;
       mswServer.use(
         http.delete(
           "https://api.github.com/repos/getsentry/junior/issues/4254/assignees",
           async ({ request }) => {
             const body = (await request.json()) as { assignees: string[] };
+            if (gone) {
+              return HttpResponse.json(
+                { message: "Not Found" },
+                { status: 404 },
+              );
+            }
             if (body.assignees.some((login) => refuse.has(login))) {
               return HttpResponse.json(
                 { message: "Must have admin rights" },
@@ -350,6 +359,33 @@ describe("the Inbox item of an issue that Junior created", () => {
         ]),
       ).toEqual([200, 200]);
       expect(await issueItem()).toMatchObject({ status: "dismissed" });
+
+      // Once the issue is gone from GitHub, nobody is left to unassign, so
+      // a dismiss still takes the person off the item.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
+      );
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat", "sam"], {
+          assignee: { login: "sam" },
+        }),
+      );
+      const gonePat = await issueItem();
+      expect(gonePat).toMatchObject({
+        assignees: ["pat@example.com", "sam@example.com"],
+        status: "open",
+      });
+      gone = true;
+      expect(await dismissAs("pat@example.com", gonePat!.id)).toBe(200);
+      expect(await issueItem()).toMatchObject({
+        assignees: ["sam@example.com"],
+        status: "open",
+      });
+      // Deleting the issue closes its item.
+      await sendGitHubWebhook("issues", issueEvent(body, "deleted", ["sam"]));
+      expect(await issueItem()).toMatchObject({ status: "done" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
@@ -394,7 +430,18 @@ describe("the Inbox item of an issue that Junior created", () => {
         http.delete(
           "https://api.github.com/repos/getsentry/junior/issues/4254/assignees",
           async ({ request }) => {
-            unassigned.push(await request.json());
+            const removed = (await request.json()) as { assignees: string[] };
+            unassigned.push(removed);
+            // GitHub sends `unassigned` before it answers Pat's removal,
+            // which leaves nobody with a linked account on the issue.
+            if (removed.assignees.includes("pat")) {
+              await sendGitHubWebhook(
+                "issues",
+                issueEvent(body, "unassigned", ["nolink"], {
+                  assignee: { login: "pat" },
+                }),
+              );
+            }
             return HttpResponse.json({ assignees: [] });
           },
         ),
@@ -451,6 +498,25 @@ describe("the Inbox item of an issue that Junior created", () => {
         assignees: ["pat@example.com"],
         status: "open",
       });
+
+      // Pat's dismiss from a Slack card is the last one. Its webhook closes
+      // the item while the dismiss waits on GitHub, and the item still
+      // closes as Pat's dismiss, as the first close.
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: {
+          queue: createConversationWorkQueueTestAdapter(),
+          show: async () => {},
+        },
+        firstCloseOnly: true,
+        id: item!.id,
+        user: await signedInViewer("pat@example.com"),
+      });
+      expect(unassigned).toEqual([
+        { assignees: ["out"] },
+        { assignees: ["pat"] },
+      ]);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

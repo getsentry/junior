@@ -16,17 +16,6 @@ export type AgentUpdateStatus =
   | "stopped"
   | "waiting";
 
-// The status of an ended Turn before `done`. Stored Messages and input
-// queued before the rename still have it.
-const LEGACY_DONE_STATUS = "completed";
-
-/** Read a stored update status, also one that an earlier release wrote. */
-export function readAgentUpdateStatus(
-  status: string | undefined,
-): string | undefined {
-  return status === LEGACY_DONE_STATUS ? "done" : status;
-}
-
 /**
  * One agent update. `text` is what the Conversation said: its reply, its
  * `noReply` note, what blocks it, or its question to a person. A `quiet`

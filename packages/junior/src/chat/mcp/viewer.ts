@@ -4,8 +4,8 @@
  * Only the viewer's own stored MCP login is used, never a service account
  * or another person's login. A read never asks the viewer to sign in and
  * never deletes their login: only the shared refresh lock saves the tokens
- * of a refresh. It calls only tools that the plugin allows and that the
- * provider marks read-only.
+ * of a refresh. It calls only tools that the plugin lists in `viewerTools`
+ * and that the provider marks read-only.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
@@ -105,8 +105,7 @@ export function createViewerMcp(
       if (!plugin?.manifest.mcp) {
         throw new Error(`Plugin "${provider}" does not support MCP`);
       }
-      const allowedTools = plugin.manifest.mcp.allowedTools;
-      if (!allowedTools?.includes(input.name)) {
+      if (!plugin.manifest.mcp.viewerTools?.includes(input.name)) {
         throw new Error(
           `Plugin ${provider} does not allow MCP tool ${input.name} for viewer reads`,
         );

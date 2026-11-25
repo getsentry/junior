@@ -569,16 +569,17 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(3 * DAY),
       id: "qa-merged-3037",
       kind: "notice",
-      plugin: "github",
-      status: "open",
-      subject: {
-        id: "https://github.com/getsentry/junior/pull/3037",
-        kind: "github:item",
-        objectType: "code_change",
-        resource: PULL_REQUEST_RESOURCE,
-        title: "Fix the stable list order",
-        url: "https://github.com/getsentry/junior/pull/3037",
+      // An agent's notice that cites the pull request, not a GitHub ask, so
+      // it stays out of the pull request views.
+      request: {
+        related: [
+          {
+            label: "Fix the stable list order",
+            url: "https://github.com/getsentry/junior/pull/3037",
+          },
+        ],
       },
+      status: "open",
       title: "Merged · #3037",
     },
     {

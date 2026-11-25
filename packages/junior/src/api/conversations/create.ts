@@ -120,13 +120,14 @@ export async function createConversationForViewer(
   body: CreateConversationBody,
   services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
-  if (body.spaceId) {
-    // Every Space is public, so its Conversations are public too.
-    if (body.visibility === "private") {
-      throwApiError(400, "A conversation in a Space is public.");
-    }
-    await requireSpaceForWork(viewer, body.spaceId);
+  // A Conversation in a Space has the Space's visibility.
+  const space = body.spaceId
+    ? await requireSpaceForWork(viewer, body.spaceId)
+    : undefined;
+  if (space && body.visibility && body.visibility !== space.visibility) {
+    throwApiError(400, `A conversation in this Space is ${space.visibility}.`);
   }
+  const visibility = space?.visibility ?? body.visibility;
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -149,8 +150,8 @@ export async function createConversationForViewer(
         message: body.message,
         uploads,
         ...(body.title ? { title: body.title } : undefined),
-        ...(body.visibility ? { visibility: body.visibility } : undefined),
-        ...(body.spaceId ? { spaceId: body.spaceId } : undefined),
+        ...(visibility ? { visibility } : undefined),
+        ...(space ? { spaceId: space.id } : undefined),
       },
       {
         conversationStore: getConversationStore(),
