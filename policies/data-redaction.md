@@ -2,8 +2,8 @@
 
 ## Intent
 
-Conversation privacy follows the visibility stored on the root
-Conversation (`./conversation-access.md`). Redaction
+Conversation privacy follows the visibility stored on each Conversation
+row (`./conversation-access.md`). Redaction
 protects raw payloads and telemetry. It does not change the product data a
 conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 

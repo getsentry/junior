@@ -1,3 +1,5 @@
+import { destinationVisibility } from "./destination-upsert";
+import { fillMissingTreeVisibility } from "./privacy";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { locationSchema, type Location } from "@/chat/conversations/location";
@@ -110,7 +112,7 @@ export function locationFromRow(
 /**
  * Give a root Conversation with no Location its first one, in the caller's
  * SQL scope. The Location row becomes the Conversation Destination, and a
- * root with no visibility yet takes its visibility. Returns false when the
+ * tree with no visibility yet takes its visibility. Returns false when the
  * Conversation already has a Location.
  */
 export async function setFirstConversationLocation(
@@ -123,18 +125,11 @@ export async function setFirstConversationLocation(
 ): Promise<boolean> {
   const location = locationSchema.parse(args.location);
   const db = executor.db();
-  const visibility = db
-    .select({
-      visibility: sql`case ${juniorDestinations.visibility} when 'public' then 'public' when 'unknown' then null else 'private' end`,
-    })
-    .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, location.id));
   const rows = await db
     .update(juniorConversations)
     .set({
       location,
       destinationId: location.id,
-      visibility: sql`coalesce(${juniorConversations.visibility}, (${visibility}))`,
       ...(args.channelName ? { channelName: args.channelName } : undefined),
       detailVersion: nextDetailVersion,
     })
@@ -146,7 +141,16 @@ export async function setFirstConversationLocation(
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  const [destination] = await db
+    .select({ visibility: juniorDestinations.visibility })
+    .from(juniorDestinations)
+    .where(eq(juniorDestinations.id, location.id));
+  const visibility = destinationVisibility(destination?.visibility);
+  if (visibility) {
+    await fillMissingTreeVisibility(executor, args.conversationId, visibility);
+  }
+  return true;
 }
 
 /** Store a channel-level Location's first bound post as its thread. */

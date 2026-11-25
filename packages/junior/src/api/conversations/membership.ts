@@ -19,6 +19,7 @@ import {
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 /** A person by User id, or by primary email when no User is known. */
 export type ConversationMember = { userId: string } | { email: string };
@@ -113,7 +114,7 @@ export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
         notInArray(juniorConversations.spaceId, privateSpaceIds()),
       ),
       or(
-        eq(juniorConversations.visibility, "public"),
+        isPublicConversation(juniorConversations),
         viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
       ),
     ),

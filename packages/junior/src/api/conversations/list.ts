@@ -100,6 +100,7 @@ import {
   encodeConversationFeedCursor,
   type ConversationFeedCursor,
 } from "./feed-cursor";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -277,7 +278,7 @@ async function conversationRows(
               and(
                 includePrivateMatches
                   ? undefined
-                  : eq(juniorConversations.visibility, "public"),
+                  : isPublicConversation(juniorConversations),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
               annotationMatch(db, query, includePrivateMatches),
@@ -326,7 +327,7 @@ function annotationMatch(
           ),
           includePrivate
             ? undefined
-            : eq(juniorConversations.visibility, "public"),
+            : isPublicConversation(juniorConversations),
           sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
         ),
       ),

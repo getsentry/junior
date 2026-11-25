@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "3261995c-3444-47ed-9668-db40db006ff6",
+  "id": "7bbde9ec-c4d7-4543-9c2d-fe4a569cff2a",
   "prevIds": ["453e2def-765a-4fb8-8b61-982131badb8b"],
   "footprints": [
     {
@@ -32,8 +32,7 @@
       "reads": [
         "n|tbl|public.junior_conversations",
         "n|sch|public",
-        "n|col|public.junior_conversations.visibility",
-        "n|col|public.junior_conversations.parent_conversation_id"
+        "n|col|public.junior_conversations.visibility"
       ]
     }
   ],
@@ -60,7 +59,7 @@
         "schema": "public",
         "table": "junior_conversations",
         "name": "junior_conversations_visibility_check",
-        "value": "\"visibility\" is null or (\"visibility\" in ('public', 'private') and \"parent_conversation_id\" is null)",
+        "value": "\"visibility\" is null or \"visibility\" in ('public', 'private')",
         "entityType": "checks"
       }
     }

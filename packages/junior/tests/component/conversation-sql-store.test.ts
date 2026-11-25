@@ -31,6 +31,7 @@ import {
   createConfiguredJuniorSqlFixture,
   createJuniorSqlFixture,
 } from "../fixtures/sql";
+import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
@@ -956,6 +957,24 @@ describe("conversation SQL store", () => {
       await expect(
         store.get({ conversationId: otherThreadId }),
       ).resolves.toMatchObject({ visibility: "public" });
+
+      // A child copies its root's visibility, and an explicit change moves
+      // the whole tree.
+      await store.createChild({
+        childConversationId: "agent:visibility-task",
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+        nowMs: 6_000,
+      });
+      await expect(
+        store.get({ conversationId: "agent:visibility-task" }),
+      ).resolves.toMatchObject({ visibility: "private" });
+      await setConversationVisibility(fixture.sql, CONVERSATION_ID, "public");
+      for (const conversationId of [CONVERSATION_ID, "agent:visibility-task"]) {
+        await expect(store.get({ conversationId })).resolves.toMatchObject({
+          visibility: "public",
+        });
+      }
     } finally {
       await fixture.close();
     }
@@ -986,6 +1005,29 @@ describe("conversation SQL store", () => {
           providerDestinationId: "C123",
         }),
       ).resolves.toBeUndefined();
+
+      // A child of a root with no visibility has none either. The first
+      // live signal fills both.
+      await store.createChild({
+        childConversationId: "agent:unsigned-task",
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      });
+      await expect(
+        store.get({ conversationId: "agent:unsigned-task" }),
+      ).resolves.not.toHaveProperty("visibility");
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("signed").destination,
+        visibility: "public",
+        nowMs: 3_000,
+      });
+      for (const conversationId of [CONVERSATION_ID, "agent:unsigned-task"]) {
+        await expect(store.get({ conversationId })).resolves.toMatchObject({
+          visibility: "public",
+        });
+      }
     } finally {
       await fixture.close();
     }

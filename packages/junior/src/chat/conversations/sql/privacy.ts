@@ -1,5 +1,5 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, eq, isNull, type SQL } from "drizzle-orm";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
@@ -94,10 +94,19 @@ export async function resolveRootVisibility(
 }
 
 /**
+ * True when the Conversation row of `table` is public. Every row of a tree
+ * stores its root's visibility, so a query checks the row it reads. Missing
+ * visibility is private. Use this instead of comparing the column.
+ */
+export function isPublicConversation(table: { visibility: AnyPgColumn }): SQL {
+  return eq(table.visibility, "public");
+}
+
+/**
  * Make a root Conversation and its whole tree public or private
- * (`policies/conversation-access.md`). Only the root stores visibility, and
- * its children read it, so one write moves the tree. A Slack channel that
- * changes does not call this. Returns false when no root has the id.
+ * (`policies/conversation-access.md`). Every row of the tree stores the
+ * value, and one statement changes them all. A Slack channel that changes
+ * does not call this. Returns false when no root has the id.
  */
 export async function setConversationVisibility(
   executor: Pick<JuniorSqlDatabase, "db">,
@@ -115,7 +124,8 @@ export async function setConversationVisibility(
       ),
     );
   if (!root) return false;
-  // `resolveRootVisibility` holds a share lock on this row while it decides.
+  // `resolveRootVisibility` holds a share lock on this row while a new
+  // child copies the root's value, so no child keeps the old one.
   if (root.destinationId) {
     await db
       .select({ id: juniorDestinations.id })
@@ -126,16 +136,27 @@ export async function setConversationVisibility(
   await db
     .update(juniorConversations)
     .set({ visibility, detailVersion: nextDetailVersion })
-    .where(eq(juniorConversations.conversationId, rootConversationId));
-  // A child's detail shows its root's visibility, so its version moves too.
-  await db
+    .where(eq(juniorConversations.rootConversationId, rootConversationId));
+  return true;
+}
+
+/**
+ * Give the rows of a tree that have no visibility yet the root's value,
+ * once the root first gets one. Rows that have a value keep it.
+ */
+export async function fillMissingTreeVisibility(
+  executor: Pick<JuniorSqlDatabase, "db">,
+  rootConversationId: string,
+  visibility: ConversationPrivacy,
+): Promise<void> {
+  await executor
+    .db()
     .update(juniorConversations)
-    .set({ detailVersion: nextDetailVersion })
+    .set({ visibility, detailVersion: nextDetailVersion })
     .where(
       and(
         eq(juniorConversations.rootConversationId, rootConversationId),
-        ne(juniorConversations.conversationId, rootConversationId),
+        isNull(juniorConversations.visibility),
       ),
     );
-  return true;
 }

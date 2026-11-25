@@ -341,11 +341,11 @@ export function canMoveToSpace(
 }
 
 /**
- * Return whether a Conversation of this kind stores its own visibility. A
- * child uses the visibility of its root.
+ * Return whether a Conversation of this kind copies its root's visibility.
+ * A root takes the visibility of its Destination or Space.
  */
-export function storesVisibility(kind: ConversationKind): boolean {
-  return isTopLevelKind(kind);
+export function copiesRootVisibility(kind: ConversationKind): boolean {
+  return !isTopLevelKind(kind);
 }
 
 /**

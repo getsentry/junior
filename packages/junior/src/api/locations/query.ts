@@ -41,6 +41,7 @@ import type {
   LocationDirectoryReport,
   LocationSummaryReport,
 } from "../schema/location";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const RECENT_LIMIT = 25;
 const ACTIVITY_DAYS = 90;
@@ -135,7 +136,7 @@ function publicLocationWhere(locationId: string) {
           eq(juniorDestinations.id, locationId),
           ne(juniorDestinations.provider, "local"),
         ),
-    eq(juniorConversations.visibility, "public"),
+    isPublicConversation(juniorConversations),
   );
 }
 

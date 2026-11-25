@@ -106,13 +106,13 @@ export async function readPrivateSpaceMemberships(
   return new Set(members.map((member) => member.spaceId));
 }
 
-/** The stored tree, root visibility, and root Destination that access reads. */
+/** The stored tree, visibility, and root Destination that access reads. */
 type ConversationAccessRow = Awaited<
   ReturnType<typeof readConversationAccessRows>
 >[number];
 
 /**
- * Read the stored tree, root visibility, and root Destination of each
+ * Read the stored tree, visibility, and root Destination of each
  * conversation. A caller that reads the viewer's participant rows itself
  * passes these rows to `conversationAccessFromRows`.
  */
@@ -130,7 +130,7 @@ export async function readConversationAccessRows(
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
       destinationId: rootDestination.id,
-      visibility: rootConversation.visibility,
+      visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
       spaceId: rootSpace.id,

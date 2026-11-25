@@ -11,6 +11,7 @@ import type {
   ConversationMessageSearchResult,
   ConversationMessageSearchStore,
 } from "../message-search";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
 
@@ -49,7 +50,7 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       isNull(juniorConversations.parentConversationId),
       isNull(juniorConversations.transcriptPurgedAt),
       ne(juniorConversations.conversationId, args.currentConversationId),
-      eq(juniorConversations.visibility, "public"),
+      isPublicConversation(juniorConversations),
       eq(juniorConversationEvents.type, "message"),
       sql`${role} in ('user', 'assistant')`,
     ];

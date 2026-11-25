@@ -341,19 +341,16 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { getConversationStore, getDb, getSqlExecutor } =
+      await import("@/chat/db");
+    const { setConversationVisibility } =
+      await import("@/chat/conversations/sql/privacy");
     const { resolveViewerUser } = await import("@/chat/plugins/viewer");
-    await getDb()
-      .update(juniorConversations)
-      .set({ visibility: "private" })
-      .where(eq(juniorConversations.conversationId, publicRoot));
+    await setConversationVisibility(getSqlExecutor(), publicRoot, "private");
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
     );
-    await getDb()
-      .update(juniorConversations)
-      .set({ visibility: "public" })
-      .where(eq(juniorConversations.conversationId, publicRoot));
+    await setConversationVisibility(getSqlExecutor(), publicRoot, "public");
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "available",
     );
@@ -399,7 +396,7 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      // Only a root stores visibility, so the forged child drops it.
+      // The forged child has no visibility, which reads as private.
       .set({
         kind: "task",
         parentConversationId: cyclicChild,

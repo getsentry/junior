@@ -1,5 +1,4 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { isNull } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { buildPromptInput } from "@/chat/agent/prompt";
@@ -230,12 +229,9 @@ describe("Thread input", () => {
     const harness = await createHarness();
     try {
       const threadId = await startFinishedThread(harness);
-      // A writer of an older deploy leaves the root null. Missing visibility
+      // A writer of an older deploy leaves the tree null. Missing visibility
       // is private.
-      await getDb()
-        .update(juniorConversations)
-        .set({ visibility: null })
-        .where(isNull(juniorConversations.parentConversationId));
+      await getDb().update(juniorConversations).set({ visibility: null });
 
       await expect(
         sendPersonMessage(harness, threadId, "person-1"),

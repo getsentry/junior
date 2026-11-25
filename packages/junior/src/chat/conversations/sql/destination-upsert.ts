@@ -129,11 +129,16 @@ export async function upsertDestination(
   if (!row) {
     return undefined;
   }
-  const visibility =
-    row.visibility === "unknown"
-      ? null
-      : row.visibility === "public"
-        ? "public"
-        : "private";
-  return { id: row.id, visibility };
+  return { id: row.id, visibility: destinationVisibility(row.visibility) };
+}
+
+/**
+ * The visibility that a root at a Destination takes: public stays public,
+ * direct and private are private, and unknown or missing is null.
+ */
+export function destinationVisibility(
+  visibility: JuniorDestinationVisibility | undefined,
+): ConversationPrivacy | null {
+  if (visibility === undefined || visibility === "unknown") return null;
+  return visibility === "public" ? "public" : "private";
 }

@@ -1,6 +1,5 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
@@ -54,9 +53,13 @@ import {
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
 import {
+  copiesRootVisibility,
   isTopLevelKind,
-  storesVisibility,
 } from "@/chat/conversations/kind-behavior";
+import {
+  fillMissingTreeVisibility,
+  resolveRootVisibility,
+} from "@/chat/conversations/sql/privacy";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -65,11 +68,7 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
-  /** Visibility of the root. A child reads the value of its root. */
-  rootVisibility: ConversationPrivacy | null;
 }
-
-const readRoot = alias(juniorConversations, "read_root");
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
@@ -164,7 +163,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = readRow.rootVisibility ?? undefined;
+  const visibility = row.visibility ?? undefined;
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -590,7 +589,6 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
-        rootVisibility: juniorConversations.visibility,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -727,7 +725,6 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
-        rootVisibility: readRoot.visibility,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -739,10 +736,6 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .leftJoin(
-        readRoot,
-        eq(readRoot.conversationId, juniorConversations.rootConversationId),
-      )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
   }
@@ -790,11 +783,16 @@ export class SqlStore implements ConversationStore {
       conversation.updatedAtMs,
     );
     const destinationId = upsertedDestination?.id ?? args.destinationId;
-    // A root takes the visibility of its Destination. A child stores none.
-    const visibility =
-      upsertedDestination && storesVisibility(conversation.kind)
-        ? upsertedDestination.visibility
-        : null;
+    // A root takes the visibility of its Destination. A child copies its
+    // root's, under the lock that `setConversationVisibility` waits on.
+    const visibility = copiesRootVisibility(conversation.kind)
+      ? (
+          await resolveRootVisibility(
+            this.executor,
+            conversation.parentConversationId ?? conversation.conversationId,
+          )
+        ).visibility
+      : (upsertedDestination?.visibility ?? null);
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -812,8 +810,21 @@ export class SqlStore implements ConversationStore {
           where parent.conversation_id = ${conversation.parentConversationId}
         )`
       : conversation.conversationId;
-    const rows = await this.executor
-      .db()
+    const db = this.executor.db();
+    // Reads the row as it was before this statement, so a root that first
+    // gets a visibility here knows to fill its tree.
+    const prior = db
+      .$with("prior_conversation")
+      .as(
+        db
+          .select({ visibility: juniorConversations.visibility })
+          .from(juniorConversations)
+          .where(
+            eq(juniorConversations.conversationId, conversation.conversationId),
+          ),
+      );
+    const rows = await db
+      .with(prior)
       .insert(juniorConversations)
       .values({
         conversationId: conversation.conversationId,
@@ -879,8 +890,8 @@ export class SqlStore implements ConversationStore {
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           // Only a new root sends a Space. `setConversationSpace` moves it.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
-          // A Destination write fills a root's visibility once and never
-          // changes it. Only `setConversationVisibility` does.
+          // A write fills a missing visibility and never changes a known
+          // one. Only `setConversationVisibility` does.
           visibility: sql`coalesce(${juniorConversations.visibility}, excluded.visibility)`,
           detailVersion: nextDetailVersion,
         },
@@ -889,10 +900,23 @@ export class SqlStore implements ConversationStore {
         actorIdentityId: juniorConversations.actorIdentityId,
         parentConversationId: juniorConversations.parentConversationId,
         rootConversationId: juniorConversations.rootConversationId,
+        visibility: juniorConversations.visibility,
+        filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
       });
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
+    }
+    if (
+      !copiesRootVisibility(conversation.kind) &&
+      row.visibility &&
+      row.filledVisibility
+    ) {
+      await fillMissingTreeVisibility(
+        this.executor,
+        row.rootConversationId,
+        row.visibility,
+      );
     }
     // A conflict keeps the stored parent. A history append can create the row
     // first under the event lock, so a new child can find a root row here.
