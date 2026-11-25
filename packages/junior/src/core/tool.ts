@@ -50,21 +50,15 @@ export type StepTools = {
   /**
    * Runs once per tool batch, before any of its calls runs, with every call
    * that would run. It sees the whole batch, so it can decide calls together,
-   * such as an action review. A throw fails the step.
+   * such as an action review. A call with a result in the map, by call id,
+   * does not run, and the model sees that result. A throw fails the step.
    */
   beforeCalls?(
     calls: ToolCall[],
     signal: AbortSignal,
-  ): Promise<Map<string, ToolCallChange>>;
+  ): Promise<Map<string, ToolResult>>;
   close(): void;
 };
-
-/**
- * What `beforeCalls` does to one call, by call id. `result`: the call does
- * not run, and the model sees this result. `args`: the call runs with these
- * arguments. A call with no entry runs as the model asked.
- */
-export type ToolCallChange = { result: ToolResult } | { args: JsonObject };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */
 export type ToolResult<TDetails extends JsonValue = JsonValue> = {

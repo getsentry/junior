@@ -412,12 +412,12 @@ describe("runStep", () => {
   });
 
   it("gives beforeCalls every call that would run, once, before any of them runs", async () => {
-    const executed: Array<{ name: string; args: unknown }> = [];
+    const executed: string[] = [];
     const record = (name: string): ToolDefinition =>
       tool(name, {
         replay: "safe",
-        execute: (args) => {
-          executed.push({ name, args });
+        execute: () => {
+          executed.push(name);
           return Promise.resolve({ content: [{ type: "text", text: name }] });
         },
       });
@@ -436,12 +436,7 @@ describe("runStep", () => {
             ids: calls.map((call) => call.id),
             executedBefore: executed.length,
           });
-          return Promise.resolve(
-            new Map([
-              ["call-lookup", { args: { query: "turns" } }],
-              ["call-send", { result: denied }],
-            ]),
-          );
+          return Promise.resolve(new Map([["call-send", denied]]));
         },
       }),
     );
@@ -450,7 +445,7 @@ describe("runStep", () => {
     expect(batches).toEqual([
       { ids: ["call-lookup", "call-send"], executedBefore: 0 },
     ]);
-    expect(executed).toEqual([{ name: "lookup", args: { query: "turns" } }]);
+    expect(executed).toEqual(["lookup"]);
     expect(result).toMatchObject({
       outcome: "continue",
       messages: [
@@ -481,44 +476,6 @@ describe("runStep", () => {
       ),
     ).rejects.toThrow("Review unavailable");
     expect(executed).toEqual([]);
-  });
-
-  it("checks arguments that beforeCalls changed against the tool's schema", async () => {
-    const executed: unknown[] = [];
-    const search = {
-      ...tool("search", {
-        replay: "safe",
-        execute: (args) => {
-          executed.push(args);
-          return Promise.resolve({ content: [] });
-        },
-      }),
-      parameters: {
-        type: "object" as const,
-        properties: { query: { type: "string" as const } },
-        required: ["query"],
-      },
-    };
-    const reply = createAssistantMessage({
-      type: "toolCalls",
-      calls: [
-        { name: "search", arguments: { query: "turns" }, id: "call-search" },
-      ],
-    });
-
-    const { result } = await runStep(
-      stepInput({
-        history: [user, reply],
-        tools: [search],
-        beforeCalls: () =>
-          Promise.resolve(new Map([["call-search", { args: { limit: 3 } }]])),
-      }),
-    );
-
-    expect(executed).toEqual([]);
-    expect(result).toMatchObject({
-      messages: [{ toolCallId: "call-search", isError: true }],
-    });
   });
 
   it("starts no tool when the Turn stops during beforeCalls", async () => {

@@ -14,12 +14,7 @@ import {
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
-import type {
-  StepTools,
-  ToolCallChange,
-  ToolDefinition,
-  ToolResult,
-} from "@/core/tool";
+import type { StepTools, ToolDefinition, ToolResult } from "@/core/tool";
 
 /**
  * The model request of a step: the system prompt, the messages with the new
@@ -185,10 +180,10 @@ async function runToolCalls(
     "run" in check ? [] : [{ ...check.call, arguments: check.args }],
   );
   // The host sees the whole batch at once, so it can decide calls together.
-  const changes =
+  const replacements =
     input.beforeCalls && ready.length > 0
       ? await input.beforeCalls(ready, input.signal)
-      : new Map<string, ToolCallChange>();
+      : new Map<string, ToolResult>();
   // A Turn stopped during the host's decision must start no tool.
   if (input.signal.aborted) {
     throw input.signal.reason;
@@ -196,7 +191,7 @@ async function runToolCalls(
   const results = await Promise.all(
     // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
     checked.map((check) =>
-      runToolCall(check, changes.get(check.call.id), input),
+      runToolCall(check, replacements.get(check.call.id), input),
     ),
   );
   // An aborted tool returns an error result. Those results must not reach the
@@ -234,7 +229,7 @@ type CheckedToolCall =
 
 function runToolCall(
   check: CheckedToolCall,
-  change: ToolCallChange | undefined,
+  replacement: ToolResult | undefined,
   input: StepInput<unknown>,
 ): Promise<ToolCallOutcome> {
   const { call } = check;
@@ -250,7 +245,7 @@ function runToolCall(
       const { status, result } =
         "run" in check
           ? check.run
-          : await executeToolCall(check, change, input);
+          : await executeToolCall(check, replacement, input);
       span.setAttribute("app.tool_call.outcome", status);
       return { call, result };
     },
@@ -287,52 +282,31 @@ function checkToolCall(
       ),
     );
   }
-  const valid = validArguments(tool, call);
-  return "error" in valid
-    ? skip(valid.error)
-    : { call, tool, args: valid.args };
-}
-
-/** The call's arguments checked against its tool's schema, or the error. */
-function validArguments(
-  tool: ToolDefinition,
-  call: ToolCall,
-): { args: JsonObject } | { error: ToolCallRun } {
   let args: unknown;
   try {
     args = validateToolArguments(tool, call);
   } catch (error) {
-    return { error: errorRun("invalid_arguments", errorText(error)) };
+    return skip(errorRun("invalid_arguments", errorText(error)));
   }
   if (!isJsonObject(args)) {
-    return {
-      error: errorRun(
-        "invalid_arguments",
-        "Tool arguments must be a JSON object",
-      ),
-    };
+    return skip(
+      errorRun("invalid_arguments", "Tool arguments must be a JSON object"),
+    );
   }
-  return { args };
+  return { call, tool, args };
 }
 
 async function executeToolCall(
   { call, tool, args }: Extract<CheckedToolCall, { tool: ToolDefinition }>,
-  change: ToolCallChange | undefined,
+  replacement: ToolResult | undefined,
   input: StepInput<unknown>,
 ): Promise<ToolCallRun> {
-  if (change && "result" in change) {
-    return { status: "replaced", result: change.result };
-  }
-  // Arguments that the host changed must match the tool's schema too.
-  const valid = change
-    ? validArguments(tool, { ...call, arguments: change.args })
-    : { args };
-  if ("error" in valid) {
-    return valid.error;
+  if (replacement) {
+    return { status: "replaced", result: replacement };
   }
   // A throw from the tool is a result the model can react to.
   try {
-    const result = await tool.execute(valid.args, {
+    const result = await tool.execute(args, {
       callId: call.id,
       signal: input.signal,
     });
