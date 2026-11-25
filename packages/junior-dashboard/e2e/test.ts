@@ -3,6 +3,7 @@ import {
   mockDashboardApis,
   resetDashboardMockState,
   startDashboardE2eServer,
+  releaseHeldRequests,
   trackOpenRequests,
   type DashboardE2eServer,
 } from "./harness";
@@ -46,6 +47,7 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
     try {
       // A test that already failed can stop with any request open.
       if (testInfo.status === testInfo.expectedStatus) {
+        await releaseHeldRequests(page);
         await requests.expectNoneOpen();
       }
     } finally {

@@ -55,6 +55,14 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  // The outline marks the person message at the top of the transcript, and
+  // scrolls its list to it, a few frames after the jump. Wait for both, so
+  // the shot does not catch the outline before the jump.
+  const activeItem = page
+    .getByRole("navigation", { name: "Conversation outline" })
+    .getByRole("button", { name: "Transcript message 996 with" });
+  await expect(activeItem).toHaveAttribute("aria-current", "location");
+  await expect(activeItem).toBeInViewport();
   // The jump mark goes on a timer, so the shot waits for it to go.
   await expect(row(transcript, MEMORY_CAPTURE_SEQ - 1)).not.toHaveAttribute(
     "data-highlighted",

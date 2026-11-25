@@ -68,6 +68,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
@@ -267,6 +268,8 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  moveConversationToSpace: (run) =>
+    createMoveConversationToSpaceTool(run.context),
   setSpaceConfiguration: (run) => createSetSpaceConfigurationTool(run.context),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
@@ -422,6 +425,10 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
+  moveConversationToSpace: (turnTools) =>
+    turnTools.spaces
+      ? undefined
+      : "Only a person's request moves a conversation to a Space.",
   setSpaceConfiguration: (turnTools) =>
     turnTools.spaces ? undefined : "Only a person's request changes a Space.",
   addInboxItem: INBOX_LIMIT,

@@ -268,6 +268,7 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toContain("reportBlocked");
       expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("moveConversationToSpace");
       // A person's Turn starts and messages child agents, as an agent's does.
       expect(person.disabled).not.toContain("startAgent");
       expect(person.disabled).not.toContain("messageAgent");
@@ -276,6 +277,7 @@ describe("static tool registry", () => {
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
+          "moveConversationToSpace",
           "addInboxItem",
           "searchInboxItems",
           "updateInboxItem",

@@ -16,14 +16,12 @@ import {
   juniorCodeChanges,
   juniorCodeRepositories,
   juniorConversations,
-  juniorDestinations,
 } from "@/db/schema";
 import {
   codeChangeSearchDocument,
   codeRepositorySearchDocument,
 } from "@/db/schema/code";
 import { rootVisibleToViewer } from "../conversations/membership";
-import { conversationRecordJoins } from "../conversations/record";
 import type { MentionableCodeChange } from "../schema/code";
 
 // One menu of changes. More rows do not help a person who is still typing.
@@ -120,7 +118,6 @@ export async function readCodeChangeSearchFromSql(
           sql`coalesce(${linked.rootConversationId}, ${linked.conversationId})`,
         ),
       )
-      .leftJoin(juniorDestinations, conversationRecordJoins.location)
       .where(
         and(
           sql`${linked.conversationId} = any(${juniorCodeChanges.conversationIds})`,
