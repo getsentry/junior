@@ -66,11 +66,15 @@ also wake a Conversation or run an Event automation.
 - `pr-ended` When it merged or closed, nobody gets it.
 - `pr-merge` When it is open, not a draft, auto-merge is off, no review is
   pending, its merge state is clean, and no reviewer requests changes, the
-  requester gets "Ready to merge". A reviewer whose review GitHub still
-  requests gets it too.
+  requester gets "Ready to merge".
+- `pr-merge-reviewer` When it is approved, GitHub reports that it can merge,
+  and it is not a draft, a reviewer whose review GitHub still requests gets
+  "Ready to merge".
 - `pr-review-again` When Junior handled every comment of the requester's
   change request and the required checks pass, the requester gets "Review
-  requested".
+  requested". A requester who approved since is not asked. When the
+  requester comments or reviews after that, Junior acts next, and they no
+  longer get it.
 - `pr-review` When GitHub requests the viewer's review, they get "Review
   requested". Dismiss removes them from the reviewers on GitHub. For the
   requester, their reply after their own change request ends it, because
