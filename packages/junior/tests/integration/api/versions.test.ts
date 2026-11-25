@@ -164,9 +164,11 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      // About 720. A feed token that works out each row's status again
-      // costs about 1,330.
-      1_000,
+      // About 1,010. An Inbox item's owner comes from its subject on
+      // purpose, since the item stores no owner, so each owner check costs
+      // one more index lookup than a stored owner column. A feed token that
+      // works out each row's status again costs about 1,330.
+      1_100,
     );
     expect(await read()).toEqual(first);
     expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
