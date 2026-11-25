@@ -478,7 +478,6 @@ export function readChatConfig(
     versionsStreamEnabled: parseKillSwitch(
       "JUNIOR_VERSIONS_STREAM_ENABLED",
       env["JUNIOR_VERSIONS_STREAM_ENABLED"],
-      false,
     ),
     encryption: readEncryptionKeyring(env),
     sql: {

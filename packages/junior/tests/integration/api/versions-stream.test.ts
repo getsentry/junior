@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -11,21 +11,6 @@ import { closeDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { recordRoot } from "../../fixtures/dashboard-reporting";
 import { addItem, conversation, ROOT, user } from "../../fixtures/snoozes";
-
-// Chat config reads the flag when it loads, so set it first.
-const { previous } = vi.hoisted(() => {
-  const previous = process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
-  process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = "true";
-  return { previous };
-});
-
-afterAll(() => {
-  if (previous === undefined) {
-    delete process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
-  } else {
-    process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = previous;
-  }
-});
 
 const OWN = "slack:CVERSIONSTREAM:own";
 const SLACK_ACTOR = {

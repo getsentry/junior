@@ -5,7 +5,7 @@ import {
   expectSqlBudget,
 } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -37,6 +37,21 @@ import {
   createChild,
   recordRoot,
 } from "../../fixtures/dashboard-reporting";
+
+// Chat config reads the kill switch when it loads, so set it first.
+const { previous } = vi.hoisted(() => {
+  const previous = process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
+  process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = "false";
+  return { previous };
+});
+
+afterAll(() => {
+  if (previous === undefined) {
+    delete process.env["JUNIOR_VERSIONS_STREAM_ENABLED"];
+  } else {
+    process.env["JUNIOR_VERSIONS_STREAM_ENABLED"] = previous;
+  }
+});
 
 const OWN = "slack:CVERSIONS:own";
 const OTHER = "slack:CVERSIONS:other";
@@ -612,7 +627,7 @@ describe("versions API", () => {
     expect(tooMany.status).toBe(400);
   });
 
-  it("leaves the stream off by default, so the dashboard polls", async () => {
+  it("keeps the dashboard on the poll when the stream is switched off", async () => {
     const { app } = await authenticatedApi();
     const polled = await app.request("http://localhost/api/versions");
     expect(polled.headers.get(VERSIONS_STREAM_HEADER)).toBeNull();
