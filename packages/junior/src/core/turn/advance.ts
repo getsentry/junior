@@ -4,13 +4,15 @@
 // stops and the new lease holder owns the Turn. While the step runs, the
 // invocation checks its lease and aborts the step when the lease is lost.
 // When the invocation throws, it queues the Turn again for the queue's retry.
-// The queue retries without a limit, so a claim past `maxAttempts` fails the
-// Turn instead of running the step again. After every change it makes to the
-// Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
+// A model request that fails in a way that can work later queues the Turn
+// again too, with a step message after a backoff. Both count toward
+// `maxAttempts`: the queue retries without a limit, so a claim past it fails
+// the Turn instead of running the step again. After every change it makes to
+// the Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
 // sends the delivery message and the next step message that the stored
 // state calls for.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
@@ -28,6 +30,7 @@ import {
   markInputsAttempted,
   type UnreadInput,
 } from "@/core/turn/inbox";
+import { publishTurnStep } from "@/core/turn/queue";
 import { endFailedTurn, reconcileTurn } from "@/core/turn/schedule";
 import {
   claimTurn,
@@ -58,7 +61,8 @@ type AdvanceTurnOptions = {
   /** The tools of the Turn's steps. */
   tools: ToolDefinition[];
   /**
-   * Caps the tries of one step. A commit resets `attempts`, so the cap does
+   * Caps the tries of one step, both the retries of a failed invocation and
+   * of a failed model request. A commit resets `attempts`, so the cap does
    * not limit the steps of a Turn.
    */
   maxAttempts: number;
@@ -132,7 +136,11 @@ async function runClaimedStep(
     prompt,
     modelSettings,
     tools,
-  }: Pick<AdvanceTurnOptions, "client" | "prompt" | "modelSettings" | "tools">,
+    maxAttempts,
+  }: Pick<
+    AdvanceTurnOptions,
+    "client" | "prompt" | "modelSettings" | "tools" | "maxAttempts"
+  >,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
     executor,
@@ -180,6 +188,26 @@ async function runClaimedStep(
       return;
     }
     case "failed": {
+      const delayMs = modelRetryDelayMs(
+        result.failure,
+        claim.attempts,
+        maxAttempts,
+      );
+      if (delayMs !== undefined) {
+        // A crash between the release and the publish leaves the Turn queued
+        // with no message, and the sweep sends it again. A superseded Turn
+        // ends at the release; its delayed message then misses the claim and
+        // sends the next Turn's step.
+        if (await releaseTurn({ executor }, claim)) {
+          await publishTurnStep({ queue }, claim.turnId, { delayMs });
+          logWarn("agent.turn.provider.retrying", {
+            ...modelFailureAttributes(result.failure),
+            "app.ai.provider_error.retry_attempt": claim.attempts,
+            "app.turn.id": claim.turnId,
+          });
+        }
+        return;
+      }
       // The capture comes before the commit. A crash between the two runs
       // the step again, so a failure that repeats is captured twice.
       const failure = captureModelFailure(result.failure);
@@ -200,6 +228,31 @@ async function runClaimedStep(
       throw new Error(`Unhandled step result: ${JSON.stringify(unhandled)}`);
     }
   }
+}
+
+// Main's provider backoff: 2 s, 4 s, 8 s. The cap keeps a queued Turn that
+// waits for its retry well inside the sweep's stale window.
+const MODEL_RETRY_BASE_DELAY_MS = 2_000;
+const MODEL_RETRY_MAX_DELAY_MS = 60_000;
+
+/**
+ * The wait before the step runs again after a failed model request, or
+ * undefined when the failure ends the Turn: it cannot work later, or the
+ * step has used its last try.
+ */
+function modelRetryDelayMs(
+  failure: ModelFailure,
+  attempts: number,
+  maxAttempts: number,
+): number | undefined {
+  if (!failure.retryable || attempts >= maxAttempts) {
+    return undefined;
+  }
+  const backoffMs = MODEL_RETRY_BASE_DELAY_MS * 2 ** (attempts - 1);
+  return Math.min(
+    MODEL_RETRY_MAX_DELAY_MS,
+    Math.max(backoffMs, failure.retryAfterMs ?? 0),
+  );
 }
 
 /**

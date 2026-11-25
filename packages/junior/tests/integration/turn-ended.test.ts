@@ -14,7 +14,7 @@ import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
-  modelOverloaded,
+  modelRejected,
   replyRule,
   setModelReplies,
 } from "../fixtures/ai-emulator";
@@ -164,8 +164,8 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
 
   it("drops the inputs a failed attempt claimed, and moves an input that came after it only once", async () => {
     const claimedId = await engine.addTestInput("How many Turns?");
-    // Injected fault: the model provider is overloaded.
-    const step = stepWith([modelOverloaded()]);
+    // Injected fault: the model provider rejects the request.
+    const step = stepWith([modelRejected()]);
     let lateId: string | undefined;
 
     await engine.advance({
@@ -191,8 +191,8 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
     expect(engine.sentStepMessages(next!.id)).toBe(1);
 
     // The new Turn's attempt claims the moved input, so its failure drops it.
-    // Injected fault: the model provider is overloaded.
-    await engine.advance(stepWith([modelOverloaded()]), LEASE_MS, next!.id);
+    // Injected fault: the model provider rejects the request.
+    await engine.advance(stepWith([modelRejected()]), LEASE_MS, next!.id);
 
     await expect(
       readInputs(engine.engineCtx, CONVERSATION_ID),
@@ -204,8 +204,8 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
 
   it("keeps a failed Turn's late input on a queued Turn when the process dies before it publishes", async () => {
     await engine.addTestInput("How many Turns?");
-    // Injected fault: the model provider is overloaded.
-    const step = stepWith([modelOverloaded()]);
+    // Injected fault: the model provider rejects the request.
+    const step = stepWith([modelRejected()]);
     let lateId: string | undefined;
 
     await expect(

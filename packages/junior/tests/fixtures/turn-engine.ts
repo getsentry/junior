@@ -48,7 +48,7 @@ import { ACTOR } from "./turn-harness";
 
 export const CONVERSATION_ID = "slack:C123:1718123456.000000";
 export const LEASE_MS = 60_000;
-export const MAX_ATTEMPTS = 3;
+export const MAX_ATTEMPTS = 4;
 export const MODEL: ModelSettings = {
   id: "anthropic/claude-opus-5.5",
   reasoning: "none",

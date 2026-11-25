@@ -29,7 +29,7 @@ export type ModelRule = {
   match?: { stream?: boolean; hasToolResult?: boolean };
   times?: number;
   reply?: ModelReplyEvent[];
-  error?: { status: number; message: string };
+  error?: { status: number; message: string; headers?: Record<string, string> };
   fault?: { kind: "disconnect"; afterChunks: number };
 };
 
@@ -107,6 +107,22 @@ export function systemPromptOf(
 /** Injected fault: the model provider answers 529 overloaded. */
 export function modelOverloaded(): ModelRule {
   return { error: { status: 529, message: "Overloaded" } };
+}
+
+/** Injected fault: the model provider rejects the request, so no retry helps. */
+export function modelRejected(): ModelRule {
+  return { error: { status: 400, message: "Invalid request" } };
+}
+
+/** Injected fault: the model provider answers 429 and asks for a wait. */
+export function modelRateLimited(retryAfterSeconds: number): ModelRule {
+  return {
+    error: {
+      status: 429,
+      message: "Rate limited",
+      headers: { "retry-after": String(retryAfterSeconds) },
+    },
+  };
 }
 
 /** Injected fault: the stream closes after the first chunk of `text`. */

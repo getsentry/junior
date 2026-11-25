@@ -25,6 +25,8 @@ import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
 import {
   modelCalls,
   modelOverloaded,
+  modelRateLimited,
+  modelRejected,
   setModelReplies,
   streamDisconnected,
   systemPromptOf,
@@ -128,6 +130,14 @@ function layoutSystemPrompt(layout: PromptLayout): string {
   return layout.systemPrompt.map((section) => section.text).join("\n\n");
 }
 
+/** The delays, in seconds, of the step messages that wait for one Turn. */
+function stepDelays(forTurnId: string) {
+  return harness.queue
+    .pending(TURN_STEP_TOPIC)
+    .filter((message) => messageTurnId(message.payload) === forTurnId)
+    .map((message) => message.delaySeconds ?? 0);
+}
+
 /** The step messages that wait for a delivery, for one Turn. */
 function pendingSteps(forTurnId: string) {
   return harness.queue
@@ -222,18 +232,18 @@ describe("advanceTurn", () => {
     expect(systemPromptOf(call)).toBe(layoutSystemPrompt(layouts.local));
   });
 
-  it("fails the Turn with the model error and writes no history", async () => {
-    // Injected fault: the model provider is overloaded.
-    await setModelReplies([modelOverloaded()]);
+  it("fails the Turn with a model error that no retry fixes, and writes no history", async () => {
+    // Injected fault: the model provider rejects the request.
+    await setModelReplies([modelRejected()]);
     const { turnId } = await harness.send({ text: "How many Turns?" });
 
     await harness.runStep();
 
     await expect(harness.turn(turnId)).resolves.toMatchObject({
       state: "failed",
-      endReason: "Overloaded",
+      endReason: "Invalid request",
       failureCode: "model_execution_failed",
-      failureReason: "capacity",
+      failureReason: "invalid_request",
       stepSeq: 0,
       leaseOwner: null,
     });
@@ -241,26 +251,92 @@ describe("advanceTurn", () => {
     expect(pendingSteps(turnId)).toBe(0);
   });
 
-  it("fails the Turn and writes no history when the model stream closes mid-reply", async () => {
+  it("runs the step again after a backoff when the model stream closes mid-reply, and writes the reply once", async () => {
     // Injected fault: the stream closes after the first chunk.
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
     await setModelReplies([
       streamDisconnected("All done, and nothing is left."),
+      reply,
     ]);
     const { turnId } = await harness.send({ text: "How many Turns?" });
 
     await harness.runStep();
 
     await expect(harness.turn(turnId)).resolves.toMatchObject({
-      state: "failed",
-      failureReason: "network",
+      state: "queued",
+      attempts: 1,
       stepSeq: 0,
       leaseOwner: null,
     });
-    await expect(modelCalls()).resolves.toEqual([
-      expect.objectContaining({ stream: true, fault: "disconnect" }),
-    ]);
     await expect(harness.history()).resolves.toEqual([]);
+    expect(stepDelays(turnId)).toEqual([2]);
+
+    harness.queue.advanceTime(2);
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(modelCalls()).resolves.toEqual([
+      expect.objectContaining({ fault: "disconnect" }),
+      expect.objectContaining({ fault: "none" }),
+    ]);
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
+  });
+
+  it("backs off longer after each overloaded try, and fails the Turn when its tries run out", async () => {
+    // Injected fault: the model provider stays overloaded.
+    await setModelReplies(
+      Array.from({ length: MAX_ATTEMPTS }, modelOverloaded),
+    );
+    const { turnId, inputId } = await harness.send({
+      text: "How many Turns?",
+    });
+
+    const delays: number[] = [];
+    for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
+      await harness.runStep();
+      const [delay] = stepDelays(turnId);
+      delays.push(delay!);
+      harness.queue.advanceTime(delay!);
+    }
+    await harness.runStep();
+
+    expect(delays).toEqual([2, 4, 8]);
+    await expect(modelCalls()).resolves.toHaveLength(MAX_ATTEMPTS);
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      failureCode: "model_execution_failed",
+      failureReason: "capacity",
+      attempts: MAX_ATTEMPTS,
+    });
+    await expect(harness.history()).resolves.toEqual([]);
+    await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId }),
+    ]);
     expect(pendingSteps(turnId)).toBe(0);
+  });
+
+  it("waits the Retry-After of a rate limit, up to a minute", async () => {
+    // Injected fault: the model provider rate limits two requests.
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
+    await setModelReplies([modelRateLimited(30), modelRateLimited(600), reply]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+    expect(stepDelays(turnId)).toEqual([30]);
+    harness.queue.advanceTime(30);
+    await harness.runStep();
+    expect(stepDelays(turnId)).toEqual([60]);
+    harness.queue.advanceTime(60);
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
   });
 
   it.each(["completed", "cancelled"] as const)(
@@ -319,8 +395,8 @@ describe("advanceTurn", () => {
   });
 
   it("leaves the input unread when the model step fails", async () => {
-    // Injected fault: the model provider is overloaded.
-    await setModelReplies([modelOverloaded()]);
+    // Injected fault: the model provider rejects the request.
+    await setModelReplies([modelRejected()]);
     const { turnId, inputId } = await harness.send({
       text: "How many Turns?",
     });

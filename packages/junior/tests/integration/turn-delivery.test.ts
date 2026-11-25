@@ -7,7 +7,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { juniorTurnOutbox } from "@/db/schema";
 import { deliveryConsumer } from "@/turn-steps/delivery";
-import { modelOverloaded, setModelReplies } from "../fixtures/ai-emulator";
+import { modelRejected, setModelReplies } from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
 import { createAssistantMessage } from "../fixtures/model-stream";
 import { createRecordingDelivery } from "../fixtures/recording-delivery";
@@ -447,8 +447,8 @@ describe("Turn delivery with a test step", () => {
 
     // The queue delivers the same step message again. It claims the queued
     // Turn, and the next step fails.
-    // Injected fault: the model provider is overloaded.
-    await engine.advance(stepWith([modelOverloaded()]));
+    // Injected fault: the model provider rejects the request.
+    await engine.advance(stepWith([modelRejected()]));
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await deliver();
     await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(

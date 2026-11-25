@@ -17,10 +17,11 @@ import {
   turnPromptLayout,
 } from "./prompt";
 
-// A step that throws this many times fails its Turn. A failed model request
-// does not count: it fails the Turn at once. These tries are for crashes and
-// infrastructure errors, and each one can take a full lease.
-const MAX_ATTEMPTS = 3;
+// A step that fails this many times fails its Turn. A try that throws and a
+// model request that fails in a way that can work later both count, so a
+// step gets main's three provider retries. A try that throws can take a full
+// lease.
+const MAX_ATTEMPTS = 4;
 
 /** The model client of core Turns on this deployment: the AI Gateway. */
 export function createGatewayModelClient(): ModelClient {
