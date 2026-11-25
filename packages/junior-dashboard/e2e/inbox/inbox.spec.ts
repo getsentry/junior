@@ -92,6 +92,7 @@ test.describe("new UI", () => {
         // The viewer's Spaces.
         /Billing migration$/,
         /Mobile app$/,
+        /Pricing launch$/,
         new RegExp(checkout),
       ]);
       // Like the badge: the "Pull request ready for review" notice does not

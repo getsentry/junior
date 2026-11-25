@@ -391,14 +391,17 @@ export {
   spaceParamsSchema,
   spaceRefSchema,
   spaceSchema,
+  spaceVisibilitySchema,
   updateSpaceBodySchema,
 } from "./schema/space";
 export type {
   SpaceListReport,
   SpaceRefReport,
   SpaceReport,
+  SpaceVisibilityReport,
 } from "./schema/space";
 export {
+  addSpaceMemberBodySchema,
   spaceMemberListSchema,
   spaceMemberSchema,
 } from "./schema/space-member";
