@@ -193,17 +193,6 @@ describe("daily reconcile of open pull requests", () => {
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
-    // Sam asked Junior to update #947 after its last webhook.
-    await fixture
-      .db()
-      .insert(juniorGitHubPullRequestRequesters)
-      .values({
-        createdAt: new Date(now - 2 * day),
-        identityId: "identity-sam",
-        number: 947,
-        repositoryFullName: "getsentry/junior",
-        updatedAt: new Date(now - 2 * day),
-      });
     await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "GitHub asks you to review #949.",
@@ -260,21 +249,15 @@ describe("daily reconcile of open pull requests", () => {
       [950, "open", undefined, ["slack:C1:1.0"]],
       [951, "open", undefined, ["slack:C1:1.0"]],
     ]);
-    // An open pull request keeps its state and gets its current title. Each
-    // write names the saved requesters.
+    // An open pull request keeps its state and gets its current title.
     expect(
       fixture.codeIndex.recorded
-        .map((change) => [
-          change.number,
-          change.state,
-          change.title,
-          change.requesterIdentityIds,
-        ])
+        .map((change) => [change.number, change.state, change.title])
         .sort(([a], [b]) => Number(a) - Number(b)),
     ).toEqual([
-      [946, "merged", "Pull request 946", []],
-      [947, "open", "Pull request 947", ["identity-sam"]],
-      [949, "closed", "Pull request 949", ["identity-jane"]],
+      [946, "merged", "Pull request 946"],
+      [947, "open", "Pull request 947"],
+      [949, "closed", "Pull request 949"],
     ]);
     expect(
       h.annotations.map(({ annotation, conversationId }) => [

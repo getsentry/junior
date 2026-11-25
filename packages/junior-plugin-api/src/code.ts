@@ -17,12 +17,6 @@ export const codeChangeInputSchema = z
         providerId: z.string().min(1),
       })
       .strict(),
-    /**
-     * Junior Identity ids of the people credited as requesters: the person
-     * Work owners of the Turns that opened or changed the code change. They
-     * add to the stored ones, like `conversationIds`.
-     */
-    requesterIdentityIds: z.array(z.string().min(1)).default([]),
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
@@ -77,6 +71,15 @@ export interface CodeChange {
 export interface PluginCodeChanges {
   associateConversations(input: {
     conversationIds: string[];
+    providerId: string;
+  }): Promise<void>;
+  /**
+   * Credit people as requesters of an existing code change: the person Work
+   * owners of the Turns that opened or changed it. They add to the stored
+   * ones, and a person's code changes include the ones that credit them.
+   */
+  associateRequesters(input: {
+    identityIds: string[];
     providerId: string;
   }): Promise<void>;
   /**

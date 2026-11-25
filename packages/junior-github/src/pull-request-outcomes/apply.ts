@@ -15,7 +15,7 @@ import {
   updateGitHubAnnotations,
 } from "../annotations.js";
 import type { GitHubDb } from "../db/database.js";
-import { listGitHubPullRequestRequesters } from "../pull-request-requesters/store.js";
+import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import { endedGitHubPullRequestItemChanges } from "../webhooks/pull-request-action.js";
 import {
@@ -25,12 +25,11 @@ import {
 } from "./store.js";
 
 /**
- * Write a pull request outcome as a code change in Junior's code index, with
- * its saved requesters. It names no Conversations, so the linked ones stay.
+ * Write a pull request outcome as a code change in Junior's code index. It
+ * names no Conversations, so the linked ones stay.
  */
 export function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
-  requesterIdentityIds: string[],
 ): CodeChangeInput {
   return {
     closedAt: outcome.closedAt,
@@ -42,7 +41,6 @@ export function githubCodeChange(
       name: outcome.repositoryFullName,
       providerId: outcome.repositoryId,
     },
-    requesterIdentityIds,
     state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
     title: outcome.title,
     updatedAt: outcome.updatedAt,
@@ -85,13 +83,15 @@ export async function applyGitHubPullRequestOutcome(args: {
     : undefined;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
-  const requesters = await listGitHubPullRequestRequesters(args.db, {
+  await args.codeChanges.record(githubCodeChange(outcome));
+  // After the record, so a requester that the create tool saves meanwhile
+  // reaches the code change.
+  await syncGitHubPullRequestRequesters({
+    codeChanges: args.codeChanges,
+    db: args.db,
     numbers: [outcome.number],
     repositoryFullName: outcome.repositoryFullName,
   });
-  await args.codeChanges.record(
-    githubCodeChange(outcome, requesters.get(outcome.number) ?? []),
-  );
   if (state) {
     const conversationIds =
       (await findGitHubPullRequest(args.codeChanges, outcome))

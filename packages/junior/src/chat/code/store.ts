@@ -123,10 +123,6 @@ export async function recordCodeChange(
     number: change.number,
     openedAt: change.openedAt,
     repositoryId,
-    requesterIdentityIds: withAddedValues(
-      juniorCodeChanges.requesterIdentityIds,
-      change.requesterIdentityIds,
-    ),
     state: change.state,
     ...(change.title ? { title: change.title } : undefined),
     updatedAt: change.updatedAt,
@@ -139,7 +135,6 @@ export async function recordCodeChange(
       id: randomUUID(),
       provider,
       providerId: change.providerId,
-      requesterIdentityIds: change.requesterIdentityIds,
     })
     .onConflictDoUpdate({
       target: [juniorCodeChanges.provider, juniorCodeChanges.providerId],
@@ -191,6 +186,29 @@ export async function associateCodeChangeConversations(
       conversationIds: withAddedValues(
         juniorCodeChanges.conversationIds,
         input.conversationIds,
+      ),
+    })
+    .where(
+      and(
+        eq(juniorCodeChanges.provider, provider),
+        eq(juniorCodeChanges.providerId, input.providerId),
+      ),
+    );
+}
+
+/** Credit people as requesters of an existing code change. */
+export async function associateCodeChangeRequesters(
+  db: JuniorDatabase,
+  provider: string,
+  input: { identityIds: string[]; providerId: string },
+): Promise<void> {
+  if (input.identityIds.length === 0) return;
+  await db
+    .update(juniorCodeChanges)
+    .set({
+      requesterIdentityIds: withAddedValues(
+        juniorCodeChanges.requesterIdentityIds,
+        input.identityIds,
       ),
     })
     .where(

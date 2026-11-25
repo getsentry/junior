@@ -139,7 +139,6 @@ describe("people code API", () => {
         number: 14,
         openedAt: new Date("2026-08-23T12:00:00.000Z"),
         providerId: "change-alice-requested",
-        requesterIdentityIds: [alice!.identities[0]!.id],
         title: "Alice requested change",
         updatedAt: new Date("2026-08-23T12:00:00.000Z"),
       } satisfies CodeChangeInput;
@@ -148,14 +147,16 @@ describe("people code API", () => {
       await recordCodeChange(fixture.sql.db(), "github", aliceFreshChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceRequestedChange);
-      // A later update that names no requesters keeps the stored ones.
-      const { requesterIdentityIds: _requesters, ...aliceRequestedUpdate } =
-        aliceRequestedChange;
+      const codeChanges = createPluginCodeChanges("github");
+      await codeChanges.associateRequesters({
+        identityIds: [alice!.identities[0]!.id],
+        providerId: aliceRequestedChange.providerId,
+      });
+      // A later update keeps the requesters.
       await recordCodeChange(fixture.sql.db(), "github", {
-        ...aliceRequestedUpdate,
+        ...aliceRequestedChange,
         updatedAt: new Date("2026-08-23T13:00:00.000Z"),
       });
-      const codeChanges = createPluginCodeChanges("github");
       const activity = { number: 10, repositoryProviderId: "repository-1" };
       await codeChanges.recordActivity({
         ...activity,

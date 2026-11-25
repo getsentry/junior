@@ -32,7 +32,6 @@ import {
   type GitHubPullRequestTarget,
 } from "../webhooks/pull-request-people.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
-import { listGitHubPullRequestRequesters } from "../pull-request-requesters/store.js";
 import { applyGitHubPullRequestOutcome, githubCodeChange } from "./apply.js";
 
 /**
@@ -163,13 +162,6 @@ async function reconcileRepository(
           repositoryId,
         }),
       ).data.repository;
-    // oxlint-disable-next-line no-await-in-loop -- One read per GitHub query.
-    const requesters = await listGitHubPullRequestRequesters(args.db, {
-      numbers: Object.values(pullRequests).flatMap((pullRequest) =>
-        pullRequest ? [pullRequest.number] : [],
-      ),
-      repositoryFullName: nameWithOwner,
-    });
     for (const pullRequest of Object.values(pullRequests)) {
       if (!pullRequest) continue;
       // oxlint-disable-next-line no-await-in-loop -- The sweep reads GitHub for one pull request at a time, under rate limits.
@@ -177,41 +169,32 @@ async function reconcileRepository(
         args,
         { databaseId, nameWithOwner },
         pullRequest,
-        requesters.get(pullRequest.number) ?? [],
       );
     }
   }
 }
 
-/**
- * Write the GitHub state of one stored pull request. An open one also gets
- * its saved requesters, so a requester saved after its last webhook reaches
- * the code index.
- */
+/** Write the GitHub state of one stored pull request. */
 async function reconcilePullRequest(
   args: ReconcileArgs,
   { databaseId, nameWithOwner }: { databaseId: number; nameWithOwner: string },
   pullRequest: z.output<typeof lifecycleSchema>,
-  requesterIdentityIds: string[],
 ): Promise<void> {
   if (pullRequest.state === "OPEN") {
     // No lifecycle webhook arrives for a title edit. Write it from this
     // read. No conversation ids keeps the linked ones.
     await args.codeChanges.record(
-      githubCodeChange(
-        {
-          candidateOwned: false,
-          number: pullRequest.number,
-          openedAt: new Date(pullRequest.createdAt),
-          pullRequestId: String(pullRequest.databaseId),
-          repositoryFullName: nameWithOwner,
-          repositoryId: String(databaseId),
-          state: "open",
-          title: pullRequest.title,
-          updatedAt: new Date(pullRequest.updatedAt),
-        },
-        requesterIdentityIds,
-      ),
+      githubCodeChange({
+        candidateOwned: false,
+        number: pullRequest.number,
+        openedAt: new Date(pullRequest.createdAt),
+        pullRequestId: String(pullRequest.databaseId),
+        repositoryFullName: nameWithOwner,
+        repositoryId: String(databaseId),
+        state: "open",
+        title: pullRequest.title,
+        updatedAt: new Date(pullRequest.updatedAt),
+      }),
     );
     return;
   }

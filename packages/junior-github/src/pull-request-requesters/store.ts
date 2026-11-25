@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, or } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -144,4 +144,41 @@ export async function listGitHubPullRequestRequesters(
     ]);
   }
   return requesters;
+}
+
+/** One pull request that has saved requesters. */
+export interface GitHubPullRequestRef {
+  number: number;
+  /** Lowercase `owner/name`. */
+  repositoryFullName: string;
+}
+
+/**
+ * Load the next pull requests that have saved requesters, after `after`, in
+ * the order of their repository name and number.
+ */
+export async function listGitHubPullRequestsWithRequesters(
+  db: GitHubDb,
+  input: { after?: GitHubPullRequestRef | undefined; limit: number },
+): Promise<GitHubPullRequestRef[]> {
+  const { after } = input;
+  return await db
+    .selectDistinct({
+      number: table.number,
+      repositoryFullName: table.repositoryFullName,
+    })
+    .from(table)
+    .where(
+      after
+        ? or(
+            gt(table.repositoryFullName, after.repositoryFullName),
+            and(
+              eq(table.repositoryFullName, after.repositoryFullName),
+              gt(table.number, after.number),
+            ),
+          )
+        : undefined,
+    )
+    .orderBy(asc(table.repositoryFullName), asc(table.number))
+    .limit(input.limit);
 }
