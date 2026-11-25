@@ -106,7 +106,11 @@ async function buildAgentTools(): Promise<AgentTools> {
       [],
       {},
       {
-        turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+        turnTools: turnBehavior({
+          kind: "root",
+          hasParent: false,
+          personInput: true,
+        }).tools,
         conversationId: CONVERSATION_ID,
         destination: { platform: "local", conversationId: CONVERSATION_ID },
         egress: {
