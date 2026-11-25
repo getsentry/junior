@@ -1,6 +1,8 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import * as z from "zod";
 import {
   conversationAnnotationInputSchema,
+  type AnnotationAction,
   type ConversationAnnotation,
   type ConversationAnnotationInput,
   type PluginAnnotations,
@@ -11,18 +13,75 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import {
+  INBOX_SUBJECT_KINDS,
+  pluginSubjectKind,
+  type InboxItemSubject,
+} from "@/chat/inbox-items/subjects";
+
+/** The plugin name of core's own Annotations, such as Automation cards. */
+export const CORE_ANNOTATION_PLUGIN = "junior";
+
+/**
+ * The core subject kinds of Annotations. An Annotation of a plugin object
+ * uses the Inbox form of the plugin's own kind, `<plugin>:<kind>`.
+ * - `automation`: an Automation, by its id, as for an Automation alert.
+ * - `link`: an object whose provider id is not known, such as an attached
+ *   link that no plugin names. The id is the link.
+ */
+export const ANNOTATION_SUBJECT_KINDS = {
+  automation: INBOX_SUBJECT_KINDS.automation,
+  link: "link",
+} as const;
+
+/**
+ * Return the stored subject of an object Annotation from its own subject:
+ * a core kind for core's own objects, else the plugin's kind in the Inbox
+ * form. Undefined when the plugin did not name the object's provider id.
+ */
+export function annotationSubject(
+  plugin: string,
+  annotation: ConversationAnnotationInput,
+): InboxItemSubject | undefined {
+  if (annotation.kind !== "object" || !annotation.subject) return undefined;
+  const { id, kind } = annotation.subject;
+  return {
+    id,
+    kind:
+      plugin === CORE_ANNOTATION_PLUGIN
+        ? kind
+        : pluginSubjectKind(plugin, kind),
+  };
+}
+
+const savedAnnotationJsonSchema = z.looseObject({
+  objectId: z.unknown().optional(),
+});
 
 function annotationFromRow(row: {
   annotation: unknown;
   conversationId: string;
   createdAt: Date;
   plugin: string;
+  subjectId: string | null;
+  subjectKind: string | null;
   updatedAt: Date;
 }): ConversationAnnotation | undefined {
-  const parsed = conversationAnnotationInputSchema.safeParse(row.annotation);
+  // The subject lives in its columns. A card that an older release saved
+  // kept the provider id in `objectId` instead.
+  const saved = savedAnnotationJsonSchema.safeParse(row.annotation);
+  if (!saved.success) return undefined;
+  const { objectId: _objectId, ...json } = saved.data;
+  const parsed = conversationAnnotationInputSchema.safeParse(json);
   if (!parsed.success) return undefined;
+  const ownKind = row.subjectKind?.startsWith(`${row.plugin}:`)
+    ? row.subjectKind.slice(row.plugin.length + 1)
+    : undefined;
   return {
     ...parsed.data,
+    ...(parsed.data.kind === "object" && ownKind && row.subjectId
+      ? { subject: { id: row.subjectId, kind: ownKind } }
+      : undefined),
     plugin: row.plugin,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -32,38 +91,57 @@ function annotationFromRow(row: {
 /**
  * Add or replace one annotation of a plugin, and mark the Conversation detail
  * changed in the same statement. Pass a transaction to save it with other
- * changes.
+ * changes. `subject` overrides the subject of the annotation, such as for an
+ * attached link. Without a subject or an `action`, the database fills them
+ * from the saved JSON. A later change keeps `created`: the Conversation
+ * still created the object.
  */
 export async function upsertPluginAnnotation(
   db: JuniorDatabase,
   args: {
+    action?: AnnotationAction | undefined;
     annotation: ConversationAnnotationInput;
     conversationId: string;
     plugin: string;
+    subject?: InboxItemSubject | undefined;
   },
 ): Promise<void> {
-  const annotation = conversationAnnotationInputSchema.parse(args.annotation);
+  const parsed = conversationAnnotationInputSchema.parse(args.annotation);
+  const subject = args.subject ?? annotationSubject(args.plugin, parsed);
+  // The columns hold the subject, so the JSON does not repeat it.
+  const annotation =
+    parsed.kind === "object" ? { ...parsed, subject: undefined } : parsed;
   const now = new Date();
+  const table = juniorConversationAnnotations;
   await db
     .with(conversationDetailTouch(db, [args.conversationId]))
-    .insert(juniorConversationAnnotations)
+    .insert(table)
     .values({
+      action: args.action,
       annotation,
       conversationId: args.conversationId,
       createdAt: now,
       key: annotation.key,
       kind: annotation.kind,
       plugin: args.plugin,
+      subjectId: subject?.id,
+      subjectKind: subject?.kind,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [
-        juniorConversationAnnotations.conversationId,
-        juniorConversationAnnotations.plugin,
-        juniorConversationAnnotations.kind,
-        juniorConversationAnnotations.key,
-      ],
-      set: { annotation, updatedAt: now },
+      target: [table.conversationId, table.plugin, table.kind, table.key],
+      set: {
+        annotation,
+        updatedAt: now,
+        ...(subject
+          ? { subjectId: subject.id, subjectKind: subject.kind }
+          : undefined),
+        ...(args.action
+          ? {
+              action: sql`case when ${table.action} = 'created' then 'created' else ${args.action} end`,
+            }
+          : undefined),
+      },
     });
 }
 

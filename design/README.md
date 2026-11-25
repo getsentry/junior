@@ -34,6 +34,8 @@ Do not list behaviors. The verification map in
 
 - [Agent teams](./agent-teams.md): how agents start, message, watch, and
   report to each other, and how each one ends a Turn.
+- [Annotations](./annotations.md): the objects that a Conversation created,
+  changed, or attached.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
   Conversation warm while a return is likely.

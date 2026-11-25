@@ -96,6 +96,9 @@ groups and acts on its rows.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace, and one from a
   private Conversation cannot go to Everyone.
+- A person whose role on a provider object puts them on its item sees the
+  item and the object, but not its owner Conversation unless they can see
+  it.
 - The owner of a plugin item is a Conversation that the plugin names. For
   each of its subject kinds, the plugin maps a subject id to that
   Conversation from its own records, and Junior reads the owner through

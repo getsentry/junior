@@ -1,5 +1,5 @@
 import type { PluginContext } from "./context";
-import type { ObjectAnnotation } from "./object-annotations";
+import type { AnnotatedObject } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
@@ -146,8 +146,8 @@ export interface PluginHooks {
   afterMcpTool?(
     ctx: AfterMcpToolHookContext,
   ):
-    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
-    | { objectAnnotations: ObjectAnnotation[] }
+    | Promise<{ objectAnnotations: AnnotatedObject[] } | void>
+    | { objectAnnotations: AnnotatedObject[] }
     | void;
   /**
    * Select the grant for one sandbox egress request.
@@ -165,7 +165,7 @@ export interface PluginHooks {
    */
   inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
   /**
-   * Remove the person who dismissed an item of a `dismissLeaves` subject
+   * Remove the person who dismissed an item of an `assigneeRoles` subject
    * kind from the object on the provider. Throw when the provider refuses:
    * the dismiss then fails, and the person stays on the item. Junior calls
    * it again when the person retries, so it must be safe to repeat.

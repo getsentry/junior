@@ -281,11 +281,11 @@ function validateInboxSubjects(
       );
     }
     if (
-      subject.dismissLeaves !== undefined &&
-      typeof subject.dismissLeaves !== "boolean"
+      subject.assigneeRoles !== undefined &&
+      typeof subject.assigneeRoles !== "boolean"
     ) {
       throw new Error(
-        `Plugin "${name}" inbox subject "${subject.kind}" dismissLeaves must be a boolean.`,
+        `Plugin "${name}" inbox subject "${subject.kind}" assigneeRoles must be a boolean.`,
       );
     }
     if (seen.has(subject.kind)) {

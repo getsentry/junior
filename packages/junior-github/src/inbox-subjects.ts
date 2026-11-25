@@ -64,7 +64,7 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
   // Conversation that created the issue: the first to save its card. A
   // dismiss unassigns only the person who dismissed it.
   {
-    dismissLeaves: true,
+    assigneeRoles: true,
     kind: GITHUB_INBOX_SUBJECTS.issue,
     label: "Issue",
     owner: "annotation",

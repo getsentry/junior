@@ -1,3 +1,4 @@
+import type { AnnotatedObject } from "@sentry/junior-plugin-api";
 import {
   agentEventKeys,
   agentEventMatchSchema,
@@ -220,6 +221,7 @@ export async function eventAutomationToolResult(
   task: StoredEventAutomation,
   catalog: EventCatalog,
   isCreator: boolean,
+  action: AnnotatedObject["action"],
 ) {
   const description = describeEventAutomationTrigger(task.trigger, catalog);
   return saveAutomationCardResult(
@@ -231,5 +233,6 @@ export async function eventAutomationToolResult(
       trigger: eventTriggerText(task.trigger.label, description),
       triggerProblems: description.problems,
     },
+    action,
   );
 }

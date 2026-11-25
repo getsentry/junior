@@ -2,12 +2,13 @@ import {
   defineJuniorPlugin,
   type AfterMcpToolHookContext,
   type PluginRegistration,
-  type ObjectAnnotation,
+  type AnnotatedObject,
 } from "@sentry/junior-plugin-api";
 import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,
 } from "./events/issue.js";
+import { linearInboxSubjectKinds } from "./inbox-subjects.js";
 import { linearIssueAnnotation, readLinearIssue } from "./issue-card.js";
 import { linearIssueLinks } from "./links/issues.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
@@ -41,7 +42,7 @@ const LINEAR_SERVICE_ACCOUNT_TOOLS = [
 /** Link created and updated Linear issues to the current Junior conversation. */
 async function annotateSavedIssue(
   ctx: AfterMcpToolHookContext,
-): Promise<{ objectAnnotations: ObjectAnnotation[] } | void> {
+): Promise<{ objectAnnotations: AnnotatedObject[] } | void> {
   if (ctx.tool.name !== "save_issue") {
     return;
   }
@@ -55,7 +56,15 @@ async function annotateSavedIssue(
     });
     return;
   }
-  return { objectAnnotations: [linearIssueAnnotation(result.data)] };
+  return {
+    objectAnnotations: [
+      {
+        // save_issue changes the issue that `id` names, else creates one.
+        action: ctx.tool.arguments["id"] === undefined ? "created" : "changed",
+        ...linearIssueAnnotation(result.data),
+      },
+    ],
+  };
 }
 
 /** Install options for the Linear plugin. */
@@ -124,6 +133,7 @@ export function linearPlugin(
         ? { reviewContext: options.reviewContext }
         : undefined),
     },
+    inboxSubjects: linearInboxSubjectKinds,
     hooks: {
       afterMcpTool: annotateSavedIssue,
       routes(ctx) {

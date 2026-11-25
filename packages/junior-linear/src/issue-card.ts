@@ -9,6 +9,7 @@ import type {
   PluginMcpContent,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { LINEAR_SUBJECT_KINDS } from "./inbox-subjects.js";
 
 const namedFact = z
   .union([z.string(), z.object({ name: z.string() })])
@@ -95,6 +96,7 @@ export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
     kind: "object",
     objectType: "task",
     key: identifier,
+    subject: { id: identifier, kind: LINEAR_SUBJECT_KINDS.issue },
     label: identifier,
     title: (issue.title || identifier).slice(0, 512),
     description: issue.description?.slice(0, 4000),

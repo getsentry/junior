@@ -7,7 +7,10 @@ import {
   primaryKey,
   text,
 } from "drizzle-orm/pg-core";
-import type { ConversationAnnotationInput } from "@sentry/junior-plugin-api";
+import type {
+  AnnotationAction,
+  ConversationAnnotationInput,
+} from "@sentry/junior-plugin-api";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 export const juniorConversationAnnotations = pgTable(
@@ -17,6 +20,13 @@ export const juniorConversationAnnotations = pgTable(
     plugin: text("plugin").notNull(),
     kind: text("kind").notNull(),
     key: text("key").notNull(),
+    // The object: a subject kind in the Inbox form, `<plugin>:<kind>` or a
+    // core kind, and the provider's id of the object. Null only until the
+    // trigger of `20261125135950_annotation_subjects` fills a row that an
+    // old worker wrote.
+    subjectKind: text("subject_kind"),
+    subjectId: text("subject_id"),
+    action: text("action").$type<AnnotationAction>(),
     annotation: jsonb("annotation_json")
       .$type<ConversationAnnotationInput>()
       .notNull(),
@@ -33,8 +43,13 @@ export const juniorConversationAnnotations = pgTable(
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }).onDelete("cascade"),
-    // Finds the Conversation that first saved an object, for the owner of
-    // an Inbox item that names the object by its provider id.
+    // Finds the Conversations that point to one object, oldest first, such
+    // as the owner of an Inbox item about the object.
+    index("junior_conversation_annotations_subject_idx")
+      .on(table.subjectKind, table.subjectId, table.createdAt)
+      .where(sql`${table.subjectKind} is not null`),
+    // The owner lookup of the last release, which read `objectId` from the
+    // JSON. Old workers use it while this release rolls out.
     index("junior_conversation_annotations_object_id_idx")
       .on(
         table.plugin,

@@ -25,12 +25,12 @@ const item = juniorInboxItems;
 
 const annotations = juniorConversationAnnotations;
 
-// The Conversation that first saved the plugin's object Annotation of the
-// subject's object, such as the one that created a GitHub issue. Later
-// Conversations that change the object add their own Annotations of it.
-// `junior_conversation_annotations_object_id_idx` serves this lookup.
-function annotationOwner(plugin: string): SQL {
-  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.plugin} = ${plugin} and ${annotations.kind} = 'object' and ${annotations.annotation}->>'objectId' = ${item.subjectId} order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
+// The Conversation that first saved an Annotation of the subject's object,
+// such as the one that created a GitHub issue. Later Conversations that
+// change the object add their own Annotations of it.
+// `junior_conversation_annotations_subject_idx` serves this lookup.
+function annotationOwner(kind: string): SQL {
+  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.subjectKind} = ${kind} and ${annotations.subjectId} = ${item.subjectId} order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
 }
 
 /** SQL: the owner Conversation of a plugin item, from the plugin's table. */
@@ -39,7 +39,7 @@ function pluginOwnerCases(): SQL[] {
     (plugin.inboxSubjects ?? []).map((subject) => {
       const kind = pluginSubjectKind(plugin.manifest.name, subject.kind);
       if (subject.owner === "annotation") {
-        return sql`when ${kind} then ${annotationOwner(plugin.manifest.name)}`;
+        return sql`when ${kind} then ${annotationOwner(kind)}`;
       }
       const { conversationId, subjectId, table } = subject.owner;
       const owner = sql`${sql.identifier(table)}.${sql.identifier(conversationId)}`;

@@ -70,7 +70,7 @@ export const cancelCalendarEventTool = definePluginTool({
     const { event, path } = read;
     const result = {
       target: "cancelCalendarEvent" as const,
-      ...ownEventResult(event, timeZone, ctx.accountEmail),
+      ...ownEventResult(event, timeZone, ctx.accountEmail, "changed"),
     };
 
     const response = await googleApiRequest(ctx, {

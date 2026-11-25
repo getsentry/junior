@@ -38,20 +38,26 @@ export interface PluginInboxSubjectKind {
    * plugin and its columns in snake_case. At most one row can have the
    * subject id and a set Conversation: add a unique index for it.
    *
-   * `annotation` names the Conversation that first saved one of this
-   * plugin's object Annotations whose `objectId` is the subject id, such as
-   * the Conversation that created a GitHub issue.
+   * `annotation` names the Conversation that first saved an Annotation
+   * whose `subject` is the item's subject, such as the Conversation that
+   * created a GitHub issue. Annotations name their objects with these
+   * kinds too, so register each kind that an object Annotation uses.
    */
   owner: PluginInboxSubjectOwner | "annotation";
   /**
-   * Each assignee has their own place on the object, such as a GitHub
-   * assignee or reviewer. A dismiss then removes only the person who
-   * dismissed the item. Junior first calls the plugin's
-   * `inboxItemDismissed` hook, which removes them on the provider. When the
-   * hook fails, the dismiss fails and the person stays. The item closes when
-   * nobody is left.
+   * Each assignee holds a role on the object, such as a GitHub assignee or
+   * requested reviewer. The role puts them on the item, also when they are
+   * not in the owner Conversation: they can see the object on the provider.
+   * Their card then shows the item and the object, but not the Conversation
+   * unless they can see it. An item that would have nobody on it is not
+   * added, and an open one closes.
+   *
+   * A dismiss removes only the person who dismissed the item. Junior first
+   * calls the plugin's `inboxItemDismissed` hook, which removes their role
+   * on the provider. When the hook fails, the dismiss fails and the person
+   * stays.
    */
-  dismissLeaves?: boolean;
+  assigneeRoles?: boolean;
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */
@@ -165,7 +171,7 @@ export interface PluginConversationInboxItems {
 }
 
 /**
- * A person dismissed an item of a subject kind with `dismissLeaves`. The
+ * A person dismissed an item of a subject kind with `assigneeRoles`. The
  * plugin removes them from the object on the provider, such as from a
  * GitHub issue's assignees.
  */

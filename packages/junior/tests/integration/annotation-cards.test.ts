@@ -7,6 +7,7 @@ import {
   pluginToolOutputSchema,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, expect, it } from "vitest";
 import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -15,6 +16,7 @@ import {
   listConversationAnnotations,
 } from "@/chat/plugins/annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
+import { juniorConversationAnnotations } from "@/db/schema";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
@@ -52,7 +54,14 @@ const annotation: ObjectAnnotation = {
 // Built outside the tool definition, as a shared helper would be, so only
 // core's runtime check stops it.
 const readResult = () => ({
-  objectAnnotations: [{ ...annotation, key: "repo#2", label: "repo#2" }],
+  objectAnnotations: [
+    {
+      ...annotation,
+      action: "changed" as const,
+      key: "repo#2",
+      label: "repo#2",
+    },
+  ],
 });
 
 afterEach(closeConversationFixture);
@@ -66,6 +75,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         displayName: "Objects",
         description: "Object test tools",
       },
+      inboxSubjects: [{ kind: "change", label: "Change", owner: "annotation" }],
       hooks: {
         tools: () => ({
           save: definePluginTool({
@@ -91,7 +101,16 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
               return {
                 timed_out,
                 objectAnnotations: [
-                  { ...annotation, status: status ?? "open" },
+                  {
+                    ...annotation,
+                    // The first save creates the object. Later saves change it.
+                    action:
+                      status === "open"
+                        ? ("created" as const)
+                        : ("changed" as const),
+                    status: status ?? "open",
+                    subject: { id: "1", kind: "change" },
+                  },
                 ],
               };
             },
@@ -196,6 +215,22 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
     await expect(
       listConversationAnnotations(getDb(), conversationId),
     ).resolves.toMatchObject(cards);
+    // The row names the object by its subject. A later change keeps
+    // `created`, because the Conversation still created the object.
+    await expect(
+      getDb()
+        .select({
+          action: juniorConversationAnnotations.action,
+          subjectId: juniorConversationAnnotations.subjectId,
+          subjectKind: juniorConversationAnnotations.subjectKind,
+        })
+        .from(juniorConversationAnnotations)
+        .where(
+          eq(juniorConversationAnnotations.conversationId, conversationId),
+        ),
+    ).resolves.toEqual([
+      { action: "created", subjectId: "1", subjectKind: "objects:change" },
+    ]);
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
     await sendSlackReply({
       channelId: "C123",

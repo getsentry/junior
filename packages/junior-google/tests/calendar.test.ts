@@ -1,6 +1,6 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import {
-  objectAnnotationSchema,
+  annotatedObjectSchema,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -651,11 +651,13 @@ describe("Google Calendar tools", () => {
     });
     // Core saves this annotation and shows its card with the next reply.
     expect(
-      objectAnnotationSchema.array().parse(result.objectAnnotations),
+      annotatedObjectSchema.array().parse(result.objectAnnotations),
     ).toEqual([
       {
+        action: "created",
         kind: "object",
         key: body.id,
+        subject: { id: body.id, kind: "calendar_event" },
         label: "Oct 12",
         objectType: "calendar_event",
         title: "Sync",

@@ -240,6 +240,7 @@ export function createGitHubUpdatePullRequestTool(
           body: z.string().nullable().optional().default(null),
           draft: z.boolean(),
           html_url: z.string(),
+          id: z.number().optional(),
           merged: z.boolean(),
           node_id: z.string().optional(),
           number: z.number(),
@@ -287,22 +288,29 @@ export function createGitHubUpdatePullRequestTool(
       };
       return {
         objectAnnotations: [
-          githubObjectAnnotation({
-            ...githubObjectFacts("code_change", {
-              ...(parsed as object),
-              draft: providerResult.draft,
+          {
+            action: "changed",
+            ...githubObjectAnnotation({
+              ...githubObjectFacts("code_change", {
+                ...(parsed as object),
+                draft: providerResult.draft,
+              }),
+              repo: repo.ref,
+              number: providerResult.number,
+              id:
+                providerResult.id === undefined
+                  ? undefined
+                  : String(providerResult.id),
+              title: providerResult.title,
+              url: providerResult.html_url,
+              objectType: "code_change",
+              status: providerResult.merged
+                ? "merged"
+                : providerResult.state === "open" && providerResult.draft
+                  ? "draft"
+                  : providerResult.state,
             }),
-            repo: repo.ref,
-            number: providerResult.number,
-            title: providerResult.title,
-            url: providerResult.html_url,
-            objectType: "code_change",
-            status: providerResult.merged
-              ? "merged"
-              : providerResult.state === "open" && providerResult.draft
-                ? "draft"
-                : providerResult.state,
-          }),
+          },
         ],
         target: "updatePullRequest",
         ...data,
