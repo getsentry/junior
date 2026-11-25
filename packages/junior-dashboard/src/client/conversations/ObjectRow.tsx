@@ -10,7 +10,6 @@ import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
 import { MessageLink } from "../components/MessageLink";
-import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
 import { useSavedObject } from "./savedObjects";
@@ -129,12 +128,6 @@ export function ObjectRow(props: {
           srcSet={image.srcSet}
         />
       ))}
-      {props.live && card.objectType !== "person" ? (
-        // Above the row link, so the action does not open the source.
-        <span className="relative z-10 shrink-0">
-          <ObjectAttachAction card={card} />
-        </span>
-      ) : null}
     </section>
   );
 }

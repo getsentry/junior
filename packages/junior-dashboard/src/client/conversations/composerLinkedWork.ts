@@ -46,7 +46,7 @@ export function useAttachLinkedWork(
     );
     if (!urls.length) return;
     // A link that does not attach, such as one the viewer cannot see,
-    // stays in the Message, and its card there can still attach it.
+    // stays only in the Message.
     void pLimit(ATTACH_REQUESTS)
       .map(urls, (url) =>
         post(
