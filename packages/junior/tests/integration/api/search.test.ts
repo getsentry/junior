@@ -87,6 +87,21 @@ async function report(response: Response | Promise<Response>) {
   return searchReportSchema.parse(await awaited.json());
 }
 
+/** Store the Conversation that owns the Inbox items, which a question needs. */
+async function ownerConversation() {
+  await createSqlStore(getSqlExecutor()).recordActivity({
+    actor: {
+      email: "owner@example.com",
+      platform: "slack",
+      slackUserId: "UOWNER",
+      teamId: TEAM_ID,
+    },
+    conversationId: "slack:C123:owner",
+    destination: { channelId: "C123", platform: "slack", teamId: TEAM_ID },
+    visibility: "private",
+  });
+}
+
 async function inboxItem(args: {
   assigneeUserIds?: string[];
   body?: string;
@@ -95,6 +110,7 @@ async function inboxItem(args: {
   visibility?: "private" | "public";
 }) {
   const visibility = args.visibility ?? "private";
+  await ownerConversation();
   const item = await insertInboxItem(getDb(), {
     assignedToEveryone: false,
     assigneeUserIds: args.assigneeUserIds ?? [],
