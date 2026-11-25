@@ -188,11 +188,12 @@ export interface ObjectLinkContext extends PluginContext {
  */
 export interface PluginObjectLinkDefinition {
   /**
-   * Set false when `resolve` reads one cache entry per object that your
-   * webhooks keep current. Junior then keeps no card copy per viewer, so a
-   * change shows on the next read. `canView` still runs on each read.
+   * Set true when `resolve` reads the provider other than through
+   * `egress` or `viewerEgress`, such as through `viewerMcp`. Junior then
+   * keeps the card for each viewer and URL for one minute, and shows the
+   * last card when a read fails.
    */
-  cacheCards?: false;
+  cacheCards?: true;
   /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public
@@ -201,6 +202,14 @@ export interface PluginObjectLinkDefinition {
    */
   canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
+  /**
+   * How Junior's HTTP cache keeps the GET responses of `egress` and
+   * `viewerEgress`. Each credential has its own entries. Without it, an
+   * entry serves for one minute, and a failed read gets the last entry.
+   * Set `ttlMs: 0` when your webhooks keep your own cache current: each
+   * read then asks the provider with the entry's validators.
+   */
+  httpCache?: { staleIfError?: false; ttlMs: number };
   /**
    * Name the object from its link alone, such as `owner/repo#12`. A card
    * shows it when Junior cannot read the object, such as for a viewer who

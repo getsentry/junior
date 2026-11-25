@@ -766,12 +766,18 @@ defineJuniorPlugin({
   gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
   can open the object. Junior calls `canView` before each card read and
   again on each Attach.
-- **Resolver.** Return the card, or `undefined` for a missing object. To
-  share one provider read with `canView`, read through `ctx.cache` with a
-  short TTL. Junior caches the card for one minute for each viewer and URL,
-  and does not save it on a Conversation. When your webhooks keep the object
-  entry current, set `cacheCards: false`. Junior then reads your entry on
-  each card read, after `canView`, so a change shows at once.
+- **Resolver.** Return the card, or `undefined` for a missing object.
+  Junior does not save it on a Conversation. Junior's HTTP cache keeps the
+  GET responses of `ctx.egress` and `ctx.viewerEgress`, with separate
+  entries for each credential. An entry serves for one minute. After that,
+  Junior asks your provider with the entry's `ETag` or `Last-Modified`, and
+  a `304` keeps the entry. When a read fails, the card shows the last
+  entry and when Junior fetched it. Set `httpCache: { ttlMs }` to change
+  the minute. When your webhooks keep your own `ctx.cache` entry current,
+  set `httpCache: { staleIfError: false, ttlMs: 0 }`, so a change shows at
+  once. When `resolve` reads your provider another way, such as through
+  `ctx.viewerMcp`, set `cacheCards: true`. Junior then keeps the card for
+  one minute for each viewer and URL.
   When a webhook changes an object, call
   `ctx.annotations.objectChanged(subject)` with the object's subject. An
   open page that shows the object then reads its card again. Call it only

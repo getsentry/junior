@@ -116,6 +116,11 @@ export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;
 
 /** The card of an object with its trusted owner. */
 export const ownedObjectAnnotationSchema = objectAnnotationSchema.safeExtend({
+  /**
+   * When the provider last returned the card's data. Junior sets it only
+   * on a card that a cache serves after its TTL, because a read failed.
+   */
+  fetchedAt: z.iso.datetime().optional(),
   plugin: z.string().min(1),
 });
 export type OwnedObjectAnnotation = z.output<

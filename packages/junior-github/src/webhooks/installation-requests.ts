@@ -10,13 +10,14 @@ import {
   pullRequestFeedbackReactionContent,
   pullRequestReviewPath,
 } from "../pull-request-feedback.js";
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
@@ -40,8 +41,8 @@ export interface GitHubInstallationEnv {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }

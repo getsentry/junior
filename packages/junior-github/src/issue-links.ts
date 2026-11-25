@@ -44,6 +44,11 @@ import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
+// The object cache is shared by every viewer, and webhooks refresh it, so
+// each of its loads asks GitHub. An unchanged object costs only a 304. The
+// object cache keeps the last object when GitHub fails.
+const OBJECT_CACHE_READS = { staleIfError: false, ttlMs: 0 } as const;
+
 // The change types of a repository change rarely.
 const RELEASE_CONFIG_TTL_MS = 60 * 60_000;
 
@@ -342,10 +347,9 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
-  // The object cache is shared by every viewer, and webhooks refresh it.
-  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
+  httpCache: OBJECT_CACHE_READS,
   label: linkLabel,
   objectTypes: ["task", "code_change"],
   readTool: (object) =>
@@ -389,9 +393,9 @@ async function prefetchLinks(
 
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
-  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
+  httpCache: OBJECT_CACHE_READS,
   label: linkLabel,
   objectTypes: ["code_change"],
   // A page of pull request cards reads GitHub in one query.

@@ -82,6 +82,7 @@ import {
   type PluginPromptContributionContext,
 } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
+import { createPluginHttpCache } from "@/chat/plugins/http-cache";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
   AnyToolDefinition,
@@ -1141,6 +1142,7 @@ export function getPluginRoutes(options: {
         plugin: pluginName,
         show: options.showInboxItem ?? (async () => {}),
       }),
+      httpCache: createPluginHttpCache(pluginName),
       state: createPluginState(pluginName),
       inboxItems: {
         forConversation: (conversationId) =>

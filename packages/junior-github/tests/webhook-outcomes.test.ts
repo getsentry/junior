@@ -22,7 +22,7 @@ import { githubPlugin } from "../src/index";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
-import { memoryState } from "./plugin-harness";
+import { memoryState, passThroughHttpCache } from "./plugin-harness";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
@@ -2269,6 +2269,7 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2321,6 +2322,7 @@ describe("GitHub-owned pull request outcomes", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2440,6 +2442,7 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const plugin = githubPlugin();
       const [route] = plugin.hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2567,6 +2570,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2682,6 +2686,7 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const cached = new Map<string, unknown>();
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: {
           async getOrLoad<T>(
             key: string,
@@ -2836,6 +2841,7 @@ describe("GitHub-owned pull request outcomes", () => {
       plugin: { name: "github" },
     };
     const [route] = plugin.hooks!.routes!({
+      httpCache: passThroughHttpCache,
       ...pluginCtx,
       annotations: {
         forConversation() {

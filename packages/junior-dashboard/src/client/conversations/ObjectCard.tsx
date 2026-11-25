@@ -28,7 +28,7 @@ import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useObjectPreviews } from "./objectPreviews";
-import { formatTime } from "../time";
+import { formatRelativeTime, formatTime } from "../time";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
 // web page is its title. An event or a release ends with when it happened,
@@ -77,9 +77,10 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  * Show the full card of an annotation's object, or a `live` card that the
  * API resolved for a link: images, facts, and details. A link preview shows
  * it; a reply shows `ObjectRow`. Opening a source is always explicit. A
- * live card can attach its object to the Conversation. With `fill`, the
- * card fills the height of its container and its body scrolls. `children`
- * end the body, such as the recent activity of a person.
+ * live card can attach its object to the Conversation. A card that a cache
+ * serves after a failed read tells when Junior last fetched it. With
+ * `fill`, the card fills the height of its container and its body scrolls.
+ * `children` end the body, such as the recent activity of a person.
  */
 export function ObjectCard({
   card,
@@ -96,6 +97,7 @@ export function ObjectCard({
 }) {
   const images = useObjectPreviews(card);
   const attachable = live && card.objectType !== "person";
+  const { fetchedAt } = card;
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
@@ -280,7 +282,7 @@ export function ObjectCard({
         )}
         {children}
       </div>
-      {(card.url || attachable) && (
+      {(card.url || fetchedAt || attachable) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
           {card.url && (
             <OutboundLink
@@ -289,6 +291,15 @@ export function ObjectCard({
             >
               Open {type.toLowerCase()}
             </OutboundLink>
+          )}
+          {fetchedAt && (
+            <time
+              className="text-dashboard-text-muted"
+              dateTime={fetchedAt}
+              title={formatTime(fetchedAt)}
+            >
+              Last fetched {formatRelativeTime(fetchedAt)}
+            </time>
           )}
           {attachable && <ObjectAttachAction card={card} />}
         </div>
