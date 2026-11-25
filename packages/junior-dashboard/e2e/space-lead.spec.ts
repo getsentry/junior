@@ -58,7 +58,11 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   );
   await expect(done).toContainText("Done");
 
-  // Watch Events show as one line each, before the Lead's reply.
+  // Routine Watch Events fold into one row. The ones that need a person
+  // show as one line each, before the Lead's reply.
+  await expect(
+    transcript.getByText("Investigate checkout latency finished").first(),
+  ).toBeHidden();
   await expect(
     transcript.getByText("Triage Sentaur GoCD deployment failures needs you"),
   ).toBeVisible();
@@ -78,6 +82,15 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   await screenshot(page, "space-lead-reports");
   await working.scrollIntoViewIfNeeded();
   await screenshot(page, "space-lead");
+
+  // The folded row opens in place to the routine updates.
+  await transcript.getByRole("button", { name: /^2 routine updates/ }).click();
+  await expect(
+    transcript.getByText("Investigate checkout latency finished"),
+  ).toHaveCount(2);
+  await expect(
+    transcript.getByText("Investigate checkout latency finished").first(),
+  ).toBeVisible();
 
   // A message from the page goes to the Lead, not to a new Conversation.
   const sends: string[] = [];
