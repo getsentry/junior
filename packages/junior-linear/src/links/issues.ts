@@ -60,26 +60,31 @@ async function fetchIssue(
   // An identifier is unique only in one workspace. The viewer's login can
   // be in another workspace that has an issue with the same identifier.
   if (!issue || issueWorkspace(issue) !== link.workspace) return null;
-  if (issue.identifier !== link.identifier) return null;
-  if (issue.uuid) await rekeyTickets(ctx, issue.identifier, issue.uuid);
+  // A team move gives the issue a new identifier, and Linear still finds it
+  // by the old one. A result under another identifier must have the uuid
+  // that ties the two together.
+  if (issue.identifier !== link.identifier && !issue.uuid) return null;
+  if (issue.uuid) await rekeyTickets(ctx, link, issue.uuid);
   return issue;
 }
 
 /**
- * Move Tickets that an older release saved by identifier to Linear's uuid,
- * from this viewer's own read. The card does not need it, so a failure
- * only logs.
+ * Move Tickets that an older release saved by the identifier of the link to
+ * Linear's uuid, from this viewer's own read. Only Tickets in the link's
+ * workspace move: an identifier is unique only in one workspace. The card
+ * does not need it, so a failure only logs.
  */
 async function rekeyTickets(
   ctx: ObjectLinkContext,
-  identifier: string,
+  link: IssueLink,
   uuid: string,
 ): Promise<void> {
   try {
     await ctx.replaceSubjectId({
       kind: LINEAR_SUBJECT_KINDS.issue,
-      from: identifier,
+      from: link.identifier,
       to: uuid,
+      urlPrefix: `https://linear.app/${link.workspace}/`,
     });
   } catch (error) {
     ctx.log.error("linear.issue_subject.rekey_failed", {}, error);

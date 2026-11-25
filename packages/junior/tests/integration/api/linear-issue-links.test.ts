@@ -25,21 +25,28 @@ const MCP_URL = "https://mcp.linear.app/mcp";
 const ISSUE_URL = "https://linear.app/acme/issue/ENG-123/fix-login-redirect";
 const ISSUE_UUID = "8a87ba83-4e33-4c81-8751-a885a554e2fd";
 
-/** `get_issue` results, in the shape that Linear's hosted MCP returns. */
+const ENG_123 = {
+  id: "ENG-123",
+  uuid: ISSUE_UUID,
+  title: "Fix login redirect",
+  description: "Users land on a blank page after they sign in.",
+  url: ISSUE_URL,
+  status: "In Progress",
+  assignee: "Sam",
+  priority: { value: 2, name: "High" },
+  project: "Quality",
+  labels: ["Bug"],
+  updatedAt: "2026-09-25T14:00:00.000Z",
+};
+
+/**
+ * `get_issue` results by the id that the call names, in the shape that
+ * Linear's hosted MCP returns. The issue moved from team WEB to ENG, so its
+ * old identifier finds it too, under its new identifier.
+ */
 const ISSUES: Record<string, Record<string, unknown>> = {
-  "ENG-123": {
-    id: "ENG-123",
-    uuid: ISSUE_UUID,
-    title: "Fix login redirect",
-    description: "Users land on a blank page after they sign in.",
-    url: ISSUE_URL,
-    status: "In Progress",
-    assignee: "Sam",
-    priority: { value: 2, name: "High" },
-    project: "Quality",
-    labels: ["Bug"],
-    updatedAt: "2026-09-25T14:00:00.000Z",
-  },
+  "ENG-123": ENG_123,
+  "WEB-9": ENG_123,
 };
 
 /**
@@ -92,7 +99,7 @@ function fakeLinearMcp(access: Record<string, string[]>) {
           const id = message.params?.arguments?.id ?? "";
           calls.push(`${person} ${message.params?.name} ${id}`);
           const issue = ISSUES[id];
-          if (!issue || !access[person]?.includes(id)) {
+          if (!issue || !access[person]?.includes(String(issue["id"]))) {
             return result({
               isError: true,
               content: [{ type: "text", text: `Entity not found: Issue` }],
@@ -146,7 +153,10 @@ async function readCards(viewer: User, urls: string[]) {
  * Save a Ticket card as an older release did: its subject is the
  * identifier, because that release did not know Linear's uuid.
  */
-async function seedIdentifierTicket() {
+async function seedIdentifierTicket(
+  identifier = "ENG-123",
+  url = `https://linear.app/acme/issue/${identifier}`,
+) {
   const conversationId = `conversation-${randomUUID()}`;
   await seedConversation(getSqlExecutor(), {
     conversationId,
@@ -159,11 +169,11 @@ async function seedIdentifierTicket() {
   }).upsert({
     kind: "object",
     objectType: "task",
-    key: "ENG-123",
-    subject: { id: "ENG-123", kind: "issue" },
-    label: "ENG-123",
+    key: identifier,
+    subject: { id: identifier, kind: "issue" },
+    label: identifier,
     title: "Login redirect",
-    url: "https://linear.app/acme/issue/ENG-123",
+    url,
     displayType: "Issue",
   });
   return conversationId;
@@ -201,6 +211,12 @@ describe("Linear issue link cards", () => {
     await linear.connect(alice, "alice");
     const conversationId = await seedIdentifierTicket();
     const [before] = await savedTicket(conversationId);
+    // A Ticket with the same identifier in another Linear workspace.
+    const otherConversationId = await seedIdentifierTicket(
+      "ENG-123",
+      "https://linear.app/other-team/issue/ENG-123/payroll-export",
+    );
+    const otherBefore = await savedTicket(otherConversationId);
 
     const { objects } = await readCards(alice, [ISSUE_URL]);
 
@@ -240,6 +256,26 @@ describe("Linear issue link cards", () => {
     expect(linear.calls).toEqual(["alice get_issue ENG-123"]);
     // Alice's own read names the uuid, so the older Ticket now has it. The
     // read changes nothing else in the saved card.
+    expect(await savedTicket(conversationId)).toEqual([
+      { ...before, subjectId: ISSUE_UUID },
+    ]);
+    expect(await savedTicket(otherConversationId)).toEqual(otherBefore);
+  });
+
+  it("shows a moved issue from a link with its old identifier, and rekeys Tickets saved under that identifier", async () => {
+    const linear = fakeLinearMcp({ alice: ["ENG-123"] });
+    const alice = testViewer("alice@example.com");
+    await linear.connect(alice, "alice");
+    const conversationId = await seedIdentifierTicket("WEB-9");
+    const [before] = await savedTicket(conversationId);
+
+    const { objects } = await readCards(alice, [
+      "https://linear.app/acme/issue/WEB-9/fix-login-redirect",
+    ]);
+
+    expect(objects.map((card) => card.object)).toMatchObject([
+      { key: "ENG-123", subject: { id: ISSUE_UUID, kind: "issue" } },
+    ]);
     expect(await savedTicket(conversationId)).toEqual([
       { ...before, subjectId: ISSUE_UUID },
     ]);

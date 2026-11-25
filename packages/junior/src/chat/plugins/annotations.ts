@@ -90,12 +90,18 @@ function annotationFromRow(row: {
 
 /**
  * Move the Annotations of one plugin subject from one provider id to
- * another. Only the subject id changes: the saved card and its update time
- * stay.
+ * another, only those whose url starts with `urlPrefix` when it is set.
+ * Only the subject id changes: the saved card and its update time stay.
  */
 export async function replaceAnnotationSubjectId(
   db: JuniorDatabase,
-  args: { from: string; kind: string; plugin: string; to: string },
+  args: {
+    from: string;
+    kind: string;
+    plugin: string;
+    to: string;
+    urlPrefix?: string | undefined;
+  },
 ): Promise<void> {
   const table = juniorConversationAnnotations;
   await db
@@ -106,6 +112,9 @@ export async function replaceAnnotationSubjectId(
         eq(table.plugin, args.plugin),
         eq(table.subjectKind, pluginSubjectKind(args.plugin, args.kind)),
         eq(table.subjectId, args.from),
+        args.urlPrefix === undefined
+          ? undefined
+          : sql`starts_with(${table.annotation} ->> 'url', ${args.urlPrefix})`,
       ),
     );
 }

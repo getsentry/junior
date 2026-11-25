@@ -782,6 +782,8 @@ defineJuniorPlugin({
   object that older Annotations name by another id, call
   `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations
   of your subject kind `kind` from `from` to `to`, and changes nothing else.
+  When `from` is unique only in one workspace, set `urlPrefix` to the
+  workspace's address: only Annotations whose url starts with it move.
 - **Prefetch.** To load a page of links in one provider call, add
   `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
   that the link type claims, before `canView` and `resolve` run for each
