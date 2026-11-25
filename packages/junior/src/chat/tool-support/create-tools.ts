@@ -68,6 +68,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AnyToolDefinition,
@@ -266,6 +267,7 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  setSpaceConfiguration: (run) => createSetSpaceConfigurationTool(run.context),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
       run.context,
@@ -391,14 +393,6 @@ const STATIC_TOOL_BINDERS = {
 
 type TurnTools = TurnBehavior["tools"];
 
-// A person's Turn in a Thread lists the agent tools of the Thread, but it
-// cannot use them: their results would report to the parent as the wrong
-// Actor.
-const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
-  turnTools.agents === "none"
-    ? "A person's Turn in a Thread cannot use agent tools."
-    : undefined;
-
 const INBOX_LIMIT = (turnTools: TurnTools) =>
   turnTools.inbox
     ? undefined
@@ -410,10 +404,6 @@ const INBOX_LIMIT = (turnTools: TurnTools) =>
 const TURN_TOOL_LIMITS: Partial<
   Record<StaticToolName, (turnTools: TurnTools) => string | undefined>
 > = {
-  startAgent: AGENT_TOOL_LIMIT,
-  stopAgent: AGENT_TOOL_LIMIT,
-  archiveAgent: AGENT_TOOL_LIMIT,
-  messageAgent: AGENT_TOOL_LIMIT,
   // The system prompt says why for each sender: a person's Turn ends with a
   // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
@@ -432,6 +422,8 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
+  setSpaceConfiguration: (turnTools) =>
+    turnTools.spaces ? undefined : "Only a person's request changes a Space.",
   addInboxItem: INBOX_LIMIT,
   searchInboxItems: INBOX_LIMIT,
   updateInboxItem: INBOX_LIMIT,

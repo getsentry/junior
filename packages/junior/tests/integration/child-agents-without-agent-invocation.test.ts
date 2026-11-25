@@ -18,7 +18,6 @@ import {
 import { eq } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import {
   getConversationStoppedAtMs,
@@ -45,6 +44,7 @@ import {
   slackDestination,
   slackInvocationInput,
   slackParentConversationId,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import {
   sendParentMessage,
@@ -215,16 +215,13 @@ describe("child agents", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: slackInvocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "completed",
-          text: "Deploy is green.",
-        },
+        update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
       });
       // The reply stores who sent it; readers never parse its id.
@@ -260,16 +257,13 @@ describe("child agents", () => {
       await harness.processUntilRun(childId);
       await harness.drain(childId);
       const before = await parentMessageTexts();
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: slackInvocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "completed",
-          text: "Deploy is green.",
-        },
+        update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
       });
       await expect(
@@ -741,13 +735,13 @@ describe("child agents", () => {
         parentConversationId: childId,
       });
       harness.queue.takeMessageFor(helperId);
-      await createDeliverToParent({
+      await createPublishChildTurn({
         queue: harness.queue,
         state: harness.state,
       })({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: helperId,
-        result: { kind: "blocked", text: "Needs a token." },
+        update: { status: "blocked", text: "Needs a token." },
         turnId: "turn_helper",
       });
       const runCount = harness.runs.length;

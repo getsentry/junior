@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
-import type { ParentResult } from "@/chat/agent-invocations/parent-result";
+import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -16,6 +15,7 @@ import {
   invocationInput,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
@@ -54,20 +54,21 @@ async function createHarness() {
     childContext,
     findMentionedUserId,
   );
-  const deliverToParent = createDeliverToParent({
+  const publishChildTurn = createPublishChildTurn({
     queue: work.queue,
     state: work.state,
   });
   return {
     childConversationId,
     spawn,
+    work,
     /** Sends one child Turn's result to the parent, as its loop does. */
-    send: async (conversationId: string, result: ParentResult) =>
-      await deliverToParent({
+    send: async (conversationId: string, update: AgentUpdate) =>
+      await publishChildTurn({
         actor: invocationInput.actor,
         conversationId,
-        result,
         turnId: "turn_child",
+        update,
       }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
@@ -329,8 +330,8 @@ describe("updateTodos", () => {
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
       };
-      const reply: ParentResult = {
-        kind: "completed",
+      const reply: AgentUpdate = {
+        status: "done",
         text: "Reviewed.",
       };
       tick();
@@ -349,7 +350,10 @@ describe("updateTodos", () => {
       tick();
       await harness.send(children.completed, reply);
       for (const kind of ["stopped", "failed", "blocked"] as const) {
-        await harness.send(children[kind], { kind, text: `Child ${kind}.` });
+        await harness.send(children[kind], {
+          status: kind,
+          text: `Child ${kind}.`,
+        });
       }
       // A retry of the same result leaves To-dos assigned after it open.
       tick();
@@ -362,7 +366,7 @@ describe("updateTodos", () => {
       tick();
       await harness.send(children.completed, reply);
       await harness.send(children.stopped, {
-        kind: "stopped",
+        status: "stopped",
         text: "Child stopped.",
       });
 

@@ -8,9 +8,10 @@ Visibility and Destination are the only boundaries between Conversations.
   Conversation. The surface (Slack, web, local) and the provider tenant
   (Slack workspace) do not change this.
 - Private is isolated. No data goes into or out of a private Conversation,
-  except through the people who look at it, or to another Conversation at
-  the same Destination. Every Conversation at one Destination, such as one
-  private Slack channel or DM, has the same audience.
+  except through the people who look at it, or to another Conversation with
+  the same audience. Every Conversation at one Destination, such as one
+  private Slack channel or DM, has the same audience. Every Conversation in
+  one private Space has the same audience too: the Space's members.
 
 One rule decides when a Conversation may read, find, or act on the data of
 another Conversation. A new feature uses this rule. It does not add its own
@@ -20,14 +21,13 @@ rule, and it does not add a surface or tenant check to public access.
 
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
-- **Visibility**: `public` or `private`, stored on the root Conversation.
-  A root takes the visibility of its Destination and follows a live change
-  to it, such as a Slack channel that becomes private. A direct message is
-  private. Child Conversations, events, Messages, Conversation metadata,
-  Annotations, artifacts, and plugin records use the values of their root.
-  Missing visibility is private. Read it from the root, not from the
-  Destination. When the root is missing, rows 2 and 3 do not match, and
-  row 4 denies.
+- **Visibility**: `public` or `private`, stored on the root and read from
+  it. A root keeps the first known visibility of its Destination or Space,
+  and it joins only a public Space. Children and all records of a tree use
+  the values of their root. Missing visibility is private. A direct message
+  is private. When the root is missing, rows 2, 4, and 5 do not match, and
+  row 6 denies. Limitation: a Slack channel that becomes private leaves its
+  earlier Conversations public.
 
 ## Rule between Conversations
 
@@ -36,29 +36,31 @@ Check the rows in this order. The first match decides.
 | #   | Target                                          | Result |
 | --- | ----------------------------------------------- | ------ |
 | 1   | In the same Conversation tree as the requester  | Allow  |
-| 2   | Root at the same Destination as the requester's | Allow  |
-| 3   | Public                                          | Allow  |
-| 4   | Private, in another tree and Destination        | Deny   |
+| 2   | Root in the requester's private Space           | Allow  |
+| 3   | Root in another private Space                   | Deny   |
+| 4   | Root at the same Destination as the requester's | Allow  |
+| 5   | Public                                          | Allow  |
+| 6   | Private, in another tree and Destination        | Deny   |
 
-- Row 2 compares only the Destination ids of the two roots. It has no
-  provider or surface check. It is safe because of one invariant:
+- Row 4 skips a requester in a private Space, so the Space's data stays
+  with its members. It compares only the Destination ids of the two roots.
+  It has no provider or surface check. It is safe because of one invariant:
   Conversations share a Destination only when they have the same audience.
   A surface that cannot keep this invariant gives each Conversation its own
   Destination, as web and local Conversations do now. Slack shares one
   Destination across the threads of a channel, DM, or group DM.
-- Row 4 applies to every person and to every requester visibility. A
+- Row 6 applies to every person and to every requester visibility. A
   person who is a participant of the target does not change the result.
 - Code: `canAccessConversation` in
-  `packages/junior/src/api/conversations/access.ts`. Its unit test has one
+  `packages/junior/src/api/conversations/access.ts`. Its unit test has a
   case for each row.
 
 ## Writes
 
 - A write needs read access first.
-- A private requester never writes into a public Conversation. For
-  example, `messageAgent` from a private Conversation to a public one is
-  denied. Together with row 4, a private Conversation writes only into
-  Conversations at its own Destination.
+- A private requester never writes into a public Conversation, such as
+  with `messageAgent`. With row 6, a private Conversation writes only into
+  Conversations at its own Destination or in its own private Space.
 - One exception: the Lead of a public Space may write into any public root
   in its Space, for the member who asked it. Outside its Space, it may write
   only into a public root where that member is a Participant, as the member
@@ -85,11 +87,14 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation. Only the
-Participants of a private Conversation may read it, and they may act on it
-there (`canViewPrivateContent`, `isParticipant`). The Participant rows of a
-root are its access list. This rule never lets one Conversation read
-another.
+is not a Conversation. Anyone may read a public Conversation. Only its
+Participants may read and act on a private one (`canViewPrivateContent`,
+`isParticipant`). This rule never lets one Conversation read another.
+
+In a private Space, membership decides instead. Every member may read each
+of its Conversations and join one by posting. A person who is not a member
+may not read or act on them, even as a participant, and gets "not found"
+for the Space. A member adds people to it.
 
 ## Surfaces
 
@@ -98,13 +103,14 @@ another.
   `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed,
   before any text from the target reaches the watcher.
-- A Lead's `searchConversations` finds Conversations whose root is public
-  or is at the Destination of the requester's root. It finds child agents
+- A Lead's `searchConversations` finds Conversations whose root is public,
+  is at the Destination of the requester's root, or is in the requester's
+  private Space. It finds child agents
   only when asked. It never finds the requester's own tree. Its results
   include the summary and outcome status. `participating` keeps only roots
   where the person is a Participant.
-- `listAgents` with a `query` finds roots that are public or at the
-  Destination of the requester's root, and the Conversations in the
+- `listAgents` with a `query` finds roots that are public, at the
+  Destination of the requester's root, or in its private Space, and the Conversations in the
   requester's own tree, except the requester. Its results include the
   summary and outcome status. The requester's team ranks first, then the
   roots where the person it works for is a Participant.

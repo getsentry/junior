@@ -220,9 +220,7 @@ describe("Thread input", () => {
       });
       expect(
         (parentWork?.messages ?? []).map((message) => message.input.text),
-      ).toEqual([
-        expect.stringMatching(/^<agent-result [^>]*status="completed"/),
-      ]);
+      ).toEqual([expect.stringMatching(/^<agent-result [^>]*status="done"/)]);
     } finally {
       await harness.close();
     }

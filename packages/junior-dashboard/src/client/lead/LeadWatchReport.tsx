@@ -13,9 +13,11 @@ import { leadWorkStatus } from "./LeadWorkStatus";
 
 type Report = { state: LeadWorkState; verb: string };
 
+const done: Report = { state: "done", verb: "finished" };
+
 const reports: Record<string, Report> = {
   blocked: { state: "needs_you", verb: "is blocked" },
-  completed: { state: "done", verb: "finished" },
+  done,
   failed: { state: "failed", verb: "failed" },
   stopped: { state: "done", verb: "stopped" },
   waiting: { state: "needs_you", verb: "needs you" },
@@ -23,7 +25,7 @@ const reports: Record<string, Report> = {
 
 // Watch Events from before agent updates. Stored Lead transcripts keep them.
 const legacyReports: Record<string, Report | undefined> = {
-  "conversation.completed": reports["completed"],
+  "conversation.completed": done,
   "conversation.failed": reports["failed"],
   "conversation.stopped": reports["stopped"],
   "conversation.waiting": reports["waiting"],

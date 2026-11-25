@@ -11,7 +11,7 @@ type JrRpcDeps = {
   onConfigurationValueChanged?: (
     key: string,
     value: unknown | undefined,
-  ) => void;
+  ) => void | Promise<void>;
 };
 
 function commandResult(input: {
@@ -187,7 +187,7 @@ async function handleConfigCommand(
           ? { "app.skill.name": deps.activeSkill.name }
           : undefined),
       });
-      deps.onConfigurationValueChanged?.(entry.key, entry.value);
+      await deps.onConfigurationValueChanged?.(entry.key, entry.value);
       return commandResult({
         stdout: {
           ok: true,
@@ -225,7 +225,7 @@ async function handleConfigCommand(
           ? { "app.skill.name": deps.activeSkill.name }
           : undefined),
       });
-      deps.onConfigurationValueChanged?.(key, undefined);
+      await deps.onConfigurationValueChanged?.(key, undefined);
     }
     return commandResult({
       stdout: {

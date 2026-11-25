@@ -109,9 +109,9 @@ export function locationFromRow(
 
 /**
  * Give a root Conversation with no Location its first one, in the caller's
- * SQL scope. The Location row becomes the Conversation Destination, and the
- * root takes its visibility. Returns false when the Conversation already has
- * a Location.
+ * SQL scope. The Location row becomes the Conversation Destination, and a
+ * root with no visibility yet takes its visibility. Returns false when the
+ * Conversation already has a Location.
  */
 export async function setFirstConversationLocation(
   executor: JuniorSqlDatabase,
@@ -125,7 +125,7 @@ export async function setFirstConversationLocation(
   const db = executor.db();
   const visibility = db
     .select({
-      visibility: sql`case when ${juniorDestinations.visibility} = 'public' then 'public' else 'private' end`,
+      visibility: sql`case ${juniorDestinations.visibility} when 'public' then 'public' when 'unknown' then null else 'private' end`,
     })
     .from(juniorDestinations)
     .where(eq(juniorDestinations.id, location.id));
@@ -134,7 +134,7 @@ export async function setFirstConversationLocation(
     .set({
       location,
       destinationId: location.id,
-      visibility: sql`(${visibility})`,
+      visibility: sql`coalesce(${juniorConversations.visibility}, (${visibility}))`,
       ...(args.channelName ? { channelName: args.channelName } : undefined),
       detailVersion: nextDetailVersion,
     })

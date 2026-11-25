@@ -17,15 +17,12 @@ import {
   failStoppedDispatch,
   resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
-import {
-  createChildConversationWorker,
-  createDeliverToParent,
-} from "@/chat/agent-invocations/result";
+import { createChildConversationWorker } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { resumeForPersonInput } from "@/chat/conversations/session-stop";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -121,7 +118,7 @@ export function createConversationWork(
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
-    createDeliverToParent({ queue: options.queue, state: options.state }),
+    { queue: options.queue, state: options.state },
   );
   const childWorker = createChildConversationWorker({
     runTurn: conversationTurnWorker,
@@ -213,7 +210,7 @@ export function createConversationWork(
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });
-    const topLevel = isTopLevelKind(conversation?.kind ?? "root");
+    const topLevel = !conversation || isTopLevel(conversation);
     // Bind the tree root once, so spans of child agents count by root.
     return await withLogContext(
       {

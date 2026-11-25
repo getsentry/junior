@@ -66,7 +66,7 @@ const inputSchema = z
     status: z
       .enum(["addressed", "declined"])
       .describe(
-        "Feedback outcome. Maps to a reaction: addressed -> +1, declined -> -1.",
+        'Feedback outcome. "addressed" (+1): you made the change or answered the question. "declined" (-1): you do not make the change now, such as when you push back, defer it, or leave the decision to the author.',
       ),
   })
   .strict();
@@ -478,7 +478,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,

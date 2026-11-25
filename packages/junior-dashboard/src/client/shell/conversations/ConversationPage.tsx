@@ -127,6 +127,7 @@ import {
   useQuickQuestionThread,
 } from "../../conversations/QuickQuestion";
 import { Transcript } from "../../conversations/TranscriptView";
+import type { ShowTranscriptRow } from "../../conversations/transcriptBottomPinning";
 import type { TranscriptAskReveal } from "../../conversations/ConversationTranscript";
 import {
   readConversationStartPosition,
@@ -169,6 +170,7 @@ export function ConversationPage(props: {
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
+  const showRowRef = useRef<ShowTranscriptRow>(null);
   const replyRef =
     useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -426,10 +428,15 @@ export function ConversationPage(props: {
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
   // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it (`canAddConversationMessages` in the API).
+  // Conversation by posting in it, and a member can join one in their private
+  // Space (`canAddConversationMessages` in the API). Only a member reads a
+  // private Space's Conversations, so a readable one with a Space is theirs.
   const canReply =
     view === "rich" &&
-    (detail.data?.isParticipant || detail.data?.visibility === "public") &&
+    detail.data !== undefined &&
+    (detail.data.isParticipant ||
+      detail.data.visibility === "public" ||
+      Boolean(detail.data.space)) &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -582,7 +589,8 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (memoryJumpSeq === undefined || !transcript || holdShown) return;
     if (openLink({ event: memoryJumpSeq })) return;
-    showMemoryRow(pageRef.current, memoryJumpSeq);
+    const showRow = showRowRef.current;
+    if (showRow) showMemoryRow(pageRef.current, memoryJumpSeq, showRow);
     setMemoryJumpSeq(undefined);
   }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
@@ -900,6 +908,7 @@ export function ConversationPage(props: {
                           : linkedRowSeq
                       }
                       revealSeq={revealSeq}
+                      showRowRef={showRowRef}
                       responding={
                         !detail.error &&
                         !history.newer &&

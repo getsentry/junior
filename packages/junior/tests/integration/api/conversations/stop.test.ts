@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
@@ -40,6 +39,7 @@ import {
   loadTurnEvents,
   spawnChildAgent,
   startRunningChildAgent,
+  createPublishChildTurn,
 } from "../../../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
 import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
@@ -236,13 +236,10 @@ describe("conversation stop API", () => {
     });
     // Its Turn took its task and replied.
     await work.process(queue.takeMessageFor(done.childConversationId));
-    await createDeliverToParent({ queue, state })({
+    await createPublishChildTurn({ queue, state })({
       actor: invocationInput.actor,
       conversationId: done.childConversationId,
-      result: {
-        kind: "completed",
-        text: "Child fact: 42.",
-      },
+      update: { status: "done", text: "Child fact: 42." },
       turnId: "turn_done-child",
     });
     await ackMessages({
@@ -438,10 +435,10 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    await createDeliverToParent({ queue, state })({
+    await createPublishChildTurn({ queue, state })({
       actor: invocationInput.actor,
       conversationId: child.childConversationId,
-      result: { kind: "blocked", text: "Child needs a token." },
+      update: { status: "blocked", text: "Child needs a token." },
       turnId: "turn_blocked-child",
     });
     await expect(

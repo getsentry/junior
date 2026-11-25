@@ -24,11 +24,13 @@ import { executeAgentRun } from "@/chat/agent";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 
-export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
+export const CHAT_USAGE =
+  "usage: junior chat\n       junior chat -p <message>\n       junior chat --engine core -p <message>";
 
 export type ChatCommandOptions =
   | { mode: "interactive" }
-  | { message: string; mode: "prompt" };
+  | { message: string; mode: "prompt" }
+  | { message: string; mode: "core_prompt" };
 
 export interface ChatIo {
   error: (line: string) => Promise<void> | void;
@@ -192,16 +194,18 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
     return { mode: "interactive" };
   }
 
-  if (argv[0] !== "-p") {
+  const coreEngine = argv[0] === "--engine" && argv[1] === "core";
+  const promptArgs = coreEngine ? argv.slice(2) : argv;
+  if (promptArgs[0] !== "-p") {
     return undefined;
   }
 
-  const message = argv.slice(1).join(" ").trim();
+  const message = promptArgs.slice(1).join(" ").trim();
   if (!message) {
     return undefined;
   }
 
-  return { message, mode: "prompt" };
+  return { message, mode: coreEngine ? "core_prompt" : "prompt" };
 }
 
 function formatReply(reply: LocalAgentReply): string {
@@ -247,7 +251,7 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker, createDeliverToParent } =
+  const { createChildConversationWorker } =
     await import("@/chat/agent-invocations/result");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
@@ -263,11 +267,9 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const childWorker = createChildConversationWorker({
-      runTurn: createConversationTurnWorker(
-        agentRunner,
-        undefined,
-        createDeliverToParent({ queue: localConversationWork.queue }),
-      ),
+      runTurn: createConversationTurnWorker(agentRunner, undefined, {
+        queue: localConversationWork.queue,
+      }),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -354,6 +356,26 @@ async function runPrompt(
   }
 }
 
+async function runCorePrompt(
+  options: Extract<ChatCommandOptions, { mode: "core_prompt" }>,
+  io: ChatIo,
+  pluginSet: JuniorPluginSet | null | undefined,
+): Promise<number> {
+  defaultStateAdapterForLocalChat();
+  await configureLocalChatPlugins(pluginSet);
+  const { runCoreEnginePrompt } = await import("./chat-core-engine");
+  const result = await runCoreEnginePrompt({
+    conversationId: newRunConversationId(),
+    message: options.message,
+  });
+  if (result.outcome !== "completed") {
+    await reportStatus(io, `Turn ${result.outcome}: ${result.reason}`);
+    return 1;
+  }
+  await deliverReply(io, { text: result.reply });
+  return 0;
+}
+
 async function runInteractive(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
@@ -412,6 +434,9 @@ export async function runChat(
   try {
     if (options.mode === "prompt") {
       return await runPrompt(options, io, deps.pluginSet);
+    }
+    if (options.mode === "core_prompt") {
+      return await runCorePrompt(options, io, deps.pluginSet);
     }
     await runInteractive(io, deps.pluginSet);
     return 0;

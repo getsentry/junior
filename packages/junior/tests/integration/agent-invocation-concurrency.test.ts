@@ -1,3 +1,5 @@
+import { eq } from "drizzle-orm";
+import { juniorConversations } from "@/db/schema";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
@@ -13,11 +15,7 @@ import { createListWatchesTool } from "@/chat/tools/list-watches";
 import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
 import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import type { User } from "@sentry/junior-plugin-api";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getDb,
-} from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -192,8 +190,8 @@ describe("child agent identity and concurrency", () => {
       ]);
       // Each child's result reached the parent.
       await expect(mailboxTexts(parentConversationId)).resolves.toEqual([
-        expect.stringMatching(/status="completed"[\s\S]*first unnamed task/),
-        expect.stringMatching(/status="completed"[\s\S]*second unnamed task/),
+        expect.stringMatching(/status="done"[\s\S]*first unnamed task/),
+        expect.stringMatching(/status="done"[\s\S]*second unnamed task/),
       ]);
     } finally {
       await harness.close();
@@ -369,7 +367,7 @@ describe("child agent identity and concurrency", () => {
       expect(results).toEqual(
         expect.arrayContaining([
           expect.stringMatching(
-            /status="completed"[\s\S]*successful sibling result/,
+            /status="done"[\s\S]*successful sibling result/,
           ),
           expect.stringMatching(/status="failed"[\s\S]*sibling failed/),
         ]),
@@ -420,7 +418,7 @@ describe("child agent identity and concurrency", () => {
               identifier: failing.childConversationId,
               namespace: "junior",
               suggested_events: ["agent.update"],
-              type: "conversation",
+              type: "agent",
             },
           },
         ],
@@ -695,14 +693,11 @@ describe("child agent identity and concurrency", () => {
       await harness.drainQueuedWork();
 
       // A private item goes only to people in its Conversation, and a child
-      // has none, so make the child public.
-      await getConversationStore().recordActivity({
-        conversationId: child.childConversationId,
-        destination,
-        nowMs: clock(),
-        source: "local",
-        visibility: "public",
-      });
+      // has none, so make the child's root public.
+      await getDb()
+        .update(juniorConversations)
+        .set({ visibility: "public" })
+        .where(eq(juniorConversations.conversationId, parentConversationId));
       const alice = (await resolveViewerUserFromSql(
         getDb(),
         "alice@example.com",

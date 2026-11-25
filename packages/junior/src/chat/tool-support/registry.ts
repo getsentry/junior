@@ -47,6 +47,7 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
+import { setSpaceConfigurationToolDefinition } from "@/chat/tools/set-space-configuration";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
@@ -128,8 +129,6 @@ function always(definition: StaticZodToolDefinition): StaticToolEntry {
 
 const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
-const hasAgents = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents !== "none";
 const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents === "children" ||
   listedTools.agents === "children_and_parent";
@@ -198,6 +197,10 @@ const CORE_TOOLS = {
     when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
   },
+  setSpaceConfiguration: {
+    when: ({ listedTools }) => listedTools.spaces,
+    definition: () => setSpaceConfigurationToolDefinition,
+  },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
   // A Lead finds Conversations with searchConversations, and every other
@@ -233,10 +236,7 @@ const CORE_TOOLS = {
     when: (scope) => !isLead(scope),
     definition: () => listAgentsToolDefinition,
   },
-  messageAgent: {
-    when: hasAgents,
-    definition: () => messageAgentToolDefinition,
-  },
+  messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,
     definition: () => replyToolDefinition,

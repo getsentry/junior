@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { juniorDestinations } from "@/db/schema";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
-import { nextDetailVersion } from "./detail-version";
 
 /** One Destination row to insert or refresh. */
 export interface DestinationUpsert {
@@ -73,45 +72,22 @@ export function destinationUpsertFromDestination(args: {
 }
 
 /**
- * Insert or refresh a Destination row. A live visibility signal also moves
- * the roots at that Destination to the new value, so a Slack channel that
- * becomes private makes its Conversations private at once.
+ * Insert or refresh a Destination row. Returns its id and the visibility that
+ * a new root there takes, or null while the Destination's visibility is
+ * unknown. A root keeps the first visibility that it gets, so a later change
+ * here changes no root.
  */
 export async function upsertDestination(
   executor: JuniorSqlDatabase,
   destination: DestinationUpsert | undefined,
   nowMs: number,
-): Promise<{ id: string; visibility: ConversationPrivacy } | undefined> {
+): Promise<{ id: string; visibility: ConversationPrivacy | null } | undefined> {
   if (!destination) {
     return undefined;
   }
   const visibilityUpdate = destination.refreshVisibility
     ? sql`excluded.visibility`
     : juniorDestinations.visibility;
-  // Lock the stored row before a refresh, so the roots move only when the
-  // value changes, not on every message in the channel.
-  const before = destination.refreshVisibility
-    ? (
-        await executor
-          .db()
-          .select({ visibility: juniorDestinations.visibility })
-          .from(juniorDestinations)
-          .where(
-            and(
-              eq(juniorDestinations.provider, destination.provider),
-              eq(
-                juniorDestinations.providerTenantId,
-                destination.providerTenantId ?? "",
-              ),
-              eq(
-                juniorDestinations.providerDestinationId,
-                destination.providerDestinationId,
-              ),
-            ),
-          )
-          .for("update")
-      )[0]
-    : undefined;
   const rows = await executor
     .db()
     .insert(juniorDestinations)
@@ -153,21 +129,11 @@ export async function upsertDestination(
   if (!row) {
     return undefined;
   }
-  const visibility = row.visibility === "public" ? "public" : "private";
-  if (
-    before &&
-    (before.visibility === "public") !== (visibility === "public")
-  ) {
-    await executor
-      .db()
-      .update(juniorConversations)
-      .set({ visibility, detailVersion: nextDetailVersion })
-      .where(
-        and(
-          eq(juniorConversations.destinationId, row.id),
-          isNull(juniorConversations.parentConversationId),
-        ),
-      );
-  }
+  const visibility =
+    row.visibility === "unknown"
+      ? null
+      : row.visibility === "public"
+        ? "public"
+        : "private";
   return { id: row.id, visibility };
 }

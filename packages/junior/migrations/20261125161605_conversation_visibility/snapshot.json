@@ -1,0 +1,80 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "344db748-dfdc-476c-9ef6-88e7b7f973eb",
+  "prevIds": [
+    "0a0f63fa-ef44-49cf-a851-38a3f4f646af",
+    "aed513e7-42de-446a-8b29-ebed6a037685",
+    "c6d09399-897e-4ab8-8197-9fd290db5470",
+    "cce94b36-ea83-411f-8bde-1233539ed160"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "visibility"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.visibility",
+        "n|col|public.junior_conversations.visibility",
+        "e|col|public.junior_conversations.visibility"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversations"
+      ],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "n|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "e|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "n|con|public.junior_conversations.junior_conversations_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.visibility",
+        "n|col|public.junior_conversations.parent_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_visibility_check",
+        "value": "\"visibility\" is null or (\"visibility\" in ('public', 'private') and \"parent_conversation_id\" is null)",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

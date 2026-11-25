@@ -45,10 +45,12 @@ const STACK_CONFLICT_STEPS =
 /**
  * Every comment on a pull request gets the same feedback status: a
  * conversation comment, an inline review comment, and a review body. A review
- * sets comment_id only when it has a body.
+ * sets comment_id only when it has a body. A reply that hands the decision
+ * back to the reviewer reaches their Inbox only through the mark
+ * (`pull-request-review-again.ts`).
  */
 const PULL_REQUEST_FEEDBACK =
-  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback or answering a question, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+  "When Verified details include comment_id, call github_updatePullRequestFeedback after you act on the comment or reply to it, with the exact repo, pull_request, comment_id, and comment_kind from Verified details. Also mark a comment that you push back on, defer, or answer with a question: a change request asks its reviewer to review again only when each of its comments is marked, so an unmarked comment drops the pull request from their Inbox.";
 
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>

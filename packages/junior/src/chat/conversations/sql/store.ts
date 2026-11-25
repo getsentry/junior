@@ -879,8 +879,8 @@ export class SqlStore implements ConversationStore {
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           // Only a new root sends a Space. `setConversationSpace` moves it.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
-          // A write with a Destination brings its current value.
-          visibility: sql`coalesce(excluded.visibility, ${juniorConversations.visibility})`,
+          // A root keeps the visibility it was created with.
+          visibility: sql`coalesce(${juniorConversations.visibility}, excluded.visibility)`,
           detailVersion: nextDetailVersion,
         },
       })

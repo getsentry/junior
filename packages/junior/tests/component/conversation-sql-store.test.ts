@@ -884,7 +884,7 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("persists visibility from source signals and converges on newer signals", async () => {
+  it("keeps the first visibility of a root as its Destination changes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -920,7 +920,8 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({ visibility: "private" });
 
-      // A channel converted private -> public converges on the next signal.
+      // A channel converted private -> public updates its Destination, but
+      // the root keeps the visibility it was created with.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination,
@@ -928,61 +929,56 @@ describe("conversation SQL store", () => {
         nowMs: 3_000,
       });
       await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "public" });
-      await expect(
         store.getDestinationVisibility({
           provider: "slack",
           providerTenantId: "T123",
           providerDestinationId: "C123",
         }),
       ).resolves.toBe("public");
-
-      await store.recordActivity({
-        conversationId: CONVERSATION_ID,
-        destination,
-        nowMs: 4_000,
-      });
       await expect(
         store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "public" });
+      ).resolves.toMatchObject({ visibility: "private" });
 
-      // A signal in another thread of the channel moves every root there.
+      // A new root in the channel takes the current value. A later change
+      // back to private leaves it public: a known limitation.
       const otherThreadId = `${CONVERSATION_ID}.other`;
       await store.recordActivity({
         conversationId: otherThreadId,
+        destination,
+        nowMs: 4_000,
+      });
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
         destination,
         visibility: "private",
         nowMs: 5_000,
       });
       await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "private" });
-      await expect(
         store.get({ conversationId: otherThreadId }),
-      ).resolves.toMatchObject({ visibility: "private" });
+      ).resolves.toMatchObject({ visibility: "public" });
     } finally {
       await fixture.close();
     }
   });
 
-  it("keeps a Slack root private without a live signal", async () => {
+  it("leaves Slack visibility missing without a live signal", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
 
-      // A write without a live source signal leaves the Destination unknown
-      // even though the channel id is C-prefixed, so the root is private.
+      // A write without a live source signal remains unknown even though the
+      // channel id is C-prefixed. The Run treats the missing value as private.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
         nowMs: 1_000,
       });
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "private" });
+      const conversation = await store.get({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(conversation).not.toHaveProperty("visibility");
       await expect(
         store.getDestinationVisibility({
           provider: "slack",

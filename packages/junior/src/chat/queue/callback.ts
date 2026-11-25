@@ -106,6 +106,8 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   return {
     /** Run a message that an in-process queue already trusts. */
     consume,
+    /** The consumer that a host mounts on its own queue provider. */
+    consumer,
     create: () => getQueueProvider().createCallback(consumer),
   };
 }

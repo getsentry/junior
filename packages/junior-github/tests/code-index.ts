@@ -17,7 +17,8 @@ type StoredChange = CodeChange & { updatedAt: Date };
  * Junior's code index in memory, for the GitHub plugin. Core owns the real
  * one (`packages/junior/src/chat/code/store.ts`). This keeps the rules that
  * the plugin relies on: an older update does not move a code change back,
- * Conversation links only grow, and a read matches the repository name in
+ * Conversation links and requesters only grow, requesters need a recorded
+ * code change, and a read matches the repository name in
  * any case. Reads list the oldest update first, then by provider id, so
  * tests see one order.
  */
@@ -50,10 +51,24 @@ export function memoryCodeIndex() {
     link(next, change.conversationIds);
     changes.set(change.providerId, next);
   };
+  /** Requester identity ids of each code change, by provider id. */
+  const requesters = new Map<string, string[]>();
   const codeChanges: PluginCodeChanges = {
     async associateConversations(input) {
       const stored = changes.get(input.providerId);
       if (stored) link(stored, input.conversationIds);
+    },
+    async associateRequesters(input) {
+      if (!changes.has(input.providerId)) return;
+      requesters.set(
+        input.providerId,
+        [
+          ...new Set([
+            ...(requesters.get(input.providerId) ?? []),
+            ...input.identityIds,
+          ]),
+        ].sort(),
+      );
     },
     async list(input) {
       const filter = codeChangeFilterSchema.parse(input);
@@ -98,6 +113,8 @@ export function memoryCodeIndex() {
       return await codeChanges.list({});
     },
     recorded,
+    /** The requesters that the index credits on one code change. */
+    requesters: (providerId: string) => requesters.get(providerId) ?? [],
     /** Add a code change that the plugin recorded before the test. */
     seed: store,
   };

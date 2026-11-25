@@ -399,7 +399,7 @@ type ReceivedChildResult = {
 };
 
 /**
- * Read the child results that wait in a Conversation's mailbox. A completed
+ * Read the child results that wait in a Conversation's mailbox. A done
  * result closes the child's To-dos as done, and a stopped one drops them.
  * A Turn reads its To-dos when it builds its prompt, before it takes its
  * input out of the mailbox, so a read sees every result there.
@@ -415,11 +415,7 @@ async function readReceivedChildResults(
       ? metadata.event.status
       : undefined;
     const status =
-      result === "completed"
-        ? "done"
-        : result === "stopped"
-          ? "dropped"
-          : undefined;
+      result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;
     return sender && status
       ? [
           {

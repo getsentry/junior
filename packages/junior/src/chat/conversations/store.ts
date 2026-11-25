@@ -233,9 +233,9 @@ export interface ConversationStore {
     spaceId?: string | undefined;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row and of the roots
-     * there. Omit it for saved values, such as visibility captured when an
-     * Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
@@ -260,9 +260,9 @@ export interface ConversationStore {
     updatedAtMs: number;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row and of the roots
-     * there. Omit it for saved values, such as visibility captured when an
-     * Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;

@@ -2,6 +2,7 @@ import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Actor,
+  type PluginCodeChanges,
   type PluginWorkOwner,
   type PluginLogger,
   type PluginDecider,
@@ -26,6 +27,7 @@ import {
   CONVERT_PULL_REQUEST_TO_DRAFT,
   MARK_PULL_REQUEST_READY_FOR_REVIEW,
 } from "../graphql-documents.js";
+import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
 import {
@@ -168,6 +170,7 @@ export function createGitHubUpdatePullRequestTool(
       _options,
       ctx: {
         actor?: Actor | undefined;
+        codeChanges: Pick<PluginCodeChanges, "associateRequesters" | "list">;
         conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
@@ -264,9 +267,16 @@ export function createGitHubUpdatePullRequestTool(
       // request becomes one of its requesters.
       const identity = requesterPerson(requester)?.identity;
       if (identity) {
-        await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+        const db = ctx.db as GitHubDb;
+        await recordGitHubPullRequestRequester(db, {
           identityId: identity.id,
           number: providerResult.number,
+          repositoryFullName: repo.ref,
+        });
+        await syncGitHubPullRequestRequesters({
+          codeChanges: ctx.codeChanges,
+          db,
+          numbers: [providerResult.number],
           repositoryFullName: repo.ref,
         });
       }

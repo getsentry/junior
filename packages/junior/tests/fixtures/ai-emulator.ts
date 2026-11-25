@@ -1,0 +1,176 @@
+// The AI emulator of the model tests: `emulate`'s AI service, in process on a
+// free port. It answers model requests on the real Anthropic Messages wire,
+// so pi-ai's `streamSimple` parses each reply as it does in production. Rules
+// script the replies and inject faults. Vitest loads this module once per
+// test file, so each test file gets its own emulator. Each test starts with
+// no rules and no recorded calls.
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
+import { createEmulator } from "emulate";
+import { afterAll, afterEach } from "vitest";
+import { resolveGatewayModel } from "@/chat/pi/client";
+import { modelClient, type ModelClient } from "@/core/model/client";
+
+type ModelReplyEvent =
+  | { type: "text"; text: string }
+  | {
+      type: "tool_call";
+      name: string;
+      arguments: Record<string, unknown>;
+      id?: string;
+    };
+
+/**
+ * What the emulator answers to a model request. The first rule that matches
+ * answers. `times` limits how often a rule answers. See the AI API section
+ * of `emulate`'s README for every field.
+ */
+export type ModelRule = {
+  match?: { stream?: boolean; hasToolResult?: boolean };
+  times?: number;
+  reply?: ModelReplyEvent[];
+  error?: { status: number; message: string; headers?: Record<string, string> };
+  fault?: { kind: "disconnect"; afterChunks: number };
+};
+
+/** One model request that the emulator answered. */
+export type ModelCall = {
+  stream: boolean;
+  status: number;
+  /** `none`, or the fault that a rule injected. */
+  fault: string;
+  /** The request's messages as the emulator records them. */
+  messages: Array<{
+    role: string;
+    parts: Array<{ type: string; text?: string }>;
+  }>;
+};
+
+const emulator = await createEmulator({ service: "ai", port: 0 });
+
+afterEach(async () => {
+  await control("/_ai/reset", { method: "POST" });
+});
+
+afterAll(async () => {
+  await emulator.close();
+});
+
+async function control(path: string, init: RequestInit = {}) {
+  const response = await fetch(new URL(path, emulator.url), init);
+  if (!response.ok) {
+    throw new Error(
+      `AI emulator ${init.method ?? "GET"} ${path} failed with ${response.status}: ${await response.text()}`,
+    );
+  }
+  return (await response.json()) as unknown;
+}
+
+/** The production model client, with its requests sent to the emulator. */
+export function emulatedModelClient(): ModelClient {
+  return modelClient({
+    apiKey: () => Promise.resolve("test-gateway-key"),
+    resolveModel: (id) => ({
+      ...resolveGatewayModel(id),
+      baseUrl: emulator.url,
+    }),
+    send: streamSimple,
+  });
+}
+
+/** Replaces the emulator's rules. The emulator needs an id for each rule. */
+export async function setModelRules(rules: ModelRule[]): Promise<void> {
+  await control("/_ai/rules", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      rules: rules.map((rule, index) => ({ ...rule, id: `rule-${index}` })),
+    }),
+  });
+}
+
+/** The model requests of the test so far, oldest first. */
+export async function modelCalls(): Promise<ModelCall[]> {
+  return (await control("/_ai/calls")) as ModelCall[];
+}
+
+/** The system prompt that a model request sent. */
+export function systemPromptOf(
+  call: ModelCall | undefined,
+): string | undefined {
+  return call?.messages
+    .find((message) => message.role === "system")
+    ?.parts.map((part) => part.text ?? "")
+    .join("");
+}
+
+/** Injected fault: the model provider answers 529 overloaded. */
+export function modelOverloaded(): ModelRule {
+  return { error: { status: 529, message: "Overloaded" } };
+}
+
+/** Injected fault: the model provider rejects the request, so no retry helps. */
+export function modelRejected(): ModelRule {
+  return { error: { status: 400, message: "Invalid request" } };
+}
+
+/** Injected fault: the model provider answers 429 and asks for a wait. */
+export function modelRateLimited(retryAfterSeconds: number): ModelRule {
+  return {
+    error: {
+      status: 429,
+      message: "Rate limited",
+      headers: { "retry-after": String(retryAfterSeconds) },
+    },
+  };
+}
+
+/** Injected fault: the stream closes after the first chunk of `text`. */
+export function streamDisconnected(text: string): ModelRule {
+  return {
+    match: { stream: true },
+    reply: [{ type: "text", text }],
+    fault: { kind: "disconnect", afterChunks: 1 },
+  };
+}
+
+/**
+ * The emulator rule that answers with the text and tool calls of a reply.
+ * Tool calls keep their ids.
+ */
+export function replyRule(reply: AssistantMessage): ModelRule {
+  if (reply.stopReason !== "stop" && reply.stopReason !== "toolUse") {
+    throw new Error(`The emulator cannot end a reply with ${reply.stopReason}`);
+  }
+  return {
+    reply: reply.content.map((part) => {
+      if (part.type === "text") {
+        return { type: "text", text: part.text };
+      }
+      if (part.type === "toolCall") {
+        return {
+          type: "tool_call",
+          name: part.name,
+          arguments: part.arguments,
+          id: part.id,
+        };
+      }
+      throw new Error(`The emulator cannot reply with ${part.type}`);
+    }),
+  };
+}
+
+/**
+ * Answers the next model requests in order, one per request. A reply is a
+ * model reply or a rule, such as a fault.
+ */
+export async function setModelReplies(
+  replies: Array<AssistantMessage | ModelRule>,
+): Promise<void> {
+  await setModelRules(
+    replies.map((reply) => ({
+      ...("role" in reply ? replyRule(reply) : reply),
+      times: 1,
+    })),
+  );
+}

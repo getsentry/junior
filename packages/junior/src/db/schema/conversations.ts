@@ -118,10 +118,10 @@ export const juniorConversations = pgTable(
     spaceId: text("space_id").references(() => juniorSpaces.id),
     // Who may read a root and its tree (policies/conversation-access.md).
     // Public: anyone. Private: only its Participants. Only a root stores it,
-    // so a child reads the value of its root. A root takes the visibility of
-    // its Destination and follows it when a live signal changes it. Null
-    // reads as private: a first-contact row has no Destination yet, and a
-    // writer of an older deploy leaves it null.
+    // so a child reads the value of its root. A root takes the first known
+    // visibility of its Destination and keeps it. Null reads as private: the
+    // root has no Destination with a known visibility yet, or a writer of an
+    // older deploy left it null.
     visibility: text("visibility").$type<ConversationPrivacy>(),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     /**

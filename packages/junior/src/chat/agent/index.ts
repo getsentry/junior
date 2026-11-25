@@ -28,7 +28,7 @@ import {
   type LogContext,
   type SetSpanAttributes,
 } from "@/chat/logging";
-import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -629,14 +629,11 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const persistedConfigurationValues = policy.locationConfiguration
-      ? await policy.locationConfiguration.resolveValues()
-      : {};
-    const configurationValues: Record<string, unknown> = {
-      ...getConfigDefaults(),
-      ...(policy.configuration ?? {}),
-      ...persistedConfigurationValues,
-    };
+    const configurationValues = await resolveConversationConfiguration({
+      configuration: policy.configuration,
+      conversationId,
+      locationConfiguration: policy.locationConfiguration,
+    });
 
     // Match the history source the agent will actually receive so crash retries
     // do not let an unstripped running record suppress fresh turn context.

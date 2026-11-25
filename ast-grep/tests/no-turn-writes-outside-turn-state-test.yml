@@ -1,0 +1,8 @@
+id: no-turn-writes-outside-turn-state
+valid:
+  - "await executor.db().select().from(juniorTurns);"
+  - "await db.update(juniorTurnInbox).set({ turnId });"
+invalid:
+  - 'await executor.db().update(juniorTurns).set({ state: "failed" });'
+  - "await db.insert(juniorTurns).values(row);"
+  - "await db.delete(juniorTurns).where(condition);"

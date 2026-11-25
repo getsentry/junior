@@ -6,7 +6,6 @@ import {
   getAgentReplyMessageId,
   getParentMessageId,
 } from "@/chat/agent-invocations/ids";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -42,6 +41,7 @@ import {
   prepareParentConversation,
   prepareSlackParentConversation,
   spawnChildAgent,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { createHarness, finishRun } from "../fixtures/thread-input";
 
@@ -281,13 +281,10 @@ describe("child agent spawn and result delivery", () => {
       });
       // A Watch Event Turn of the child replies before it ends.
       await runTurn("turn_watch-event", "getsentry/junior#2", 3_000);
-      await createDeliverToParent({ queue, state })({
+      await createPublishChildTurn({ queue, state })({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
-        result: {
-          kind: "completed",
-          text: "Opened #2.",
-        },
+        update: { status: "done", text: "Opened #2." },
         turnId: "turn_watch-event",
       });
 
@@ -330,13 +327,10 @@ describe("child agent spawn and result delivery", () => {
       const first = await spawn("fan-out-first");
       // The sibling's task still waits, so it still runs.
       await spawn("fan-out-sibling", "analyst");
-      await createDeliverToParent({ queue, state })({
+      await createPublishChildTurn({ queue, state })({
         actor: slackInvocationInput.actor,
         conversationId: first,
-        result: {
-          kind: "completed",
-          text: "First finding.",
-        },
+        update: { status: "done", text: "First finding." },
         turnId: taskTurnId("fan-out-first"),
       });
 
@@ -438,14 +432,11 @@ describe("child agent spawn and result delivery", () => {
             state,
           });
         }
-        const deliver = createDeliverToParent({ queue, state });
+        const deliver = createPublishChildTurn({ queue, state });
         await deliver({
           actor: EVENT_SYSTEM_ACTOR,
           conversationId: repliedId,
-          result: {
-            kind: "completed",
-            text: "First finding.",
-          },
+          update: { status: "done", text: "First finding." },
           turnId,
         });
         // The other child fails later, while the replied child still runs.
@@ -462,7 +453,7 @@ describe("child agent spawn and result delivery", () => {
         await deliver({
           actor: slackInvocationInput.actor,
           conversationId: other.childConversationId,
-          result: { kind: "failed", text: "model unavailable" },
+          update: { status: "failed", text: "model unavailable" },
           turnId: "turn_other",
         });
 
@@ -491,13 +482,10 @@ describe("child agent spawn and result delivery", () => {
       // mailbox.
       await Promise.all(
         siblings.map((childId, index) =>
-          createDeliverToParent({ queue, state })({
+          createPublishChildTurn({ queue, state })({
             actor: slackInvocationInput.actor,
             conversationId: childId,
-            result: {
-              kind: "completed",
-              text: "Finding.",
-            },
+            update: { status: "done", text: "Finding." },
             turnId: taskTurnId(`fan-out-${["analyst", "auditor"][index]}`),
           }),
         ),
@@ -517,7 +505,7 @@ describe("child agent spawn and result delivery", () => {
     }
   });
 
-  it("makes a child private when its root's channel goes private", async () => {
+  it("keeps a child's visibility when its root's channel goes private", async () => {
     const { conversationStore, fixture, spawn } = await prepareSlackParent();
     try {
       const childId = await spawn("private-1");
@@ -526,8 +514,8 @@ describe("child agent spawn and result delivery", () => {
       });
       expect(childBefore).toMatchObject({ visibility: "public" });
 
-      // Only the root records the new visibility. The child shares its
-      // Destination row, so its own row does not change.
+      // A root keeps the visibility it was created with, and the child uses
+      // the root's. A channel that goes private later is a known limitation.
       await conversationStore.recordActivity({
         conversationId: slackParentConversationId,
         destination: slackDestination,
@@ -537,7 +525,7 @@ describe("child agent spawn and result delivery", () => {
       });
       await expect(
         conversationStore.get({ conversationId: childId }),
-      ).resolves.toEqual({ ...childBefore, visibility: "private" });
+      ).resolves.toEqual(childBefore);
     } finally {
       await fixture.close();
     }

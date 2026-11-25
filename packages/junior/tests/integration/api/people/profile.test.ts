@@ -333,11 +333,10 @@ describe("people profile API", () => {
         "needs_input",
         "working",
       ]);
-      // A Slack root with no confirmed visibility is private.
       expect(report.recentConversations[0]).toMatchObject({
-        channelName: "Private Channel",
+        channelName: "Private Conversation",
         channelNameRedacted: true,
-        displayTitle: "Private Channel",
+        displayTitle: "Private Conversation",
       });
       expect(report.recentConversations[1]).toMatchObject({
         conversationId: "slack:C1:123",

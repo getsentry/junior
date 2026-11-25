@@ -32,8 +32,8 @@ export async function requireSpaceForWork(
 /**
  * Put one root Conversation in a Space, or make it a one-off with null.
  * Only a participant moves it. They must be a member of the Space that it
- * leaves and of the Space that it joins. Every Space is public, so only a
- * public root joins one.
+ * leaves and of the Space that it joins. Only a public root joins a Space.
+ * A root in a private Space stays there, so its data stays with the members.
  */
 export async function setConversationSpaceForViewer(
   viewer: User,
@@ -49,7 +49,7 @@ export async function setConversationSpaceForViewer(
   if (!conversation || !access?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!canMoveToSpace(conversation.kind)) {
+  if (!canMoveToSpace(conversation)) {
     throwApiError(
       409,
       "Only a top-level conversation moves. A child is in the Space of its root.",
@@ -72,8 +72,23 @@ export async function setConversationSpaceForViewer(
   if (target && access.visibility !== "public") {
     throwApiError(409, "Only a public conversation can join a Space.");
   }
-  if (!(await setConversationSpace(conversationId, body.spaceId))) {
-    throwApiError(404, "Conversation not found.");
+  const refusal = await setConversationSpace(
+    conversationId,
+    body.spaceId,
+    currentSpaceId,
+  );
+  if (refusal === "not_found") throwApiError(404, "Conversation not found.");
+  if (refusal === "moved") {
+    throwApiError(409, "It moved to another Space. Reload and try again.");
+  }
+  if (refusal === "leaves_private") {
+    throwApiError(409, "A conversation in a private Space stays in it.");
+  }
+  if (refusal === "private_space") {
+    throwApiError(
+      409,
+      "A conversation can't join a private Space. Start it in the Space.",
+    );
   }
   return response;
 }
