@@ -71,6 +71,7 @@ import {
 } from "./mock-reporting/inbox-item-routes";
 import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
+import { readMockSpaceList } from "./mock-reporting/spaces";
 import {
   createMockReportingApi,
   readMockNotificationSettings,
@@ -141,6 +142,7 @@ export const mockReports = {
   objectLinks: readMockObjectLinks,
   peopleCode: readMockPeopleCode,
   searchRows: readMockSearchRows,
+  spaceList: readMockSpaceList,
 };
 
 export interface JuniorDashboardOptions {

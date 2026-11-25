@@ -64,6 +64,7 @@ import {
   writeAgentHistory,
 } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createContextImageFitter } from "@/chat/images/model-fit";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -1189,6 +1190,7 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       // One AI Gateway session per Conversation, not a prompt fingerprint.
       sessionId: conversationId,
+      transformContext: createContextImageFitter(),
       streamFn: withAgentRequest(
         createTracedStreamFn({
           conversationPrivacy,

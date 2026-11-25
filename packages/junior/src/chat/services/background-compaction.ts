@@ -34,6 +34,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import type { ConversationEvent } from "@/chat/conversations/history";
+import { createContextImageFitter } from "@/chat/images/model-fit";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
 import {
@@ -483,6 +484,7 @@ async function prepareSummary(
         const agent = new Agent({
           getApiKey: getGatewayApiKey,
           sessionId: message.conversationId,
+          transformContext: createContextImageFitter(),
           streamFn: withAgentRequest(summaryStreamFn, {
             systemPrompt: snapshot.systemPrompt,
             tools,

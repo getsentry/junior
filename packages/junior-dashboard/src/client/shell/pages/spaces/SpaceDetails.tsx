@@ -27,11 +27,11 @@ import {
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
 
-// The form opens only after a click, so it loads with the first open
+// The picker opens only after a click, so it loads with the first open
 // instead of with every Space page.
-const AddSpaceMemberForm = lazy(() =>
-  import("../../../spaces/AddSpaceMemberForm").then((module) => ({
-    default: module.AddSpaceMemberForm,
+const AddSpaceMembers = lazy(() =>
+  import("../../../spaces/AddSpaceMembers").then((module) => ({
+    default: module.AddSpaceMembers,
   })),
 );
 
@@ -175,8 +175,8 @@ function SpaceMembers(props: { space: SpaceReport }) {
     >
       {adding ? (
         <Suspense fallback={null}>
-          <AddSpaceMemberForm
-            onAdded={() => setAdding(false)}
+          <AddSpaceMembers
+            onDone={() => setAdding(false)}
             spaceId={props.space.id}
           />
         </Suspense>

@@ -634,6 +634,13 @@ async function runPausedTurnInContext(
                   conversationId: payload.conversationId,
                 }),
             actor,
+            // Each slice of an app's Turn sees no person, as the first did.
+            // An Event message also has a bot author, but a system Actor.
+            ...(!dispatchId &&
+            !isEventConversationMessage(userMessage) &&
+            userMessage.author?.isBot === true
+              ? { actorIsApp: true }
+              : undefined),
             credentialContext,
             destination: routingDestination,
             ...(dispatch ? { dispatch } : undefined),

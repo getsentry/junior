@@ -2,10 +2,8 @@ import type { Locator, Page, Request } from "@playwright/test";
 
 import { pasteText } from "./paste-text";
 import { expect, test } from "./test";
-import { mockConversationDetail } from "./mock-reports";
 
 const PUBLIC_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
-const PARTICIPANT_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 
 async function openComposer(page: Page, baseURL: string, id: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(id)}`);
@@ -204,7 +202,7 @@ test("Enter and Tab wait while the first people search loads", async ({
   await answer();
 });
 
-test("a person without a People page still has a card with Invite", async ({
+test("a person without a People page still has a card", async ({
   page,
   dashboard,
 }) => {
@@ -216,8 +214,7 @@ test("a person without a People page still has a card with Invite", async ({
   await typeMention(composer, "@sam", /Sam Ortiz/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U234']").hover();
-  const card = page.getByRole("dialog", { name: "Sam Ortiz" });
-  await expect(card.getByRole("button", { name: "Invite" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Sam Ortiz" })).toBeVisible();
 });
 
 test("a pasted Slack mention becomes a mention", async ({
@@ -242,114 +239,6 @@ test("a pasted Slack mention becomes a mention", async ({
   await composer.pressSequentially("!");
   await expect(composer).toHaveText("ask @U456! first");
 });
-
-test("Invite subscribes a mentioned person to a public conversation", async ({
-  page,
-  dashboard,
-}) => {
-  const invites: unknown[] = [];
-  await page.route("**/api/conversations/*/invites", async (route) => {
-    invites.push(route.request().postDataJSON());
-    await route.fallback();
-  });
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@case", /Casey Nguyen/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U456']").click();
-
-  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  await card.getByRole("button", { name: "Invite" }).click();
-  await expect(card.getByText("Subscribed")).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-
-  // A reopened card still shows the answer.
-  await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
-  await composer.locator("[data-mention='U456']").click();
-  await expect(card.getByText("Subscribed")).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-  expect(invites).toEqual([{ slackUserId: "U456" }]);
-});
-
-test("Invite says when the person is already a participant", async ({
-  page,
-  dashboard,
-}) => {
-  // Only the API knows the feed subscribers.
-  await page.route("**/api/conversations/*/invites", (route) =>
-    route.fulfill({ json: { added: false } }),
-  );
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@case", /Casey Nguyen/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U456']").click();
-
-  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  await card.getByRole("button", { name: "Invite" }).click();
-  await expect(card.getByText("Already a participant")).toBeVisible();
-});
-
-test("a person who is not a User has a card without Invite", async ({
-  page,
-  dashboard,
-}) => {
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@rile", /Riley Park/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U345']").hover();
-
-  const card = page.getByRole("dialog", { name: "Riley Park" });
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-});
-
-for (const [name, change] of [
-  ["private", { visibility: "private" }],
-  [
-    "archived",
-    { archivedAt: "2026-02-02T00:00:00.000Z", visibility: "public" },
-  ],
-] as const) {
-  test(`a ${name} conversation's mention card has no Invite`, async ({
-    page,
-    dashboard,
-  }) => {
-    // A participant's conversation, so the composer shows.
-    await page.route(
-      (url) =>
-        url.pathname ===
-        `/api/conversations/${encodeURIComponent(PARTICIPANT_CONVERSATION_ID)}`,
-      async (route) => {
-        await route.fulfill({
-          json: { ...(await mockConversationDetail(route)), ...change },
-        });
-      },
-    );
-    const composer = await openComposer(
-      page,
-      dashboard.baseURL,
-      PARTICIPANT_CONVERSATION_ID,
-    );
-    await typeMention(composer, "@case", /Casey Nguyen/);
-    await composer.press("Enter");
-    await composer.locator("[data-mention='U456']").click();
-    const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-    await expect(card).toBeVisible();
-    await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-  });
-}
 
 test("$ suggests skills and inserts the skill name", async ({
   page,

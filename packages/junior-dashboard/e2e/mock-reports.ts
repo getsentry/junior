@@ -11,6 +11,7 @@ import {
   inboxItemCountSchema,
   inboxItemListSchema,
   objectLinksReportSchema,
+  spaceListSchema,
   type CodePersonReport,
   type CodeRepositoryReport,
   type ConversationDetailReport,
@@ -152,4 +153,14 @@ export async function mockConversationOutline(conversationId: string) {
   const outline = (await mockReports()).conversationOutline(conversationId);
   if (!outline) throw new Error(`No mock Conversation ${conversationId}`);
   return conversationOutlineSchema.parse(outline);
+}
+
+/** The Spaces that the mock API lists for the query of `/api/spaces`. */
+export async function mockSpaceList(
+  route: Route,
+): Promise<z.output<typeof spaceListSchema>> {
+  const query = Object.fromEntries(new URL(route.request().url()).searchParams);
+  const list = (await mockReports()).spaceList(query);
+  if (!list) throw new Error(`Bad Space list query: ${route.request().url()}`);
+  return spaceListSchema.parse(list);
 }
