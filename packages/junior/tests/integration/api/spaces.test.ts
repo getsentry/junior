@@ -17,6 +17,7 @@ import {
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
+import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
 import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -338,6 +339,62 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+  });
+
+  it("moves a Conversation into, between, and out of Spaces with the agent tool", async () => {
+    const ana = apiFor("spaces-tool-ana@example.com");
+    const bo = apiFor("spaces-tool-bo@example.com");
+    const anaUser = await signedInViewer("spaces-tool-ana@example.com");
+    const first = await createSpace(ana, "Tool first");
+    const second = await createSpace(ana, "Tool second");
+    const conversationId = await startConversation(ana, "tool-move");
+    const thread = await startThread(
+      conversationId,
+      "local:spaces-tool-thread",
+    );
+    const move = (
+      input: { conversation_id?: string; space: string | null },
+      from = thread,
+    ) =>
+      createMoveConversationToSpaceTool({
+        conversationId: from,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${anaUser.id}` } as Identity,
+          user: anaUser,
+        }),
+      }).execute?.(input, {});
+
+    // By a dashboard link, from a Thread of the root.
+    expect(
+      await move({
+        conversation_id: conversationId,
+        space: `https://junior.example.com/spaces/${first.id}`,
+      }),
+    ).toEqual({
+      conversation_id: conversationId,
+      space: { id: first.id, name: "Tool first" },
+    });
+    // From one Space to another, by ID.
+    expect(
+      await move({ conversation_id: conversationId, space: second.id }),
+    ).toMatchObject({ space: { id: second.id } });
+    expect(await detailSpace(ana, thread)).toMatchObject({ id: second.id });
+    // A child stays in the Space of its root.
+    await expect(move({ space: first.id })).rejects.toThrow(
+      "Only a top-level conversation moves",
+    );
+    // Names are not unique, so a name is not enough.
+    await expect(
+      move({ conversation_id: conversationId, space: "Tool first" }),
+    ).rejects.toThrow("not a Space ID or a link to a Space");
+    // The person must be a member of the Space that it joins.
+    const others = await createSpace(bo, "Tool others");
+    await expect(
+      move({ conversation_id: conversationId, space: others.id }),
+    ).rejects.toThrow("Join the Space to add work to it.");
+    expect(
+      await move({ conversation_id: conversationId, space: null }),
+    ).toMatchObject({ space: null });
   });
 
   it("lets members ask Junior to set the configuration that a Space's Conversations use", async () => {

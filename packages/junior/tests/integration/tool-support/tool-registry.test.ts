@@ -276,11 +276,13 @@ describe("static tool registry", () => {
         ]),
       );
       expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("moveConversationToSpace");
       // Finding agents and Conversations reports nothing to the parent.
       expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
+          "moveConversationToSpace",
           "addInboxItem",
           "searchInboxItems",
           "updateInboxItem",
