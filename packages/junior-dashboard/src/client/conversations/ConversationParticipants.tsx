@@ -22,15 +22,12 @@ const PeoplePicker = lazy(() =>
 );
 
 /**
- * Invite subscribes a person to a public Conversation and grants no
- * access, so a private one has none. An archived one is in no feed. A
+ * The API says who may Invite. An archived Conversation is in no feed. A
  * Task has no people of its own. The API checks again.
  */
 function canInvite(detail: ConversationDetailReport | undefined): boolean {
   return (
-    detail?.visibility === "public" &&
-    detail.kind !== "task" &&
-    !detail.archivedAt
+    detail?.canInvite === true && detail.kind !== "task" && !detail.archivedAt
   );
 }
 

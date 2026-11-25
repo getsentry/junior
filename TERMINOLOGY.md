@@ -86,16 +86,20 @@ Canonical words for Junior code and docs. One concept, one word.
   Actor; steering inputs keep their own.
 - **Participant**: a User who is the Actor of a Turn in a root Conversation or
   its children, or who was invited to it. A Participant is active until they
-  unsubscribe; an inactive Participant keeps access but leaves the active
-  feed. Access, feeds, and defaults that need people use Participants. A
+  Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
-- **Invite**: a person subscribes someone to a public Conversation's feed,
-  with the people picker of its Participants or by sending a dashboard or
-  Slack Message that mentions them. Access stays the same,
-  because anyone can already read a public Conversation and join it by
-  posting. A private Conversation refuses it.
+- **Invite**: a person subscribes someone to a Conversation's feed, with
+  the people picker of its Participants. In a public Conversation, a
+  dashboard or Slack Message that mentions them also does it, and access
+  stays the same, because anyone can already read it and join by posting.
+  In a private Conversation, only a Participant may Invite, and it gives
+  access. A private Space and a Slack-backed private Conversation refuse it.
+- **Leave**: a Participant takes a Conversation out of their feed, and Join
+  puts it back. In a private Conversation with its own Participant list,
+  Leave also ends access until someone Invites them again. Nobody removes
+  another person.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.

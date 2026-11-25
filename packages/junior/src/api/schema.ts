@@ -205,11 +205,13 @@ export type {
 export {
   conversationInviteBodySchema,
   conversationInviteResponseSchema,
+  conversationLeaveResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
   ConversationInviteResponse,
+  ConversationLeaveResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";

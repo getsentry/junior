@@ -812,17 +812,18 @@ export class SqlStore implements ConversationStore {
       : conversation.conversationId;
     const db = this.executor.db();
     // Reads the row as it was before this statement, so a root that first
-    // gets a visibility here knows to fill its tree.
-    const prior = db
-      .$with("prior_conversation")
-      .as(
-        db
-          .select({ visibility: juniorConversations.visibility })
-          .from(juniorConversations)
-          .where(
-            eq(juniorConversations.conversationId, conversation.conversationId),
-          ),
-      );
+    // gets a visibility or an Actor here knows it.
+    const prior = db.$with("prior_conversation").as(
+      db
+        .select({
+          actorIdentityId: juniorConversations.actorIdentityId,
+          visibility: juniorConversations.visibility,
+        })
+        .from(juniorConversations)
+        .where(
+          eq(juniorConversations.conversationId, conversation.conversationId),
+        ),
+    );
     const rows = await db
       .with(prior)
       .insert(juniorConversations)
@@ -902,6 +903,7 @@ export class SqlStore implements ConversationStore {
         rootConversationId: juniorConversations.rootConversationId,
         visibility: juniorConversations.visibility,
         filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
+        setActor: sql<boolean>`not exists (select 1 from ${prior} where ${prior.actorIdentityId} is not null)`,
       });
     const row = rows[0];
     if (!row?.rootConversationId) {
@@ -927,8 +929,14 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // The root Actor is a Participant before they author a message.
-    if (row.actorIdentityId && row.parentConversationId === null) {
+    // The root Actor is a Participant before they author a message. Only the
+    // write that sets the Actor adds them, so a later Turn does not undo
+    // their Leave.
+    if (
+      row.actorIdentityId &&
+      row.setActor &&
+      row.parentConversationId === null
+    ) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId: conversation.conversationId,

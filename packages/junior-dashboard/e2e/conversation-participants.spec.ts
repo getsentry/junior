@@ -122,7 +122,8 @@ test("the picker fits a phone's details sheet", async ({ dashboard, page }) => {
 });
 
 for (const [name, change] of [
-  ["private", { visibility: "private" }],
+  // The API refuses Invite here, so the detail has no `canInvite`.
+  ["Slack-backed private", { canInvite: undefined, visibility: "private" }],
   [
     "archived",
     { archivedAt: "2026-02-02T00:00:00.000Z", visibility: "public" },
