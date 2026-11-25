@@ -3,11 +3,17 @@
  * item in the Inbox.
  *
  * The action derives from GitHub state. It is "merge" when the pull request
- * is open, not a draft, approved, auto-merge is off, and GitHub's merge state
- * is `clean`. Otherwise it is "review" while GitHub asks the requester for a
- * review. When the requester still requests changes and comments or reviews
- * after GitHub last asked them, the action ends, even while GitHub still
- * asks them, because Junior acts next.
+ * is open, not a draft, auto-merge is off, GitHub's merge state is `clean`,
+ * no reviewer still requests changes, and GitHub requests no review. GitHub
+ * gives `blocked` until a required review approves, so a pull request with
+ * no approval is "merge" only where GitHub requires no review, and its item
+ * asks the requester to review it first. A pending review request comes
+ * before the merge even there. Otherwise it is "review" while GitHub asks
+ * the requester for a review. A request for only someone else gives no
+ * action, because the pull request waits on them. When the requester still
+ * requests changes and comments or reviews after GitHub last asked them,
+ * the action ends, even while GitHub still asks them, because Junior acts
+ * next.
  *
  * After a change request, only an explicit signal asks the requester again:
  * Junior marks every comment of it addressed or declined, and the required
@@ -252,9 +258,14 @@ function nextAction(
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
-  // With auto-merge on, GitHub merges it, so no person needs to.
-  const canMerge = !state.draft && !state.autoMerge;
-  if (canMerge && state.mergeableState === "clean" && state.approved) {
+  // With auto-merge on, GitHub merges it, so no person needs to. A pending
+  // review request comes first, even where GitHub requires no review.
+  const canMerge = !state.draft && !state.autoMerge && !state.reviewPending;
+  if (
+    canMerge &&
+    state.mergeableState === "clean" &&
+    state.reviewOutcome !== "changesRequested"
+  ) {
     return { action: "merge" };
   }
   // GitHub has not computed the merge state yet, such as after a push. The
@@ -324,6 +335,24 @@ const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   handled: "Every comment on your change request is handled.",
 };
 
+function actionText(
+  action: GitHubPullRequestAction,
+  number: number,
+  reason: GitHubReviewAskReason | undefined,
+  state: GitHubPullRequestMergeState,
+): string {
+  if (action === "review") {
+    return reason
+      ? REVIEW_AGAIN_TEXT[reason]
+      : `GitHub asks you to review #${number}.`;
+  }
+  // The text stays true when someone approves later, because the item
+  // changes only when the action changes.
+  return state.reviewOutcome === "approved"
+    ? `#${number} is approved, and GitHub says that it can merge.`
+    : `GitHub says that #${number} can merge with no review. Review it, then merge it.`;
+}
+
 async function showAction(
   items: PluginInboxItems,
   args: {
@@ -345,10 +374,7 @@ async function showAction(
       // one card that carries its title. The text names it by number only.
       // The Inbox hides the review and merge text under a row head that
       // says it, so keep it in step with `textRepeatsHead` there.
-      body:
-        action === "merge"
-          ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
-          : `${args.reason ? REVIEW_AGAIN_TEXT[args.reason] : `GitHub asks you to review #${number}.`}\n\n${state.url}`,
+      body: `${actionText(action, number, args.reason, state)}\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {
