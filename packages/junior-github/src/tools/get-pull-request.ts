@@ -225,11 +225,13 @@ function truncate(text: string, maxLength: number): string {
 async function readRelatedConversations(
   conversations: PluginConversationToolContext | undefined,
   subject: ObjectSubject,
+  url: string,
 ): Promise<RelatedConversation[]> {
   if (!conversations) return [];
   const matches = await conversations.search({
     limit: RELATED_CONVERSATIONS_MAX,
     subject,
+    url,
   });
   return matches.map((match) => ({
     conversation_id: match.conversationId,
@@ -304,6 +306,7 @@ export const gitHubGetPullRequestTool = definePluginTool({
           GITHUB_INBOX_SUBJECTS.pullRequest,
           String(providerResult.id),
         ),
+        providerResult.html_url,
       ),
     ]);
     // Only a draft can still ask its code owners by being marked ready.

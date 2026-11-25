@@ -796,6 +796,8 @@ export interface PluginConversationToolContext {
   search(input: {
     limit?: number;
     subject: ObjectSubject;
+    /** The object's link, to also match a card saved without its subject. */
+    url?: string;
   }): Promise<PluginConversationMatch[]>;
 }
 
