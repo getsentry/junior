@@ -13,6 +13,7 @@ import {
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { scrollListUntil } from "./scroll-until";
 
 test.describe("new UI", () => {
   test("the asks and Done load their next pages at the end of the list", async ({
@@ -189,10 +190,8 @@ test.describe("new UI", () => {
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
     // Its end loads the next page while it shows fewer than its count.
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   /** 30 old notices, each in its own Conversation, and one new ask. */
@@ -305,10 +304,8 @@ test.describe("new UI", () => {
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   test("Done shows Try again when its first read fails", async ({

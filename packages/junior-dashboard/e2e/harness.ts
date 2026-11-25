@@ -183,6 +183,12 @@ export async function releaseHeldRequests(page: Page): Promise<void> {
 // route that the test never released.
 const DRAIN_MS = 3_000;
 
+/** The open fetches of each tracked page, and a way to wait for one to end. */
+const trackedPages = new WeakMap<
+  Page,
+  { open: ReadonlySet<PageRequest>; nextEnd: () => Promise<void> }
+>();
+
 /**
  * Track the API requests of a page so a test cannot end while one that it
  * caused is open. Closing the page drops a write that the server has not
@@ -196,11 +202,12 @@ export function trackOpenRequests(page: Page): {
   expectNoneOpen: () => Promise<void>;
 } {
   const open = new Set<PageRequest>();
-  // Wakes the drain when a request ends.
-  let wake = () => {};
+  const waiters = new Set<() => void>();
+  const nextEnd = () => new Promise<void>((resolve) => waiters.add(resolve));
   const end = (request: PageRequest) => {
     open.delete(request);
-    wake();
+    for (const wake of waiters) wake();
+    waiters.clear();
   };
   page.on("request", (request) => {
     // The app reads and writes with fetches. A page asset, such as an
@@ -209,33 +216,85 @@ export function trackOpenRequests(page: Page): {
   });
   page.on("requestfinished", end);
   page.on("requestfailed", end);
+  trackedPages.set(page, { open, nextEnd });
   return {
     expectNoneOpen: async () => {
       // Wait until none is open, not only for those open now: a request can
       // start another as it ends, such as a read that a write refreshes.
       const drained = async () => {
-        while (open.size > 0) {
-          await new Promise<void>((resolve) => (wake = resolve));
-        }
+        while (open.size > 0) await nextEnd();
       };
       await Promise.race([
         drained(),
         delay(DRAIN_MS, undefined, { ref: false }),
       ]);
       if (open.size === 0) return;
-      const lines = [...open].map((request) => {
-        const { pathname, search } = new URL(request.url());
-        return `  ${request.method()} ${pathname}${search}`;
-      });
       throw new Error(
         [
           "The test ended while requests that it caused were open:",
-          ...lines,
+          ...requestLines(open),
           "Wait for the response or the visible result of each request.",
         ].join("\n"),
       );
     },
   };
+}
+
+function requestLines(requests: Iterable<PageRequest>): string[] {
+  return [...requests].map((request) => {
+    const { pathname, search } = new URL(request.url());
+    return `  ${request.method()} ${pathname}${search}`;
+  });
+}
+
+/**
+ * Let the page run the work that a change queued, such as a render and its
+ * effects. It posts messages, not timers: a test that controls timers stops
+ * those, and React schedules its work with messages.
+ */
+export async function waitForRender(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let task = 0; task < 3; task++) {
+      await new Promise<void>((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => resolve();
+        channel.port2.postMessage(undefined);
+      });
+    }
+  });
+}
+
+/**
+ * Wait until the page has no fetch open, and starts none as it renders the
+ * responses. Use it to assert that the page sent no more requests, or to
+ * count all of them. Fail with each one still open after `timeoutMs`.
+ */
+export async function waitForRequestsToEnd(
+  page: Page,
+  timeoutMs = DRAIN_MS,
+): Promise<void> {
+  const tracked = trackedPages.get(page);
+  if (!tracked) throw new Error("The page fixture does not track this page.");
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    while (tracked.open.size > 0) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(
+          [
+            `Requests were still open after ${timeoutMs}ms:`,
+            ...requestLines(tracked.open),
+          ].join("\n"),
+        );
+      }
+      await Promise.race([
+        tracked.nextEnd(),
+        delay(remaining, undefined, { ref: false }),
+      ]);
+    }
+    await waitForRender(page);
+    if (tracked.open.size === 0) return;
+  }
 }
 
 export type DashboardE2eServer = {
