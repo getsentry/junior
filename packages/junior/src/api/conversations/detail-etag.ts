@@ -444,9 +444,10 @@ export async function readConversationDetailState(
  * reuses them and matches the ETag.
  *
  * Shared content is covered by `detail_version`. The detail state is cheap,
- * so it is read on each request. Names, avatars, Automation titles, and
- * plugin sidebar labels are not covered: they refresh with the next detail
- * change or a reload.
+ * so it is read on each request. Names, avatars, Automation titles,
+ * plugin sidebar labels, and the live cards of Annotations are not covered:
+ * they refresh with the next detail change or a reload. A change at the
+ * provider, such as a merge, writes nothing, so it does not change the ETag.
  *
  * The read position is not hashed. The dashboard writes it as the reader
  * scrolls and puts the stored value in its cached detail, so a poll after a
