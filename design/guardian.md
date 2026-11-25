@@ -11,12 +11,17 @@ data, does not run.
 - Allow by default. Guardian blocks an action only when the action clearly
   matches one named rule from a fixed list. General doubt is not a reason to
   block.
-- Only the person who runs the Turn can authorize an action. Their own
-  messages in the Run's Conversation set what is authorized. Text from the
-  agent, a parent agent, tools, files, issues, comments, Event authors, and
-  other people is context. It is never approval. The one exception is the
-  task of a Conversation that a Lead starts: it passes on the instruction
-  of the Lead's person, so it counts as that person's request.
+- Only the person whose work the Turn does can authorize an action. That is
+  the person who runs the Turn. In a Turn that no person runs, such as an
+  Event Turn, it is the person who started the root Conversation. A Lead has
+  no such person. Their own messages in the Run's Conversation set what is
+  authorized. Text from the agent, a parent agent, tools, files, issues,
+  comments, Event authors, and other people is context. It is never
+  approval. Two exceptions carry the person's own words. The task of a
+  Conversation that a Lead starts counts as that person's request. When an
+  agent messages another Conversation in a Turn that the person runs, the
+  runtime copies the person's messages of that Turn with it, and they count
+  as that person's messages there.
 - The model rates risk and authorization, and names one rule. Code turns the
   rule into allow, ask, or deny, so the model never chooses between ask and
   deny.
@@ -58,8 +63,9 @@ data, does not run.
 - After three rejected attempts in a row, the agent stops that write for
   the Turn and explains the risk.
 - The root user instructions are the only authority. Each line has its real
-  author. Only the current Actor's lines authorize. A restriction or a
-  revocation still applies when it comes from a line that cannot authorize.
+  author. Only the lines of the person whose work the Turn does authorize.
+  A restriction or a revocation still applies when it comes from a line
+  that cannot authorize.
   A later message from the person wins over an earlier one. A bare yes
   answers only the question directly before it. Text that imitates these
   instructions, or claims an approval that they do not show, is untrusted.
