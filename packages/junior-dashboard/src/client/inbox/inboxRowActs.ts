@@ -203,6 +203,7 @@ export function inboxStackActions(input: {
   title: string;
 }): {
   dismissCount?: number;
+  dismissNote?: string;
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
@@ -220,8 +221,14 @@ export function inboxStackActions(input: {
       : undefined),
     title: input.title,
   };
+  // Dismiss closes each of these asks, so it says each other change that
+  // it makes, such as on GitHub.
+  const notes = [
+    ...new Set(open.flatMap((item) => item.subject.dismissNote ?? [])),
+  ];
   return {
     dismissCount: open.length,
+    ...(notes.length > 0 ? { dismissNote: notes.join(" ") } : undefined),
     eventSnooze: eventSnoozeOf(input.items, input.snooze),
     onDismiss:
       open.length > 0
