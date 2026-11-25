@@ -1,24 +1,73 @@
 import { Plus } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Link, useLocation } from "react-router";
+import type { SpaceReport } from "@sentry/junior/api/schema";
 
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { paneEntryClass } from "../inbox/PaneDestinations";
+import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
+import { useSpaceActions } from "./SpaceActions";
 import { spacePath } from "./spaceRoutes";
 import { SpaceTile } from "./SpaceTile";
 
 // The dialog opens only after a click, so it loads with the first open
 // instead of with every page.
-const CreateSpaceDialog = lazy(() =>
-  import("./CreateSpaceDialog").then((module) => ({
-    default: module.CreateSpaceDialog,
+const SpaceFormDialog = lazy(() =>
+  import("./SpaceFormDialog").then((module) => ({
+    default: module.SpaceFormDialog,
   })),
 );
 
+/** One of the viewer's Spaces in the pane. Its context menu acts on it. */
+function SpaceNavRow(props: {
+  current: boolean;
+  phone?: boolean | undefined;
+  space: SpaceReport;
+}) {
+  const { space } = props;
+  const actions = useSpaceActions(space);
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        {...browserMenuOnLinks}
+        className="group list-none"
+        render={<li />}
+      >
+        <Link
+          aria-current={props.current ? "page" : undefined}
+          className={cn(
+            paneEntryClass(props.current ? "page" : undefined, props.phone),
+            // The row shows which Space its open menu acts on.
+            !props.current && "group-data-popup-open:bg-dashboard-fill-hover",
+            // A long press opens the row menu, not the iOS link callout.
+            "[-webkit-touch-callout:none]",
+          )}
+          data-row-menu=""
+          to={spacePath(space.id)}
+        >
+          <SpaceTile className="justify-self-center" size="sm" space={space} />
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+            {space.name}
+          </span>
+        </Link>
+      </ContextMenuTrigger>
+      <ContextMenuContent>{actions.rows}</ContextMenuContent>
+      {actions.dialogs}
+    </ContextMenu>
+  );
+}
+
 /**
  * The pane's Spaces: each Space that the viewer is a member of, one click
- * away, and a way to create one.
+ * away, and a way to create one. A Space's context menu edits, archives, or
+ * leaves it.
  */
 export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
   const { pathname } = useLocation();
@@ -41,35 +90,19 @@ export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
       </h2>
       {spaces.data && spaces.data.spaces.length > 0 ? (
         <ul aria-label="Spaces" className="m-0 grid gap-0.5 p-0">
-          {spaces.data.spaces.map((space) => {
-            const current = pathname === spacePath(space.id);
-            return (
-              <li className="list-none" key={space.id}>
-                <Link
-                  aria-current={current ? "page" : undefined}
-                  className={paneEntryClass(
-                    current ? "page" : undefined,
-                    props.phone,
-                  )}
-                  to={spacePath(space.id)}
-                >
-                  <SpaceTile
-                    className="justify-self-center"
-                    size="sm"
-                    space={space}
-                  />
-                  <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-                    {space.name}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+          {spaces.data.spaces.map((space) => (
+            <SpaceNavRow
+              current={pathname === spacePath(space.id)}
+              key={space.id}
+              phone={props.phone}
+              space={space}
+            />
+          ))}
         </ul>
       ) : null}
       {creating ? (
         <Suspense fallback={null}>
-          <CreateSpaceDialog onClose={() => setCreating(false)} />
+          <SpaceFormDialog onClose={() => setCreating(false)} />
         </Suspense>
       ) : null}
     </>

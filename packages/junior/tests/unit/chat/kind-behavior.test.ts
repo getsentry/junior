@@ -19,7 +19,7 @@ const rootTurn = {
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    spaces: true,
+    settings: true,
     reply: false,
     reportBlocked: "none",
     noReply: true,
@@ -33,7 +33,7 @@ const personInThreadTurn = {
   sender: "person",
   sessionTasks: false,
   relatedConversations: false,
-  tools: { ...rootTurn.tools, agents: "none" },
+  tools: { ...rootTurn.tools, agents: "children_and_parent" },
 };
 
 const agentInThreadTurn = {
@@ -51,7 +51,7 @@ const agentInThreadTurn = {
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    spaces: false,
+    settings: false,
     reply: false,
     reportBlocked: "parent",
     noReply: true,
@@ -79,7 +79,7 @@ const automationTurn = {
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,
-    spaces: false,
+    settings: false,
     reply: true,
     reportBlocked: "automation",
   },
@@ -94,7 +94,7 @@ describe("turnBehavior", () => {
       expected: {
         ...rootTurn,
         relatedConversations: false,
-        tools: { ...rootTurn.tools, spaces: false },
+        tools: { ...rootTurn.tools, settings: false },
       },
     },
     // A person's reply in the run's thread runs like a root Turn.
@@ -128,17 +128,14 @@ describe("turnBehavior", () => {
       inbox: true,
       subscriptions: true,
       userCustomization: true,
-      spaces: true,
+      settings: true,
     });
   });
 
-  // An Automation Conversation lists the tools of the run and of a person who
-  // replies, so its tool list stays the same.
-  it("lists the tools of both senders on every Turn of an Automation Conversation", () => {
-    expect(promptModeTurnTools("automation")).toEqual({
-      ...automationTurn.tools,
-      spaces: true,
-    });
+  // A person's reply lists the run's tools, so the Automation Conversation's
+  // tool list stays the same.
+  it("lists the run's tools on every Turn of an Automation Conversation", () => {
+    expect(promptModeTurnTools("automation")).toEqual(automationTurn.tools);
   });
 
   it("rejects a person's input on a task", () => {

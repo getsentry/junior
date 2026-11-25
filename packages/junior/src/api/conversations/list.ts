@@ -38,10 +38,12 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
+  readPrivateSpaceMemberships,
 } from "./access";
 import {
   conversationPinnedForUser,
   conversationIsMemberRoot,
+  rootSpaceReadableBy,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
@@ -98,6 +100,7 @@ import {
   encodeConversationFeedCursor,
   type ConversationFeedCursor,
 } from "./feed-cursor";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -119,6 +122,7 @@ function conversationFeedMembershipFilter(
   const member = feedMember(filter);
   return and(
     conversationIsMemberRoot(member),
+    rootSpaceReadableBy(member),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
@@ -156,8 +160,8 @@ function conversationCodeRepositoryFilter(
 }
 
 /**
- * Keep the roots of one Space with the status. Every Space is public, and
- * private roots stay visible only to their members.
+ * Keep the roots of one Space with the status that the viewer may find. A
+ * private Space shows its roots only to its members.
  */
 function conversationSpaceFilter(
   spaceId: string,
@@ -274,7 +278,7 @@ async function conversationRows(
               and(
                 includePrivateMatches
                   ? undefined
-                  : eq(juniorDestinations.visibility, "public"),
+                  : isPublicConversation(juniorConversations),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
               annotationMatch(db, query, includePrivateMatches),
@@ -323,7 +327,7 @@ function annotationMatch(
           ),
           includePrivate
             ? undefined
-            : eq(juniorDestinations.visibility, "public"),
+            : isPublicConversation(juniorConversations),
           sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
         ),
       ),
@@ -731,9 +735,14 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
+  // This reads only when a row is in a private Space.
+  const memberSpaceIds = options.viewer
+    ? await readPrivateSpaceMemberships(db, accessRows, options.viewer.id)
+    : new Set<string>();
   const accessByConversation = conversationAccessFromRows(
     accessRows,
     options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
+    memberSpaceIds,
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
@@ -796,9 +805,12 @@ export async function readConversationFeedFromSql(
         ),
         conversation,
         access,
-        space: conversation.spaceId
-          ? (spaceRefs.get(conversation.spaceId) ?? null)
-          : null,
+        // Only members may learn a private Space's name.
+        space:
+          conversation.spaceId &&
+          (!access?.privateSpaceId || access.canViewPrivateContent)
+            ? (spaceRefs.get(conversation.spaceId) ?? null)
+            : null,
         auxiliaryCosts: auxiliaryCosts?.total,
         ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,

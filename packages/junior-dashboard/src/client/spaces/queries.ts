@@ -12,11 +12,16 @@ import {
   spaceMemberListSchema,
   spaceSchema,
   type SpaceReport,
+  type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
 
 import { invalidateConversationFeeds } from "../conversations/conversationFeedCache";
-import { conversationDetailQueryKey } from "../conversations/queries";
+import {
+  conversationDetailQueryKey,
+  type ConversationSnapshot,
+} from "../conversations/queries";
 import { del, fetchDashboardJson, patch, post, put } from "../http";
+import { invalidateInboxItemCollections } from "../inbox/queries";
 
 const spacesKey = ["dashboard", "spaces"] as const;
 const memberSpacesKey = [...spacesKey, "member"] as const;
@@ -46,7 +51,10 @@ export function useMemberSpacesData(enabled: boolean) {
   });
 }
 
-/** Fetch one Space. Every Space is public, so anyone can read it. */
+/**
+ * Fetch one Space. Anyone can read a public Space, and only members read a
+ * private one.
+ */
 export function useSpaceData(spaceId: string | undefined) {
   return useQuery({
     enabled: Boolean(spaceId),
@@ -115,9 +123,46 @@ function storeSpace(queryClient: QueryClient, space: SpaceReport) {
 export function useCreateSpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { description: string | null; name: string }) =>
-      post(spaceSchema, "/api/spaces", body),
+    mutationFn: (body: {
+      description: string | null;
+      name: string;
+      visibility: SpaceVisibilityReport;
+    }) => post(spaceSchema, "/api/spaces", body),
     onSuccess: (space) => storeSpace(queryClient, space),
+  });
+}
+
+/**
+ * Rename a Space or change its description. Conversation rows and details
+ * show the Space's name, and its Lead has the same name, so they read again.
+ */
+export function useUpdateSpace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      spaceId,
+      ...body
+    }: {
+      description: string | null;
+      name: string;
+      spaceId: string;
+    }) => patch(spaceSchema, spaceApiPath(spaceId), body),
+    onSuccess: (space) =>
+      Promise.all([
+        storeSpace(queryClient, space),
+        invalidateConversationFeeds(queryClient),
+        ...queryClient
+          .getQueriesData<ConversationSnapshot | undefined>({
+            queryKey: ["conversation"],
+          })
+          .filter(
+            ([queryKey, detail]) =>
+              queryKey[2] === "detail" && detail?.space?.id === space.id,
+          )
+          .map(([queryKey]) =>
+            queryClient.invalidateQueries({ queryKey, exact: true }),
+          ),
+      ]),
   });
 }
 
@@ -132,11 +177,51 @@ export function useSpaceMembership(spaceId: string) {
       join
         ? put(spaceSchema, `${spaceApiPath(spaceId)}/members/me`, {})
         : del(spaceSchema, `${spaceApiPath(spaceId)}/members/me`),
+    onSuccess: (space) => {
+      // A former member can't read a private Space, so drop everything
+      // cached for it and read the feeds and Inbox again without its rows.
+      if (space.visibility === "private" && !space.viewerIsMember) {
+        const lead = queryClient.getQueryData<{ conversationId: string }>(
+          spaceLeadKey(spaceId),
+        );
+        queryClient.removeQueries({ queryKey: spaceKey(spaceId) });
+        if (lead) {
+          queryClient.removeQueries({
+            queryKey: conversationDetailQueryKey(lead.conversationId),
+          });
+        }
+        for (const [queryKey, detail] of queryClient.getQueriesData<
+          ConversationSnapshot | undefined
+        >({ queryKey: ["conversation"] })) {
+          if (queryKey[2] === "detail" && detail?.space?.id === spaceId) {
+            queryClient.removeQueries({ queryKey, exact: true });
+          }
+        }
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
+          invalidateConversationFeeds(queryClient),
+          invalidateInboxItemCollections(queryClient),
+        ]);
+      }
+      return Promise.all([
+        storeSpace(queryClient, space),
+        queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
+        queryClient.invalidateQueries({ queryKey: spaceLeadKey(spaceId) }),
+      ]);
+    },
+  });
+}
+
+/** Add one person to a Space by their email. */
+export function useAddSpaceMember(spaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) =>
+      post(spaceSchema, `${spaceApiPath(spaceId)}/members`, { email }),
     onSuccess: (space) =>
       Promise.all([
         storeSpace(queryClient, space),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
-        queryClient.invalidateQueries({ queryKey: spaceLeadKey(spaceId) }),
       ]),
   });
 }

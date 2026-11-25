@@ -23,7 +23,6 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
@@ -105,7 +104,6 @@ export function inboxItemOwnedByConversation(
 
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
-const todoDestination = alias(juniorDestinations, "todo_destination");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -149,7 +147,6 @@ function ownerConversationOpenTo(userId: string): SQL {
           ),
         ),
       )
-      .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
           eq(todoOwner.conversationId, juniorInboxItems.ownerId),
@@ -161,7 +158,7 @@ function ownerConversationOpenTo(userId: string): SQL {
             and(
               isNotNull(todoRoot.conversationId),
               or(
-                eq(todoDestination.visibility, "public"),
+                eq(todoRoot.visibility, "public"),
                 participantOf(userId, todoRoot.conversationId),
               ),
             ),

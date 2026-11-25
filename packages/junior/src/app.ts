@@ -116,6 +116,7 @@ import {
   createGatewayModelClient,
   turnStepConsumer,
 } from "@/turn-steps/consumer";
+import { turnTools } from "@/turn-steps/tools";
 import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
 import { sweepTurns } from "@/core/turn/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
@@ -878,8 +879,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       await turnStepConsumer(engineCtx, {
         client: createGatewayModelClient(),
         bot: chatConfig.bot,
-        // Core Turns have no tools yet.
-        tools: [],
+        tools: turnTools,
       }),
     );
     return turnStepPOST(c.req.raw);

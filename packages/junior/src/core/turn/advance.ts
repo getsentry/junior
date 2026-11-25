@@ -24,10 +24,12 @@ import {
 import { assemblePrompt } from "@/core/prompt/assemble";
 import type { PromptLayout } from "@/core/prompt/layout";
 import { setActiveSpanAttributes } from "@/core/telemetry";
-import type { ToolDefinition } from "@/core/tool";
+import type { StepTools } from "@/core/tool";
 import {
+  findTurnInputs,
   findUnreadInputs,
   markInputsAttempted,
+  type TurnInputRecord,
   type UnreadInput,
 } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
@@ -47,7 +49,8 @@ import { runStep } from "@/core/turn/step";
 // takeover stops the step's model request and tools within this time.
 const LEASE_CHECK_INTERVAL_MS = 1_000;
 
-type AdvanceTurnOptions = {
+/** What the host gives `advanceTurn` to run a step. */
+export type AdvanceTurnOptions = {
   client: ModelClient;
   /**
    * Gives the prompt layout of the claimed Turn, which says how core builds
@@ -58,8 +61,11 @@ type AdvanceTurnOptions = {
   prompt: (turn: ClaimedTurn) => Promise<PromptLayout>;
   /** Gives the model settings of the claimed Turn, at each step. */
   modelSettings: (turn: ClaimedTurn) => Promise<ModelSettings>;
-  /** The tools of the Turn's steps. */
-  tools: ToolDefinition[];
+  /**
+   * Gives the tools of one step of the claimed Turn, from the Turn and all of
+   * its inputs. Core closes them when the step ends.
+   */
+  tools: (turn: ClaimedTurn, inputs: TurnInputRecord[]) => Promise<StepTools>;
   /**
    * Caps the tries of one step, both the retries of a failed invocation and
    * of a failed model request. A commit resets `attempts`, so the cap does
@@ -150,6 +156,10 @@ async function runClaimedStep(
     "gen_ai.conversation.id": claim.conversationId,
   });
   const history = projectConversationEvents(events).messages;
+  const stepTools = await tools(
+    claim,
+    await findTurnInputs({ executor }, claim.turnId),
+  );
   const step = await whileLeased({ executor }, claim, (signal) =>
     runStep({
       history,
@@ -164,7 +174,7 @@ async function runClaimedStep(
         )),
         model: await modelSettings(claim),
       }),
-      tools,
+      tools: stepTools.definitions,
       client,
       session: claim.conversationId,
       // A later claim of the same step means an earlier attempt did not
@@ -174,7 +184,7 @@ async function runClaimedStep(
       skipDanglingToolCalls: claim.stepSeq === 0,
       signal,
     }),
-  );
+  ).finally(() => stepTools.close());
   if (!step) {
     return;
   }

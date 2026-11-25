@@ -3,9 +3,8 @@
 // with instruction authority for its Actor, and the model settings of the
 // claimed Turn. The host gives the database and the bot settings, so this
 // file reads no globals.
-import { actorSchema, type Platform } from "@sentry/junior-plugin-api";
+import type { Platform } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import * as z from "zod";
 import type { BotConfig } from "@/chat/config";
 import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema } from "@/chat/conversations/location";
@@ -23,13 +22,7 @@ import {
 import type { UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
 import { juniorConversations } from "@/db/schema";
-
-const turnInputPayloadSchema = z
-  .object({ text: z.string().min(1), actor: actorSchema })
-  .strict();
-
-/** The payload of an inbox row that the host's layout reads. */
-export type TurnInputPayload = z.output<typeof turnInputPayloadSchema>;
+import { turnInputPayloadSchema } from "./input-payload";
 
 function formatInput(input: UnreadInput): InputPrompt {
   const payload = turnInputPayloadSchema.parse(input.payload);

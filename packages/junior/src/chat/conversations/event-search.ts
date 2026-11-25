@@ -25,6 +25,11 @@
  * - `app.event_search.meaning.candidate.count`: events with a vector.
  * - `app.event_search.meaning.top_distance`: cosine distance of the nearest
  *   event, to tune a similarity floor.
+ * - `app.event_search.meaning.candidates`: the nearest events in rank order,
+ *   as `seq:distance` pairs joined by commas, to label results per distance.
+ * - `app.event_search.conversation.id`: the searched Conversation, which owns
+ *   those seqs. It differs from `gen_ai.conversation.id` when a search reads
+ *   another Conversation.
  * - `app.event_search.result.count`: events returned.
  * - `app.event_search.result.<kind>.count`, `app.event_search.top5.<kind>.count`:
  *   returned events, and the first 5, by kind: `tool_call`, `tool_result`,
@@ -84,6 +89,8 @@ import { eventFromRow } from "./sql/history";
 // the same searches take about 0.2 s and 1.2 s when every event matches.
 const MAX_COMPUTED_EVENTS = 20_000;
 const CANDIDATES_PER_LEG = 100;
+// The meaning candidates that the span records, to keep its attribute short.
+const RECORDED_MEANING_CANDIDATES = 10;
 const BM25_B = 0.75;
 // The agent's tool calls repeat the words of its own commands and searches,
 // so in each leg a tool call counts half as much as other events. With RRF
@@ -427,7 +434,7 @@ async function meaningRanks(
   db: JuniorDatabase,
   search: ConversationEventTextSearch,
   bounds: SQL | undefined,
-): Promise<{ seqs: number[]; topDistance?: number }> {
+): Promise<{ candidates?: string; seqs: number[]; topDistance?: number }> {
   if (!search.embedder) return { seqs: [] };
   const query = await embedConversationQuery(search.embedder, search.query);
   const events = juniorConversationEvents;
@@ -461,7 +468,15 @@ async function meaningRanks(
   const top = rows[0];
   return {
     seqs: rows.map((row) => row.seq),
-    ...(top ? { topDistance: Number(top.distance) } : undefined),
+    ...(top
+      ? {
+          candidates: rows
+            .slice(0, RECORDED_MEANING_CANDIDATES)
+            .map((row) => `${row.seq}:${Number(row.distance).toFixed(4)}`)
+            .join(","),
+          topDistance: Number(top.distance),
+        }
+      : undefined),
   };
 }
 
@@ -492,6 +507,7 @@ export async function searchConversationEventText(
     search.limit,
   );
   setSpanAttributes({
+    "app.event_search.conversation.id": search.conversationId,
     "app.event_search.keyword.candidate.count": keyword.candidates,
     "app.event_search.keyword.computed.count": keyword.computed,
     "app.event_search.keyword_ms": keyword.ms,
@@ -499,6 +515,7 @@ export async function searchConversationEventText(
     ...(search.embedder
       ? {
           "app.event_search.meaning.candidate.count": meaning.seqs.length,
+          "app.event_search.meaning.candidates": meaning.candidates,
           "app.event_search.meaning.top_distance": meaning.topDistance,
           "app.event_search.meaning_ms": meaning.ms,
         }
