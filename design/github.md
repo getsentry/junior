@@ -36,11 +36,13 @@ also wake a Conversation or run an Event automation.
 - When the requester requests changes on a Junior PR, the PR asks for
   their review again, in the Inbox and on GitHub, only when Junior marks
   each comment of that change request addressed or declined and the
-  required checks pass. Pushes, merges of the base branch, comments, and
-  replies do not ask. When the requester comments or reviews, Junior acts
-  next, and the Inbox stops asking. A requester who approved since is not
-  asked. The Inbox item says why it asks: every comment is handled, or the
-  checks now pass.
+  required checks pass. A comment that Junior pushes back on or defers is
+  declined. Pushes, merges of the base branch, and replies do not ask.
+  When the requester comments or reviews, Junior acts next, and the Inbox
+  stops asking. A requester who approved since is not asked. The Inbox
+  item says why it asks: every comment is handled, or the checks now pass.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox asks them to review the PR.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
