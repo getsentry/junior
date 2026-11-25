@@ -6,6 +6,7 @@ import type {
   EventPublisher,
   HeartbeatHookContext,
   PluginReviewNotice,
+  PluginStartedTaskContext,
   PluginState,
   PluginTaskStartInput,
 } from "@sentry/junior-plugin-api";
@@ -74,7 +75,15 @@ export function memoryState(): PluginState {
  * Junior services that record what the plugin sends them. The Watch made
  * after Junior creates pull request getsentry/junior#946 matches events.
  */
-export function createPluginHarness(fixture: GitHubFixture) {
+export function createPluginHarness(
+  fixture: GitHubFixture,
+  /** The people that the plugin reads. Nobody, unless a test sets them. */
+  users: PluginStartedTaskContext["users"] = {
+    async readIdentity() {
+      return undefined;
+    },
+  },
+) {
   const recorded = {
     annotations: [] as Array<{
       annotation: ConversationAnnotationInput;
@@ -219,11 +228,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       inboxItems,
       state,
       tasks: { start: unused },
-      users: {
-        async readIdentity() {
-          return undefined;
-        },
-      },
+      users,
     });
     if (!route) throw new Error("The GitHub plugin has no webhook route");
     const response = await route.handler(request);
@@ -292,6 +297,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         conversationChanges: { apply: unused },
         db: fixture.db(),
         events,
+        inboxItems,
         lastDelivery: false,
         log: {
           error: (message) => recorded.heartbeatLogs.push(["error", message]),
@@ -302,6 +308,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         payload: task.payload.parse(started.payload),
         plugin: { name: "github" },
         state,
+        users,
       });
     }
   }

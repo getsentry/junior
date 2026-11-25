@@ -260,6 +260,7 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
     repository(owner: $owner, name: $name) {
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
+        commits(last: 1) { nodes { commit { committedDate } } }
         isDraft
         mergeStateStatus
         state

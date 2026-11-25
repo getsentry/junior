@@ -180,6 +180,8 @@ export interface GitHubState {
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha?: string;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: string;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -502,7 +504,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
-                commits: { nodes: [] },
+                commits: {
+                  nodes: github.headCommittedAt
+                    ? [{ commit: { committedDate: github.headCommittedAt } }]
+                    : [],
+                },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
@@ -611,6 +617,32 @@ export async function markFeedback(
   );
 }
 
+/** The requester, who linked the GitHub account `Requester`. */
+export const requesterUsers = {
+  readIdentity: async (identityId: string) =>
+    identityId === "identity-requester"
+      ? {
+          identity: {
+            id: identityId,
+            provider: "slack",
+            providerSubjectId: "U123",
+          },
+          user: {
+            email: "requester@example.com",
+            id: "user-requester",
+            identities: [
+              {
+                handle: "Requester",
+                id: "identity-github",
+                provider: "github",
+                providerSubjectId: "1001",
+              },
+            ],
+          },
+        }
+      : undefined,
+};
+
 export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
   | { conversationId: string; input: unknown; kind: "close" };
@@ -694,31 +726,7 @@ export function route(
     inboxItems,
     state,
     tasks: { start: unused },
-    // The requester linked the GitHub account `Requester`.
-    users: {
-      readIdentity: async (identityId: string) =>
-        identityId === "identity-requester"
-          ? {
-              identity: {
-                id: identityId,
-                provider: "slack",
-                providerSubjectId: "U123",
-              },
-              user: {
-                email: "requester@example.com",
-                id: "user-requester",
-                identities: [
-                  {
-                    handle: "Requester",
-                    id: "identity-github",
-                    provider: "github",
-                    providerSubjectId: "1001",
-                  },
-                ],
-              },
-            }
-          : undefined,
-    },
+    users: requesterUsers,
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
   return webhook;
