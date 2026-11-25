@@ -1,6 +1,6 @@
 import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
 import { desktop, mobile, screenshot } from "./screenshot";
-import { mockSpaceList } from "./mock-reports";
+import { findMockConversationDetail, mockSpaceList } from "./mock-reports";
 import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
@@ -89,12 +89,13 @@ test("the pane marks the Space of an open Conversation", async ({
       decodeURIComponent(url.pathname) === `/api/conversations/${CHILD_ID}`,
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      const response = await route.fetch();
-      if (response.status() !== 200) return route.fulfill({ response });
-      const body = await response.json();
+      const detail = await findMockConversationDetail(route);
+      if (!detail) return route.fallback();
       await route.fulfill({
-        json: { ...body, space: { id: BILLING_ID, name: "Billing migration" } },
-        response,
+        json: {
+          ...detail,
+          space: { id: BILLING_ID, name: "Billing migration" },
+        },
       });
     },
   );

@@ -112,7 +112,11 @@ test.describe("new UI", () => {
     // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
     // more pages follow.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const feed = await mockFeedPage(route);
+      // The mock API has no "page-2" cursor, so every page is built from the
+      // first one.
+      const first = new URL(route.request().url());
+      first.searchParams.delete("cursor");
+      const feed = await mockFeedPage(route, first);
       const row = (index: number, displayTitle: string, pinned: boolean) => ({
         ...feed.conversations[0],
         conversationId: `slack:CFEED:${1770000000 + index}.000100`,
