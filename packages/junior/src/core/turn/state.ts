@@ -6,7 +6,7 @@
 //     │   commitStep        │
 //     │   (continue),       │                failTurn
 //     │   releaseTurn       ├──────────────────────────▶ failed
-//     │     cancelTurn      │   cancelTurn
+//     │     stopTurns       │   stopTurns
 //     └─────────────────────┴──────────────────────────▶ cancelled
 //
 // createTurn inserts a Turn as queued. completed, failed and cancelled are
@@ -20,7 +20,7 @@
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
 // | failTurn               | running, fenced       |             |          |          | cleared  |
 // | releaseTurn            | running, fenced       |             |          |          | cleared  |
-// | cancelTurn             | queued or running     | +1          |          |          | cleared  |
+// | stopTurns              | queued or running     | +1          |          |          | cleared  |
 // | supersedeTurn (queued) | queued                | +1          |          |          |          |
 //
 // commitStep (completed) queues the Turn instead, like commitStep (continue),
@@ -31,8 +31,9 @@
 // commitStep or releaseTurn cancels it instead of queuing it again. All set
 // `end_reason` to `superseded`.
 //
-// cancelTurn publishes the Turn after the cancel. That message claims nothing,
-// so the step consumer runs `reconcileTurn` for it.
+// stopTurns cancels every open Turn of a Conversation at once, so no Turn of
+// it runs after a stop. It publishes one of them after the cancel. That
+// message claims nothing, so the step consumer runs `reconcileTurn` for it.
 //
 // Next: queued, and no other Turn of the Conversation is running or comes
 // before it in run order, so a Conversation runs one Turn at a time, in order.
@@ -48,7 +49,7 @@
 // the same step changes nothing. Lease times use the database clock, so hosts
 // agree on expiry.
 //
-// claimTurn, commitStep, releaseTurn and cancelTurn take the Conversation lock
+// claimTurn, commitStep, releaseTurn and stopTurns take the Conversation lock
 // before they touch the Turn row, so a claim cannot start a Turn while
 // `scheduleInput` decides where an input goes. A writer that needs both takes them in this
 // order, so writers cannot deadlock.
@@ -667,24 +668,21 @@ export async function releaseTurn(
 }
 
 /**
- * Cancels a queued or running Turn. It needs no lease. It moves
- * `lease_epoch`, so the invocation that runs the step cannot commit it. It
- * holds the Conversation lock, so an input that `scheduleInput` places after
- * the cancel goes to a new Turn, not to this one. After the cancel it
- * publishes the Turn: that message claims nothing and runs `reconcileTurn`.
- * False when the Turn has already ended.
+ * Stops a Conversation's work: cancels every queued and running Turn of it,
+ * in one commit. It needs no lease. It moves each Turn's `lease_epoch`, so
+ * the invocation that runs a step cannot commit it. It holds the Conversation
+ * lock, so an input that `scheduleInput` places after the stop goes to a new
+ * Turn. After the commit it publishes one cancelled Turn: that message claims
+ * nothing and runs `reconcileTurn`, which sends the replies already
+ * committed. Returns the ids of the cancelled Turns.
  */
-export async function cancelTurn(
+export async function stopTurns(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  turnId: string,
-): Promise<boolean> {
-  const turn = await findTurn({ executor }, turnId);
-  if (!turn) {
-    return false;
-  }
-  const cancelled = await executor.transaction(() =>
-    withConversationEventLock(executor, turn.conversationId, async () => {
-      const rows = await executor
+  conversationId: string,
+): Promise<string[]> {
+  const stopped = await executor.transaction(() =>
+    withConversationEventLock(executor, conversationId, () =>
+      executor
         .db()
         .update(juniorTurns)
         .set({
@@ -697,17 +695,18 @@ export async function cancelTurn(
         })
         .where(
           and(
-            eq(juniorTurns.id, turnId),
+            eq(juniorTurns.conversationId, conversationId),
             inArray(juniorTurns.state, ["queued", "running"]),
           ),
         )
-        .returning({ id: juniorTurns.id });
-      return rows.length > 0;
-    }),
+        .returning({ id: juniorTurns.id }),
+    ),
   );
-  if (!cancelled) {
-    return false;
+  // Delivery runs per Conversation, so one message sends every stopped
+  // Turn's replies.
+  const [first] = stopped;
+  if (first) {
+    await publishTurnStep({ queue }, first.id);
   }
-  await publishTurnStep({ queue }, turnId);
-  return true;
+  return stopped.map(({ id }) => id);
 }

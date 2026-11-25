@@ -14,11 +14,11 @@ import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import {
-  cancelTurn,
   claimTurn,
   commitStep,
   failTurn,
   holdsLease,
+  stopTurns,
 } from "@/core/turn/state";
 import {
   juniorConversations,
@@ -73,7 +73,7 @@ describe("Turn state", () => {
       state: "queued",
       priority: 0,
     });
-    // The queue is the external edge: cancelTurn publishes the Turn.
+    // The queue is the external edge: stopTurns publishes the Turn.
     vi.spyOn(getQueueProvider(), "send").mockResolvedValue({});
   });
 
@@ -235,7 +235,9 @@ describe("Turn state", () => {
   it("cancels a running Turn and fences out its lease holder", async () => {
     const claimed = (await claim())!;
 
-    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(true);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([
+      turnId,
+    ]);
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -250,7 +252,9 @@ describe("Turn state", () => {
   });
 
   it("cancels a queued Turn so no worker can claim it", async () => {
-    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(true);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([
+      turnId,
+    ]);
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -344,7 +348,7 @@ describe("Turn state", () => {
         failureCode: "model_execution_failed",
       }),
     ).resolves.toBe(false);
-    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(false);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([]);
     await expect(readTurn()).resolves.toEqual(completed);
   });
 
@@ -417,7 +421,7 @@ describe("Turn state", () => {
 
   it("rejects a commit after cancel, and appends nothing", async () => {
     const claimed = (await claim())!;
-    await cancelTurn(engineCtx, turnId);
+    await stopTurns(engineCtx, CONVERSATION_ID);
     const cancelled = await readTurn();
 
     await expect(

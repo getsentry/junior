@@ -12,11 +12,11 @@ import {
   scheduleInput,
 } from "@/core/turn/schedule";
 import {
-  cancelTurn,
   claimTurn,
   commitStep,
   failTurn,
   releaseTurn,
+  stopTurns,
 } from "@/core/turn/state";
 import {
   juniorConversations,
@@ -428,8 +428,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await claimTurn(engineCtx, first.turnId);
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
-    await cancelTurn(engineCtx, first.turnId);
-    // cancelTurn's own message.
+    await stopTurns(engineCtx, CONVERSATION_ID);
+    // The stop's own message.
     expect(publishes).toHaveLength(3);
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
@@ -533,7 +533,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   it("publishes a cancelled Turn, and reconcileTurn leaves its inputs on it", async () => {
     const cancelled = await schedule("event-1");
 
-    await cancelTurn(engineCtx, cancelled.turnId);
+    await stopTurns(engineCtx, CONVERSATION_ID);
     await reconcileTurn(engineCtx, cancelled.turnId);
 
     expect(publishes).toEqual([
@@ -544,6 +544,32 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readInputs()).resolves.toEqual([
       { turnId: cancelled.turnId, idempotencyKey: "event-1" },
     ]);
+  });
+
+  it("stops the running Turn and the Turn queued behind it, so no Turn starts", async () => {
+    const running = await schedule("event-1");
+    await claim(running.turnId);
+    const queued = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      actorIdentityId: "identity:other",
+      delivery: "defer",
+    });
+    publishes = [];
+
+    const stopped = await stopTurns(engineCtx, CONVERSATION_ID);
+    // The step consumer runs reconcileTurn for the stop's message.
+    const [published] = publishes;
+    await reconcileTurn(engineCtx, published!.turnId);
+
+    expect([...stopped].sort()).toEqual([running.turnId, queued.turnId].sort());
+    await expect(readEnd(running.turnId)).resolves.toMatchObject({
+      state: "cancelled",
+    });
+    await expect(readEnd(queued.turnId)).resolves.toMatchObject({
+      state: "cancelled",
+    });
+    // Only the stop's own message: reconcileTurn found no Turn to start.
+    expect(publishes).toEqual([published]);
   });
 
   it("keeps the first attempt time of an input", async () => {

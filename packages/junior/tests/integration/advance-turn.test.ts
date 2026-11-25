@@ -19,7 +19,7 @@ import {
 } from "@/core/prompt/layout";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
-import { cancelTurn, claimTurn } from "@/core/turn/state";
+import { claimTurn, stopTurns } from "@/core/turn/state";
 import { juniorConversations, juniorTurns } from "@/db/schema";
 import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
 import {
@@ -225,7 +225,7 @@ describe("advanceTurn", () => {
     async (state) => {
       const { turnId } = await harness.send({ text: "How many Turns?" });
       if (state === "cancelled") {
-        await cancelTurn(harness.engineCtx, turnId);
+        await stopTurns(harness.engineCtx, harness.conversationId);
       } else {
         await harness.engineCtx.executor
           .db()
@@ -240,7 +240,7 @@ describe("advanceTurn", () => {
       await expect(modelCalls()).resolves.toEqual([]);
       await expect(harness.turn(turnId)).resolves.toEqual(before);
       await expect(harness.history()).resolves.toEqual([]);
-      // Only cancelTurn's own message.
+      // Only the stop's own message.
       expect(pendingSteps(turnId)).toBe(state === "cancelled" ? 1 : 0);
     },
   );
@@ -292,7 +292,7 @@ describe("advanceTurn with tools", () => {
     const send: ToolDefinition = {
       ...sendTool([]),
       execute: async (_args, { signal }) => {
-        await cancelTurn(harness.engineCtx, cancelledTurnId);
+        await stopTurns(harness.engineCtx, harness.conversationId);
         // The tool works until its signal aborts.
         await new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), {
@@ -320,7 +320,7 @@ describe("advanceTurn with tools", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    // cancelTurn's message. The tool step's own message was delivered.
+    // The stop's message. The tool step's own message was delivered.
     expect(pendingSteps(cancelledTurnId)).toBe(1);
   });
 
@@ -603,7 +603,7 @@ describe("advanceTurn with a test step", () => {
 
   it("stops the step when the Turn is cancelled during it, and writes nothing", async () => {
     await engine.advance(
-      interruptedStep(() => cancelTurn(engine.engineCtx, turnId)),
+      interruptedStep(() => stopTurns(engine.engineCtx, CONVERSATION_ID)),
     );
 
     await expect(engine.readTurn()).resolves.toMatchObject({
@@ -612,7 +612,7 @@ describe("advanceTurn with a test step", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only cancelTurn's own message.
+    // Only the stop's own message.
     expect(engine.sentStepMessages()).toBe(1);
   });
 
@@ -624,7 +624,7 @@ describe("advanceTurn with a test step", () => {
     await engine.advance({
       client: {
         complete: async (request, signal) => {
-          await cancelTurn(engine.engineCtx, turnId);
+          await stopTurns(engine.engineCtx, CONVERSATION_ID);
           await model.complete(request, signal);
           throw new Error("The connection closed");
         },
@@ -635,7 +635,7 @@ describe("advanceTurn with a test step", () => {
       state: "cancelled",
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only cancelTurn's own message.
+    // Only the stop's own message.
     expect(engine.sentStepMessages()).toBe(1);
   });
 
@@ -783,7 +783,7 @@ describe("advanceTurn with a test step", () => {
   });
 
   it.each([
-    ["cancelled", () => cancelTurn(engine.engineCtx, turnId)],
+    ["cancelled", () => stopTurns(engine.engineCtx, CONVERSATION_ID)],
     [
       "taken over",
       () => claimTurn({ ...engine.engineCtx, owner: "worker-b" }, turnId),
