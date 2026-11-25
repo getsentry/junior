@@ -294,6 +294,7 @@ function closeReason(
 const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   checks: "Checks now pass, and every comment is handled.",
   handled: "Every comment on your change request is handled.",
+  question: "A comment asks you a question.",
 };
 
 function actionText(
@@ -480,9 +481,9 @@ async function askHeldReview(
 }
 
 /**
- * Return why Junior asked the requester again, if it did: the reason of the
- * held ask that this sync released, or `handled` when the feedback tool
- * asked them and they have not acted since.
+ * Return why Junior asked the requester, if it did: the reason of the held
+ * ask that this sync released, or the reason of the mark that a Junior tool
+ * wrote when it asked them, if they have not acted since.
  */
 async function askReason(
   state: PluginState,
@@ -502,7 +503,7 @@ async function askReason(
   return asked &&
     sameLogin(asked.reviewer, args.requesterLogin) &&
     timeOf(args.requesterAt) <= Date.parse(asked.at)
-    ? "handled"
+    ? (asked.reason ?? "handled")
     : undefined;
 }
 
@@ -625,7 +626,14 @@ async function syncOne(
     // Act only on a change. So repeat events add no second item, and an
     // item that a person closed does not come back until the action
     // changes. When the action cannot be known yet, a later event decides.
-    const changed = next !== undefined && next.action !== previous;
+    // A new question from Junior is a change too: it can come while the
+    // review item is already open, and its mark is dropped once it shows.
+    const changed =
+      next !== undefined &&
+      (next.action !== previous ||
+        (reason === "question" &&
+          next.action !== undefined &&
+          next.action !== "merge"));
     if (changed) {
       await showAction(items, {
         action: next.action,
@@ -664,7 +672,11 @@ async function syncOne(
           })
         : undefined,
     ]);
-    if (changed && next.action !== "merge" && reason === "handled") {
+    if (
+      changed &&
+      next.action !== "merge" &&
+      (reason === "handled" || reason === "question")
+    ) {
       await dropGitHubReviewAsked(args.state, target);
     }
     if (!changed) return previous;

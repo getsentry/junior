@@ -2,8 +2,10 @@ import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import type { PluginWorkOwner } from "@sentry/junior-plugin-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { readGitHubReviewAsked } from "../src/pull-request-review-again";
 import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
+import { memoryState } from "./plugin-harness";
 
 let dbFixture: GitHubFixture;
 
@@ -66,13 +68,16 @@ function toolContext(
       )
     );
   });
+  const state = memoryState();
   return {
     fetch,
+    state,
     tool: bindPluginTool(gitHubCommentOnPullRequestTool, {
       db: dbFixture.db(),
       egress: { fetch },
       log: { error() {}, info() {}, warn() {} },
       resolveWorkOwner,
+      state,
     }),
   };
 }
@@ -172,7 +177,7 @@ describe("commentOnPullRequest", () => {
 
   it("asks the requester for a review when the comment asks them", async () => {
     await seedOpener(701);
-    const { fetch, tool } = toolContext();
+    const { fetch, state, tool } = toolContext();
 
     await expect(
       tool.execute(
@@ -194,6 +199,13 @@ describe("commentOnPullRequest", () => {
     await expect(ask?.request.clone().json()).resolves.toEqual({
       reviewers: ["Requester"],
     });
+    // GitHub's review request webhook reads this to say why it asks.
+    await expect(
+      readGitHubReviewAsked(state, {
+        number: 701,
+        repositoryFullName: "getsentry/junior-comment-tests",
+      }),
+    ).resolves.toMatchObject({ reason: "question", reviewer: "Requester" });
   });
 
   it.for([

@@ -9,6 +9,7 @@ import {
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import { markGitHubReviewAsked } from "../pull-request-review-again.js";
 import {
   linkedGitHubLogin,
   requesterPerson,
@@ -94,7 +95,7 @@ async function threadRootId(
 
 type CommentContext = Pick<
   ToolRegistrationHookContext,
-  "db" | "egress" | "log" | "resolveWorkOwner"
+  "db" | "egress" | "log" | "resolveWorkOwner" | "state"
 >;
 
 /**
@@ -125,6 +126,13 @@ async function askRequester(
         ? linkedGitHubLogin(owner.user)
         : undefined;
     if (!login) return false;
+    // GitHub's review request webhook shows the item. This mark gives it the
+    // text that says Junior asked a question.
+    await markGitHubReviewAsked(
+      ctx.state,
+      { number: target.number, repositoryFullName: target.repo },
+      { at: new Date().toISOString(), reason: "question", reviewer: login },
+    );
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.request_reviewers",
       method: "POST",
