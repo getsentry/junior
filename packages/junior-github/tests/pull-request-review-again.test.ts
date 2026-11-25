@@ -566,11 +566,6 @@ describe("review again after a change request", () => {
       webhookState: "approved" as const,
     },
     {
-      name: "a comment",
-      reviews: [{ id: 301, state: "COMMENTED" }],
-      webhookState: "commented" as const,
-    },
-    {
       // With auto-merge on, a push after the approval can merge with no
       // other person, so asking again would only bother the requester.
       autoMerge: true,
@@ -617,4 +612,58 @@ describe("review again after a change request", () => {
       }
     },
   );
+
+  it("asks the requester again at once after their comment-only review, but not after a plain comment", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviewRequests: [{ at: "2026-07-02T10:00:00Z", login: "Requester" }],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      // A plain comment keeps GitHub's request, and Junior acts next.
+      await webhook.handler(
+        commented(github, "issue_comment", {
+          at: "2026-07-02T11:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(requests).not.toContain("request Requester");
+
+      // A comment-only review neither approves nor requests changes, but
+      // GitHub drops the request on it.
+      github.requestedReviewers = [];
+      github.reviews = [
+        {
+          state: "COMMENTED",
+          submitted_at: "2026-07-02T12:00:00Z",
+          user: { login: "Requester" },
+        },
+      ];
+      await webhook.handler(
+        reviewSubmitted("commented", {
+          at: "2026-07-02T12:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: { title: "Review requested · #946" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });

@@ -962,6 +962,38 @@ describe("next action item", () => {
     }
   });
 
+  it("does not ask a requester again who removed their own review request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        reviewRequestRemovals: [
+          {
+            actor: "Requester",
+            at: "2026-07-02T11:00:00Z",
+            login: "Requester",
+          },
+        ],
+        reviewRequests: [{ at: "2026-07-02T10:00:00Z", login: "Requester" }],
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls).handler(checkSuiteCompleted());
+      expect(requests).not.toContain("request Requester");
+      expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   const pushedAt = "2026-07-02T12:00:00.000Z";
   it.each<{ asks: boolean; github: Partial<GitHubState>; name: string }>([
     { asks: true, github: {}, name: "waits on nobody" },
@@ -996,6 +1028,51 @@ describe("next action item", () => {
       name: "a reviewer requests changes, so Junior acts next",
     },
     { asks: false, github: { autoMerge: true }, name: "auto-merge is on" },
+    {
+      asks: false,
+      github: {
+        reviewRequestRemovals: [
+          {
+            actor: "Requester",
+            at: "2026-07-02T11:30:00.000Z",
+            login: "Requester",
+          },
+        ],
+        reviewRequests: [
+          { at: "2026-07-02T11:00:00.000Z", login: "Requester" },
+        ],
+      },
+      name: "the requester removed their own review request",
+    },
+    {
+      asks: true,
+      github: {
+        reviewRequestRemovals: [
+          {
+            actor: "someone-else",
+            at: "2026-07-02T11:30:00.000Z",
+            login: "Requester",
+          },
+        ],
+        reviewRequests: [
+          { at: "2026-07-02T11:00:00.000Z", login: "Requester" },
+        ],
+      },
+      name: "another person removed the requester's review request",
+    },
+    {
+      asks: true,
+      github: {
+        reviews: [
+          {
+            state: "COMMENTED",
+            submitted_at: "2026-07-02T13:00:00.000Z",
+            user: { login: "Requester" },
+          },
+        ],
+      },
+      name: "the requester left only a comment-only review after the last push",
+    },
   ])(
     "backfill asks the requester's review in limbo: $name",
     async ({ asks, github }) => {

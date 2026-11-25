@@ -192,6 +192,8 @@ export interface GitHubState {
   requestedTeams?: string[];
   /** The review requests on the pull request's timeline. */
   reviewRequests?: Array<{ at: string; login: string }>;
+  /** The review requests that a person removed, on the timeline. */
+  reviewRequestRemovals?: Array<{ actor: string; at: string; login: string }>;
   reviews: Array<{
     body?: string;
     commit_id?: string;
@@ -540,6 +542,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                     })),
                     ...(github.reviewRequests ?? []).map((event) => ({
                       __typename: "ReviewRequestedEvent",
+                      createdAt: event.at,
+                      requestedReviewer: {
+                        __typename: "User",
+                        login: event.login,
+                      },
+                    })),
+                    ...(github.reviewRequestRemovals ?? []).map((event) => ({
+                      __typename: "ReviewRequestRemovedEvent",
+                      actor: graphqlActor(event.actor),
                       createdAt: event.at,
                       requestedReviewer: {
                         __typename: "User",

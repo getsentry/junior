@@ -527,6 +527,12 @@ const nextActionSchema = z.object({
                 createdAt: timestampSchema,
                 requestedReviewer: userLoginSchema,
               }),
+              z.object({
+                __typename: z.literal("ReviewRequestRemovedEvent"),
+                actor: actorSchema,
+                createdAt: timestampSchema,
+                requestedReviewer: userLoginSchema,
+              }),
             ]),
           ),
         }),
@@ -552,8 +558,15 @@ const reviewsPageSchema = z.object({
  */
 export interface GitHubPullRequestActivity {
   at: Date;
-  kind: "author" | "reviewRequest";
+  /**
+   * `author`: a comment or a review by `login`. `reviewRequest`: GitHub
+   * asked `login` for a review. `reviewRequestRemoved`: `login` removed
+   * their own review request.
+   */
+  kind: "author" | "reviewRequest" | "reviewRequestRemoved";
   login: string;
+  /** The state of an `author` review, such as `COMMENTED`. */
+  review?: string;
 }
 
 /** The pull request facts that decide its next action. */
@@ -570,6 +583,11 @@ export interface GitHubPullRequestMergeState {
    * request is open and not a draft.
    */
   changesRequested: boolean;
+  /**
+   * The requester's latest review approves. Read only when the pull request
+   * is open and not a draft.
+   */
+  requesterApproved: boolean;
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
@@ -687,6 +705,18 @@ export async function loadPullRequestMergeState(
         kind: "reviewRequest",
         login: item.requestedReviewer.login,
       });
+    } else if (
+      item.__typename === "ReviewRequestRemovedEvent" &&
+      item.requestedReviewer?.login &&
+      item.actor &&
+      restLogin(item.actor).toLowerCase() ===
+        item.requestedReviewer.login.toLowerCase()
+    ) {
+      activity.push({
+        at: new Date(item.createdAt),
+        kind: "reviewRequestRemoved",
+        login: item.requestedReviewer.login,
+      });
     }
   }
   for (const review of reviews) {
@@ -695,6 +725,7 @@ export async function loadPullRequestMergeState(
         at: new Date(review.submittedAt),
         kind: "author",
         login: restLogin(review.author),
+        review: review.state,
       });
     }
   }
@@ -707,6 +738,7 @@ export async function loadPullRequestMergeState(
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
+    requesterApproved: false,
     draft: pull.isDraft,
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
@@ -764,5 +796,6 @@ export async function loadPullRequestMergeState(
     state.reviewOutcome = "approved";
   }
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
+  state.requesterApproved = requesterReview?.state === "APPROVED";
   return state;
 }

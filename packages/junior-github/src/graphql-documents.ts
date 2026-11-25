@@ -273,12 +273,17 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
           pageInfo { hasPreviousPage startCursor }
           nodes { ...NextActionReview }
         }
-        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT]) {
+        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT, REVIEW_REQUEST_REMOVED_EVENT]) {
           nodes {
             __typename
             ... on IssueComment { createdAt author { __typename login } }
             ... on ReviewRequestedEvent {
               createdAt
+              requestedReviewer { __typename ... on User { login } }
+            }
+            ... on ReviewRequestRemovedEvent {
+              createdAt
+              actor { __typename login }
               requestedReviewer { __typename ... on User { login } }
             }
           }

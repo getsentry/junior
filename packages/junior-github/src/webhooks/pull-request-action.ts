@@ -39,13 +39,16 @@
  * no read.
  *
  * A pull request is in limbo when it waits on nobody: it is ready, the
- * action is none, and no person or rule moves it on (`inLimbo`). Once its
- * required checks pass, the sync asks for the requester's review on GitHub,
- * as Junior does when a draft becomes ready, and the review request then
- * shows the item. So each ready pull request that the requester has not
- * seen has an item or a pending review request, also one opened before the
- * requester linked GitHub. Pushes do not ask a requester who reviewed or
- * commented again, so a webhook asks only one who has not.
+ * action is none, and no person or rule moves it on. Once its required
+ * checks pass, the sync asks for the requester's review on GitHub, as Junior
+ * does when a draft becomes ready, and the review request then shows the
+ * item. So each ready pull request that the requester has not seen has an
+ * item or a pending review request, also one opened before the requester
+ * linked GitHub. Pushes do not ask a requester who reviewed or commented
+ * again, so a webhook asks only one who has not. A comment-only review is
+ * not an answer: GitHub drops the ask on it, and the sync asks again at
+ * once (`requesterReviewAsk`). A requester who removed their own review
+ * request is not asked again until someone else asks them.
  *
  * The requester takes one action, not both, so one item per pull request
  * shows it. Each webhook that can change one of these facts reads them
@@ -247,11 +250,16 @@ function sameLogin(a: string, b: string | undefined): boolean {
 }
 
 /**
- * When GitHub last asked the requester for a review, and when the requester
- * last commented or reviewed.
+ * When GitHub last asked the requester for a review, when the requester last
+ * commented or reviewed, and when they last removed their own review
+ * request. A comment-only review neither approves nor requests changes, so
+ * `actedAt` leaves it out and `commentedAt` holds it.
  */
 interface LatestActivity {
+  actedAt?: Date;
   askedAt?: Date;
+  commentedAt?: Date;
+  removedAt?: Date;
   requesterAt?: Date;
 }
 
@@ -260,11 +268,18 @@ function latestActivity(
   requesterLogin: string | undefined,
 ): LatestActivity {
   const latest: LatestActivity = {};
+  const keep = (key: keyof LatestActivity, at: Date) => {
+    const saved = latest[key];
+    if (!saved || at > saved) latest[key] = at;
+  };
   for (const entry of activity) {
     if (!sameLogin(entry.login, requesterLogin)) continue;
-    const key = entry.kind === "reviewRequest" ? "askedAt" : "requesterAt";
-    const saved = latest[key];
-    if (!saved || entry.at > saved) latest[key] = entry.at;
+    if (entry.kind === "reviewRequest") keep("askedAt", entry.at);
+    else if (entry.kind === "reviewRequestRemoved") keep("removedAt", entry.at);
+    else {
+      keep("requesterAt", entry.at);
+      keep(entry.review === "COMMENTED" ? "commentedAt" : "actedAt", entry.at);
+    }
   }
   return latest;
 }
@@ -326,26 +341,46 @@ function isRequested(
 }
 
 /**
- * Whether a pull request whose action is none waits on nobody. It is open,
- * not a draft, and auto-merge is off. The requester has a linked GitHub
- * account, GitHub does not ask them for a review, and they have not
- * reviewed or commented since the last push. No reviewer approved it, so
- * it does not wait only on others, and no reviewer requests changes, so
- * Junior does not act next.
+ * Why Junior asks for the requester's review on GitHub, for a pull request
+ * whose action is none. It is open, not a draft, auto-merge is off, GitHub
+ * does not ask the requester for a review, and the requester does not
+ * request changes. Junior does not ask when the requester removed their
+ * own review request and no one asked them since.
+ *
+ * `commentOnly`: the requester's latest answer to the ask is a comment-only
+ * review, and they have not approved. It answers neither yes nor no, so it
+ * does not end the ask that GitHub drops on it.
+ *
+ * `limbo`: the pull request waits on nobody. The requester has not
+ * commented or reviewed since the last push, other than a comment-only
+ * review. No reviewer approved it, so it does not wait only on others, and
+ * no reviewer requests changes, so Junior does not act next.
  */
-function inLimbo(
+function requesterReviewAsk(
   state: GitHubPullRequestMergeState,
-  requester: { actedAt: Date | undefined; login: string },
-): boolean {
-  return (
-    state.state === "open" &&
-    !state.draft &&
-    !state.autoMerge &&
-    !isRequested(state, requester.login) &&
-    timeOf(requester.actedAt) <= timeOf(state.headCommittedAt) &&
-    state.reviewOutcome === undefined &&
-    !state.changesRequested
-  );
+  activity: LatestActivity,
+  login: string,
+): "commentOnly" | "limbo" | undefined {
+  if (
+    state.state !== "open" ||
+    state.draft ||
+    state.autoMerge ||
+    isRequested(state, login) ||
+    state.changesRequested ||
+    timeOf(activity.removedAt) > timeOf(activity.askedAt)
+  ) {
+    return undefined;
+  }
+  if (
+    !state.requesterApproved &&
+    timeOf(activity.commentedAt) > timeOf(activity.askedAt)
+  ) {
+    return "commentOnly";
+  }
+  return timeOf(activity.actedAt) <= timeOf(state.headCommittedAt) &&
+    state.reviewOutcome === undefined
+    ? "limbo"
+    : undefined;
 }
 
 type CloseReason = { reason: string; status: "done" | "dismissed" };
@@ -664,9 +699,9 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
-  // Ask a pull request in limbo once per sync, so a request that GitHub
-  // takes but does not show yet cannot ask again.
-  let askedInLimbo = false;
+  // Ask the requester once per sync, so a request that GitHub takes but
+  // does not show yet cannot ask again.
+  let askedRequester = false;
   // One check: read GitHub, change the items, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
@@ -692,27 +727,30 @@ async function syncOne(
       },
       previous,
     );
-    if (
-      !askedInLimbo &&
+    const ask =
+      !askedRequester &&
       requesterLogin &&
       next !== undefined &&
-      next.action === undefined &&
-      inLimbo(state, {
-        actedAt: activity.requesterAt,
-        login: requesterLogin,
-      }) &&
-      (args.askAfterRequesterActed ||
-        (activity.requesterAt === undefined &&
-          !state.reviewedBy.includes(requesterLogin.toLowerCase())))
+      next.action === undefined
+        ? requesterReviewAsk(state, activity, requesterLogin)
+        : undefined;
+    if (
+      requesterLogin &&
+      (ask === "commentOnly" ||
+        (ask === "limbo" &&
+          (args.askAfterRequesterActed || activity.actedAt === undefined)))
     ) {
-      askedInLimbo = true;
-      // Ask after the required checks pass, as a review ask again does. A
-      // later check suite webhook syncs again.
+      askedRequester = true;
+      // A pull request in limbo waits for the required checks, as a review
+      // ask again does. A later check suite webhook syncs again. A
+      // comment-only review only puts back the ask that it ended.
       const [owner = "", name = ""] = target.repositoryFullName.split("/");
-      const checksPass = await readGitHubRequiredChecksPass(
-        await loadReviewAgainReader(args.env, target.repositoryFullName),
-        { name, number: target.number, owner },
-      );
+      const checksPass =
+        ask === "commentOnly" ||
+        (await readGitHubRequiredChecksPass(
+          await loadReviewAgainReader(args.env, target.repositoryFullName),
+          { name, number: target.number, owner },
+        ));
       // The next read sees the request and shows its item.
       if (
         checksPass &&
