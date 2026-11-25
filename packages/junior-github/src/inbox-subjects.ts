@@ -47,8 +47,10 @@ const pullRequestOwner: PluginInboxSubjectOwner = {
 
 /** The registered kinds and labels, for the plugin registration. */
 export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
-  // A dismiss removes only the person who dismissed it, and removes them
-  // from the requested reviewers when GitHub lists them there.
+  // A requested reviewer with a linked account is on the item, also from
+  // outside the Conversation. A dismiss removes only the person who
+  // dismissed it, and removes them from the requested reviewers when GitHub
+  // lists them there.
   {
     ask: pullRequestAsk,
     codeChange: true,

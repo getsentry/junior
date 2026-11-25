@@ -12,13 +12,19 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { juniorIdentities, juniorInboxItems } from "@/db/schema";
+import {
+  juniorDestinations,
+  juniorIdentities,
+  juniorInboxItemAssignees,
+  juniorInboxItems,
+  juniorUsers,
+} from "@/db/schema";
+import type { InboxItemPayload } from "@/api/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -155,12 +161,12 @@ describe("the ask of a Junior pull request", () => {
 
   it("closes before the chip says merged, so no reader sees a merged pull request with an open ask", async () => {
     app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    await upsertIdentity(getSqlExecutor(), {
-      displayName: "Pat Requester",
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: person.userId,
-      providerTenantId: person.teamId,
+    // A pull request item needs a person Junior knows: one for nobody is
+    // not added.
+    await seedLinkedPerson({
+      email: "pat@example.com",
+      linked: { handle: "pat", provider: "github", subjectId: "2002" },
+      slackUserId: person.userId,
     });
     const { fixture } = await prepareSlackParentConversation();
     // The footer that links the pull request to its Conversation needs a
@@ -469,7 +475,7 @@ describe("the ask of a Junior pull request", () => {
       slackUserId: person.userId,
     });
     const { fixture } = await prepareSlackParentConversation();
-    // Only the people in the Conversation can be on its items.
+    // Pat requested the review from the Conversation.
     const [pat] = await getDb()
       .select({ id: juniorIdentities.id })
       .from(juniorIdentities)
@@ -600,6 +606,180 @@ describe("the ask of a Junior pull request", () => {
       expect(removed).toEqual([{ reviewers: ["pat"] }]);
       // Pat was the only person on it, so the item closes.
       expect(await status()).toBe("dismissed");
+    } finally {
+      setDashboardConversationLinkOptions(previousDashboard);
+      await fixture.close();
+    }
+  });
+  it("puts a requested reviewer from outside a private Conversation on the item, without the Conversation", async () => {
+    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await seedLinkedPerson({
+      email: "pat@example.com",
+      linked: { handle: "pat", provider: "github", subjectId: "2002" },
+      slackUserId: person.userId,
+    });
+    // Out is not in the pull request's Conversation.
+    await seedLinkedPerson({
+      email: "out@example.com",
+      linked: { handle: "out", provider: "github", subjectId: "2004" },
+      slackUserId: "U_OUT",
+    });
+    const { fixture } = await prepareSlackParentConversation();
+    const [pat] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(eq(juniorIdentities.providerSubjectId, person.userId));
+    await recordConversationParticipant(getSqlExecutor(), {
+      actorIdentityId: pat!.id,
+      atMs: Date.now(),
+      conversationId: slackParentConversationId,
+    });
+    await getDb().update(juniorDestinations).set({ visibility: "private" });
+    const previousDashboard = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      await migratePluginSchemas(fixture.sql, [
+        {
+          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
+          pluginName: "github",
+        },
+      ]);
+      const github = { reviewers: ["nolink"] };
+      const removed: unknown[] = [];
+      mswServer.use(
+        http.get(API, () =>
+          HttpResponse.json({
+            auto_merge: null,
+            draft: false,
+            head: { sha: "head-1" },
+            html_url: PULL_URL,
+            mergeable_state: "clean",
+            merged: false,
+            requested_reviewers: github.reviewers.map((login) => ({ login })),
+            state: "open",
+            title: "fix: Check",
+            user: { id: 264270552 },
+          }),
+        ),
+        http.delete(`${API}/requested_reviewers`, async ({ request }) => {
+          removed.push(await request.json());
+          github.reviewers = github.reviewers.filter(
+            (login) => login !== "out",
+          );
+          return HttpResponse.json({ requested_reviewers: [] });
+        }),
+        http.get(`${API}/commits`, () => HttpResponse.json([])),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+          () => HttpResponse.json({ permission: "write" }),
+        ),
+        http.post("https://api.github.com/graphql", () =>
+          HttpResponse.json({
+            data: {
+              repository: {
+                pullRequest: {
+                  autoMergeRequest: null,
+                  commits: { nodes: [] },
+                  headRefOid: "head-1",
+                  isDraft: false,
+                  mergeStateStatus: "CLEAN",
+                  reviewRequests: {
+                    nodes: github.reviewers.map((login) => ({
+                      requestedReviewer: { __typename: "User", login },
+                    })),
+                  },
+                  reviews: {
+                    nodes: [],
+                    pageInfo: { hasPreviousPage: false, startCursor: null },
+                  },
+                  state: "OPEN",
+                  timelineItems: { nodes: [] },
+                  title: "fix: Check",
+                  url: PULL_URL,
+                },
+              },
+            },
+          }),
+        ),
+      );
+      const reviewItem = async () => {
+        const [item] = await getDb()
+          .select({ id: juniorInboxItems.id, status: juniorInboxItems.status })
+          .from(juniorInboxItems)
+          .where(eq(juniorInboxItems.subjectId, PULL_ID));
+        if (!item) return undefined;
+        const people = await getDb()
+          .select({ email: juniorUsers.primaryEmail })
+          .from(juniorInboxItemAssignees)
+          .innerJoin(
+            juniorUsers,
+            eq(juniorUsers.id, juniorInboxItemAssignees.userId),
+          )
+          .where(eq(juniorInboxItemAssignees.itemId, item.id));
+        return { ...item, assignees: people.map((row) => row.email).sort() };
+      };
+
+      const body = await openPullRequest();
+      await sendGitHubWebhook("pull_request", {
+        action: "opened",
+        pull_request: pullRequest(body, false, "2026-07-01T12:00:00.000Z"),
+      });
+      // The only reviewer has no linked account, so the review gets no
+      // item. It is never up for grabs.
+      await sendGitHubWebhook("pull_request", {
+        action: "review_requested",
+        pull_request: pullRequest(body, false, "2026-07-01T12:01:00.000Z"),
+        requested_reviewer: { login: "nolink" },
+      });
+      expect(await reviewItem()).toBeUndefined();
+
+      github.reviewers = ["nolink", "out"];
+      await sendGitHubWebhook("pull_request", {
+        action: "review_requested",
+        pull_request: pullRequest(body, false, "2026-07-01T12:02:00.000Z"),
+        requested_reviewer: { login: "out" },
+      });
+      const item = await reviewItem();
+      expect(item).toMatchObject({
+        assignees: ["out@example.com"],
+        status: "open",
+      });
+
+      // Out sees the item and the pull request, but not the private
+      // Conversation.
+      const viewer = await signedInViewer("out@example.com");
+      const api = new Hono<JuniorApiEnv>();
+      api.use("*", async (context, next) => {
+        context.set("viewer", viewer);
+        await next();
+      });
+      api.route("/", createJuniorApi());
+      const listed = (await (
+        await api.request("http://localhost/api/inbox-items?for=viewer")
+      ).json()) as { items: InboxItemPayload[] };
+      const card = listed.items.find(
+        (listedItem) => listedItem.id === item!.id,
+      );
+      expect(card).toMatchObject({
+        canAct: true,
+        conversationIds: [],
+        subject: { kind: "github:pull_request", url: PULL_URL },
+      });
+      // No root tells the dashboard that the viewer cannot see it.
+      expect(card).not.toHaveProperty("rootConversationId");
+
+      const dismissed = await api.request(
+        `http://localhost/api/inbox-items/${item!.id}/actions`,
+        {
+          body: JSON.stringify({ action: "dismiss" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(dismissed.status).toBe(200);
+      expect(removed).toEqual([{ reviewers: ["out"] }]);
+      expect(await reviewItem()).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
