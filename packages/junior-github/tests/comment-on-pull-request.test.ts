@@ -260,6 +260,31 @@ describe("commentOnPullRequest", () => {
     ).resolves.toMatchObject({ comment_id: 88, requester_asked: false });
   });
 
+  it("drops the question mark when GitHub does not post the comment", async () => {
+    await seedOpener(706);
+    const { state, tool } = toolContext(
+      new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }),
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 706,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      readGitHubReviewAsked(state, {
+        number: 706,
+        repositoryFullName: "getsentry/junior-comment-tests",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("returns GitHub validation errors to the agent", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }),

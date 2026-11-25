@@ -9,7 +9,10 @@ import {
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
-import { markGitHubReviewAsked } from "../pull-request-review-again.js";
+import {
+  dropGitHubReviewAsked,
+  markGitHubReviewAsked,
+} from "../pull-request-review-again.js";
 import {
   linkedGitHubLogin,
   requesterPerson,
@@ -99,17 +102,16 @@ type CommentContext = Pick<
 >;
 
 /**
- * Ask the person who asked Junior for the pull request to review it on
- * GitHub, and return whether GitHub took the request. The review request
- * makes the pull request's next action "review" (`pull-request-action.ts`),
- * so its one Inbox item waits on them, and GitHub notifies them. The comment
- * is already posted, so a failure is logged and returned, not thrown.
+ * Return the GitHub login of the person who asked Junior for the pull
+ * request, and mark that a comment asks them a question. The mark comes
+ * before the comment, so the comment's own webhook can show it on an open
+ * item (`pull-request-action.ts`). A failure is logged, so the comment still
+ * posts.
  */
-async function askRequester(
+async function markQuestion(
   ctx: CommentContext,
-  target: { number: number; prefix: string; repo: string },
-): Promise<boolean> {
-  const fields = { number: target.number, repo: target.repo };
+  target: { number: number; repo: string },
+): Promise<string | undefined> {
   try {
     const [opener, owner] = await Promise.all([
       listGitHubPullRequestOpeners(gitHubDbSchema.parse(ctx.db), {
@@ -125,14 +127,32 @@ async function askRequester(
       opener?.conversationId && owner?.identity?.id === opener.identityId
         ? linkedGitHubLogin(owner.user)
         : undefined;
-    if (!login) return false;
-    // GitHub's review request webhook shows the item. This mark gives it the
-    // text that says Junior asked a question.
+    if (!login) return undefined;
     await markGitHubReviewAsked(
       ctx.state,
       { number: target.number, repositoryFullName: target.repo },
       { at: new Date().toISOString(), reason: "question", reviewer: login },
     );
+    return login;
+  } catch (error) {
+    logAskFailure(ctx, target, error);
+    return undefined;
+  }
+}
+
+/**
+ * Ask `login` to review the pull request on GitHub, and return whether
+ * GitHub took the request. The review request makes the pull request's next
+ * action "review", so its one Inbox item waits on them, and GitHub notifies
+ * them. The comment is already posted, so a failure is logged and returned,
+ * not thrown.
+ */
+async function requestReview(
+  ctx: CommentContext,
+  target: { number: number; prefix: string; repo: string },
+  login: string,
+): Promise<boolean> {
+  try {
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.request_reviewers",
       method: "POST",
@@ -142,18 +162,35 @@ async function askRequester(
     if (response.ok) return true;
     ctx.log.warn(
       "github.pull_request.request_reviewers_after_question.rejected",
-      { ...fields, status: response.status },
+      { number: target.number, repo: target.repo, status: response.status },
     );
   } catch (error) {
-    ctx.log.warn(
-      "github.pull_request.request_reviewers_after_question.failed",
-      {
-        ...fields,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      },
-    );
+    logAskFailure(ctx, target, error);
   }
   return false;
+}
+
+/** Drop the question mark of a comment that GitHub did not post. */
+async function dropQuestion(
+  ctx: CommentContext,
+  target: { number: number; repo: string },
+): Promise<void> {
+  await dropGitHubReviewAsked(ctx.state, {
+    number: target.number,
+    repositoryFullName: target.repo,
+  });
+}
+
+function logAskFailure(
+  ctx: CommentContext,
+  target: { number: number; repo: string },
+  error: unknown,
+): void {
+  ctx.log.warn("github.pull_request.request_reviewers_after_question.failed", {
+    number: target.number,
+    repo: target.repo,
+    errorType: error instanceof Error ? error.name : "UnknownError",
+  });
 }
 
 /**
@@ -180,13 +217,21 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
       input.in_reply_to === undefined
         ? `${prefix}/issues/${input.pull_request}/comments`
         : `${prefix}/pulls/${input.pull_request}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
+    const target = { number: input.pull_request, prefix, repo: repo.ref };
+    const reviewer = input.asks_requester
+      ? await markQuestion(ctx, target)
+      : undefined;
     const response = await githubApi(egress, {
       operation: "github.pull.comment.create",
       method: "POST",
       path,
       body: { body: input.body },
+    }).catch(async (error: unknown) => {
+      if (reviewer) await dropQuestion(ctx, target);
+      throw error;
     });
     if (!response.ok) {
+      if (reviewer) await dropQuestion(ctx, target);
       const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
       if (response.status === 404 || response.status === 422) {
         throw new PluginToolInputError(
@@ -207,11 +252,9 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
       url: comment.html_url,
       ...(input.asks_requester
         ? {
-            requester_asked: await askRequester(ctx, {
-              number: input.pull_request,
-              prefix,
-              repo: repo.ref,
-            }),
+            requester_asked: reviewer
+              ? await requestReview(ctx, target, reviewer)
+              : false,
           }
         : undefined),
     };

@@ -112,6 +112,13 @@ import {
 } from "../pull-request-review-again.js";
 import { linkedGitHubLogin } from "../tool-support/attribution.js";
 import { checkSuitePullRequests } from "./check-suite.js";
+import {
+  ENDED_REASONS,
+  endedReason,
+  closeReason,
+  actionText,
+  type EndedState,
+} from "./pull-request-action-text.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 import { GitHubGraphqlError } from "./graphql-request.js";
 import {
@@ -251,74 +258,6 @@ export function pullRequestActionTargets(
       repositoryFullName: parsed.data.repository.full_name,
     },
   ];
-}
-
-type CloseReason = { reason: string; status: "done" | "dismissed" };
-
-type EndedState = Exclude<GitHubPullRequestMergeState["state"], "open">;
-
-/** Why an item closes when its pull request is no longer open. */
-const ENDED_REASONS: Record<EndedState, CloseReason> = {
-  closed: {
-    reason: "The pull request closed without merging.",
-    status: "dismissed",
-  },
-  merged: { reason: "The pull request merged.", status: "done" },
-};
-
-function endedReason(
-  state: GitHubPullRequestMergeState["state"],
-): CloseReason | undefined {
-  return state === "open" ? undefined : ENDED_REASONS[state];
-}
-
-function closeReason(
-  state: GitHubPullRequestMergeState,
-  previous: GitHubPullRequestAction,
-): CloseReason {
-  const ended = endedReason(state.state);
-  if (ended) return ended;
-  if (previous !== "merge") {
-    return { reason: "The review request ended.", status: "done" };
-  }
-  if (state.autoMerge) {
-    return { reason: "Auto-merge is on.", status: "dismissed" };
-  }
-  return {
-    reason: "The pull request is no longer ready to merge.",
-    status: "dismissed",
-  };
-}
-
-/** The item text that says why Junior asked for the review again. */
-const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
-  checks: "Checks now pass, and every comment is handled.",
-  handled: "Every comment on your change request is handled.",
-  question: "A comment asks you a question.",
-};
-
-function actionText(
-  action: GitHubPullRequestAction,
-  number: number,
-  reason: GitHubReviewAskReason | undefined,
-  state: GitHubPullRequestMergeState,
-): string {
-  if (action === "merge") {
-    // The text stays true when someone approves later, because the item
-    // changes only when the action changes.
-    return state.reviewOutcome === "approved"
-      ? `#${number} is approved, and GitHub says that it can merge.`
-      : `GitHub says that #${number} can merge with no review. Review it, then merge it.`;
-  }
-  const asked = reason ? REVIEW_AGAIN_TEXT[reason] : undefined;
-  if (action === "review") {
-    return asked ?? `GitHub asks you to review #${number}.`;
-  }
-  if (action === "mark_ready") {
-    return `You approved #${number}. Mark it ready for review.`;
-  }
-  const step = `#${number} is a draft. Review it, then mark it ready for review.`;
-  return asked ? `${asked} ${step}` : step;
 }
 
 async function showAction(
@@ -480,6 +419,18 @@ async function askHeldReview(
   return undefined;
 }
 
+/** Whether a Junior comment marked a question for the requester. */
+async function asksQuestion(
+  state: PluginState,
+  target: GitHubPullRequestTarget,
+  requesterLogin: string | undefined,
+): Promise<boolean> {
+  const asked = await readGitHubReviewAsked(state, target);
+  return (
+    asked?.reason === "question" && sameLogin(asked.reviewer, requesterLogin)
+  );
+}
+
 /**
  * Return why Junior asked the requester, if it did: the reason of the held
  * ask that this sync released, or the reason of the mark that a Junior tool
@@ -545,9 +496,13 @@ async function syncOne(
   const name = itemName(target);
   const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
+  // Another person's comment changes nothing, but Junior's comment that
+  // asks the requester a question can show on an item that is already
+  // open, when GitHub sends no new review request.
   if (
     target.commentBy !== undefined &&
-    !sameLogin(target.commentBy, requesterLogin)
+    !sameLogin(target.commentBy, requesterLogin) &&
+    !(await asksQuestion(args.state, target, requesterLogin))
   ) {
     return;
   }
