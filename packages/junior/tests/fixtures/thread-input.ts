@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
+import {
+  assertRunConsistency,
+  type AgentRun,
+  type AgentSteeringMessage,
+} from "@/chat/agent/types";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   completedAgentRun,
   type AgentRunOutcome,
@@ -152,6 +157,31 @@ export async function commitRunInput(run: AgentRun): Promise<void> {
   await run.durability?.onInputCommitted?.();
 }
 
+/**
+ * Drain a running run's steering messages as the agent does at a model
+ * boundary: save them in the Turn after its input and the messages that it
+ * `steered` before, then give them to `accept`. Returns every steering
+ * message that the Turn saved.
+ */
+export async function steerRun(
+  run: AgentRun,
+  accept: (messages: AgentSteeringMessage[], saved: PiMessage[]) => unknown,
+  steered: readonly PiMessage[] = [],
+): Promise<PiMessage[]> {
+  let saved = [...steered];
+  await run.durability?.drainSteeringMessages?.(async (messages) => {
+    saved = [...saved, ...messages.map(buildSteeringPiMessage)];
+    const input = runInputCheckpoint(run);
+    await saveTurnCheckpoint({
+      ...input,
+      messages: [...input.messages, ...saved],
+      mode: "running",
+    });
+    await accept(messages, saved);
+  });
+  return saved;
+}
+
 /** Pause a run's Turn at a yield, as the agent does between slices. */
 export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
   const record = await saveTurnCheckpoint({
@@ -174,13 +204,16 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
  * `noReply`, and save the Turn's completed record. A `finalText` answer ends
  * a Turn that is not gated with that final response. With `assistantText`,
  * the Turn ends on that model message after its input, as a model Turn does.
+ * `steered` are the steering messages that the Turn saved after its input.
  */
 export async function finishRun(
   run: AgentRun,
   answer: TurnAnswer | { finalText: string } = { noReply: {} },
   assistantText?: string,
+  steered: readonly PiMessage[] = [],
 ): Promise<AgentRunOutcome> {
-  const input = runInputCheckpoint(run);
+  const prompt = runInputCheckpoint(run);
+  const input = { ...prompt, messages: [...prompt.messages, ...steered] };
   await saveTurnCheckpoint({ ...input, mode: "running" });
   await run.durability?.onInputCommitted?.();
   await saveTurnCheckpoint({ ...input, mode: "completed" });

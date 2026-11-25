@@ -115,9 +115,13 @@ import {
   instructionForInputs,
   turnRequestText,
 } from "@/chat/agent/prompt";
-import type { AgentInstructionInput } from "@/chat/agent/types";
+import type {
+  AgentInstructionInput,
+  AgentSteeringMessage,
+} from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
+import { createParentSteeringDrain } from "@/chat/agent-invocations/parent-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   type eventBatchMessageMeta,
@@ -612,6 +616,37 @@ export function createConversationTurnWorker(
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
+          const credentialContext = credentialContextForActor(
+            actor,
+            credentialSubject,
+          );
+          const steeringDrains = [
+            ...(webActor
+              ? [
+                  createWebSteeringDrain({
+                    actor: webActor,
+                    author,
+                    context,
+                    conversation,
+                    turnId,
+                  }),
+                ]
+              : []),
+            // A Turn that its parent started also reads that parent's later
+            // messages. A person's Turn in a Thread does not.
+            ...(fromParent
+              ? [
+                  createParentSteeringDrain({
+                    actor,
+                    author,
+                    context,
+                    conversation,
+                    credentialContext,
+                    turnId,
+                  }),
+                ]
+              : []),
+          ];
           const childTurn = await childAgentTurnOptions({
             actor,
             conversationId: context.conversationId,
@@ -653,10 +688,7 @@ export function createConversationTurnWorker(
               history,
               ...childTurn.run,
               actor,
-              credentialContext: credentialContextForActor(
-                actor,
-                credentialSubject,
-              ),
+              credentialContext,
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,
@@ -683,15 +715,16 @@ export function createConversationTurnWorker(
               },
               delivery: deliverAssistantMessage,
               durability: {
-                ...(webActor
+                ...(steeringDrains.length > 0
                   ? {
-                      drainSteeringMessages: createWebSteeringDrain({
-                        actor: webActor,
-                        author,
-                        context,
-                        conversation,
-                        turnId,
-                      }),
+                      drainSteeringMessages: async (accept) => {
+                        const accepted: AgentSteeringMessage[] = [];
+                        for (const drain of steeringDrains) {
+                          // oxlint-disable-next-line no-await-in-loop -- Each drain commits its messages to the Turn in turn.
+                          accepted.push(...(await drain(accept)));
+                        }
+                        return accepted;
+                      },
                     }
                   : undefined),
                 onInputCommitted: acknowledge,

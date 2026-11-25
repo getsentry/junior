@@ -18,8 +18,9 @@ const senderActorMetadataSchema = z.object({ actor: actorSchema });
  * Return the Inbound message author id for results sent by one Actor.
  * `selectContiguousTurnBatch` in `task-execution/worker.ts` puts messages in
  * one attempt only when their author ids and sources match. Mid-Turn drains
- * take only `interrupt` messages, and results are `defer`. So results never
- * share a Turn and its credentials with another Actor or with watch Events.
+ * take only `interrupt` messages and parent messages, and results are `defer`
+ * Events. So results never share a Turn and its credentials with another
+ * Actor or with watch Events.
  * Keep this id unique per Actor if either rule changes.
  */
 export function resultAuthorId(actor: Actor): string {

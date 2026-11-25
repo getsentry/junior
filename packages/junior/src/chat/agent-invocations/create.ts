@@ -323,7 +323,9 @@ export async function spawnChildAgent(
 /**
  * Give one `messageAgent` message to a child agent, as a parent message. `findChildAgentConversationId` must have found
  * the child under this parent. `queued` means the child already has open
- * work, so it reads the message after that work. While the parent is
+ * work. A running Turn that this parent started reads the message at its
+ * next model call when the message has the Turn's Actor and credentials;
+ * otherwise the child reads it after that work. While the parent is
  * stopped, the message becomes a Conversation note on the child instead: it
  * starts no work and ends no stop, and the child's next Turn shows it.
  */

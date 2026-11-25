@@ -178,6 +178,53 @@ describe("Child Agents", () => {
     ]);
   });
 
+  test("when the parent messages a child that is still working, the child's one result reflects every message", async ({
+    agent,
+  }) => {
+    const { run } = await agent();
+    // The child waits in its first tool call until the parent's two messages
+    // ran, so they reach the child while its Turn runs. Without the wait, a
+    // replayed child could end its Turn before the messages arrive.
+    let messagesRan!: () => void;
+    const messagesRanOnce = new Promise<void>((resolve) => {
+      messagesRan = resolve;
+    });
+    let messageRequests = 0;
+    const conversation = await run(
+      slackMention(
+        'Use startAgent to start one child agent named "scout" with the task "Call systemTime once. Then reply with only the code word MAPLE-7." After startAgent returns, use messageAgent twice, one call per step, to send scout these two messages: "Correction: use the code word OAK-3 instead of MAPLE-7." and "Also add the code word PINE-2 to your reply." Then end this turn. When scout\'s result arrives, post the code words that it reported here.',
+      ),
+      {
+        onProgress: async (progress) => {
+          if (progress.type === "model_request" && messageRequests >= 2) {
+            messagesRan();
+          } else if (progress.type === "tool_request") {
+            if (requestsTool(progress, "messageAgent")) {
+              messageRequests += 1;
+            } else if (requestsTool(progress, "systemTime")) {
+              await messagesRanOnce;
+              await new Promise((resolve) => setTimeout(resolve, 1_500));
+            }
+          }
+        },
+      },
+    );
+
+    expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("messageAgent", conversation)).toHaveLength(2);
+    // Both messages join the child's running Turn, so the parent gets one
+    // result, and it already has the correction.
+    const replies = conversation.turns.slice(1).flatMap((turn) => turn.replies);
+    expect(replies.some((reply) => reply.text.includes("MAPLE-7"))).toBe(false);
+    expect(
+      replies.filter(
+        (reply) =>
+          reply.text.includes("OAK-3") && reply.text.includes("PINE-2"),
+      ),
+    ).toHaveLength(1);
+    expect(conversation.turns.at(-1)?.status).toBe("succeeded");
+  });
+
   test("when a child agent uses its turn budget, its result starts a turn that succeeds", async ({
     agent,
   }) => {

@@ -99,6 +99,35 @@ export function canJoinTurn(
   return hasSameOwner(turnOwner(turn), inputOwner(message));
 }
 
+/**
+ * True when a parent message may steer a running Turn that its parent
+ * started: it has the Turn's parent author id, Actor, and credentials.
+ */
+export function canSteerParentTurn(
+  turn: {
+    actor: Actor;
+    authorId: string | undefined;
+    credentialContext: CredentialContext;
+  },
+  message: InboundMessage,
+): boolean {
+  const owner = inputOwner(message);
+  return (
+    owner.credentials !== undefined &&
+    hasSameOwner(
+      {
+        authorId: turn.authorId,
+        credentials: {
+          actor: turn.actor,
+          credentialContext: turn.credentialContext,
+        },
+        source: "internal",
+      },
+      owner,
+    )
+  );
+}
+
 function selectContiguousTurnBatch(
   messages: readonly InboundMessage[],
 ): InboundMessage[] {

@@ -19,17 +19,25 @@ import {
 } from "@/chat/task-execution/store";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
+import { getParentMessageId } from "@/chat/agent-invocations/ids";
+import { credentialContextForActor } from "@/chat/credentials/context";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
+import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import {
+  loadSubagentEvents,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
+  commitRunInput,
   createHarness,
   finishRun,
   slackParentRun,
+  steerRun,
   type Harness,
 } from "../fixtures/thread-input";
 
@@ -214,6 +222,162 @@ describe("messageAgent", () => {
           },
         ],
       });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("steers a parent's messages into the busy child's running Turn", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const { queue, state } = harness;
+    const credentialContext = credentialContextForActor(parentActor);
+    const otherActor = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U999",
+    } as const;
+    try {
+      const childId = await spawnChild(harness, "steer-child", {
+        agentName: "researcher",
+        credentialContext,
+      });
+      const send = async (run: AgentRun, toolCallId: string, text: string) =>
+        await createMessageAgentTool(bindMessageAgent(run, { queue, state })!)
+          .execute!({ text, to: "researcher" }, { toolCallId });
+      const parentRun = slackParentRun({ credentialContext });
+      const drained: string[][] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        const startedAtMs = Date.now();
+        // The parent sends these while the child's model call runs.
+        await expect(
+          send(parentRun, "call-retry", "Also check the retry path."),
+        ).resolves.toEqual({ conversation_id: childId, delivery: "queued" });
+        vi.setSystemTime(Date.now() + 1);
+        await send(parentRun, "call-timeout", "Also check the timeout.");
+        // Another Actor's message cannot use this Turn's credentials.
+        vi.setSystemTime(Date.now() + 1);
+        await send(
+          slackParentRun({
+            actor: otherActor,
+            credentialContext: credentialContextForActor(otherActor),
+          }),
+          "call-billing",
+          "Check billing.",
+        );
+        // The fake run saves its prompt with the time that it started at.
+        vi.setSystemTime(startedAtMs);
+        const steered = await steerRun(run, (messages) =>
+          drained.push(messages.map((message) => message.text)),
+        );
+        // The next model call finds nothing more that can join.
+        await steerRun(run, (messages) =>
+          drained.push(messages.map((message) => message.text)),
+        );
+        return await finishRun(
+          run,
+          { finalText: "The retry path and the timeout are fine." },
+          undefined,
+          steered,
+        );
+      });
+      await harness.drain(childId);
+
+      // Both messages that arrived during one model call join the next one
+      // together, as the child's instructions. The other Actor's message
+      // runs its own Turn.
+      expect(drained).toEqual([
+        [
+          "<parent-agent-task>\nAlso check the retry path.\n</parent-agent-task>",
+          "<parent-agent-task>\nAlso check the timeout.\n</parent-agent-task>",
+        ],
+      ]);
+      expect(harness.runs.map((run) => run.actor)).toEqual([
+        parentActor,
+        otherActor,
+      ]);
+      expect(harness.runs[1]!.instruction.text).toContain("Check billing.");
+
+      // The parent gets one result for the Turn that read both messages.
+      const taskTurnId = buildDeterministicTurnId(
+        getParentMessageId(slackParentConversationId, "steer-child"),
+      );
+      const taskResults = (
+        await getConversationWorkState({
+          conversationId: slackParentConversationId,
+        })
+      )?.messages.filter(
+        (message) => readInboundMessageSender(message)?.turnId === taskTurnId,
+      );
+      expect(taskResults).toHaveLength(1);
+      expect(taskResults![0]!.input.text).toContain(
+        "The retry path and the timeout are fine.",
+      );
+      const steeredIds = ["call-retry", "call-timeout"].map((toolCallId) =>
+        getParentMessageId(
+          slackParentConversationId,
+          `${parentRun.turnId}:${toolCallId}`,
+        ),
+      );
+      expect(await loadSubagentEvents(slackParentConversationId)).toEqual(
+        expect.arrayContaining(
+          steeredIds.map((id) => ({
+            type: "subagent_ended",
+            subagentInvocationId: id,
+            outcome: "success",
+          })),
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("gives a steered parent message to the Turn once when its drain retries", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const { queue, state } = harness;
+    const credentialContext = credentialContextForActor(parentActor);
+    try {
+      const childId = await spawnChild(harness, "steer-retry-child", {
+        agentName: "researcher",
+        credentialContext,
+      });
+      const parentTool = createMessageAgentTool(
+        bindMessageAgent(slackParentRun({ credentialContext }), {
+          queue,
+          state,
+        })!,
+      );
+      const retried: unknown[] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        await parentTool.execute!(
+          { text: "Also check the retry path.", to: "researcher" },
+          { toolCallId: "call-retry" },
+        );
+        // Injected fault: the Turn saves the steering message, then the
+        // drain fails before the mailbox ack.
+        let steered: PiMessage[] = [];
+        await expect(
+          steerRun(run, (_messages, saved) => {
+            steered = saved;
+            throw new Error("lost the mailbox ack");
+          }),
+        ).rejects.toThrow("lost the mailbox ack");
+        await steerRun(run, (messages) => retried.push(...messages), steered);
+        return await finishRun(run, { noReply: {} }, undefined, steered);
+      });
+      await harness.drain(childId);
+
+      expect(retried).toEqual([]);
+      expect(harness.runs).toHaveLength(1);
+      expect(
+        (await getConversationWorkState({ conversationId: childId }))?.messages,
+      ).toEqual([]);
     } finally {
       await harness.close();
     }
