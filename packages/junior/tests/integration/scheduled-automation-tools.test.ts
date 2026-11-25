@@ -25,6 +25,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
@@ -433,6 +434,18 @@ describe("Scheduled automation tools", () => {
         },
       ],
     });
+    // The saved card names the Automation as its subject.
+    expect(
+      await listConversationAnnotations(
+        dbModule.getDb(),
+        "test:schedule-cards",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        key: created.automation.id,
+        subject: { id: created.automation.id, kind: "automation" },
+      }),
+    ]);
     expect(created).toMatchObject({
       automation: {
         conversation_access: {

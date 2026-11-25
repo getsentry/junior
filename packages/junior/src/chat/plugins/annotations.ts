@@ -74,9 +74,16 @@ function annotationFromRow(row: {
   const { objectId: _objectId, ...json } = saved.data;
   const parsed = conversationAnnotationInputSchema.safeParse(json);
   if (!parsed.success) return undefined;
-  const ownKind = row.subjectKind?.startsWith(`${row.plugin}:`)
-    ? row.subjectKind.slice(row.plugin.length + 1)
-    : undefined;
+  // The inverse of `annotationSubject`. A `link` subject names no provider
+  // id, so the annotation gets none.
+  const ownKind =
+    row.plugin === CORE_ANNOTATION_PLUGIN
+      ? row.subjectKind === ANNOTATION_SUBJECT_KINDS.link
+        ? undefined
+        : row.subjectKind
+      : row.subjectKind?.startsWith(`${row.plugin}:`)
+        ? row.subjectKind.slice(row.plugin.length + 1)
+        : undefined;
   return {
     ...parsed.data,
     ...(parsed.data.kind === "object" && ownKind && row.subjectId
