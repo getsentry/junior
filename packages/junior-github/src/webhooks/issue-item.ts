@@ -1,8 +1,8 @@
 /**
  * The Inbox item of an issue that Junior created. Each GitHub assignee with
  * a linked account is on it. Assigning a person on GitHub adds them, and
- * unassigning removes them. The item closes when the issue closes or nobody
- * is left. A dismiss unassigns the person on GitHub (`dismissGitHubItem`).
+ * unassigning removes them. The item closes when the issue closes, is
+ * deleted or transferred, or nobody is left. A dismiss unassigns the person on GitHub (`dismissGitHubItem`).
  *
  * The item belongs to the Conversation that first saved the issue's card.
  * The issue body footer names the Conversations that wrote it, and only
@@ -26,7 +26,15 @@ import { isBotLogin } from "./ownership.js";
 const FOOTER_READ_CONCURRENCY = 4;
 
 // A reopen does not bring a closed item back. A new assignment does.
-const ITEM_ACTIONS = new Set(["assigned", "unassigned", "closed"]);
+const ITEM_ACTIONS = new Set([
+  "assigned",
+  "closed",
+  "deleted",
+  "transferred",
+  "unassigned",
+]);
+// The issue leaves this repository, so its item closes.
+const GONE_ACTIONS = new Set(["deleted", "transferred"]);
 
 const login = z.object({ login: z.string().min(1) });
 
@@ -83,7 +91,7 @@ export function normalizeGitHubIssueItemEvent(args: {
     conversationIds,
     issueId: String(issue.id),
     number: issue.number,
-    open: issue.state === "open",
+    open: !GONE_ACTIONS.has(action) && issue.state === "open",
     url: issue.html_url,
   };
 }

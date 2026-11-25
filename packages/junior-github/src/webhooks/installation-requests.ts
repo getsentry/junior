@@ -297,7 +297,10 @@ export async function requestPullRequestReviewers(
   );
 }
 
-/** Unassign people from one issue, with an issues write token. */
+/**
+ * Unassign people from one issue, with an issues write token. A gone issue
+ * has nobody left to unassign.
+ */
 export async function removeIssueAssignees(
   env: GitHubInstallationEnv,
   input: { assignees: string[]; number: number; repositoryFullName: string },
@@ -311,15 +314,20 @@ export async function removeIssueAssignees(
     permissions: { issues: "write" },
     repositories: [name],
   });
-  await githubRequest(
-    "https://api.github.com",
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
-    {
-      body: { assignees: input.assignees },
-      method: "DELETE",
-      token: token.token,
-    },
-  );
+  try {
+    await githubRequest(
+      "https://api.github.com",
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
+      {
+        body: { assignees: input.assignees },
+        method: "DELETE",
+        token: token.token,
+      },
+    );
+  } catch (error) {
+    if (error instanceof GitHubRequestError && error.status === 404) return;
+    throw error;
+  }
 }
 
 /**
