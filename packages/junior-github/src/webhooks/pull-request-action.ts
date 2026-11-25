@@ -781,6 +781,11 @@ const syncTaskPayloadSchema = z
 // The queue can deliver a task a little before the rate limit resets.
 const RATE_LIMIT_RESET_MARGIN_SECONDS = 5;
 
+// A task message is signed when it starts, and the queue rejects a signature
+// older than 60 minutes. A task that runs before the reset fails again, and
+// the task backoff covers the rest of the hour.
+const MAX_SYNC_TASK_DELAY_SECONDS = 55 * 60;
+
 /**
  * Return when to sync again after a failure that GitHub causes for a
  * while: after the GraphQL rate limit resets, or after the task backoff
@@ -810,7 +815,10 @@ async function retryAfterFailure(
     if (!reset) return {};
     const seconds = Math.ceil((reset.getTime() - Date.now()) / 1000);
     return {
-      delaySeconds: Math.max(seconds, 0) + RATE_LIMIT_RESET_MARGIN_SECONDS,
+      delaySeconds: Math.min(
+        Math.max(seconds, 0) + RATE_LIMIT_RESET_MARGIN_SECONDS,
+        MAX_SYNC_TASK_DELAY_SECONDS,
+      ),
     };
   }
   return error instanceof GitHubRequestError && error.status >= 500

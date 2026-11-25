@@ -638,6 +638,55 @@ describe("next action item", () => {
     }
   });
 
+  it("starts the sync task within the queue signature lifetime when the rate limit resets later", async () => {
+    const fixture = await createGitHubFixture();
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    mswServer.use(
+      http.post(
+        "https://api.github.com/graphql",
+        () =>
+          HttpResponse.json({
+            errors: [
+              { message: "API rate limit exceeded.", type: "RATE_LIMIT" },
+            ],
+          }),
+        { once: true },
+      ),
+      http.get("https://api.github.com/rate_limit", () =>
+        HttpResponse.json({
+          resources: {
+            graphql: {
+              limit: 12500,
+              remaining: 0,
+              reset: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const h = createPluginHarness(fixture, requesterUsers);
+
+      await h.deliver(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
+      );
+      expect(h.startedTasks.map((task) => task.delaySeconds)).toEqual([
+        55 * 60,
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reads nothing from GitHub for a pull request with no requester Conversation", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
