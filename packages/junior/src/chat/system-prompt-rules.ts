@@ -16,9 +16,9 @@
  *    inputs, with no tag table and no context data.
  * 4. Actions and safety: `<safety>` holds action limits, approvals, and
  *    retries with side effects.
- * 5. Tools and skills: `<tool-policy>`, `<skill-policy>`, `<todo-policy>`
- *    hold rules that span tools. A rule for one tool goes in its
- *    description.
+ * 5. Tools and skills: `<tool-policy>`, `<skill-policy>`, then the section
+ *    of core features (`ToolPolicySection`) hold rules that span tools. A
+ *    rule for one tool goes in its description.
  * 6. Communication and output: `<tool-call-style>`, `<conversation>`,
  *    `<slack-actions>`, `<failure-reporting>`, `<output>`.
  * 7. Personality: the consumer's `SOUL.md`, for voice and tone only.
@@ -42,6 +42,10 @@ import { renderTag, type Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
+import {
+  CORE_FEATURE_CHILD_AGENT_RUN_RULES,
+  CORE_FEATURE_TOOL_POLICY_SECTION,
+} from "@/chat/core-features/system-prompt";
 
 /**
  * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
@@ -88,6 +92,12 @@ const MODE_RULE_SETS: Record<PromptMode, SenderRules[]> = {
 };
 
 type SectionAttributes = { for?: string; format?: string };
+
+/**
+ * The block 5 rule section of core features. It follows `<skill-policy>` in
+ * every Prompt mode but `lead`.
+ */
+export type ToolPolicySection = { tag: string; rules: readonly string[] };
 
 function senderAttributes({ sender }: SenderRules): SectionAttributes {
   return sender ? { for: sender } : {};
@@ -169,7 +179,6 @@ const CHILD_AGENT_RUN_RULES = [
   `- Your final text is your reply. When the Turn ends, the parent gets it as your result and decides what to do with it. When nothing changed, such as after a watch event that needs no action, say so in one line. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
   `- ${SLACK_MENTION_FORMAT_RULE}`,
-  "- The parent entry of `listAgents` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with `updateTodos`. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.",
 ];
 
 /**
@@ -356,19 +365,6 @@ const SKILL_POLICY_RULES = [
 ];
 
 /**
- * Block 5, `<todo-policy>`: what goes on the durable To-dos: only work that
- * outlives the Turn. It is not a per-Turn checklist. How to call
- * `updateTodos` goes in its description.
- */
-const TODO_POLICY_RULES = [
-  "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
-  "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<todos>` lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns. `<todo-delta>` shows To-dos that people or child agents changed since you last saw them. A child agent's result closes its open To-dos: done when it completes, dropped when it stops.",
-  "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
-  "- To-do ids such as `TODO-12` are only for `updateTodos`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
-];
-
-/**
  * Block 6, `<tool-call-style>`: when to tell the person about a tool call.
  * Only conversation runs have a reader, so only they get this section.
  */
@@ -443,7 +439,7 @@ const CONCISE_REPLY_RULES = [
 
 function renderRuleSection(
   tag: string,
-  lines: string[],
+  lines: readonly string[],
   attributes: SectionAttributes = {},
 ): string {
   return renderTag(
@@ -467,7 +463,11 @@ function buildJobSection(
   if (mode === "child_agent") {
     return renderRuleSection(
       "child-agent-run",
-      [...CHILD_AGENT_RUN_RULES, ...AGENT_INPUT_RULES],
+      [
+        ...CHILD_AGENT_RUN_RULES,
+        ...CORE_FEATURE_CHILD_AGENT_RUN_RULES,
+        ...AGENT_INPUT_RULES,
+      ],
       attributes,
     );
   }
@@ -525,7 +525,10 @@ function buildToolsSection(mode: PromptMode): string {
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
-    renderRuleSection("todo-policy", TODO_POLICY_RULES),
+    renderRuleSection(
+      CORE_FEATURE_TOOL_POLICY_SECTION.tag,
+      CORE_FEATURE_TOOL_POLICY_SECTION.rules,
+    ),
   ].join("\n\n");
 }
 

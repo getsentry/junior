@@ -14,15 +14,8 @@ import {
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { renderTodoAssignee } from "@/chat/todos/prompt";
-import { listTodos } from "@/chat/todos/store";
-import { outputTodo, todoOutputSchema } from "@/chat/todos/tool-output";
-import {
-  isOpenTodoStatus,
-  SELF_TODO_ASSIGNEE,
-  type Todo,
-} from "@/chat/todos/types";
+import { getDb } from "@/chat/db";
+import { CORE_FEATURE_PARENT_AGENT_DETAIL } from "@/chat/core-features/runtime";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
@@ -94,7 +87,7 @@ function truncate(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength)}… [${cut} more characters cut. Read the conversation with searchConversationEvents.]`;
 }
 
-const listedAgentSchema = z
+const listedAgentFields = z
   .object({
     relation: z
       .enum(AGENT_RELATIONS)
@@ -156,42 +149,19 @@ const listedAgentSchema = z
       .describe(
         "Watch it with watchEvents to hear its updates. Only on siblings and other matches, whose updates do not arrive by themselves.",
       ),
-    todos: z
-      .array(todoOutputSchema)
-      .optional()
-      .describe(
-        "Open To-dos of the parent. Only on the parent. Assignee self is this conversation, which can set those to done or dropped with updateTodos; parent is the parent's own agent.",
-      ),
   })
   .strict();
 
-type ListedAgent = z.output<typeof listedAgentSchema>;
+type ListedAgent = z.output<typeof listedAgentFields>;
 
-/**
- * Render a parent's To-do for its child: "self" is the child, and
- * "parent" is the parent's own agent.
- */
-function parentTodo(todo: Todo, conversationId: string) {
-  const { assignee } = todo;
-  if (assignee.kind === "self") {
-    return outputTodo(todo, "parent");
-  }
-  if (assignee.kind === "agent" && assignee.conversationId === conversationId) {
-    return outputTodo(todo, SELF_TODO_ASSIGNEE);
-  }
-  return outputTodo(todo, renderTodoAssignee(assignee));
-}
+// Core features add fields to the parent's entry. `ListedAgent` types only
+// the fields of core, so the feature fields have no static keys here.
+const parentAgentDetailFields: Record<never, z.ZodType> =
+  CORE_FEATURE_PARENT_AGENT_DETAIL.fields;
 
-/** Open To-dos of the parent. A child can only close its own. */
-async function parentTodos(
-  parentConversationId: string,
-  conversationId: string,
-) {
-  const todos = await listTodos(getSqlExecutor(), parentConversationId);
-  return todos
-    .filter((todo) => isOpenTodoStatus(todo.status))
-    .map((todo) => parentTodo(todo, conversationId));
-}
+const listedAgentSchema = listedAgentFields
+  .extend(parentAgentDetailFields)
+  .strict();
 
 // Results of a child agent arrive as new tasks, so only a sibling or a
 // match outside the team offers a Watch.
@@ -258,8 +228,7 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
 export const listAgentsToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
-  description:
-    "List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.",
+  description: `List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with ${CORE_FEATURE_PARENT_AGENT_DETAIL.listing}, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.`,
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -342,14 +311,19 @@ type TeamContext = {
  * List the team of one conversation: itself and its parent for a child
  * agent, its child agents, then its siblings.
  */
-async function listTeam(context: TeamContext): Promise<ListedAgent[]> {
+async function listTeam(
+  context: TeamContext,
+): Promise<Array<ListedAgent & Record<string, unknown>>> {
   const { children, parent, self, siblings } =
     await listAgentRelatives(context);
   // listAgentRelatives reads the parent only from the runtime context,
-  // so a child reads only its own parent's To-dos.
-  const todos = parent
-    ? await parentTodos(parent.conversationId, context.conversationId)
-    : [];
+  // so a child reads only its own parent's details.
+  const details = parent
+    ? await CORE_FEATURE_PARENT_AGENT_DETAIL.load({
+        conversationId: context.conversationId,
+        parentConversationId: parent.conversationId,
+      })
+    : {};
   return [
     ...(self ? [listedChildAgent("self", self)] : []),
     ...(parent
@@ -359,7 +333,7 @@ async function listTeam(context: TeamContext): Promise<ListedAgent[]> {
             conversation_id: parent.conversationId,
             status: parentAgentStatus(parent),
             updated_at: new Date(parent.updatedAtMs).toISOString(),
-            ...(todos.length > 0 ? { todos } : undefined),
+            ...details,
           },
         ]
       : []),

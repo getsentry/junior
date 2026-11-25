@@ -22,15 +22,9 @@ import {
 import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import {
-  latestSeenTodosVersion,
-  renderTodoDelta,
-  renderTodosReview,
-} from "@/chat/todos/prompt";
-import { listTodos } from "@/chat/todos/store";
-import type { Todo } from "@/chat/todos/types";
+import { CORE_FEATURE_TURN_CONTEXT } from "@/chat/core-features/runtime";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -107,6 +101,20 @@ export interface PromptAssembly {
   userContentParts: UserContentPart[];
 }
 
+/**
+ * Renders the Turn context section of core features for the history that a
+ * new prompt replays. It returns null when the section has no news.
+ */
+type TurnContextRender = (history: readonly PiMessage[]) => string | null;
+
+/**
+ * The section of core features in the Turn context of a new prompt. It reads
+ * their state of the Conversation once, before the prompt knows its history.
+ */
+export type TurnContextSource = (
+  conversationId: string,
+) => Promise<TurnContextRender>;
+
 /** Context that plugin prompt hooks and the user customization read. */
 export type PromptHookContext = Parameters<
   typeof getPluginUserPromptContributions
@@ -118,8 +126,8 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  /** Every To-do of the Conversation, for the `<todo-delta>`. */
-  todos?: Todo[];
+  /** The Turn context section of core features, from its source. */
+  featureContext?: TurnContextRender;
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
@@ -578,7 +586,7 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
-    todos,
+    featureContext,
     askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
@@ -593,13 +601,13 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    listTodos(getSqlExecutor(), args.context.conversationId),
+    CORE_FEATURE_TURN_CONTEXT(args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    todos,
+    featureContext,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -700,7 +708,7 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    todos,
+    featureContext,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -729,16 +737,7 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Changes that others made after the To-do version that history
-        // shows, else every open To-do when history has not shown the
-        // To-dos for a while. The model's own changes are in its tool
-        // results.
-        todos: todos
-          ? (renderTodoDelta(
-              todos,
-              latestSeenTodosVersion(promptHistoryMessages),
-            ) ?? renderTodosReview(todos, promptHistoryMessages))
-          : null,
+        featureSection: featureContext?.(promptHistoryMessages) ?? null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,

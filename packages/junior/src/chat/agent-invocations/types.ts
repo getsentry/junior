@@ -81,3 +81,22 @@ export type ChildAgent = {
   title?: string;
   updatedAtMs: number;
 };
+
+/**
+ * Fields that a core feature adds to the parent's entry in a child agent's
+ * team listing, such as work that the parent gave the child.
+ */
+export type ParentAgentDetail = {
+  /**
+   * What the fields show, for the `listAgents` description, such as "the
+   * parent's open work".
+   */
+  listing: string;
+  /** Output schema of each field, by key. Each one is optional. */
+  fields: Record<string, z.ZodType>;
+  /** Read the fields that child `conversationId` sees of its parent. */
+  load(args: {
+    conversationId: string;
+    parentConversationId: string;
+  }): Promise<Record<string, unknown>>;
+};
