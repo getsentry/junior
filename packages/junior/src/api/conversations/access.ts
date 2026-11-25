@@ -13,6 +13,7 @@ import {
   juniorSpaces,
 } from "@/db/schema";
 import { conversationIdsWithParticipantUser } from "./membership";
+import { readSlackChannelAudience } from "./slack-audience";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
@@ -63,7 +64,7 @@ export async function readConversationAccessFromSql(
       membershipConversationIds.add(row.storedRootConversationId);
     }
   }
-  const [participantRootIds, memberSpaceIds] =
+  const [participantRootIds, memberSpaceIds, slackAudience] =
     viewer !== undefined
       ? await Promise.all([
           conversationIdsWithParticipantUser(
@@ -72,9 +73,15 @@ export async function readConversationAccessFromSql(
             viewer.id,
           ),
           readPrivateSpaceMemberships(db, rows, viewer.id),
+          readSlackChannelAudience(rows, viewer),
         ])
-      : [new Set<string>(), new Set<string>()];
-  return conversationAccessFromRows(rows, participantRootIds, memberSpaceIds);
+      : [new Set<string>(), new Set<string>(), new Map<string, boolean>()];
+  return conversationAccessFromRows(
+    rows,
+    participantRootIds,
+    memberSpaceIds,
+    slackAudience,
+  );
 }
 
 /**
@@ -132,6 +139,7 @@ export async function readConversationAccessRows(
       destinationId: rootDestination.id,
       visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
+      providerDestinationId: rootDestination.providerDestinationId,
       providerTenantId: rootDestination.providerTenantId,
       spaceId: rootSpace.id,
       spaceVisibility: rootSpace.visibility,
@@ -157,11 +165,15 @@ export async function readConversationAccessRows(
  * holds the viewer's participant roots among the conversations and their
  * stored roots, and `memberSpaceIds` holds the viewer's private Spaces from
  * `readPrivateSpaceMemberships`. Both are empty without a viewer.
+ * `slackAudience`, from `readSlackChannelAudience`, holds whether the viewer
+ * is in the Slack channel of each Slack-backed private row now. A caller
+ * that does not pass it keeps the Participant rule for those rows.
  */
 export function conversationAccessFromRows(
   rows: readonly ConversationAccessRow[],
   participantRootIds: ReadonlySet<string>,
   memberSpaceIds: ReadonlySet<string>,
+  slackAudience?: ReadonlyMap<string, boolean>,
 ): Map<string, ConversationAccess> {
   return new Map(
     rows.map((row) => {
@@ -189,7 +201,14 @@ export function conversationAccessFromRows(
         privateSpaceId === undefined || memberSpaceIds.has(privateSpaceId);
       // Participant rows belong to roots, so a row with a parent never
       // matches its own id. That keeps a forged cycle from granting access.
+      // A Slack-backed private root follows its Slack channel: a member reads
+      // it, and a Participant who left the channel loses access.
+      const inSlackChannel =
+        validRootConversationId === undefined
+          ? undefined
+          : slackAudience?.get(row.conversationId);
       const isParticipant =
+        inSlackChannel !== false &&
         isSpaceMember &&
         ((row.parentConversationId === null &&
           participantRootIds.has(row.conversationId)) ||
@@ -198,11 +217,13 @@ export function conversationAccessFromRows(
       const canViewPrivateContent =
         privateSpaceId !== undefined
           ? isSpaceMember
-          : isParticipant ||
-            (validRootConversationId !== undefined &&
-              canExposeConversationPayload({
-                visibility: visibility ?? undefined,
-              }));
+          : inSlackChannel !== undefined
+            ? inSlackChannel
+            : isParticipant ||
+              (validRootConversationId !== undefined &&
+                canExposeConversationPayload({
+                  visibility: visibility ?? undefined,
+                }));
       return [
         row.conversationId,
         {
@@ -243,6 +264,11 @@ export function canAddConversationMessages(
   access: ConversationAccess | undefined,
 ): boolean {
   if (access?.privateSpaceId) return access.canViewPrivateContent;
+  // A member of a Slack-backed private Conversation's channel may post, as
+  // they can in Slack.
+  if (access?.visibility !== "public" && access?.tenant?.provider === "slack") {
+    return access.canViewPrivateContent;
+  }
   return Boolean(access?.isParticipant || access?.visibility === "public");
 }
 

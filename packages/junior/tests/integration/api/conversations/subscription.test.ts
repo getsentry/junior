@@ -20,6 +20,7 @@ import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -42,14 +43,16 @@ function slackUserId(name: string): string {
 /** A dashboard viewer who is also a Slack user, by default in this workspace. */
 async function person(name: string, teamId = "T1") {
   const email = `${name}@example.com`;
-  const viewer = await resolveViewerUser(email);
-  if (!viewer) throw new Error(`missing viewer for ${email}`);
+  await resolveViewerUser(email);
   const identityId = await resolveActorIdentityId(getSqlExecutor(), {
     email,
     platform: "slack",
     teamId,
     userId: slackUserId(name),
   });
+  // Read the viewer again so it carries the linked Slack account.
+  const viewer = await resolveViewerUser(email);
+  if (!viewer) throw new Error(`missing viewer for ${email}`);
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
     context.set("viewer", viewer);
@@ -83,6 +86,10 @@ async function person(name: string, teamId = "T1") {
       const response = await api(`/${CONVERSATION_ID}`);
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json());
+    },
+    /** Whether the detail shows them the transcript. */
+    async canRead() {
+      return (await this.open()).eventHistory.status === "available";
     },
     /** Invite a mentioned person by Slack user id. Returns the response. */
     async invite(slackUserId: string) {
@@ -186,6 +193,7 @@ async function sharedThread(
 ) {
   // The starter's Slack actor has no email, so no User exists yet and they
   // get no participant row. `person(starter)` links a User later.
+  setSlackChannelMembers("C1", [slackUserId("ana"), slackUserId("ben")]);
   await getConversationStore().recordActivity({
     ...(starter
       ? {
@@ -356,6 +364,20 @@ describe("conversation subscription", () => {
     await ana.post(`<@${slackUserId("cleo")}> look`);
     await say(ana, true, `<@${slackUserId("cleo")}> look`);
     expect(await cleo.feed("?q=shared")).toEqual([]);
+  });
+
+  it("a Slack-backed private conversation follows its channel's members now", async () => {
+    const { ben } = await sharedThread(undefined, "private");
+    const cleo = await person("cleo");
+    const dave = await person("dave");
+    await say(dave, true);
+    // Dave posted, then left the channel. Cleo is in it and never posted.
+    setSlackChannelMembers("C1", [slackUserId("ben"), slackUserId("cleo")]);
+
+    expect(await dave.canRead()).toBe(false);
+    expect(await ben.canRead()).toBe(true);
+    expect(await cleo.canRead()).toBe(true);
+    await cleo.post("joining in");
   });
 
   it("Invite on a private conversation is refused and shares nothing", async () => {

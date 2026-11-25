@@ -16,6 +16,7 @@ import {
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { expectSqlBudget, measureSql } from "../../../fixtures/sql-budget";
 import { signedInViewer } from "../../../fixtures/user";
+import { addSlackChannelMember } from "../../../msw/handlers/slack-api";
 
 const DASHBOARD = "https://junior.example.com";
 const HOUR_MS = 60 * 60 * 1000;
@@ -37,6 +38,8 @@ async function anaTurn(args: {
   visibility: "private" | "public";
 }) {
   const channelId = args.conversationId.split(":")[1]!;
+  // Ana posts there, so Slack lists her as a member.
+  addSlackChannelMember(channelId, ana.slackUserId);
   await getConversationStore().recordActivity({
     actor: ana,
     conversationId: args.conversationId,

@@ -14,7 +14,7 @@ import {
   stubGitHubApp,
   viewerApi,
 } from "../../fixtures/github-objects";
-import { signedInViewer } from "../../fixtures/user";
+import { signedInChannelMember } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
@@ -22,7 +22,11 @@ const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const PULL_URL = `${GITHUB_REPO}/pull/35`;
 
 async function attachAsAlice(url: string) {
-  const viewer = await signedInViewer("alice@example.com");
+  const viewer = await signedInChannelMember("alice@example.com", {
+    channelId: "CPRIVATE",
+    teamId: "T123",
+    userId: "UALICE",
+  });
   await getConversationStore().recordActivity({
     conversationId: CONVERSATION_ID,
     destination: { channelId: "CPRIVATE", platform: "slack", teamId: "T123" },

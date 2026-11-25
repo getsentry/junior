@@ -128,6 +128,8 @@ export interface CapturedSlackFileDownloadCall {
 }
 
 const queuedResponses = new Map<string, SlackMockHttpResponse[]>();
+// Who Slack says is in each channel, for `conversations.members`.
+const channelMembers = new Map<string, string[]>();
 const capturedSlackApiCalls: CapturedSlackApiCall[] = [];
 const capturedSlackFileUploads: CapturedSlackFileUploadCall[] = [];
 const capturedSlackFileDownloads: CapturedSlackFileDownloadCall[] = [];
@@ -251,7 +253,10 @@ const DEFAULT_SLACK_API_BODIES = {
   "conversations.info": () => conversationsInfoOk(),
   "conversations.join": () => conversationsJoinOk(),
   "conversations.list": () => conversationsListPage(),
-  "conversations.members": () => conversationsMembersPage(),
+  "conversations.members": (params) =>
+    conversationsMembersPage({
+      members: channelMembers.get(String(params["channel"])) ?? [],
+    }),
   "conversations.open": () => conversationsOpenOk(),
   "conversations.replies": () => conversationsRepliesPage(),
   "dnd.info": () => dndInfoOk(),
@@ -419,6 +424,22 @@ export function queueSlackApiResponse(
   queuedResponses.set(method, queue);
 }
 
+/** Set who Slack says is in a channel, DM, or group DM now. */
+export function setSlackChannelMembers(
+  channelId: string,
+  members: readonly string[],
+): void {
+  channelMembers.set(channelId, [...members]);
+}
+
+/** Add a person to who Slack says is in a channel, DM, or group DM now. */
+export function addSlackChannelMember(channelId: string, member: string): void {
+  channelMembers.set(channelId, [
+    ...(channelMembers.get(channelId) ?? []),
+    member,
+  ]);
+}
+
 export function queueSlackApiError(
   method: SlackApiMethod,
   input: {
@@ -489,6 +510,7 @@ export function getCapturedSlackFileDownloadCalls(): CapturedSlackFileDownloadCa
 
 export function resetSlackApiMockState(): void {
   queuedResponses.clear();
+  channelMembers.clear();
   capturedSlackApiCalls.length = 0;
   capturedSlackFileUploads.length = 0;
   capturedSlackFileDownloads.length = 0;

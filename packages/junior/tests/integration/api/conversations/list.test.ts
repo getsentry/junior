@@ -24,6 +24,17 @@ import {
 } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
+
+/** A linked Slack account in workspace T1, as the viewer carries it. */
+function slackIdentity(id: string, slackUserId: string) {
+  return {
+    id,
+    provider: "slack",
+    providerSubjectId: slackUserId,
+    providerTenantId: "T1",
+  };
+}
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -619,7 +630,13 @@ describe("conversation list API", () => {
       const viewer = {
         ...testViewer("morgan@example.com"),
         id: linkedUserId!,
+        identities: [
+          slackIdentity("identity-morgan", "U1"),
+          slackIdentity("identity-morgan-linked", "U1B"),
+        ],
       };
+      setSlackChannelMembers("C1", ["U1"]);
+      setSlackChannelMembers("D1", ["U1B"]);
       const feed = await readConversationFeedFromSql({
         actorEmail: "other@example.com",
         viewer,
@@ -836,7 +853,11 @@ describe("conversation list API", () => {
       const viewer = {
         ...testViewer("participant@example.com"),
         id: participantUserId!,
+        identities: [
+          slackIdentity("identity-participant-slack", "UPARTICIPANT1"),
+        ],
       };
+      setSlackChannelMembers("C1", ["UPARTICIPANT1"]);
       const feed = await readConversationFeedFromSql({
         viewer,
         limit: 10,

@@ -17,6 +17,7 @@ import {
 } from "@/chat/plugins/viewer";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
 
 function viewerApi(email: string) {
   const app = new Hono<JuniorApiEnv>();
@@ -249,6 +250,8 @@ describe("people code API", () => {
         title: "Fix the flaky deploy",
         visibility: "public",
       });
+      // Alice is in the DM.
+      setSlackChannelMembers("D1", ["U1"]);
       await store.recordActivity({
         actor,
         conversationId: "slack:D1:secret",

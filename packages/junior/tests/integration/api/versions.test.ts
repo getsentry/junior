@@ -142,8 +142,9 @@ describe("versions API", () => {
   });
 
   it("moves only the token whose read changed", async () => {
-    const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
+    // Sign in after the Slack post, so the viewer has the linked Slack account.
+    const { app, viewer } = await authenticatedApi();
     await recordRoot(OTHER, "private");
     // The one Conversation's token reads as `conversation`, so each step
     // names the tokens that moved.
@@ -564,8 +565,9 @@ describe("versions API", () => {
     expect(changed(withReply, await read())).toEqual([]);
   });
   it("reads a token for each Conversation on screen in one statement", async () => {
-    const { app } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
+    // Sign in after the Slack post, so the viewer has the linked Slack account.
+    const { app } = await authenticatedApi();
     await recordRoot(OTHER, "private");
     const missing = "slack:CVERSIONS:missing";
     const onScreen = [

@@ -87,9 +87,9 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation. Only its
-Participants may read and act on a private one (`canViewPrivateContent`,
-`isParticipant`). This rule never lets one Conversation read another.
+is not a Conversation. Anyone may read a public Conversation. A private one
+is for its Participants or, in Slack, for its channel's members now
+(`canViewPrivateContent`). This rule never lets one Conversation read another.
 
 In a private Space, membership decides instead. Every member may read each
 of its Conversations and join one by posting. A person who is not a member

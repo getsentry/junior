@@ -27,6 +27,7 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
+  setSlackChannelMembers,
 } from "../../../msw/handlers/slack-api";
 
 function apiWithViewer(
@@ -219,6 +220,8 @@ describe("conversation attachment API", () => {
   });
 
   it("returns attachment bytes only to private-conversation participants", async () => {
+    // The participant is still in the private channel.
+    setSlackChannelMembers("CPRIVATE", ["U-participant"]);
     const conversationId = "slack:C-private:attachment";
     await getConversationStore().recordActivity({
       actor: {

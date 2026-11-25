@@ -27,6 +27,7 @@ import { and, eq } from "drizzle-orm";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
+  setSlackChannelMembers,
 } from "../../../msw/handlers/slack-api";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -378,6 +379,8 @@ describe("conversation detail API", () => {
   });
 
   it("only returns annotations to viewers with private-content access", async () => {
+    // The participant is still in the private channel.
+    setSlackChannelMembers("CPRIVATE", ["U-participant"]);
     const conversationId = "slack:C-private:annotated-detail";
     await getConversationStore().recordActivity({
       actor: {

@@ -15,6 +15,7 @@ import {
   getConversationStore,
 } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
@@ -715,6 +716,8 @@ describe("conversation event list API", () => {
   });
 
   it("preserves transcript redaction across history and update pages", async () => {
+    // The participant is still in the private channel.
+    setSlackChannelMembers("CPRIVATE", ["U-participant"]);
     const conversationId = "slack:C-private:paged-events";
     await getConversationStore().recordActivity({
       actor: {

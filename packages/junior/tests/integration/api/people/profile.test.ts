@@ -30,6 +30,7 @@ import {
   seedPeople,
   turnActorIdentityId,
 } from "./fixture";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
 
 describe("people profile API", () => {
   test("validates and decodes profile identifiers", async () => {
@@ -59,6 +60,8 @@ describe("people profile API", () => {
   });
 
   test("derives child participation and visibility from its root", async () => {
+    // The owner is in the private channel.
+    setSlackChannelMembers("GPRIVATE", ["U-owner"]);
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     const rootConversationId = "slack:G-private:root";

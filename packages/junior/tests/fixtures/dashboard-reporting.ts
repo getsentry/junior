@@ -6,6 +6,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { slackIdFromText } from "./slack/factories/ids";
+import { addSlackChannelMember } from "../msw/handlers/slack-api";
 
 /** Build a history replacement entry from a pi message. */
 export function replacement(message: PiMessage) {
@@ -64,13 +65,12 @@ export async function recordRoot(
   },
 ): Promise<void> {
   const { getConversationStore } = await import("@/chat/db");
+  const channelId = slackIdFromText("C", conversationId);
+  // The actor posted in the channel, so Slack lists them as a member.
+  if (actor) addSlackChannelMember(channelId, actor.slackUserId);
   await getConversationStore().recordActivity({
     conversationId,
-    destination: {
-      platform: "slack",
-      teamId: "TREPORTING",
-      channelId: slackIdFromText("C", conversationId),
-    },
+    destination: { platform: "slack", teamId: "TREPORTING", channelId },
     nowMs: 1,
     ...(actor
       ? { actor: { platform: "slack" as const, ...actor } }

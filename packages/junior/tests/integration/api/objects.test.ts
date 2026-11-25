@@ -35,7 +35,10 @@ import {
 } from "../../fixtures/slack/factories/api";
 import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-queue";
 import { linkSlackUser } from "../../fixtures/slack-user";
-import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  setSlackChannelMembers,
+} from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
@@ -44,6 +47,8 @@ const CONVERSATION_URL = `${DASHBOARD}/conversations/${encodeURIComponent(CONVER
 const PRIVATE_SUMMARY = "The private launch waits on legal review.";
 
 async function recordPrivateConversation() {
+  // Alice is in the private channel now.
+  setSlackChannelMembers("CPRIVATE", ["UALICE"]);
   await getConversationStore().recordActivity({
     actor: {
       email: "alice@example.com",

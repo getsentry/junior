@@ -10,6 +10,7 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { setSlackChannelMembers } from "../../../msw/handlers/slack-api";
 
 function message(
   messageId: string,
@@ -101,6 +102,8 @@ describe("conversation outline API", () => {
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {
+    // The participant is still in the private channel.
+    setSlackChannelMembers("CPRIVATE", ["U-participant"]);
     const conversationId = "slack:C-private:outline";
     await getConversationStore().recordActivity({
       actor: {

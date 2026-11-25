@@ -40,6 +40,7 @@ import {
   readConversationAccessRows,
   readPrivateSpaceMemberships,
 } from "./access";
+import { readSlackChannelAudience } from "./slack-audience";
 import {
   conversationPinnedForUser,
   conversationIsMemberRoot,
@@ -735,14 +736,19 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
-  // This reads only when a row is in a private Space.
-  const memberSpaceIds = options.viewer
-    ? await readPrivateSpaceMemberships(db, accessRows, options.viewer.id)
-    : new Set<string>();
+  // These read only when a row is in a private Space or follows a private
+  // Slack channel.
+  const [memberSpaceIds, slackAudience] = options.viewer
+    ? await Promise.all([
+        readPrivateSpaceMemberships(db, accessRows, options.viewer.id),
+        readSlackChannelAudience(accessRows, options.viewer),
+      ])
+    : [new Set<string>(), new Map<string, boolean>()];
   const accessByConversation = conversationAccessFromRows(
     accessRows,
     options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
     memberSpaceIds,
+    slackAudience,
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {

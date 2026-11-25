@@ -115,8 +115,9 @@ describe("versions stream", () => {
   });
 
   it("pushes the tokens that a write moves, over one shared session", async () => {
-    const app = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
+    // Sign in after the Slack post, so the viewer has the linked Slack account.
+    const app = await authenticatedApi();
     const before = await poll(app, [OWN]);
     expect(before.header).toBe("1");
 
@@ -148,8 +149,9 @@ describe("versions stream", () => {
   }, 20_000);
 
   it("ends every stream when the session is lost, and a new stream reads again", async () => {
-    const app = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
+    // Sign in after the Slack post, so the viewer has the linked Slack account.
+    const app = await authenticatedApi();
     const stream = await openStream(app, [OWN]);
     const baseline = await stream.next();
     const [lost] = await listenSessions();

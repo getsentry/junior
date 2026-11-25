@@ -11,7 +11,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { juniorConversationParticipants } from "@/db/schema";
 import { defineJuniorPlugins } from "@/plugins";
-import { signedInViewer } from "../../fixtures/user";
+import { signedInChannelMember, signedInViewer } from "../../fixtures/user";
 
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const DOC_URL = "https://docs.test/d/1";
@@ -48,7 +48,13 @@ async function recordConversation(participants: string[]) {
       .values({
         lastMessageAt: new Date("2026-01-02T03:04:05.000Z"),
         rootConversationId: CONVERSATION_ID,
-        userId: (await signedInViewer(email)).id,
+        userId: (
+          await signedInChannelMember(email, {
+            channelId: "CPRIVATE",
+            teamId: "T123",
+            userId: `U${email.split("@")[0]!.toUpperCase()}`,
+          })
+        ).id,
       });
   }
 }
