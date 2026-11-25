@@ -9,10 +9,6 @@ import { timingSafeEqual } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { escapeHtml, requestHasSameOrigin } from "@/api/html";
 import {
-  appSessionClient,
-  issueClientSessionCode,
-} from "@/api/client-sign-in/routes";
-import {
   authorizationRedirect,
   bindMcpConsent,
   claimMcpAuthorization,
@@ -21,7 +17,7 @@ import {
 } from "./authorization";
 import { issueAuthorizationCode } from "./grants";
 import { resolveMcpUrls } from "./metadata";
-import { renderMcpPage } from "./page";
+import { formActionSource, readConsentForm, renderMcpPage } from "./page";
 import { MCP_SCOPE_DESCRIPTIONS, parseMcpScopes } from "./scopes";
 import { sha256Hex, type McpState } from "./state";
 
@@ -41,15 +37,6 @@ function blockedPage(): Response {
   });
 }
 
-// A custom-scheme redirect, such as the iOS app's, has the origin "null",
-// which matches nothing in CSP. Allow its scheme instead.
-function formActionSource(redirectUri: string): string {
-  const url = new URL(redirectUri);
-  return url.protocol === "https:" || url.protocol === "http:"
-    ? url.origin
-    : url.protocol;
-}
-
 function consentPage(args: {
   agentName: string;
   authorization: McpAuthorization;
@@ -63,13 +50,10 @@ function consentPage(args: {
         `<li>${escapeHtml(MCP_SCOPE_DESCRIPTIONS[scope])}<code>${escapeHtml(scope)}</code></li>`,
     )
     .join("");
-  const sessionItem = args.authorization.sessionCodeChallenge
-    ? "<li>Use the dashboard API as you for 30 days</li>"
-    : "";
   return renderMcpPage({
     bodyHtml: `    <p>The app is published at <strong>${escapeHtml(clientHost)}</strong>.</p>
     <h2>In ${escapeHtml(args.agentName)}, it can:</h2>
-    <ul class="list">${scopeItems}${sessionItem}</ul>
+    <ul class="list">${scopeItems}</ul>
     <p class="warning" role="note">Only continue if you started this connection.</p>
     <form method="post" class="actions">
       <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}">
@@ -87,23 +71,6 @@ function csrfMatches(value: string, expectedHash: string): boolean {
   const actual = Buffer.from(sha256Hex(value), "hex");
   const expected = Buffer.from(expectedHash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-async function readForm(
-  request: Request,
-): Promise<{ action?: string | undefined; csrf?: string | undefined }> {
-  try {
-    const form = await request.formData();
-    const action = form.get("action");
-    const csrf = form.get("csrf");
-    return {
-      action: typeof action === "string" ? action : undefined,
-      csrf: typeof csrf === "string" ? csrf : undefined,
-    };
-  } catch {
-    // Invalid form input is handled as a blocked request.
-    return {};
-  }
 }
 
 /** Show or complete MCP consent for one dashboard-authenticated user. */
@@ -131,7 +98,7 @@ export async function handleMcpConsentPage(args: {
     return consentPage({ agentName: args.agentName, authorization, csrfToken });
   }
 
-  const form = await readForm(args.request);
+  const form = await readConsentForm(args.request);
   if (
     !requestHasSameOrigin(args.request) ||
     consent?.userId !== args.user.id ||
@@ -166,19 +133,9 @@ export async function handleMcpConsentPage(args: {
     scope: authorization.scope,
     state: args.state,
   });
-  const sessionClient = appSessionClient(authorization.clientId);
-  const sessionCode =
-    authorization.sessionCodeChallenge &&
-    sessionClient &&
-    (await issueClientSessionCode({
-      client: sessionClient,
-      codeChallenge: authorization.sessionCodeChallenge,
-      state: args.state,
-      user: args.user,
-    }));
   return authorizationRedirect({
     issuer,
-    params: sessionCode ? { code, session_code: sessionCode } : { code },
+    params: { code },
     redirectUri: authorization.redirectUri,
     state: authorization.state,
   });

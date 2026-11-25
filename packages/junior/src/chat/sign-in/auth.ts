@@ -344,12 +344,14 @@ export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
     async getSession(request) {
       const cookieToken = readCookie(request.headers, cookieName);
       const token = cookieToken ?? bearerSignInSessionToken(request);
-      const user = token ? await authenticateSignInSession(token) : undefined;
-      if (!user) return null;
+      const session = token
+        ? await authenticateSignInSession(token)
+        : undefined;
+      if (!session) return null;
       return {
         credential: cookieToken ? "cookie" : "bearer",
         // Only a verified Google email creates a session.
-        user: { ...user, emailVerified: true },
+        user: { ...session.user, emailVerified: true },
       };
     },
     async signInWithGoogle(request, callbackURL, errorCallbackURL) {

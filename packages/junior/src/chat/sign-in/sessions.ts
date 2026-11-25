@@ -25,6 +25,18 @@ export interface SignInSessionUser {
   name?: string;
 }
 
+/** One stored session that is not expired or revoked. */
+export interface SignInSession {
+  client: SignInSessionClient;
+  expiresAt: Date;
+  id: string;
+  user: SignInSessionUser;
+}
+
+function isSignInSessionClient(value: string): value is SignInSessionClient {
+  return value === "web" || value === "ios";
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
@@ -54,16 +66,19 @@ export async function createSignInSession(args: {
   return { expiresAt, token };
 }
 
-/** Resolve a session token that is not expired or revoked to its user. */
+/** Resolve a session token that is not expired or revoked. */
 export async function authenticateSignInSession(
   token: string,
   now = new Date(),
-): Promise<SignInSessionUser | undefined> {
+): Promise<SignInSession | undefined> {
   if (!token.startsWith(TOKEN_PREFIX)) return undefined;
   const tokenHash = hashToken(token);
   const rows = await getDb()
     .select({
+      client: juniorSignInSessions.client,
       email: juniorSignInSessions.userEmailNormalized,
+      expiresAt: juniorSignInSessions.expiresAt,
+      id: juniorSignInSessions.id,
       lastUsedAt: juniorSignInSessions.lastUsedAt,
       name: juniorSignInSessions.userName,
     })
@@ -87,9 +102,36 @@ export async function authenticateSignInSession(
       .set({ lastUsedAt: now })
       .where(eq(juniorSignInSessions.tokenHash, tokenHash));
   }
-  return match.name
-    ? { email: match.email, name: match.name }
-    : { email: match.email };
+  if (!isSignInSessionClient(match.client)) {
+    throw new Error(`Unknown sign-in session client: ${match.client}`);
+  }
+  return {
+    client: match.client,
+    expiresAt: match.expiresAt,
+    id: match.id,
+    user: match.name
+      ? { email: match.email, name: match.name }
+      : { email: match.email },
+  };
+}
+
+/** Return true while the session with this ID is not expired or revoked. */
+export async function signInSessionIsActive(
+  id: string,
+  now = new Date(),
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: juniorSignInSessions.id })
+    .from(juniorSignInSessions)
+    .where(
+      and(
+        eq(juniorSignInSessions.id, id),
+        isNull(juniorSignInSessions.revokedAt),
+        gt(juniorSignInSessions.expiresAt, now),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Revoke one session token. An unknown or ended token changes nothing. */

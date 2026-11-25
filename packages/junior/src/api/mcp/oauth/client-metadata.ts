@@ -40,7 +40,8 @@ const invalidClientSchema = z.object({ invalid: z.literal(true) }).strict();
 
 const cachedClientSchema = z.union([mcpClientSchema, invalidClientSchema]);
 
-type McpClient = z.output<typeof mcpClientSchema>;
+/** One MCP OAuth client: its ID, name, and redirect URIs. */
+export type McpClient = z.output<typeof mcpClientSchema>;
 
 /**
  * Junior's own iOS app (`apps/ios`). Every Junior knows it, so sign-in does
