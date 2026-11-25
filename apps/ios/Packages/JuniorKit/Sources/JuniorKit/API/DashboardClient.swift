@@ -54,7 +54,14 @@ public actor DashboardClient {
     }
   }
 
-  private func fetch(_ path: String, query: [URLQueryItem]) async throws -> Data {
+  /// GET the bytes at one dashboard API path, such as a profile photo. Only
+  /// an `/api/` path on this server gets the session token.
+  public func data(_ path: String) async throws -> Data {
+    guard path.hasPrefix("/api/") else { throw JuniorAPIError.decoding("Not a dashboard API path: \(path)") }
+    return try await fetch(path, query: [], accept: "*/*")
+  }
+
+  private func fetch(_ path: String, query: [URLQueryItem], accept: String = "application/json") async throws -> Data {
     guard let credentials else { throw JuniorAPIError.signedOut }
     guard credentials.expiresAt > Date() else {
       Log.oauth.notice("Signed out: the dashboard session expired")
@@ -65,7 +72,7 @@ public actor DashboardClient {
     if !query.isEmpty { components.queryItems = query }
     var request = URLRequest(url: components.url!)
     request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.setValue(accept, forHTTPHeaderField: "Accept")
     let started = ContinuousClock.now
     let (data, response) = try await load(request)
     let milliseconds = Int(started.duration(to: .now) / .milliseconds(1))

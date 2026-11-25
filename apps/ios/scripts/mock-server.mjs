@@ -5,6 +5,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
+import { crc32, deflateSync } from "node:zlib";
 import { MCP_SCOPES, createMockMcpTools } from "./mock-mcp-tools.mjs";
 
 process.env["DATABASE_URL"] ??= "postgres://localhost/junior-ios-mock";
@@ -739,6 +740,41 @@ async function handleIosSignInToken(request) {
   );
 }
 
+// Every mock profile photo: a 64px PNG with a blue to violet gradient, so a
+// screenshot tells it apart from the initials circle. The dashboard's mock
+// photo is an SVG, which UIImage cannot read.
+function mockPhotoPng() {
+  const size = 64;
+  const rows = Buffer.alloc(size * (1 + size * 3));
+  for (let y = 0; y < size; y += 1) {
+    const row = y * (1 + size * 3);
+    for (let x = 0; x < size; x += 1) {
+      const t = y / (size - 1);
+      rows.set([37 + 87 * t, 99 - 41 * t, 235 + 2 * t], row + 1 + x * 3);
+    }
+  }
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+const MOCK_PHOTO = mockPhotoPng();
+const AVATAR_PREFIX = "/api/people/avatars/";
+
 // The paths that the mock answers itself, and their methods. The built
 // dashboard app answers every other path.
 const MOCK_ROUTES = {
@@ -760,9 +796,17 @@ const MOCK_ROUTES = {
   },
 };
 
-/** Answer an MCP, OAuth, or iOS session path, or return undefined for the dashboard. */
+/** Answer an MCP, OAuth, iOS session, or photo path, or return undefined for the dashboard. */
 function routeMcp(request) {
   const { pathname } = new URL(request.url);
+  if (pathname.startsWith(AVATAR_PREFIX) && request.method === "GET") {
+    return new Response(MOCK_PHOTO, {
+      headers: {
+        "cache-control": "private, max-age=86400",
+        "content-type": "image/png",
+      },
+    });
+  }
   if (!Object.hasOwn(MOCK_ROUTES, pathname)) return undefined;
   const route = MOCK_ROUTES[pathname];
   return route.methods.includes(request.method)
