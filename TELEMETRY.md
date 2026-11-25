@@ -26,6 +26,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
 | `app.inbox_item.id`                | Inbox item                  | Inbox, delivery logs  |
+| `app.turn.id` / `app.turn.step_seq` | core Turn / one of its steps | `queue.*` spans             |
 | `vcs.change.id`                     | Code change number           | code change record spans    |
 
 - `gen_ai.conversation.id` also names child agents. Count root Conversations
@@ -69,6 +70,9 @@ attributes. Nested logs and spans inherit them.
 | Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
 | Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
+| Core sandbox slow, stopped, or failed | spans `sandbox.create`, `sandbox.get`, `sandbox.exec`, `sandbox.read_file`, `sandbox.write_file`; `app.sandbox.outcome` | `core/tool-execution-environment/instrument.ts` |
+| Core tool call skipped or failed     | `app.tool_call.outcome` on `gen_ai.execute_tool` (`completed`, `failed`, `aborted`, `not_found`, `invalid_arguments`, `replay_skipped`, `truncated`, `dangling_skipped`) | `core/turn/step.ts` |
+| Core Turn or reply stuck after a lost queue message | `turn.sweep.requeued` (warning; `app.turn.sweep.reason`, `app.turn.sweep.stalled_ms`), metric `turn.sweep.requeued`, span `turn.sweep`, `turn.sweep.failed` | `core/turn/sweep.ts` |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tool-support/catalog-search-rerank.ts`                    |
@@ -114,6 +118,8 @@ attributes. Nested logs and spans inherit them.
   before membership checks, never message text, names, or emails.
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   `queue.process` starts a new trace.
+- Each step of a core Turn has its own trace. Its `queue.process` links to the
+  `queue.publish` that sent it. Find all steps by `app.turn.id`.
 - `chat.turn` continues the trace of its oldest input and links to the
   others and to `queue.process`. An Event Turn is a child of `queue.process`.
 - A Slack Turn queues its plugin tasks, so each `plugin.task` is in its own

@@ -19,9 +19,10 @@ Canonical words for Junior code and docs. One concept, one word.
   Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
-- **Lead**: one person's private top-level Conversation that finds, starts,
-  and steers their other Conversations. It has no child agents and does no
-  work itself. `startConversation` starts a public root for the person.
+- **Lead**: a Space's public top-level Conversation that finds, starts,
+  and steers the Space's other Conversations. Each Space has one. It has no
+  child agents and does no work itself. `startConversation` starts a root in
+  the Space for the Member who asked.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
 - **Thread**: a child Conversation that people can message like a root. Say
@@ -153,6 +154,21 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Loader**: a named source of data for a core prompt, such as a database
+  row or a service. Loaders do all of the I/O of a prompt. Core runs each
+  needed Loader once for each step.
+- **Fragment**: a named piece of a core prompt. It formats one Loader's value
+  into messages. It does no I/O, and reads no clock or random value.
+- **Prompt layout**: the System prompt sections and the message Fragments
+  of a core prompt, in order. It has exactly one inputs Fragment, made with
+  `inputs()`, which sets where the Turn's unread inputs go. The host checks
+  it once at startup with `definePromptLayout`.
+- **System prompt section**: a named, static piece of the system prompt in a
+  core prompt. The host builds it once at startup. It holds no Conversation
+  data.
+- **Prompt diagnostics**: how core built one prompt: the size of each System
+  prompt section, how each Loader ran, and whether each Fragment was
+  included, skipped, or disabled. It holds no content.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), `tool_result`, or `system_message` (a Pi system message after
   the leading one) event. Not `model_item` or `model_message`.

@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -8,6 +7,7 @@ import {
 import {
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
+  spaceConfigurationSchema,
   spaceListSchema,
   spaceMemberListSchema,
   spaceSchema,
@@ -24,8 +24,15 @@ const spaceKey = (spaceId: string | undefined) =>
   [...spacesKey, "space", spaceId] as const;
 const spaceMembersKey = (spaceId: string | undefined) =>
   [...spaceKey(spaceId), "members"] as const;
+const spaceConfigurationKey = (spaceId: string | undefined) =>
+  [...spaceKey(spaceId), "configuration"] as const;
 
-const spaceApiPath = (spaceId: string) =>
+/** The query key of a Space's Lead. */
+export const spaceLeadKey = (spaceId: string | undefined) =>
+  [...spaceKey(spaceId), "lead"] as const;
+
+/** The API path of one Space. */
+export const spaceApiPath = (spaceId: string) =>
   `/api/spaces/${encodeURIComponent(spaceId)}`;
 
 /** Fetch the viewer's Spaces that are not archived, for the pane. */
@@ -65,6 +72,21 @@ export function useSpaceMembersData(spaceId: string | undefined) {
   });
 }
 
+/** Fetch a Space's configuration. */
+export function useSpaceConfigurationData(spaceId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(spaceId),
+    queryKey: spaceConfigurationKey(spaceId),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        spaceConfigurationSchema,
+        `${spaceApiPath(spaceId!)}/configuration`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
 /**
  * Fetch the top-level Conversations of one Space. The key is under the
  * Conversation feeds, so every change to a Conversation refreshes it.
@@ -79,7 +101,6 @@ export function useSpaceConversationsData(spaceId: string | undefined) {
         `/api/conversations?${new URLSearchParams({ spaceId: spaceId! })}`,
         signal,
       ),
-    placeholderData: keepPreviousData,
     retry: false,
   });
 }
@@ -100,7 +121,10 @@ export function useCreateSpace() {
   });
 }
 
-/** Join or leave one Space as the viewer. */
+/**
+ * Join or leave one Space as the viewer. A member's read makes the Lead, so
+ * the Lead reads again too.
+ */
 export function useSpaceMembership(spaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -112,6 +136,7 @@ export function useSpaceMembership(spaceId: string) {
       Promise.all([
         storeSpace(queryClient, space),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
+        queryClient.invalidateQueries({ queryKey: spaceLeadKey(spaceId) }),
       ]),
   });
 }

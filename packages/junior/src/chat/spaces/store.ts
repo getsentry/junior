@@ -14,9 +14,15 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { readUserAvatarUrls } from "@/chat/identities/avatar";
-import { juniorSpaceMembers, juniorSpaces, juniorUsers } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorSpaceMembers,
+  juniorSpaces,
+  juniorUsers,
+} from "@/db/schema";
 
 /** One Space, as one viewer sees it. */
 export interface Space {
@@ -154,16 +160,30 @@ export async function updateSpace(
     description?: string | null | undefined;
   },
 ): Promise<void> {
-  await getDb()
-    .update(juniorSpaces)
-    .set({
-      ...(changes.name !== undefined ? { name: changes.name } : undefined),
-      ...(changes.description !== undefined
-        ? { description: changes.description }
-        : undefined),
-      updatedAt: new Date(),
-    })
-    .where(eq(juniorSpaces.id, spaceId));
+  const { name } = changes;
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(juniorSpaces)
+      .set({
+        ...(name !== undefined ? { name } : undefined),
+        ...(changes.description !== undefined
+          ? { description: changes.description }
+          : undefined),
+        updatedAt: new Date(),
+      })
+      .where(eq(juniorSpaces.id, spaceId));
+    if (name === undefined) return;
+    // A Space and its Lead share one name.
+    await tx
+      .update(juniorConversations)
+      .set({ title: name, detailVersion: nextDetailVersion })
+      .where(
+        and(
+          eq(juniorConversations.kind, "lead"),
+          eq(juniorConversations.spaceId, spaceId),
+        ),
+      );
+  });
 }
 
 /** Add one person to a Space. Joining twice keeps the first join. */

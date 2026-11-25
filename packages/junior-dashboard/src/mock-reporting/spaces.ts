@@ -6,6 +6,7 @@ import {
   createSpaceBodySchema,
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,
+  spaceConfigurationSchema,
   spaceListQuerySchema,
   spaceListSchema,
   spaceMemberListSchema,
@@ -13,6 +14,7 @@ import {
   spaceSchema,
   type ConversationDetailReport,
   type ConversationFeed,
+  type SpaceConfigurationReport,
   type SpaceRefReport,
   type SpaceReport,
 } from "@sentry/junior/api/schema";
@@ -23,6 +25,9 @@ import {
   readMockConversationDetail,
   setMockConversationArchived,
 } from "./fixtures";
+import { mockLeadSpaceId } from "./sends";
+
+type SpaceConfigEntry = SpaceConfigurationReport["entries"][number];
 
 type MockMember = {
   avatarUrl: string | null;
@@ -34,6 +39,8 @@ type MockSpace = {
   /** Conversations that the Space's archive archived, for its restore. */
   archived: string[];
   archivedAt: string | null;
+  /** Configuration values by key. */
+  configuration: Map<string, Omit<SpaceConfigEntry, "key">>;
   createdAt: string;
   description: string | null;
   id: string;
@@ -43,19 +50,21 @@ type MockSpace = {
   viewerMember: boolean;
 };
 
-const AVERY: MockMember = {
+/** A member of every seeded Space but Docs refresh. */
+export const AVERY: MockMember = {
   avatarUrl: null,
   displayName: "Avery Chen",
   email: "avery@sentry.io",
 };
-const RILEY: MockMember = {
+/** A member of Mobile app and Docs refresh. */
+export const RILEY: MockMember = {
   avatarUrl: null,
   displayName: "Riley Park",
   email: "riley@sentry.io",
 };
 
 /** The seeded Spaces. The viewer is a member of the first two. */
-const MOCK_SPACE_IDS = {
+export const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
@@ -68,6 +77,9 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map([
+        ["github.repo", { updatedAt: at(2), value: "getsentry/junior" }],
+      ]),
       createdAt: at(30),
       description:
         "Move invoicing to the new billing provider without double charges.",
@@ -79,6 +91,7 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: at(20),
       description: null,
       id: MOCK_SPACE_IDS.ios,
@@ -89,6 +102,7 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: at(10),
       description: "Refresh the onboarding docs for the new setup flow.",
       id: MOCK_SPACE_IDS.docs,
@@ -105,6 +119,18 @@ const SEEDED_CONVERSATION_SPACES = [
   ["internal:history-8", MOCK_SPACE_IDS.ios],
   ["internal:history-4", MOCK_SPACE_IDS.docs],
 ] as const;
+
+// Only a public Conversation can join a Space, so the seeded ones are public.
+const SEEDED_PUBLIC_IDS = new Set<string>(
+  SEEDED_CONVERSATION_SPACES.map(([conversationId]) => conversationId),
+);
+
+function visibilityOf(
+  conversationId: string,
+  visibility: "private" | "public" | undefined,
+) {
+  return SEEDED_PUBLIC_IDS.has(conversationId) ? "public" : visibility;
+}
 
 const mockSpaces = new Map<string, MockSpace>();
 /** The Space of each root, by Conversation id. */
@@ -134,6 +160,7 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
     conversations: feed.conversations.map((row) => ({
       ...row,
       space: spaceRef(mockConversationSpaces.get(row.conversationId)),
+      visibility: visibilityOf(row.conversationId, row.visibility),
     })),
   };
 }
@@ -151,12 +178,26 @@ export function filterMockConversationsBySpace(
   };
 }
 
-/** Label a detail with the Space of its root. A child is in its root's. */
+/**
+ * Label a detail with the Space of its root. A child is in its root's, and
+ * a Lead is in its own.
+ */
 export function withMockSpace<T extends ConversationDetailReport>(
   detail: T,
 ): T {
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
-  return { ...detail, space: spaceRef(mockConversationSpaces.get(rootId)) };
+  return {
+    ...detail,
+    space: spaceRef(
+      mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
+    ),
+    visibility: visibilityOf(detail.conversationId, detail.visibility),
+  };
+}
+
+/** Read one mock Space, as the routes see it. */
+export function readMockSpace(spaceId: string): MockSpace | undefined {
+  return mockSpaces.get(spaceId);
 }
 
 /**
@@ -211,7 +252,7 @@ export function addMockConversationSpaceRoute(
     if (spaceId) {
       const target = mockSpaceForWork(spaceId);
       if ("error" in target) return errorResponse(target.error, target.status);
-      if (conversation.visibility === "private")
+      if (visibilityOf(conversationId, conversation.visibility) !== "public")
         return errorResponse(
           "Only a public conversation can join a Space.",
           409,
@@ -259,13 +300,21 @@ function members(space: MockSpace, viewer: User) {
     : others;
 }
 
-/** Archive or restore a mock Space with its Conversations, as the API does. */
+/**
+ * Archive or restore a mock Space with its Conversations, as the API does.
+ * The archive skips a root that is already archived, so the restore leaves
+ * it archived.
+ */
 function setArchived(space: MockSpace, archived: boolean): void {
   if (archived === Boolean(space.archivedAt)) return;
   if (archived) {
     space.archivedAt = new Date().toISOString();
     space.archived = [...mockConversationSpaces]
-      .filter(([, spaceId]) => spaceId === space.id)
+      .filter(
+        ([conversationId, spaceId]) =>
+          spaceId === space.id &&
+          !readMockConversationDetail(conversationId, 1)?.archivedAt,
+      )
       .flatMap(([conversationId]) =>
         setMockConversationArchived(conversationId, true, true)
           ? [conversationId]
@@ -278,6 +327,14 @@ function setArchived(space: MockSpace, archived: boolean): void {
     setMockConversationArchived(conversationId, false, true);
   }
   space.archived = [];
+}
+
+function configurationResponse(space: MockSpace): Response {
+  return jsonResponse(spaceConfigurationSchema, {
+    entries: [...space.configuration]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => ({ key, ...entry })),
+  });
 }
 
 /** Find the Space of a route, or the API's error for it. */
@@ -317,6 +374,7 @@ export function createMockSpaceRoutes(): Hono<{
     const space: MockSpace = {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: new Date().toISOString(),
       description: body.data.description ?? null,
       id: crypto.randomUUID(),
@@ -362,6 +420,10 @@ export function createMockSpaceRoutes(): Hono<{
     if (!body.success) return errorResponse("Invalid request body.", 400);
     setArchived(space, body.data.archived);
     return jsonResponse(spaceSchema, view(space));
+  });
+  app.get("/:spaceId/configuration", (c) => {
+    const space = findSpace({ spaceId: c.req.param("spaceId") });
+    return space instanceof Response ? space : configurationResponse(space);
   });
   return app;
 }

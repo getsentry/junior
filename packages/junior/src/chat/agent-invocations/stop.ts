@@ -6,7 +6,7 @@ import {
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
-import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
@@ -22,12 +22,7 @@ import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import { parentResultActor } from "./parent-result";
-import { createDeliverToParent } from "./result";
-import {
-  getChildAgentLockName,
-  getPersonStopTurnId,
-  isPersonStopTurnId,
-} from "./ids";
+import { getChildAgentLockName, isPersonStopTurnId } from "./ids";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
@@ -248,11 +243,7 @@ export async function reportPersonStopToParent(
     return;
   }
   const conversation = await getConversationStore().get({ conversationId });
-  if (
-    !conversation ||
-    turnBehavior({ kind: conversation.kind, personInput: false })
-      .failureNotice !== "parent"
-  ) {
+  if (!conversation) {
     return;
   }
   const work = await getConversationWorkState({
@@ -274,18 +265,22 @@ export async function reportPersonStopToParent(
   if (!runId && !work?.messages.length) {
     return;
   }
-  await createDeliverToParent(options)({
-    // A waiting parent message keeps the Actor of the agent that sent it.
-    actor: turn?.actor
-      ? parentResultActor(turn.actor, turn.source?.kind)
-      : (firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR),
+  await publishAgentUpdate(
     conversationId,
-    result: {
-      kind: "stopped",
-      text: `A person stopped this ${conversation.kind}.`,
+    { type: "stopped", stoppedAtMs: options.stoppedAtMs },
+    {
+      queue: options.queue,
+      // A waiting parent message keeps the Actor of the agent that sent it.
+      starter: turn?.actor
+        ? parentResultActor(turn.actor, turn.source?.kind)
+        : (firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR),
+      state: options.state,
+      update: async () => ({
+        status: "stopped",
+        text: `A person stopped this ${conversation.kind}.`,
+      }),
     },
-    turnId: getPersonStopTurnId(options.stoppedAtMs),
-  });
+  );
 }
 
 /**

@@ -123,7 +123,7 @@ describe("listAgents query", () => {
           namespace: "junior",
           supported_events: ["agent.update"],
           suggested_events: ["agent.update"],
-          type: "conversation",
+          type: "agent",
         },
       },
     ]);

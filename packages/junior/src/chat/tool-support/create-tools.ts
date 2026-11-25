@@ -6,7 +6,6 @@ import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createStartConversationTool } from "@/chat/tools/start-conversation";
-import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -69,6 +68,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AnyToolDefinition,
@@ -267,6 +267,7 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  setSpaceConfiguration: (run) => createSetSpaceConfigurationTool(run.context),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
       run.context,
@@ -302,10 +303,8 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
-      // A Lead Turn that no person started searches for the Lead's person.
       resolveUserId: async () =>
-        (await run.context.resolveActorIdentity?.())?.user?.id ??
-        (await readLeadUser(run.context.conversationId))?.id,
+        (await run.context.resolveActorIdentity?.())?.user?.id,
     }),
   startAgent: (run) =>
     run.context.spawnAgent
@@ -435,6 +434,8 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
+  setSpaceConfiguration: (turnTools) =>
+    turnTools.spaces ? undefined : "Only a person's request changes a Space.",
   addInboxItem: INBOX_LIMIT,
   searchInboxItems: INBOX_LIMIT,
   updateInboxItem: INBOX_LIMIT,

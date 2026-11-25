@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createAcpConversations } from "@/api/acp/conversations";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   actorProfileReportSchema,
   conversationFeedSchema,
   leadSchema,
+  spaceSchema,
 } from "@/api/schema";
 import {
   createAndEnqueueConversation,
@@ -19,6 +21,7 @@ import {
 } from "@/chat/db";
 import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -35,14 +38,34 @@ function apiFor(email?: string): Hono<JuniorApiEnv> {
   return app;
 }
 
-async function readLead(app: Hono<JuniorApiEnv>) {
-  const response = await app.request("http://localhost/api/lead");
+async function createSpace(
+  app: Hono<JuniorApiEnv>,
+  name: string,
+): Promise<string> {
+  const response = await app.request("http://localhost/api/spaces", {
+    body: JSON.stringify({ name }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  expect(response.status).toBe(201);
+  return spaceSchema.parse(await response.json()).id;
+}
+
+function leadPath(spaceId: string): string {
+  return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/lead`;
+}
+
+async function readLead(app: Hono<JuniorApiEnv>, spaceId: string) {
+  const response = await app.request(leadPath(spaceId));
   expect(response.status).toBe(200);
   return leadSchema.parse(await response.json());
 }
 
-async function readLeadId(app: Hono<JuniorApiEnv>): Promise<string> {
-  return (await readLead(app)).conversationId;
+async function readLeadId(
+  app: Hono<JuniorApiEnv>,
+  spaceId: string,
+): Promise<string> {
+  return (await readLead(app, spaceId)).conversationId;
 }
 
 async function postMessage(
@@ -65,16 +88,21 @@ describe("Lead API", () => {
     await closeConversationFixture();
   });
 
-  it("returns the same Lead for its person, and takes only their messages", async () => {
+  it("returns one Lead for each Space, and takes messages only from members", async () => {
     const ana = apiFor("lead-api-ana@example.com");
     const bo = apiFor("lead-api-bo@example.com");
+    const spaceId = await createSpace(ana, "Billing migration");
 
-    expect((await apiFor().request("http://localhost/api/lead")).status).toBe(
-      401,
-    );
-    const leadId = await readLeadId(ana);
-    expect(await readLeadId(ana)).toBe(leadId);
-    expect(await readLeadId(bo)).not.toBe(leadId);
+    expect((await apiFor().request(leadPath(spaceId))).status).toBe(401);
+    // Only a member's read makes the Lead.
+    expect((await bo.request(leadPath(spaceId))).status).toBe(404);
+    const leadId = await readLeadId(ana, spaceId);
+    expect(await readLeadId(ana, spaceId)).toBe(leadId);
+    // The Lead is public like the Space, so anyone reads the same one.
+    expect(await readLeadId(bo, spaceId)).toBe(leadId);
+    expect(
+      await readLeadId(ana, await createSpace(ana, "Mobile app")),
+    ).not.toBe(leadId);
 
     const sent = await postMessage(ana, leadId, "lead-api-ana-message");
     expect(sent.status).toBe(200);
@@ -84,11 +112,45 @@ describe("Lead API", () => {
     expect((await postMessage(bo, leadId, "lead-api-bo-message")).status).toBe(
       403,
     );
+    const joined = await bo.request(
+      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
+      { method: "PUT" },
+    );
+    expect(joined.status).toBe(200);
+    expect((await postMessage(bo, leadId, "lead-api-bo-joined")).status).toBe(
+      200,
+    );
+
+    // After Ana leaves, the Lead takes no more of her messages from any
+    // surface, though she still takes part in it.
+    const left = await ana.request(
+      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
+      { method: "DELETE" },
+    );
+    expect(left.status).toBe(200);
+    expect((await postMessage(ana, leadId, "lead-api-ana-left")).status).toBe(
+      403,
+    );
+    const state = getStateAdapter();
+    await state.connect();
+    await expect(
+      createAcpConversations({
+        eventStore: getConversationEventStore(),
+        queue,
+        state,
+      }).prompt({
+        conversationId: leadId,
+        idempotencyKey: "lead-api-ana-acp",
+        text: "Check the deploy.",
+        user: await signedInViewer("lead-api-ana@example.com"),
+      }),
+    ).resolves.toEqual({ status: "space_closed" });
   });
 
   it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {
     const api = apiFor("lead-api-watches@example.com");
-    const before = await readLead(api);
+    const spaceId = await createSpace(api, "Deploys");
+    const before = await readLead(api, spaceId);
     expect(before.lastSeq).toBe(-1);
     const leadId = before.conversationId;
     const watch = {
@@ -127,16 +189,17 @@ describe("Lead API", () => {
       },
     ]);
 
-    const after = await readLead(api);
+    const after = await readLead(api, spaceId);
     expect(after.watchedConversationIds).toEqual(["slack:C1:1.0"]);
     expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
   });
 
-  it("keeps the Lead out of the conversation lists of its person", async () => {
+  it("keeps the Lead out of the conversation lists", async () => {
     const email = "lead-api-lists@example.com";
     const api = apiFor(email);
     const viewer = await signedInViewer(email);
-    const leadId = await readLeadId(api);
+    const spaceId = await createSpace(api, "Release notes");
+    const leadId = await readLeadId(api, spaceId);
     expect((await postMessage(api, leadId, "lead-api-lists")).status).toBe(200);
     // What a finished Run of the Lead writes, so the person's profile would
     // count it as a Conversation of theirs.
@@ -171,8 +234,9 @@ describe("Lead API", () => {
         )
         .conversations.map((conversation) => conversation.conversationId);
     expect(await feedIds("")).toEqual([work.conversationId]);
-    // The Lead's title is "Lead", so a search for it would match.
-    expect(await feedIds("?q=Lead")).toEqual([]);
+    expect(await feedIds(`?spaceId=${spaceId}`)).toEqual([]);
+    // The Lead's title is the Space's name, so a search for it would match.
+    expect(await feedIds("?q=Release")).toEqual([]);
 
     const profile = actorProfileReportSchema.parse(
       await (
