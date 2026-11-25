@@ -45,6 +45,14 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  // The outline marks the person message at the top of the transcript, and
+  // scrolls its list to it, a few frames after the jump. Wait for both, so
+  // the shot does not catch the outline before the jump.
+  const activeItem = page
+    .getByRole("navigation", { name: "Conversation outline" })
+    .getByRole("button", { name: "Transcript message 996 with" });
+  await expect(activeItem).toHaveAttribute("aria-current", "location");
+  await expect(activeItem).toBeInViewport();
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
@@ -303,6 +311,16 @@ test("keeps the current search match while earlier pages load", async ({
   ).toBeInViewport();
   releaseNext();
   await mock.pageReadsLanded();
+
+  // The jump left the latest, so clearing the search does not pin to it.
+  await search.fill("");
+  // Rows that do not match come back.
+  await expect(
+    transcript.getByText(/^Transcript message \d+[0-8] with/).first(),
+  ).toBeAttached();
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).not.toBeInViewport();
 });
 
 test("keeps the last search match in view when the search clears", async ({

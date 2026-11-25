@@ -80,11 +80,11 @@ export type TurnBehavior = {
     subscriptions: boolean;
     userCustomization: boolean;
     /**
-     * The Turn changes a Space for its person, such as the Space's settings.
-     * Only a person's request changes a Space, so only a person's Turn has
-     * it.
+     * The Turn changes settings for its person, such as the configuration of
+     * its Slack channel or Space, or the Space that a Conversation is in.
+     * Only a person's request changes them, so only a person's Turn has it.
      */
-    spaces: boolean;
+    settings: boolean;
     /**
      * The Turn has `reply`. Only a gated Turn has it. The reply goes to the
      * run's Destination, then its Slack thread.
@@ -123,7 +123,7 @@ const ROOT: TurnBehavior = {
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    spaces: true,
+    settings: true,
     reply: false,
     reportBlocked: "none",
     noReply: true,
@@ -135,7 +135,7 @@ const ROOT: TurnBehavior = {
 const ROOT_RUNTIME_TURN: TurnBehavior = {
   ...ROOT,
   relatedConversations: false,
-  tools: { ...ROOT.tools, spaces: false },
+  tools: { ...ROOT.tools, settings: false },
 };
 
 // A person's Turn in a Thread runs like a Turn on a root, and reports to the
@@ -168,7 +168,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    spaces: false,
+    settings: false,
     reply: false,
     reportBlocked: "parent",
     noReply: true,
@@ -191,7 +191,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
-  spaces: PERSON_IN_THREAD.tools.spaces,
+  settings: PERSON_IN_THREAD.tools.settings,
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -208,7 +208,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
-    spaces: false,
+    settings: false,
     reply: true,
     reportBlocked: "automation",
   },
@@ -222,14 +222,6 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   promptMode: "automation",
   sender: "person",
   relatedConversations: false,
-};
-
-// An Automation Conversation lists the tools of the run and of a person who
-// replies, so its tool list stays the same. The run's own Turns keep the
-// Space tool disabled.
-const AUTOMATION_TOOLS: TurnBehavior["tools"] = {
-  ...AUTOMATION_RUN.tools,
-  spaces: PERSON_IN_AUTOMATION.tools.spaces,
 };
 
 // A Lead finds, starts, and steers its person's other Conversations, and
@@ -251,7 +243,7 @@ const LEAD_TOOLS = [
   "stopWatchingResources",
   "systemTime",
   "updateUserCustomization",
-  "setSpaceConfiguration",
+  "setConfiguration",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -264,7 +256,7 @@ const LEAD_DIRECT_TOOLS = [
   "searchEventTypes",
   "listWatches",
   "stopWatchingResources",
-  "setSpaceConfiguration",
+  "setConfiguration",
 ] as const satisfies readonly (typeof LEAD_TOOLS)[number][];
 
 const LEAD: TurnBehavior = {
@@ -310,7 +302,7 @@ export function turnBehavior(args: {
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   switch (mode) {
     case "automation":
-      return AUTOMATION_TOOLS;
+      return AUTOMATION_RUN.tools;
     case "child_agent":
       return CHILD_AGENT_TURN.tools;
     case "thread":
@@ -338,6 +330,14 @@ export function canMoveToSpace(
   conversation: Pick<Conversation, "kind" | "parentConversationId">,
 ): boolean {
   return isTopLevel(conversation) && conversation.kind !== "lead";
+}
+
+/**
+ * Return whether a Conversation of this kind copies its root's visibility.
+ * A root takes the visibility of its Destination or Space.
+ */
+export function copiesRootVisibility(kind: ConversationKind): boolean {
+  return !isTopLevelKind(kind);
 }
 
 /**

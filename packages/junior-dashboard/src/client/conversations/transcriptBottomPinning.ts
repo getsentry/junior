@@ -594,17 +594,16 @@ export function usePinnedTranscriptBottom(input: {
         (rect.height > viewportHeight
           ? TALL_ROW_TOP_GAP_PX
           : (viewportHeight - rect.height) / 2);
+      // The reader goes to the row, so the latest must not pull them back.
+      // Decide without the scroll geometry: a search can shrink the content
+      // so that the row sits at its end, and clearing the search then shows
+      // the latest far below the row.
+      stopFollowing();
       if (Math.abs(offset) < 1) {
         holdShownRow();
         return true;
       }
-      const before = scrollSnapshot(root);
-      const scrollTop = Math.max(0, before.scrollTop + offset);
-      // The reader goes to the row, so the latest must not pull them back.
-      // A row below the viewport can also sit above the latest, such as
-      // after a search shrank the content and then cleared.
-      if (offset < 0) leaveBottom();
-      else if (!isNearScrollBottom({ ...before, scrollTop })) stopFollowing();
+      const scrollTop = Math.max(0, scrollSnapshot(root).scrollTop + offset);
       const behavior = options?.instant
         ? "auto"
         : preferredExplicitScrollBehavior();
@@ -622,7 +621,7 @@ export function usePinnedTranscriptBottom(input: {
       holdShownRow();
       return true;
     },
-    [leaveBottom, stopFollowing],
+    [stopFollowing],
   );
 
   /** Scroll to the "New" marker, if the transcript has one. */

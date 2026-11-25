@@ -268,6 +268,7 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toContain("reportBlocked");
       expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("moveConversationToSpace");
       // A person's Turn starts and messages child agents, as an agent's does.
       expect(person.disabled).not.toContain("startAgent");
       expect(person.disabled).not.toContain("messageAgent");
@@ -276,6 +277,7 @@ describe("static tool registry", () => {
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
+          "moveConversationToSpace",
           "addInboxItem",
           "searchInboxItems",
           "updateInboxItem",
@@ -397,7 +399,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
-        "setSpaceConfiguration",
+        "setConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",
@@ -406,7 +408,9 @@ describe("static tool registry", () => {
         "watchTimer",
       ].sort(),
     );
-    expect(person.disabled).toEqual([]);
+    // This Lead has no Slack channel and no Space, so it has no
+    // configuration to change.
+    expect(person.disabled).toEqual(["setConfiguration"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

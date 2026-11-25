@@ -29,6 +29,7 @@ import {
   type SetSpanAttributes,
 } from "@/chat/logging";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -250,7 +251,7 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // A child reads visibility from its own Destination row, the same as a root.
+  // A child reads the visibility of its root.
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
@@ -629,11 +630,14 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const configurationValues = await resolveConversationConfiguration({
-      configuration: policy.configuration,
-      conversationId,
-      locationConfiguration: policy.locationConfiguration,
-    });
+    const [configurationValues, spaceId] = await Promise.all([
+      resolveConversationConfiguration({
+        configuration: policy.configuration,
+        conversationId,
+        locationConfiguration: policy.locationConfiguration,
+      }),
+      readConversationSpaceId(conversationId),
+    ]);
 
     // Match the history source the agent will actually receive so crash retries
     // do not let an unstripped running record suppress fresh turn context.
@@ -758,6 +762,7 @@ async function executeAgentRunInPrivacyContext(
       configurationValues,
       connectedMcpProviders,
       conversationPrivacy,
+      spaceId,
       durability,
       authorization,
       generatedFiles,
