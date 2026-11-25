@@ -15,6 +15,7 @@ import * as z from "zod";
 import { readGoogleConfig } from "../config";
 import { googleApiError, googleApiRequest, isTimeZone } from "../google-api";
 import { formatInterval } from "../calendar/events";
+import { GOOGLE_SUBJECT_KINDS } from "../inbox-subjects";
 import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
@@ -159,6 +160,7 @@ async function resolveGoogleCalendarLink(
     kind: "object",
     objectType: "calendar_event",
     key: event.id,
+    subject: { id: event.id, kind: GOOGLE_SUBJECT_KINDS.calendarEvent },
     label: title.slice(0, 80),
     title: title.slice(0, 512),
     url: url.href,

@@ -628,6 +628,7 @@ describe("Google link cards", () => {
         kind: "object",
         objectType: "calendar_event",
         key: "evt123abc",
+        subject: { id: "evt123abc", kind: "calendar_event" },
         label: "Launch review",
         title: "Launch review",
         url: EVENT_URL,
