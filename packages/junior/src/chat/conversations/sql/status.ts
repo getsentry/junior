@@ -4,6 +4,7 @@ import {
   eq,
   gt,
   gte,
+  inArray,
   notLike,
   or,
   sql,
@@ -85,6 +86,22 @@ export function conversationTurnFailedSql(
     )})`;
   // greatest() skips nulls; a Conversation with no started Turn reads -1.
   return sql<boolean>`(${conversation.executionStatus} = 'failed' or ${newestSeq("turn_failed")} > coalesce(greatest(${newestSeq("turn_started")}, ${newestSeq("turn_completed")}), -1))`;
+}
+
+/**
+ * SQL: how the Conversation's newest finished Turn ended, from its Turn
+ * lifecycle Events: the `turn_completed` outcome, or `failed` for
+ * `turn_failed`. Null when no Turn finished.
+ */
+export function conversationLastTurnOutcomeSql(
+  conversation: Pick<ConversationStatusColumns, "conversationId">,
+): SQL<string | null> {
+  return sql<
+    string | null
+  >`(select case when ${juniorConversationEvents.type} = 'turn_failed' then 'failed' else ${juniorConversationEvents.payload}->>'outcome' end from ${juniorConversationEvents} where ${and(
+    eq(juniorConversationEvents.conversationId, conversation.conversationId),
+    inArray(juniorConversationEvents.type, ["turn_completed", "turn_failed"]),
+  )} order by ${juniorConversationEvents.seq} desc limit 1)`;
 }
 
 // When #3050 merged; its deploy came later, so no reply before this was

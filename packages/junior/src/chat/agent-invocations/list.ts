@@ -9,7 +9,10 @@ import {
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import type { ConversationStatus } from "@/chat/conversations/store";
-import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
+import {
+  conversationLastTurnOutcomeSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import {
@@ -23,10 +26,22 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
-import { childLastOutcomeSql, childResultOfOutcome } from "./markers";
-import { CHILD_AGENT_KINDS, type ChildAgent } from "./types";
+import {
+  CHILD_AGENT_KINDS,
+  type ChildAgent,
+  type ChildAgentResult,
+} from "./types";
 
 const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
+
+// How a child's finished Turn ended, as its result. A cancelled Turn is a
+// stop, not a result.
+const TURN_OUTCOME_RESULTS: Partial<Record<string, ChildAgentResult>> = {
+  blocked: "blocked",
+  failed: "failed",
+  no_reply: "completed",
+  success: "completed",
+};
 
 /** Bound the child agents that one listing reads. */
 const CHILD_AGENT_LIST_LIMIT = 200;
@@ -39,8 +54,7 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * listed. A child is `running` while a Turn or mailbox input that answers its
  * parent is open, and is `failed` when its last Turn failed, also when the
  * Turn ended with a model error and execution went back to idle. Otherwise
- * `lastResult` is the outcome of the newest ended parent message, from the
- * parent's markers.
+ * `lastResult` is how the child's newest finished Turn ended.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -53,10 +67,7 @@ export async function listChildAgents(
       conversationId: juniorConversations.conversationId,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
-      lastOutcome: childLastOutcomeSql(
-        parentConversationId,
-        juniorConversations.conversationId,
-      ),
+      lastTurnOutcome: conversationLastTurnOutcomeSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
       turnFailed: conversationTurnFailedSql(juniorConversations),
@@ -106,7 +117,7 @@ export async function listChildAgents(
       const lastResult =
         row.turnFailed && !running
           ? "failed"
-          : childResultOfOutcome(row.lastOutcome);
+          : TURN_OUTCOME_RESULTS[row.lastTurnOutcome ?? ""];
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         ...(row.archivedAt

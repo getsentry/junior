@@ -1,19 +1,17 @@
 /**
- * Records of child agent work. The parent Conversation gets one
+ * Dashboard records for child agent work. The parent Conversation gets one
  * `subagent_started` and one `subagent_ended` event for each parent message
- * to a child. The dashboard shows them, and `listAgents` reads each child's
- * newest outcome as its last result. No other runtime rule reads them.
+ * to a child. These records are for the dashboard only: no runtime rule
+ * reads them.
  */
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { and, eq, inArray } from "drizzle-orm";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorConversationEvents } from "@/db/schema";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { readChildConversationSender } from "./child-input";
-import type { ChildAgentResult } from "./types";
 
 // The dashboard labels each child row with this kind.
 const SUBAGENT_KIND = "agent";
@@ -165,42 +163,4 @@ async function appendSubagentEnded(
       createdAtMs,
     })),
   );
-}
-
-const startedMarker = alias(juniorConversationEvents, "started_marker");
-const endedMarker = alias(juniorConversationEvents, "ended_marker");
-
-/**
- * SQL: the outcome of the newest ended parent message to a child agent, from
- * the parent's markers. A person's Turn in a Thread has no marker.
- */
-export function childLastOutcomeSql(
-  parentConversationId: string,
-  childConversationId: AnyPgColumn,
-): SQL<string | null> {
-  return sql<
-    string | null
-  >`(select ${endedMarker.payload}->>'outcome' from ${juniorConversationEvents} as ${endedMarker} join ${juniorConversationEvents} as ${startedMarker} on ${and(
-    eq(startedMarker.conversationId, endedMarker.conversationId),
-    eq(startedMarker.type, "subagent_started"),
-    sql`${startedMarker.payload}->>'subagentInvocationId' = ${endedMarker.payload}->>'subagentInvocationId'`,
-  )} where ${and(
-    eq(endedMarker.conversationId, parentConversationId),
-    eq(endedMarker.type, "subagent_ended"),
-    sql`${startedMarker.payload}->>'childConversationId' = ${childConversationId}`,
-  )} order by ${endedMarker.seq} desc limit 1)`;
-}
-
-// A stop or an error is not a result here: a stop lists the child as
-// stopped, and its failed Turn lists it as failed.
-const OUTCOME_RESULTS: Partial<Record<string, ChildAgentResult>> = {
-  blocked: "blocked",
-  success: "completed",
-};
-
-/** Map a marker outcome to the child result that it reports, if any. */
-export function childResultOfOutcome(
-  outcome: string | null,
-): ChildAgentResult | undefined {
-  return outcome ? OUTCOME_RESULTS[outcome] : undefined;
 }

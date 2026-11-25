@@ -513,14 +513,41 @@ describe("child Turns on the Conversation loop", () => {
   // a message, as a `reply` is. With a Watch left after `noReply`, the Thread
   // still works and its parent waits. The parent runs it as the Event system
   // Actor, never as the person.
+  // The parent's listing shows how the person's Turn ended.
   it.each([
-    { end: "final text", openWork: "none", sent: "agent-result" },
-    { end: "final text", openWork: "helper", sent: "agent-message" },
-    { end: "noReply", openWork: "none", sent: "agent-result" },
-    { end: "noReply", openWork: "Watch", sent: undefined },
+    {
+      end: "final text",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "completed",
+    },
+    {
+      end: "final text",
+      openWork: "helper",
+      sent: "agent-message",
+      lastResult: "completed",
+    },
+    {
+      end: "noReply",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "completed",
+    },
+    {
+      end: "noReply",
+      openWork: "Watch",
+      sent: undefined,
+      lastResult: "completed",
+    },
+    {
+      end: "blocked",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "blocked",
+    },
   ] as const)(
     "reports a person's Turn in a Thread that ends with $end (open work: $openWork)",
-    async ({ end, openWork, sent }) => {
+    async ({ end, lastResult, openWork, sent }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -537,7 +564,9 @@ describe("child Turns on the Conversation loop", () => {
             run,
             end === "final text"
               ? { finalText: "The deploy is green." }
-              : { noReply: { note: "The deploy is green." } },
+              : end === "blocked"
+                ? { blocked: { missing: "The deploy is green." } }
+                : { noReply: { note: "The deploy is green." } },
           ),
         );
         await harness.drain(childId);
@@ -561,6 +590,10 @@ describe("child Turns on the Conversation loop", () => {
             ? [{ authorId: resultAuthorId(EVENT_SYSTEM_ACTOR), tag: sent }]
             : [],
         );
+        const { agents } = (await createListAgentsTool({
+          conversationId: slackParentConversationId,
+        }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
+        expect(agents[0]?.last_result).toBe(lastResult);
       } finally {
         await harness.close();
       }
