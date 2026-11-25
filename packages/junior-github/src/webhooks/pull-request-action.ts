@@ -320,13 +320,12 @@ function isRequested(
  */
 function inLimbo(
   state: GitHubPullRequestMergeState,
-  requester: { actedAt: Date | undefined; login: string | undefined },
+  requester: { actedAt: Date | undefined; login: string },
 ): boolean {
   return (
     state.state === "open" &&
     !state.draft &&
     !state.autoMerge &&
-    requester.login !== undefined &&
     !isRequested(state, requester.login) &&
     timeOf(requester.actedAt) <= timeOf(state.headCommittedAt) &&
     state.reviewOutcome === undefined &&
