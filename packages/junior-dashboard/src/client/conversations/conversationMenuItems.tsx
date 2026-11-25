@@ -8,6 +8,7 @@ import {
   ArrowUp,
   Bell,
   BellOff,
+  FolderInput,
   MessageSquareShare,
   MessagesSquare,
   Pencil,
@@ -48,6 +49,8 @@ export type ConversationMenu = {
     continueInSlack(): void;
     delivery(paused: boolean): void;
     eventLog(): void;
+    /** Set where the menu can move the Conversation to a Space. */
+    moveToSpace?: (() => void) | undefined;
     pin(pinned: boolean): void;
     rename(): void;
     subscription(subscribed: boolean): void;
@@ -158,23 +161,36 @@ export function useConversationMenuItems(
       },
     );
   }
-  actItems.push(
-    {
+  actItems.push({
+    disabled: !participant,
+    icon: Pencil,
+    key: "rename",
+    label: "Rename",
+    onClick: actions.rename,
+  });
+  // A child is in the Space of its root, and a Lead never moves. Every
+  // Space is public, so a private Conversation cannot join one.
+  if (
+    actions.moveToSpace &&
+    (conversation?.kind === "root" || conversation?.kind === "automation") &&
+    conversation.visibility !== "private"
+  ) {
+    actItems.push({
       disabled: !participant,
-      icon: Pencil,
-      key: "rename",
-      label: "Rename",
-      onClick: actions.rename,
-    },
-    {
-      disabled: copy.disabled,
-      icon: copy.icon,
-      key: "copy-markdown",
-      label: copy.label,
-      onClick: () => void copy.copy(),
-      stayOpen: true,
-    },
-  );
+      icon: FolderInput,
+      key: "move-to-space",
+      label: "Move to Space",
+      onClick: actions.moveToSpace,
+    });
+  }
+  actItems.push({
+    disabled: copy.disabled,
+    icon: copy.icon,
+    key: "copy-markdown",
+    label: copy.label,
+    onClick: () => void copy.copy(),
+    stayOpen: true,
+  });
 
   const notifyItems: ConversationMenuItem[] = [
     {

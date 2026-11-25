@@ -1,7 +1,9 @@
 import * as z from "zod";
 
-const SPACE_NAME_MAX_CHARS = 80;
-const SPACE_DESCRIPTION_MAX_CHARS = 500;
+/** The longest Space name, so a form can stop at it. */
+export const SPACE_NAME_MAX_CHARS = 80;
+/** The longest Space description, so a form can stop at it. */
+export const SPACE_DESCRIPTION_MAX_CHARS = 500;
 
 const spaceNameSchema = z.string().trim().min(1).max(SPACE_NAME_MAX_CHARS);
 const spaceDescriptionSchema = z

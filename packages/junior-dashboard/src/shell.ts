@@ -115,6 +115,10 @@ export function dashboardPagePaths(
     },
     {
       nested: true,
+      path: basePath === "/" ? "/spaces" : `${basePath}/spaces`,
+    },
+    {
+      nested: true,
       path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
     },
   ];

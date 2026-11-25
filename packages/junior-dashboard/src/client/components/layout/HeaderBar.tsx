@@ -12,6 +12,8 @@ import { PaneCollapsedControls } from "./PaneNav";
 export function HeaderBar(props: {
   actions?: ReactNode;
   back?: { label: string; to: string };
+  /** Shows before the title, such as a Space's tile. */
+  icon?: ReactNode;
   title: ReactNode;
 }) {
   return (
@@ -27,6 +29,7 @@ export function HeaderBar(props: {
           {props.back.label}
         </Link>
       ) : null}
+      {props.icon}
       <h1 className="m-0 min-w-0 truncate font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text">
         {props.title}
       </h1>

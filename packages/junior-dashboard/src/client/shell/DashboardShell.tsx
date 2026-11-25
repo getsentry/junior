@@ -132,6 +132,11 @@ const PersonProfilePage = lazy(() =>
     default: module.PersonProfilePage,
   })),
 );
+const SpacePage = lazy(() =>
+  import("./pages/spaces/SpacePage").then((module) => ({
+    default: module.SpacePage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("./pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
@@ -634,6 +639,16 @@ function Shell() {
                 path="/inbox"
               />
               <Route element={<InboxRedirect />} path="/review" />
+              <Route
+                element={
+                  loading || loggedIn ? (
+                    <SpacePage />
+                  ) : (
+                    <Navigate replace to="/" />
+                  )
+                }
+                path="/spaces/:spaceId"
+              />
               <Route element={<CodePage />} path="/code" />
               {codeRepositoryTabs.map((tab) => (
                 <Route

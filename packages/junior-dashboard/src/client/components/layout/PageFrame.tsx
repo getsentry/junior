@@ -3,30 +3,32 @@ import type { ReactNode } from "react";
 import {
   MobileHeaderActionsPortal,
   MobileHeaderTitlePortal,
-} from "../../../components/layout/DashboardChrome";
-import { HeaderBar } from "../../../components/layout/HeaderBar";
-import { PageLayout } from "../../../components/layout/PageLayout";
-import { useSidebarFits } from "../../../conversations/conversationSidebarLayout";
-import { useDocumentTitle } from "../../../documentTitle";
-import { useInboxReturnHere } from "../../../inbox/inboxListState";
-import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
-import { cn } from "../../../styles";
+} from "./DashboardChrome";
+import { HeaderBar } from "./HeaderBar";
+import { PageLayout } from "./PageLayout";
+import { useSidebarFits } from "../../conversations/conversationSidebarLayout";
+import { useDocumentTitle } from "../../documentTitle";
+import { useInboxReturnHere } from "../../inbox/inboxListState";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { cn } from "../../styles";
 
 /**
- * The frame of a Code page, as an Inbox list has it. On a desktop a header
- * bar holds the way back, the title, and the page's tabs. On a phone the
- * tabs go in the phone header, which has the way back and the title. The
- * body scrolls under it, and Back from a Conversation opened here returns
- * here.
+ * The frame of a page outside the Inbox, such as Code or a Space, as an
+ * Inbox list has it. On a desktop a header bar holds the way back, the
+ * title, and the page's actions. On a phone the actions go in the phone
+ * header, which has the way back and the title. The body scrolls under it.
+ * With `returnPath`, Back from a Conversation opened here returns here.
  */
-export function CodePageFrame(props: {
+export function PageFrame(props: {
   back?: { label: string; to: string };
   children: ReactNode;
   documentTitle?: string;
+  /** Shows before the title on a desktop. */
+  icon?: ReactNode;
   /** The phone header names the page itself when this is unset. */
   phoneTitle?: string;
-  returnPath: string;
-  tabs?: ReactNode;
+  returnPath?: string;
+  actions?: ReactNode;
   title: string;
 }) {
   const desktop = useSidebarFits();
@@ -41,7 +43,12 @@ export function CodePageFrame(props: {
       )}
     >
       {desktop ? (
-        <HeaderBar actions={props.tabs} back={props.back} title={props.title} />
+        <HeaderBar
+          actions={props.actions}
+          back={props.back}
+          icon={props.icon}
+          title={props.title}
+        />
       ) : (
         <>
           {props.phoneTitle ? (
@@ -57,8 +64,10 @@ export function CodePageFrame(props: {
               </h1>
             </MobileHeaderTitlePortal>
           ) : null}
-          {props.tabs ? (
-            <MobileHeaderActionsPortal>{props.tabs}</MobileHeaderActionsPortal>
+          {props.actions ? (
+            <MobileHeaderActionsPortal>
+              {props.actions}
+            </MobileHeaderActionsPortal>
           ) : null}
         </>
       )}

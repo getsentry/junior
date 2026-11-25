@@ -38,7 +38,7 @@ import {
 import { cn, dashboardInlineLinkClass } from "../../../styles";
 import { OutboundLink } from "../../../components/OutboundLink";
 import { getDashboardAgentName } from "../../../agentName";
-import { CodePageFrame } from "./CodePageFrame";
+import { PageFrame } from "../../../components/layout/PageFrame";
 
 const RECENT_ROWS = 5;
 
@@ -67,12 +67,12 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const name = data?.repository.name ?? "Repository";
   const tabLabel = TABS.find((tab) => tab.key === props.tab)?.label;
   return (
-    <CodePageFrame
+    <PageFrame
       back={BACK_TO_CODE}
       documentTitle={props.tab === "overview" ? name : `${name} · ${tabLabel}`}
       phoneTitle={name}
       returnPath={`${location.pathname}${location.search}`}
-      tabs={
+      actions={
         data ? (
           <RepositoryTabsNav
             repositoryId={data.repository.id}
@@ -100,7 +100,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
       ) : (
         <PageContentSkeleton label="Loading repository" variant="stats" />
       )}
-    </CodePageFrame>
+    </PageFrame>
   );
 }
 
