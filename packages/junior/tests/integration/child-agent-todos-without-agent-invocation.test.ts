@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelWatch, createWatch } from "@/chat/events/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import {
@@ -139,80 +138,6 @@ describe("To-dos of child agents that no Agent invocation names", () => {
       ).resolves.toEqual([
         expect.objectContaining({ title: "Check the deploy", status: "done" }),
       ]);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  // A child that ends a Turn while its Watch goes on still owns the work, so
-  // its To-do stays open until a result after the Watch ends.
-  it("keeps the parent's To-do of a child open while the child's Watch goes on", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await spawnChild(harness, "parent-turn:call-1", {
-        kind: "thread",
-      });
-      vi.setSystemTime(Date.now() + 1_000);
-      await changeTodos(getSqlExecutor(), {
-        change: {
-          add: [
-            {
-              assignee: { conversationId: childId },
-              status: "open",
-              title: "Fix the PR checks",
-            },
-          ],
-          remove: [],
-          update: [],
-        },
-        conversationId: slackParentConversationId,
-        nowMs: Date.now(),
-      });
-      const watch = await createWatch(
-        {
-          conversationId: childId,
-          events: ["pull_request.checks.failed"],
-          expiresAtMs: Date.now() + 600_000,
-          identifier: "getsentry/junior#1",
-          intent: "Fix failed checks.",
-          label: "getsentry/junior#1",
-          namespace: "github",
-          resourceType: "pull_request",
-        },
-        { state: harness.state },
-      );
-      const readStatus = async () =>
-        (await listTodos(getSqlExecutor(), slackParentConversationId)).map(
-          (todo) => todo.status,
-        );
-
-      vi.setSystemTime(Date.now() + 1_000);
-      harness.onRun(
-        async (run) =>
-          await finishRun(
-            run,
-            { finalText: "Opened the PR." },
-            "Opened the PR.",
-          ),
-      );
-      await harness.drain(childId);
-      await expect(readStatus()).resolves.toEqual(["open"]);
-
-      // The Watch ends, and the child's next result closes the To-do.
-      await cancelWatch({
-        conversationId: childId,
-        id: watch.id,
-        state: harness.state,
-      });
-      vi.setSystemTime(Date.now() + 1_000);
-      await sendPersonMessage(harness, childId, "person-1");
-      harness.onRun(
-        async (run) =>
-          await finishRun(run, { finalText: "Merged." }, "Merged."),
-      );
-      await harness.drain(childId);
-      await expect(readStatus()).resolves.toEqual(["done"]);
     } finally {
       await harness.close();
     }

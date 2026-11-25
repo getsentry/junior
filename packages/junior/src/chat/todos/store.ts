@@ -6,7 +6,6 @@
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { childWorkGoesOn } from "@/chat/agent-invocations/parent-result";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
@@ -447,7 +446,6 @@ async function settleChildTodos(
   const results = await readReceivedChildResults(conversationId);
   if (results.length === 0) return false;
   const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
-  const doneChildren = new Set<string>();
   for (const todo of assigned) {
     if (todo.assignee.kind !== "agent") continue;
     const childId = todo.assignee.conversationId;
@@ -465,19 +463,10 @@ async function settleChildTodos(
         undefined,
       );
     if (!latest) continue;
-    if (latest.status === "done") doneChildren.add(childId);
     const statuses =
       byChild.get(childId) ?? new Map<number, ClosedTodoStatus>();
     statuses.set(todo.id, latest.status);
     byChild.set(childId, statuses);
-  }
-  // A child that finished a Turn while its work goes on, such as a Watch on
-  // a pull request, keeps its To-dos until a result after its work ends.
-  const goesOn = await mapBounded([...doneChildren], async (childId) =>
-    (await childWorkGoesOn(childId)) ? childId : undefined,
-  );
-  for (const childId of goesOn) {
-    if (childId) byChild.delete(childId);
   }
   if (byChild.size === 0) return false;
   const nowMs = Date.now();
