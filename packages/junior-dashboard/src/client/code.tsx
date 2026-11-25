@@ -71,7 +71,9 @@ export function HighlightedCodeFallback(props: {
 
 /**
  * Render trusted Shiki HTML with transcript-safe responsive wrapping. A blank
- * line keeps its height, so blank lines in a file do not collapse.
+ * line keeps its height, so blank lines in a file do not collapse. Shiki
+ * turns a final newline into an empty last line, which a `<pre>` does not
+ * show, so that line is hidden: the block keeps the height of its fallback.
  */
 export function HighlightedCodeHtml(props: {
   html: ShikiHtml;
@@ -80,7 +82,7 @@ export function HighlightedCodeHtml(props: {
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden [&_.line]:block [&_.line]:min-h-[1lh] [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic light:[&_pre]:!text-(--shiki-light) light:[&_span]:!text-(--shiki-light)",
+        "min-w-0 overflow-hidden [&_.line]:block [&_.line]:min-h-[1lh] [&_.line:last-child:empty]:hidden [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic light:[&_pre]:!text-(--shiki-light) light:[&_span]:!text-(--shiki-light)",
         props.variant === "prose"
           ? "[&_pre]:font-display [&_pre]:text-base [&_pre]:leading-7"
           : "[&_pre]:font-mono [&_pre]:text-sm [&_pre]:leading-relaxed",
