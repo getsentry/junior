@@ -100,6 +100,7 @@ import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
+  itemConversationHidden,
   itemOwnerPath,
 } from "./inboxItemFormat";
 
@@ -908,7 +909,12 @@ function rowActions(
         : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      open={owner ? rowOpenTarget(props) : undefined}
+      // A viewer who cannot see the Conversation gets no link to it.
+      open={
+        owner && !(props.bundle && itemConversationHidden(props.bundle.newest))
+          ? rowOpenTarget(props)
+          : undefined
+      }
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );

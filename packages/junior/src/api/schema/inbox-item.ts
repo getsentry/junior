@@ -114,7 +114,11 @@ export const inboxItemSchema = z
      * The top of the owner Conversation's tree that the viewer can see, at
      * any depth: the owner when it is a root, or when the viewer cannot see
      * its root. The Inbox stacks items by it. Unset when the owner is not a
-     * Conversation; then the Inbox stacks items by their owner.
+     * Conversation; then the Inbox stacks items by their owner. Also unset
+     * when the viewer cannot see the owner Conversation, such as a person
+     * whose role on the subject puts them on the item: the payload then
+     * names no Conversation, Turn, or tree, and the card shows only the
+     * item and its subject.
      */
     rootConversationId: z.string().min(1).optional(),
     status: z.enum(["open", "done", "dismissed"]),
