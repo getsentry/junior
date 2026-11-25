@@ -227,7 +227,11 @@ export function createPluginHarness(
       plugin: { name: "github" },
       inboxItems,
       state,
-      tasks: { start: unused },
+      tasks: {
+        async start(input) {
+          recorded.startedTasks.push(input);
+        },
+      },
       users,
     });
     if (!route) throw new Error("The GitHub plugin has no webhook route");
@@ -308,6 +312,11 @@ export function createPluginHarness(
         payload: task.payload.parse(started.payload),
         plugin: { name: "github" },
         state,
+        tasks: {
+          async start(input) {
+            recorded.startedTasks.push(input);
+          },
+        },
         users,
       });
     }

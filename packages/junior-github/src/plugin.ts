@@ -99,6 +99,10 @@ import {
   githubPullRequestActionBackfillTask,
   startGitHubPullRequestActionBackfill,
 } from "./pull-request-action-backfill.js";
+import {
+  GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+  githubPullRequestActionSyncTask,
+} from "./webhooks/pull-request-action.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
@@ -228,6 +232,10 @@ export function githubPlugin(
           botEmail: () => readEnv(botEmailEnv),
           env: { appIdEnv, installationIdEnv, privateKeyEnv },
         }),
+      [GITHUB_PULL_REQUEST_ACTION_SYNC_TASK]: githubPullRequestActionSyncTask({
+        botEmail: () => readEnv(botEmailEnv),
+        env: { appIdEnv, installationIdEnv, privateKeyEnv },
+      }),
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
       [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
         async (refs) =>

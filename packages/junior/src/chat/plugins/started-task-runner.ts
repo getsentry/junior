@@ -29,13 +29,16 @@ import {
   PLUGIN_TASK_MAX_DELIVERIES,
   type StartedPluginTaskMessage,
 } from "./task-queue";
-import { startedTaskDefinition } from "./task-start";
+import type { SendPluginTask } from "./task-runner";
+import { createPluginTaskStarter, startedTaskDefinition } from "./task-start";
 
 interface StartedTaskOptions {
   /** Queue delivery of this message, when the queue reports it. */
   deliveryCount?: number | undefined;
   /** Core event publisher, which the queue consumer of the app supplies. */
   events: AppEventPublisher;
+  /** Sends the tasks that this task starts. */
+  sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem | undefined;
 }
 
@@ -77,6 +80,11 @@ function startedTaskContext(
     payload,
     plugin: { name: pluginName },
     state: createPluginState(pluginName),
+    tasks: createPluginTaskStarter({
+      plugin: pluginName,
+      send: options.sendPluginTask,
+      tasks: plugin.tasks,
+    }),
     users: { readIdentity: readIdentityById },
   };
 }

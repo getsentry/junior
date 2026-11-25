@@ -97,6 +97,33 @@ export async function loadPullRequest(
   );
 }
 
+const rateLimitSchema = z.object({
+  resources: z.object({ graphql: z.object({ reset: z.number().int() }) }),
+});
+
+/**
+ * Read when the installation's GraphQL rate limit resets, with the same
+ * read-only token as the pull request reads. GitHub does not count this
+ * read against the rate limit.
+ */
+export async function loadGraphqlRateLimitReset(
+  env: GitHubInstallationEnv,
+  repositoryFullName: string,
+): Promise<Date> {
+  const { name } = splitRepository(repositoryFullName, "rate limit");
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  const response = rateLimitSchema.parse(
+    await githubRequest("https://api.github.com", "/rate_limit", {
+      token: token.token,
+    }),
+  );
+  return new Date(response.resources.graphql.reset * 1000);
+}
+
 /**
  * Return a reader of repository full names by repository id, with one
  * metadata-only token for every repository of the installation. The reader

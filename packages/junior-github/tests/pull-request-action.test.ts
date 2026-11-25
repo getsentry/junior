@@ -6,6 +6,7 @@ import {
   releaseGitHubPullRequestReadySync,
 } from "../src/pull-request-outcomes/store";
 import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { GITHUB_PULL_REQUEST_ACTION_SYNC_TASK } from "../src/webhooks/pull-request-action";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { createPluginHarness } from "./plugin-harness";
@@ -16,6 +17,7 @@ import {
   mockGitHub,
   pullRequestAction,
   requesterUsers,
+  reviewRequested,
   reviewSubmitted,
   route,
   seedJuniorPullRequest,
@@ -524,7 +526,7 @@ describe("next action item", () => {
     }
   });
 
-  it("logs the GraphQL error when GitHub returns errors with no data", async () => {
+  it("logs a GraphQL error that a retry cannot fix", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const errors: string[] = [];
@@ -538,15 +540,14 @@ describe("next action item", () => {
       },
       [],
     );
-    // GitHub reports GraphQL errors, such as a rate limit, with HTTP 200.
+    // GitHub reports GraphQL errors with HTTP 200 and no data.
     mswServer.use(
       http.post("https://api.github.com/graphql", () =>
         HttpResponse.json({
           errors: [
             {
-              message:
-                "API rate limit already exceeded for installation ID 456.",
-              type: "RATE_LIMITED",
+              message: "Could not resolve to a Repository.",
+              type: "NOT_FOUND",
             },
           ],
         }),
@@ -559,6 +560,162 @@ describe("next action item", () => {
         "GitHub pull request action failed: GitHubGraphqlError",
       ]);
       expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("syncs again in a task after the rate limit resets, because GitHub does not send the webhook again", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    const resetAt = Math.floor(Date.now() / 1000) + 600;
+    mswServer.use(
+      http.post(
+        "https://api.github.com/graphql",
+        () =>
+          HttpResponse.json({
+            errors: [
+              {
+                message:
+                  "API rate limit already exceeded for installation ID 456.",
+                type: "RATE_LIMIT",
+              },
+            ],
+          }),
+        { once: true },
+      ),
+      http.get("https://api.github.com/rate_limit", () =>
+        HttpResponse.json({
+          resources: {
+            graphql: { limit: 12500, remaining: 0, reset: resetAt },
+          },
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const h = createPluginHarness(fixture, requesterUsers);
+
+      await h.deliver(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
+      );
+      expect(h.notices).toEqual([]);
+      expect(h.startedTasks).toEqual([
+        {
+          delaySeconds: expect.any(Number),
+          key: expect.stringMatching(
+            /^pull-request-action-sync:getsentry\/junior#946:\d+:0$/,
+          ),
+          name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 0,
+          },
+        },
+      ]);
+      const delaySeconds = h.startedTasks[0]?.delaySeconds ?? 0;
+      expect(delaySeconds).toBeGreaterThanOrEqual(600);
+      expect(delaySeconds).toBeLessThanOrEqual(606);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("starts a new sync task when the task hits the rate limit again, because the queue drops a task an hour after it starts", async () => {
+    const fixture = await createGitHubFixture();
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    const rateLimited = () =>
+      http.post(
+        "https://api.github.com/graphql",
+        () =>
+          HttpResponse.json({
+            errors: [
+              { message: "API rate limit exceeded.", type: "RATE_LIMIT" },
+            ],
+          }),
+        { once: true },
+      );
+    mswServer.use(
+      rateLimited(),
+      rateLimited(),
+      http.get("https://api.github.com/rate_limit", () =>
+        HttpResponse.json({
+          resources: {
+            graphql: {
+              limit: 12500,
+              remaining: 0,
+              reset: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const h = createPluginHarness(fixture, requesterUsers);
+
+      await h.deliver(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
+      );
+      // A task message expires 60 minutes after it starts.
+      expect(h.startedTasks.map((task) => task.delaySeconds)).toEqual([
+        55 * 60,
+      ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([]);
+      expect(h.startedTasks).toEqual([
+        expect.objectContaining({
+          delaySeconds: 55 * 60,
+          key: expect.stringMatching(/:1$/),
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 1,
+          },
+        }),
+      ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+      expect(h.startedTasks).toEqual([]);
     } finally {
       await fixture.close();
     }
