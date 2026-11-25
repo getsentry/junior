@@ -687,6 +687,7 @@ export function route(
     throw new Error("The next-action webhooks do not use this");
   };
   const annotations: PluginConversationAnnotations = {
+    async objectChanged() {},
     forConversation() {
       return {
         async upsert() {},
@@ -702,7 +703,6 @@ export function route(
     annotations,
     codeChanges: fixture.codeIndex.codeChanges,
     conversationChanges: conversationChangesThrough({
-      annotations,
       inboxItems,
     }),
     db: fixture.db(),

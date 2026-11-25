@@ -1,6 +1,9 @@
 import * as z from "zod";
 import type { PluginContext } from "./context";
-import { objectAnnotationSchema } from "./object-annotations";
+import {
+  objectAnnotationSchema,
+  type ObjectSubject,
+} from "./object-annotations";
 import { objectTypeSchema } from "./object-presentation";
 
 function usesHttpProtocol(value: string): boolean {
@@ -56,6 +59,13 @@ export interface PluginAnnotations {
 }
 export interface PluginConversationAnnotations {
   forConversation(conversationId: string): PluginAnnotations;
+  /**
+   * Tell Junior that the provider changed one object, such as a merge.
+   * Junior marks each Conversation that annotates the object as changed, so
+   * an open page reads its live card again. It writes no Annotation. Call
+   * it only when the object changed, not for each event about it.
+   */
+  objectChanged(subject: ObjectSubject): Promise<void>;
 }
 
 export const conversationSidebarIconSchema = z.enum([

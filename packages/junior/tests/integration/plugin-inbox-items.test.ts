@@ -1,7 +1,6 @@
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {
   defineJuniorPlugin,
-  type ConversationAnnotationChange,
   type PluginRegistration,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -9,10 +8,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import {
-  createPluginAnnotations,
-  listConversationAnnotations,
-} from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import {
@@ -27,11 +22,9 @@ import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools"
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   juniorConversationParticipants,
-  juniorConversations,
   juniorIdentities,
   juniorInboxSnoozes,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import {
   ownedPluginInboxItems,
   TEST_PLUGIN_INBOX_OWNER,
@@ -376,7 +369,7 @@ describe("plugin inbox items", () => {
     });
   });
 
-  it("saves a chip and an item close together or not at all", async () => {
+  it("saves the item closes of a batch together or not at all", async () => {
     const conversationId = "slack:C1:1.000001";
     await conversation(conversationId, "public");
     const items = ownedPluginInboxItems({
@@ -389,75 +382,40 @@ describe("plugin inbox items", () => {
       askedIdentityIds: [],
       assigneeIdentityIds: [],
     });
-    const chip = {
-      key: "getsentry/junior#946",
-      kind: "resource_link",
-      label: "getsentry/junior#946",
-      status: "open",
-      url: "https://github.com/getsentry/junior/pull/946",
-    } as const;
-    await createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "github",
-    }).upsert(chip);
     const item = await getOpenInboxItemBySubject(getDb(), {
       id: NOTICE.subject.id,
       kind: "github:ready",
     });
     const changes = createPluginConversationChanges({ plugin: "github", show });
-    const detailVersion = async () =>
-      (
-        await getDb()
-          .select({ version: juniorConversations.detailVersion })
-          .from(juniorConversations)
-          .where(eq(juniorConversations.conversationId, conversationId))
-      )[0]?.version;
-    const before = await detailVersion();
     const close = {
       subject: NOTICE.subject,
       reason: "The pull request merged.",
       status: "done",
     } as const;
-    const annotation: ConversationAnnotationChange = {
-      conversationId,
-      upsert: { ...chip, status: "merged" },
-    };
-    const merged = {
-      annotations: [annotation],
-      inboxItems: [{ close, conversationId }],
-    };
+    const merged = { inboxItems: [{ close, conversationId }] };
 
     // The close of the item from a Conversation that does not own it
-    // fails, so the chip stays open too, and no reader sees a change.
+    // fails the batch, so the item stays open.
     await expect(
       changes.apply({
-        ...merged,
         inboxItems: [
           { close, conversationId: "slack:C1:9.000009" },
           ...merged.inboxItems,
         ],
       }),
     ).rejects.toThrow("belongs to another Conversation than slack:C1:9.000009");
-    expect(await listConversationAnnotations(getDb(), conversationId)).toEqual([
-      expect.objectContaining({ status: "open" }),
-    ]);
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
       status: "open",
     });
-    expect(await detailVersion()).toBe(before);
 
     // A batch over the limit saves nothing.
     await expect(
       changes.apply({
-        annotations: Array.from({ length: 101 }, () => annotation),
+        inboxItems: Array.from({ length: 101 }, () => merged.inboxItems[0]!),
       }),
     ).rejects.toThrow("more than the limit of 100");
 
     await changes.apply(merged);
-    expect(await listConversationAnnotations(getDb(), conversationId)).toEqual([
-      expect.objectContaining({ status: "merged" }),
-    ]);
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
       closeReason: "The pull request merged.",
       status: "done",

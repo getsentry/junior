@@ -13,7 +13,6 @@
  */
 import type {
   EventPublisher,
-  PluginConversationAnnotations,
   PluginConversationChanges,
   PluginConversationInboxItems,
   PluginCodeChanges,
@@ -85,7 +84,6 @@ const lifecyclesResponseSchema = z.object({
 });
 
 interface ReconcileArgs {
-  annotations: PluginConversationAnnotations;
   botEmail?: string | undefined;
   codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
@@ -239,7 +237,6 @@ async function reconcilePullRequest(
         }),
   });
   await applyGitHubPullRequestOutcome({
-    annotations: args.annotations,
     codeChanges: args.codeChanges,
     conversationChanges: args.conversationChanges,
     db: args.db,
