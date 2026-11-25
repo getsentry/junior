@@ -117,6 +117,7 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import { sweepTurns } from "@/core/turn/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
@@ -881,6 +882,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       events,
       sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+      sweepTurns: () => sweepTurns(engineCtx),
     });
   });
 

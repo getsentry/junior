@@ -14,6 +14,8 @@ export interface HeartbeatHandlerOptions {
   events: AppEventPublisher;
   sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem;
+  /** Sends the queue message again for core Turns that no message reaches. */
+  sweepTurns?: () => Promise<void>;
 }
 
 /** Handle the authenticated internal heartbeat. */
@@ -41,6 +43,15 @@ export async function GET(
       });
     }),
   );
+
+  const { sweepTurns } = options;
+  if (sweepTurns) {
+    waitUntil(() =>
+      sweepTurns().catch((error) => {
+        logException(error, "turn.sweep.failed");
+      }),
+    );
+  }
 
   return new Response("Accepted", { status: 202 });
 }

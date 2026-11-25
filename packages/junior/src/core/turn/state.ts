@@ -59,6 +59,7 @@ import {
   eq,
   exists,
   inArray,
+  lt,
   lte,
   ne,
   notExists,
@@ -402,6 +403,65 @@ export async function holdsLease(
     .from(juniorTurns)
     .where(leaseFence(lease));
   return rows.length > 0;
+}
+
+/** A Turn that no queue message will touch again. */
+type StalledTurn = {
+  turnId: string;
+  conversationId: string;
+  reason: "queued_lost" | "lease_expired";
+  stalledMs: number;
+};
+
+/**
+ * Finds Turns that a claim could take now but that no message is likely to
+ * reach: the next queued Turn of its Conversation, unchanged for `staleMs`,
+ * and running Turns whose lease expired `staleMs` ago. The queue redelivers
+ * a dead step's message soon after its lease expires, so only a Turn that
+ * missed that redelivery is stalled.
+ */
+export async function findStalledTurns(
+  { executor }: Pick<EngineContext, "executor">,
+  { staleMs, limit }: { staleMs: number; limit: number },
+): Promise<StalledTurn[]> {
+  const staleBefore = sql`now() - make_interval(secs => ${staleMs / 1000})`;
+  const rows = await executor
+    .db()
+    .select({
+      turnId: juniorTurns.id,
+      conversationId: juniorTurns.conversationId,
+      state: juniorTurns.state,
+      updatedAt: juniorTurns.updatedAt,
+      leaseExpiresAt: juniorTurns.leaseExpiresAt,
+    })
+    .from(juniorTurns)
+    .where(
+      or(
+        and(
+          eq(juniorTurns.state, "queued"),
+          lt(juniorTurns.updatedAt, staleBefore),
+          notExists(turnAhead({ executor })),
+        ),
+        and(
+          eq(juniorTurns.state, "running"),
+          lt(juniorTurns.leaseExpiresAt, staleBefore),
+        ),
+      ),
+    )
+    .limit(limit);
+  const nowMs = Date.now();
+  return rows.map((row) => {
+    const since =
+      row.state === "running" && row.leaseExpiresAt
+        ? row.leaseExpiresAt
+        : row.updatedAt;
+    return {
+      turnId: row.turnId,
+      conversationId: row.conversationId,
+      reason: row.state === "running" ? "lease_expired" : "queued_lost",
+      stalledMs: Math.max(0, nowMs - since.getTime()),
+    };
+  });
 }
 
 /**

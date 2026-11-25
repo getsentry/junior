@@ -63,6 +63,11 @@ export function setActiveSpanAttributes(attributes: SpanAttributes): void {
   Sentry.getActiveSpan()?.setAttributes(attributes);
 }
 
+/** Adds one to a counter metric. Metrics are not sampled, unlike spans. */
+export function countMetric(name: string, attributes: SpanAttributes): void {
+  Sentry.metrics.count(name, 1, { attributes });
+}
+
 // OpenTelemetry status code for an error.
 const SPAN_STATUS_ERROR = 2;
 
