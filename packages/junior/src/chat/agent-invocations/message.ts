@@ -13,6 +13,7 @@ import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import { messageChildAgent } from "./create";
+import { parentResultActor } from "./parent-result";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
 
@@ -51,7 +52,13 @@ export function bindMessageAgent(
         );
       }
       await enqueueAgentMessageToParent({
-        actor,
+        // A message to the parent carries an Actor by the same rule as a
+        // result.
+        actor: await parentResultActor({
+          actor,
+          conversationId: run.conversationId,
+          source: run.source.kind,
+        }),
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         sender,

@@ -381,7 +381,11 @@ export function createConversationTurnWorker(
         );
       }
       await deliverToParent({
-        actor: parentResultActor(actor, source.kind),
+        actor: await parentResultActor({
+          actor,
+          conversationId: context.conversationId,
+          source: source.kind,
+        }),
         result,
         conversationId: context.conversationId,
         turnId,

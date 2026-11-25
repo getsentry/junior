@@ -9,6 +9,8 @@ import {
 import type { ChildAgentSender } from "@/chat/agent-invocations/types";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { botConfig } from "@/chat/config";
+import type { Actor } from "@/chat/actor";
+import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { ingestEvent } from "@/chat/events/ingest";
 import { createWatch, listWatches } from "@/chat/events/store";
@@ -92,9 +94,13 @@ async function createHelper(
 }
 
 /** Send a helper's `reply` to its parent, the child. */
-async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
+async function sendHelperReply(
+  harness: Harness,
+  sender: ChildAgentSender,
+  actor: Actor = slackInvocationInput.actor,
+) {
   await enqueueChildResultToParent({
-    actor: slackInvocationInput.actor,
+    actor,
     messageKey: "helper-reply",
     nowMs: Date.now(),
     queue: harness.queue,
@@ -410,6 +416,68 @@ describe("child Turns on the Conversation loop", () => {
             ? [{ authorId: resultAuthorId(EVENT_SYSTEM_ACTOR), tag: sent }]
             : [],
         );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  // A person's Turn in a Thread can start a helper, which runs as that
+  // person. Its result runs in the Thread as the person, and the Thread's
+  // result reaches the parent as the Event system Actor. The same chain from
+  // the person who asked for the Thread keeps their Actor. A helper's system
+  // Turn does the work of the person who asked for the helper.
+  it.each([
+    { helperActor: "requester", reportsAs: "requester" },
+    { helperActor: "person in the Thread", reportsAs: "system" },
+  ] as const)(
+    "reports a Thread result from a helper of the $helperActor as the $reportsAs",
+    async ({ helperActor, reportsAs }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await startIdleChild(harness, "thread");
+        const actor =
+          helperActor === "requester"
+            ? slackInvocationInput.actor
+            : webTestActor;
+        const helper = await createHelper(harness, childId, { actor });
+        await expect(
+          resolveWorkOwner({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: helper.childConversationId,
+            resolveActor: async () => undefined,
+          }),
+        ).resolves.toMatchObject({
+          kind: "person",
+          identity:
+            helperActor === "requester"
+              ? { provider: "slack", providerSubjectId: actor.userId }
+              : { provider: "junior", providerSubjectId: webTestActor.email },
+        });
+        const before = (await parentMessages()).length;
+        await sendHelperReply(harness, helper, actor);
+        harness.onRun((run) =>
+          finishRun(run, { finalText: "The helper is done." }),
+        );
+        await harness.drain(childId);
+
+        expect(harness.runs.at(-1)).toMatchObject({
+          actor,
+          conversationId: childId,
+        });
+        expect(
+          (await parentMessages())
+            .slice(before)
+            .filter((message) =>
+              message.input.text.includes("The helper is done."),
+            )
+            .map((message) => message.input.authorId),
+        ).toEqual([
+          resultAuthorId(
+            reportsAs === "requester" ? actor : EVENT_SYSTEM_ACTOR,
+          ),
+        ]);
       } finally {
         await harness.close();
       }

@@ -383,10 +383,11 @@ export function createEndStoppedChildWork(options: {
     }
     const [turn] = turns;
     await deliverToParent({
-      actor: parentResultActor(
-        turn?.actor ?? EVENT_SYSTEM_ACTOR,
-        turn?.source?.kind,
-      ),
+      actor: await parentResultActor({
+        actor: turn?.actor ?? EVENT_SYSTEM_ACTOR,
+        conversationId,
+        source: turn?.source?.kind,
+      }),
       result: {
         kind: "failed",
         text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,

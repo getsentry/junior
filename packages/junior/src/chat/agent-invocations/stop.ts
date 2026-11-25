@@ -277,7 +277,11 @@ export async function reportPersonStopToParent(
   await createDeliverToParent(options)({
     // A waiting parent message keeps the Actor of the agent that sent it.
     actor: turn?.actor
-      ? parentResultActor(turn.actor, turn.source?.kind)
+      ? await parentResultActor({
+          actor: turn.actor,
+          conversationId,
+          source: turn.source?.kind,
+        })
       : (firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR),
     conversationId,
     result: {

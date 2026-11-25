@@ -1,0 +1,77 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "98f6291f-b4e1-498e-b88d-a95a91fc9361",
+  "prevIds": ["42dc62ef-f8b2-4459-80d3-2434be56b092"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "requester_identity_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.requester_identity_id",
+        "n|col|public.junior_conversations.requester_identity_id",
+        "e|col|public.junior_conversations.requester_identity_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_Rm7gnfSYomYZ_fkey",
+        "n|fk|public.junior_conversations.junior_conversations_Rm7gnfSYomYZ_fkey",
+        "e|fk|public.junior_conversations.junior_conversations_Rm7gnfSYomYZ_fkey",
+        "n|con|public.junior_conversations.junior_conversations_Rm7gnfSYomYZ_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_identities",
+        "n|sch|public",
+        "n|col|public.junior_conversations.requester_identity_id",
+        "n|col|public.junior_identities.id",
+        "e|uniqueness|public.junior_identities.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "requester_identity_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_Rm7gnfSYomYZ_fkey",
+        "nameExplicit": false,
+        "columns": ["requester_identity_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_identities",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    }
+  ]
+}

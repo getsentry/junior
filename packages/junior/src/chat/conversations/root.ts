@@ -6,12 +6,15 @@ import { juniorConversations } from "@/db/schema";
 /**
  * Read the root Conversation of a Conversation tree and its root Actor
  * Identity id. A root is its own root. A child stores no root Actor of its
- * own that counts, so this reads the root row.
+ * own that counts, so this reads the root row. `requesterIdentityId` is the
+ * requester that the Conversation itself stores, which only a child agent
+ * has.
  */
 export async function readConversationRoot(conversationId: string): Promise<
   | {
       conversationId: string;
       actorIdentityId?: string;
+      requesterIdentityId?: string;
     }
   | undefined
 > {
@@ -20,6 +23,7 @@ export async function readConversationRoot(conversationId: string): Promise<
     .select({
       conversationId: root.conversationId,
       actorIdentityId: root.actorIdentityId,
+      requesterIdentityId: juniorConversations.requesterIdentityId,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -36,6 +40,9 @@ export async function readConversationRoot(conversationId: string): Promise<
     conversationId: row.conversationId,
     ...(row.actorIdentityId
       ? { actorIdentityId: row.actorIdentityId }
+      : undefined),
+    ...(row.requesterIdentityId
+      ? { requesterIdentityId: row.requesterIdentityId }
       : undefined),
   };
 }

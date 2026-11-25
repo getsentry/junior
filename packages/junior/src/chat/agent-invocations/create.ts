@@ -7,6 +7,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { Actor } from "@/chat/actor";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -306,11 +307,19 @@ export async function spawnChildAgent(
         throw new AgentStoppedError();
       }
       await createChildAgentConversation(input, childConversationId, nowMs);
-      await getSqlExecutor()
+      const executor = getSqlExecutor();
+      // The Actor of the Turn that starts the child asked for it.
+      const requesterIdentityId = await resolveActorIdentityId(
+        executor,
+        input.actor,
+        nowMs,
+      );
+      await executor
         .db()
         .update(juniorConversations)
         .set({
           agentConfig: spawnAgentConfig(input),
+          requesterIdentityId: requesterIdentityId ?? null,
           detailVersion: nextDetailVersion,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));

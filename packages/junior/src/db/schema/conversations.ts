@@ -54,6 +54,13 @@ export const juniorConversations = pgTable(
     credentialSubjectIdentityId: text(
       "credential_subject_identity_id",
     ).references(() => juniorIdentities.id),
+    // The Identity of the Actor whose Turn started this child agent: the
+    // person who asked for it, or the system Identity. Set once at spawn.
+    // A root stores none. A child from before this column stores none either,
+    // and reads the root Actor instead (`readConversationRoot`).
+    requesterIdentityId: text("requester_identity_id").references(
+      () => juniorIdentities.id,
+    ),
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
