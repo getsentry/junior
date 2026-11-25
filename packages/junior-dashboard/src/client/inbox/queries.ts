@@ -44,6 +44,7 @@ import {
   type ContentVersioned,
 } from "../revalidation";
 import { itemConversationId, itemNeedsViewer } from "./inboxItemFormat";
+import { isCodeChangeItem } from "./inboxModel";
 
 type InboxItemCount = z.output<typeof inboxItemCountSchema>;
 type InboxItemList = z.output<typeof inboxItemListSchema>;
@@ -360,8 +361,7 @@ function changeCounts(
           ...count,
           codeChanges: Math.max(
             0,
-            count.codeChanges +
-              (item.subject?.objectType === "code_change" ? by : 0),
+            count.codeChanges + (isCodeChangeItem(item) ? by : 0),
           ),
           decisions: Math.max(
             0,

@@ -22,7 +22,7 @@ export const juniorConversationAnnotations = pgTable(
     key: text("key").notNull(),
     // The object: a subject kind in the Inbox form, `<plugin>:<kind>` or a
     // core kind, and the provider's id of the object. Null only until the
-    // trigger of `20261125135950_annotation_subjects` fills a row that an
+    // trigger of `20261125160201_annotation_subjects` fills a row that an
     // old worker wrote.
     subjectKind: text("subject_kind"),
     subjectId: text("subject_id"),

@@ -17,11 +17,13 @@ import {
   type FragmentMessage,
   type PromptLayout,
 } from "@/core/prompt/layout";
+import type { AdvanceTurnOptions } from "@/core/turn/advance";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { claimTurn, stopTurns } from "@/core/turn/state";
 import { juniorConversations, juniorTurns } from "@/db/schema";
 import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
+import { turnTools } from "@/turn-steps/tools";
 import {
   modelCalls,
   setModelReplies,
@@ -277,15 +279,52 @@ describe("advanceTurn", () => {
 });
 
 // The real path with tools: the host's Turn step consumer gives the model
-// the test's tools.
+// the test's tools, or the host's own.
 describe("advanceTurn with tools", () => {
   /** Starts this test's harness, whose steps give the model `tools`. */
-  async function startHarness(tools: ToolDefinition[]) {
+  async function startHarness(
+    tools: ToolDefinition[] | AdvanceTurnOptions["tools"],
+  ) {
     const started = await createTurnHarness({ tools });
     onTestFinished(() => started.close());
     harness = started;
     return started;
   }
+
+  it("runs the host's systemTime tool for the model", async () => {
+    await startHarness(turnTools);
+    const call = createAssistantMessage({
+      type: "toolCalls",
+      calls: [
+        { name: "systemTime", arguments: { timezone: "UTC" }, id: "call-1" },
+      ],
+    });
+    const reply = createAssistantMessage({ type: "text", text: "It is noon." });
+    await setModelReplies([call, reply]);
+    const { turnId: timeTurnId } = await harness.send({
+      text: "What time is it?",
+    });
+
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(timeTurnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const history = await harness.history();
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "systemTime",
+        isError: false,
+        details: expect.objectContaining({
+          timezone: "UTC",
+          iso_utc: expect.any(String),
+        }),
+      }),
+    );
+    expect(history.at(-1)).toEqual(storedReply(reply));
+  });
 
   it("stops a tool that respects the signal when the Turn is cancelled", async () => {
     let cancelledTurnId = "";
@@ -553,6 +592,34 @@ describe("advanceTurn with a test step", () => {
       userText("After the inputs."),
       storedReply(reply),
     ]);
+  });
+
+  it("builds each step's tools from every input of the Turn and closes them after the step", async () => {
+    const first = await engine.addTestInput("How many Turns?");
+    const second = await engine.addTestInput("Also send it to Sam.");
+    const executed: string[] = [];
+    const built: string[][] = [];
+    let closed = 0;
+    const tools = (_turn: unknown, inputs: Array<{ inputId: string }>) => {
+      built.push(inputs.map((input) => input.inputId));
+      return Promise.resolve({
+        definitions: [sendTool(executed)],
+        close: () => {
+          closed += 1;
+        },
+      });
+    };
+
+    await engine.advance({ ...stepWith([sendCallReply()]), tools });
+    // The tool step: the history has read both inputs by now.
+    await engine.advance({ ...stepWith([]), tools });
+
+    expect(executed).toEqual(["call-1"]);
+    expect(built).toEqual([
+      [first, second],
+      [first, second],
+    ]);
+    expect(closed).toBe(2);
   });
 
   it("adds no fragment or input messages in a tool step", async () => {

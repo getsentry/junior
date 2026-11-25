@@ -70,7 +70,6 @@ attributes. Nested logs and spans inherit them.
 | Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
 | Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
-| Core sandbox slow, stopped, or failed | spans `sandbox.create`, `sandbox.get`, `sandbox.exec`, `sandbox.read_file`, `sandbox.write_file`; `app.sandbox.outcome` | `core/tool-execution-environment/instrument.ts` |
 | Core tool call skipped or failed     | `app.tool_call.outcome` on `gen_ai.execute_tool` (`completed`, `failed`, `aborted`, `not_found`, `invalid_arguments`, `replay_skipped`, `truncated`, `dangling_skipped`) | `core/turn/step.ts` |
 | Core Turn or reply stuck after a lost queue message | `turn.sweep.requeued` (warning; `app.turn.sweep.reason`, `app.turn.sweep.stalled_ms`), metric `turn.sweep.requeued`, span `turn.sweep`, `turn.sweep.failed` | `core/turn/sweep.ts` |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
@@ -108,6 +107,7 @@ attributes. Nested logs and spans inherit them.
 | Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
+| Dashboard update late with push on  | `versions_stream.listener_lost`, `versions_stream.read_failed`; Postgres `application_name` `junior-versions-listen` | `api/versions/` |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by topic         | `app.feedback.topic` (`agent`, `new_ui`)                                                            | `packages/junior-dashboard/src/client/sentry.ts`                |
 | Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |

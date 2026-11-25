@@ -282,7 +282,7 @@ describe("Turn step Vercel queue integration", () => {
       await turnStepConsumer(engineCtx, {
         client: createGatewayModelClient(),
         bot: chatConfig.bot,
-        tools: [],
+        tools: () => Promise.resolve({ definitions: [], close: () => {} }),
       }),
     );
 

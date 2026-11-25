@@ -1,8 +1,8 @@
 /**
- * The Lead of one Space: the Space's public top-level Conversation that
- * finds, starts, and steers the Space's other Conversations. Its members
- * talk to it, and a unique index keeps one Lead for each Space. Its title
- * is the Space's name.
+ * The Lead of one Space: the Space's top-level Conversation that finds,
+ * starts, and steers the Space's other Conversations. It has the Space's
+ * visibility. Its members talk to it, and a unique index keeps one Lead for
+ * each Space. Its title is the Space's name.
  */
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
@@ -14,9 +14,9 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
-import { readSpace } from "@/chat/spaces/store";
+import { readSpace, type Space } from "@/chat/spaces/store";
 import { isPostgresErrorCode } from "@/db/postgres-error";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversations, juniorSpaces } from "@/db/schema";
 
 // Postgres `unique_violation`: another request created the Lead first.
 const UNIQUE_VIOLATION = "23505";
@@ -42,12 +42,12 @@ export async function readSpaceLead(
 
 /**
  * Return the Lead of a Space, and create it on first use. The member who
- * creates it is its first Actor. It is public like the Space, and it has its
- * own Destination, so it reads other Conversations by the usual rules.
+ * creates it is its first Actor. It has the Space's visibility and its own
+ * Destination, so it reads other Conversations by the usual rules.
  */
 export async function getSpaceLead(args: {
   member: Pick<User, "displayName" | "email" | "id">;
-  space: { id: string; name: string };
+  space: Pick<Space, "id" | "name" | "visibility">;
 }): Promise<Conversation> {
   const existing = await readSpaceLead(args.space.id);
   if (existing) return existing;
@@ -59,7 +59,7 @@ export async function getSpaceLead(args: {
       rootKind: "lead",
       rootSpaceId: args.space.id,
       rootTitle: args.space.name,
-      rootVisibility: "public",
+      rootVisibility: args.space.visibility,
     });
   } catch (error) {
     if (!isPostgresErrorCode(error, UNIQUE_VIOLATION)) throw error;
@@ -70,15 +70,16 @@ export async function getSpaceLead(args: {
 }
 
 /**
- * Return the Space of a Lead. Returns nothing for a Conversation that is not
- * a Lead.
+ * Return the id and visibility of a Lead's Space. Returns nothing for a
+ * Conversation that is not a Lead.
  */
-export async function readLeadSpaceId(
+export async function readLeadSpace(
   conversationId: string,
-): Promise<string | undefined> {
+): Promise<Pick<Space, "id" | "visibility"> | undefined> {
   const [row] = await getDb()
-    .select({ spaceId: juniorConversations.spaceId })
+    .select({ id: juniorSpaces.id, visibility: juniorSpaces.visibility })
     .from(juniorConversations)
+    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorConversations.spaceId))
     .where(
       and(
         eq(juniorConversations.conversationId, conversationId),
@@ -86,7 +87,7 @@ export async function readLeadSpaceId(
       ),
     )
     .limit(1);
-  return row?.spaceId ?? undefined;
+  return row;
 }
 
 /**
