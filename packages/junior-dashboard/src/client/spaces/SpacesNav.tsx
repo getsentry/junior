@@ -6,6 +6,7 @@ import { paneEntryClass } from "../inbox/PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
 import { spacePath } from "./spaceRoutes";
+import { SpaceStateIcon, spaceDisplayState } from "./SpaceStateIcon";
 import { SpaceTile } from "./SpaceTile";
 
 // The dialog opens only after a click, so it loads with the first open
@@ -18,7 +19,7 @@ const CreateSpaceDialog = lazy(() =>
 
 /**
  * The pane's Spaces: each Space that the viewer is a member of, one click
- * away, and a way to create one.
+ * away, with the state of its Conversations, and a way to create one.
  */
 export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
   const { pathname } = useLocation();
@@ -61,6 +62,7 @@ export function SpacesNav(props: { phone?: boolean; signedIn: boolean }) {
                   <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                     {space.name}
                   </span>
+                  <SpaceStateIcon state={spaceDisplayState(space)} />
                 </Link>
               </li>
             );
