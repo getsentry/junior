@@ -16,8 +16,12 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { invalidateConversationFeeds } from "../conversations/conversationFeedCache";
-import { conversationDetailQueryKey } from "../conversations/queries";
+import {
+  conversationDetailQueryKey,
+  type ConversationSnapshot,
+} from "../conversations/queries";
 import { del, fetchDashboardJson, patch, post, put } from "../http";
+import { invalidateInboxItemCollections } from "../inbox/queries";
 
 const spacesKey = ["dashboard", "spaces"] as const;
 const memberSpacesKey = [...spacesKey, "member"] as const;
@@ -141,7 +145,7 @@ export function useSpaceMembership(spaceId: string) {
         : del(spaceSchema, `${spaceApiPath(spaceId)}/members/me`),
     onSuccess: (space) => {
       // A former member can't read a private Space, so drop everything
-      // cached for it. A later visit then reads it again and gets not found.
+      // cached for it and read the feeds and Inbox again without its rows.
       if (space.visibility === "private" && !space.viewerIsMember) {
         const lead = queryClient.getQueryData<{ conversationId: string }>(
           spaceLeadKey(spaceId),
@@ -152,7 +156,18 @@ export function useSpaceMembership(spaceId: string) {
             queryKey: conversationDetailQueryKey(lead.conversationId),
           });
         }
-        return queryClient.invalidateQueries({ queryKey: memberSpacesKey });
+        for (const [queryKey, detail] of queryClient.getQueriesData<
+          ConversationSnapshot | undefined
+        >({ queryKey: ["conversation"] })) {
+          if (queryKey[2] === "detail" && detail?.space?.id === spaceId) {
+            queryClient.removeQueries({ queryKey, exact: true });
+          }
+        }
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
+          invalidateConversationFeeds(queryClient),
+          invalidateInboxItemCollections(queryClient),
+        ]);
       }
       return Promise.all([
         storeSpace(queryClient, space),
