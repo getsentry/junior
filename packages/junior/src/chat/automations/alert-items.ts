@@ -211,17 +211,6 @@ export async function syncAutomationAlert(
       eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.automation),
       eq(juniorInboxItems.subjectId, automationId),
     );
-    if (!alert) {
-      const stale = await tx
-        .select({ id: juniorInboxItems.id })
-        .from(juniorInboxItems)
-        .where(and(owned, eq(juniorInboxItems.status, "open")));
-      await dismissOpenInboxItems(tx, {
-        ids: stale.map((item) => item.id),
-        nowMs,
-        reason: "The Automation no longer needs attention.",
-      });
-    }
     // Since the Automation last recovered, a person dismissed one of its
     // alerts, so they stay hidden, or a person closed this same alert, such
     // as with Run again, so it stays closed. The same alert has the same
@@ -252,6 +241,20 @@ export async function syncAutomationAlert(
       )
       .limit(1);
     const hidden = closedByPerson !== undefined;
+    // An open alert that is not the one needed now is stale. A hidden
+    // alert shows nothing, so an open alert with other text closes too,
+    // such as a Blocked alert after the Automation is active again.
+    if (!alert || hidden) {
+      const stale = await tx
+        .select({ id: juniorInboxItems.id })
+        .from(juniorInboxItems)
+        .where(and(owned, eq(juniorInboxItems.status, "open")));
+      await dismissOpenInboxItems(tx, {
+        ids: stale.map((item) => item.id),
+        nowMs,
+        reason: "The Automation no longer needs attention.",
+      });
+    }
     // Recovered: active, its last run succeeded, and it needs no alert, so
     // its trigger is available. A paused Automation needs no alert, but its
     // problem can still be there, so a pause is no recovery.

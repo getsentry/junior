@@ -20,6 +20,7 @@ import {
 import { automationRevision } from "@/chat/automations/revision";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import {
+  blockScheduledAutomation,
   readScheduledAutomation,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
@@ -330,6 +331,21 @@ describe("Automation alerts", () => {
     });
     expect((await asCreator.item(failed!.id)).body).toMatchObject({
       status: "done",
+    });
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+
+    // A block opens a Blocked alert. When the Automation is active again
+    // with the same failed run, the closed alert stays closed, and the
+    // Blocked alert closes too.
+    expect(
+      await blockScheduledAutomation(getDb(), task.id, "The token expired."),
+    ).toBe(true);
+    expect(
+      (await asCreator.alerts(task.id)).map((alert) => alert.body),
+    ).toEqual(["Blocked: The token expired. Fix the problem, then resume it."]);
+    await saveScheduledAutomation(getDb(), {
+      ...(await readScheduledAutomation(getDb(), task.id))!,
+      status: "active",
     });
     expect(await asCreator.alerts(task.id)).toEqual([]);
 
