@@ -6,6 +6,7 @@
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
+import { readAgentUpdateStatus } from "@/chat/agent-invocations/agent-update";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
@@ -399,7 +400,7 @@ type ReceivedChildResult = {
 };
 
 /**
- * Read the child results that wait in a Conversation's mailbox. A completed
+ * Read the child results that wait in a Conversation's mailbox. A done
  * result closes the child's To-dos as done, and a stopped one drops them.
  * A Turn reads its To-dos when it builds its prompt, before it takes its
  * input out of the mailbox, so a read sees every result there.
@@ -412,14 +413,10 @@ async function readReceivedChildResults(
     const sender = readInboundMessageSender(message);
     const metadata = message.input.metadata;
     const result = isEventMailboxMetadata(metadata)
-      ? metadata.event.status
+      ? readAgentUpdateStatus(metadata.event.status)
       : undefined;
     const status =
-      result === "completed"
-        ? "done"
-        : result === "stopped"
-          ? "dropped"
-          : undefined;
+      result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;
     return sender && status
       ? [
           {

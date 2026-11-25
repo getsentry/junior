@@ -17,10 +17,7 @@ import {
   failStoppedDispatch,
   resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
-import {
-  createChildConversationWorker,
-  createDeliverToParent,
-} from "@/chat/agent-invocations/result";
+import { createChildConversationWorker } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
@@ -121,7 +118,7 @@ export function createConversationWork(
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
-    createDeliverToParent({ queue: options.queue, state: options.state }),
+    { queue: options.queue, state: options.state },
   );
   const childWorker = createChildConversationWorker({
     runTurn: conversationTurnWorker,

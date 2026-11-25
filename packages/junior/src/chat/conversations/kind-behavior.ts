@@ -56,18 +56,6 @@ export type TurnBehavior = {
    */
   gated: boolean;
   /**
-   * `parent`: a failed Turn, also one that ends without an answer, sends its
-   * failure to the parent agent. `none`: the failure stays in the
-   * Conversation and in telemetry.
-   */
-  failureNotice: "none" | "parent";
-  /**
-   * `parent`: a Turn that ends with final text, or with `noReply` that also
-   * ends the work of its Conversation, sends the parent agent a completed
-   * result. The final text is the reply. `none`: the Turn sends nothing.
-   */
-  endResult: "none" | "parent";
-  /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
    */
@@ -118,8 +106,6 @@ const ROOT: TurnBehavior = {
   idleNeedsPendingWork: false,
   waitsForSignIn: true,
   gated: false,
-  failureNotice: "none",
-  endResult: "none",
   sessionTasks: true,
   conversationMetadata: true,
   relatedConversations: true,
@@ -148,8 +134,6 @@ const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",
   sender: "person",
-  failureNotice: "parent",
-  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...ROOT.tools, agents: "children_and_parent" },
@@ -157,16 +141,13 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation and is its reply to
-// the parent. The child does work for its parent, so its parent learns when
-// it fails or ends its work with `noReply`.
+// the parent.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: false,
-  failureNotice: "parent",
-  endResult: "parent",
   sessionTasks: false,
   // Only its parent reads a Task, so a Task has no summary.
   conversationMetadata: false,
@@ -209,8 +190,6 @@ const AUTOMATION_RUN: TurnBehavior = {
   idleNeedsPendingWork: true,
   waitsForSignIn: true,
   gated: true,
-  failureNotice: "none",
-  endResult: "none",
   sessionTasks: true,
   conversationMetadata: true,
   relatedConversations: false,
@@ -349,10 +328,10 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a Watch on this Conversation would repeat what already
- * reaches the watcher: a child agent's results and messages go to its parent.
+ * Return whether the watcher started this Conversation, so it already has
+ * the Watch that its parent edge makes and a second one would repeat it.
  */
-export function watchRepeatsChildResults(
+export function watcherStartedConversation(
   target: { parentConversationId?: string },
   watcherConversationId: string,
 ): boolean {

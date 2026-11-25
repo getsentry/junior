@@ -5,10 +5,7 @@ import {
 } from "@/chat/agent-invocations/create";
 import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
@@ -28,6 +25,7 @@ import {
   loadTurnEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
@@ -66,7 +64,7 @@ async function createHarness(agentRunner: AgentRunner) {
     close: async () => await fixture.close(),
     conversationStore,
     /** Deliver a result of a child's Turn to its parent. */
-    deliver: createDeliverToParent({ queue, state }),
+    deliver: createPublishChildTurn({ queue, state }),
     mailbox: async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [],
@@ -142,10 +140,7 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "completed",
-          text: "Old finding.",
-        },
+        update: { status: "done", text: "Old finding." },
         turnId,
       });
 
@@ -218,7 +213,7 @@ describe("stopping child agents", () => {
     const harness = await createHarness({ run: finishRun });
     const quietResult = expect.objectContaining({
       input: expect.objectContaining({
-        text: expect.stringMatching(/^<agent-result [^>]*status="completed"/),
+        text: expect.stringMatching(/^<agent-result [^>]*status="done"/),
       }),
     });
     try {
@@ -234,10 +229,7 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
-        result: {
-          kind: "completed",
-          text: "Old finding.",
-        },
+        update: { status: "done", text: "Old finding." },
         turnId: "turn_watch-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
@@ -253,15 +245,12 @@ describe("stopping child agents", () => {
       // A reply that the Turn sent before the stop reaches the parent's
       // mailbox after the stop dropped the unread ones.
       const sendLateReply = async () =>
-        await enqueueChildResultToParent({
+        await enqueueStarterUpdate({
           actor: EVENT_SYSTEM_ACTOR,
           messageKey: "turn_watch-event",
           nowMs: beforeStopMs,
           queue: harness.queue,
-          result: {
-            kind: "completed",
-            text: "Late finding.",
-          },
+          update: { status: "done", text: "Late finding." },
           sender: {
             childConversationId: childId,
             parentConversationId,
@@ -290,10 +279,7 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: watcherId,
-        result: {
-          kind: "completed",
-          text: "Build finding.",
-        },
+        update: { status: "done", text: "Build finding." },
         turnId: "turn_build-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
@@ -425,16 +411,13 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: doneHelperId,
-        result: { kind: "blocked", text: "Helper needs a token." },
+        update: { status: "blocked", text: "Helper needs a token." },
         turnId: "turn_done-helper",
       });
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: openHelperId,
-        result: {
-          kind: "completed",
-          text: "Open helper finding.",
-        },
+        update: { status: "done", text: "Open helper finding." },
         turnId: "turn_open-helper",
       });
       expect(
