@@ -60,8 +60,35 @@ also wake a Conversation or run an Event automation.
 - GitHub is the source of truth for GitHub state. When GitHub is down,
   Junior shows the last state that it read.
 
+**`github:pull_request`**. Source: the pull request in the GitHub cache.
+
+- `pr-ended` When it merged or closed, nobody gets it.
+- `pr-merge` When it is open, not a draft, auto-merge is off, no review is
+  pending, its merge state is clean, and no reviewer requests changes, the
+  requester gets "Ready to merge". A reviewer whose review GitHub still
+  requests gets it too.
+- `pr-review-again` When Junior handled every comment of the requester's
+  change request and the required checks pass, the requester gets "Review
+  requested".
+- `pr-review` When GitHub requests the viewer's review, they get "Review
+  requested". Dismiss removes them from the reviewers on GitHub. For the
+  requester, their reply after their own change request ends it, because
+  Junior acts next.
+
+**`github:merge_conflict`**. Source: the pull request in the GitHub cache,
+and Junior's conflict fixes.
+
+- `conflict-ended` When the pull request merged or closed, nobody gets it.
+- `conflict-gone` When GitHub reports no conflict, nobody gets it.
+- `conflict-dismissed` When the requester dismissed it after the latest
+  Resume, nobody gets it.
+- `conflict-stuck` When the head commit is the same a day after Junior's
+  fix, the requester gets "Resume". Resume starts a fix at once.
+
 ## Gaps
 
+- `inbox-log`: the plugin keeps the time of the latest Resume and of the
+  latest conflict ask in its own table, not in Inbox events.
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
