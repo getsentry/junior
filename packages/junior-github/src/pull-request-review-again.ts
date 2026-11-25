@@ -12,7 +12,10 @@
  */
 import type { PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { PULL_REQUEST_REVIEW_AGAIN } from "./graphql-documents.js";
+import {
+  PULL_REQUEST_REQUIRED_CHECKS,
+  PULL_REQUEST_REVIEW_AGAIN,
+} from "./graphql-documents.js";
 
 /**
  * One GitHub API read: a GraphQL query when `body` is set, else a REST GET.
@@ -59,38 +62,48 @@ const checkContextSchema = z.discriminatedUnion("__typename", [
   }),
 ]);
 
+// The fields of the `RequiredChecks` GraphQL fragment.
+const requiredChecksSchema = z.object({
+  baseRef: z
+    .object({
+      refUpdateRule: z
+        .object({
+          requiredStatusCheckContexts: z
+            .array(z.string().nullable())
+            .nullable(),
+        })
+        .nullable(),
+    })
+    .nullable(),
+  baseRefName: z.string().min(1),
+  commits: z.object({
+    nodes: z.array(
+      z.object({
+        commit: z.object({
+          statusCheckRollup: z
+            .object({
+              contexts: z.object({
+                nodes: z.array(checkContextSchema.nullable()),
+                pageInfo: z.object({ hasNextPage: z.boolean() }),
+              }),
+            })
+            .nullable(),
+        }),
+      }),
+    ),
+  }),
+});
+
+const requiredChecksReadSchema = z.object({
+  data: z.object({
+    repository: z.object({ pullRequest: requiredChecksSchema }),
+  }),
+});
+
 const reviewAgainSchema = z.object({
   data: z.object({
     repository: z.object({
-      pullRequest: z.object({
-        baseRef: z
-          .object({
-            refUpdateRule: z
-              .object({
-                requiredStatusCheckContexts: z
-                  .array(z.string().nullable())
-                  .nullable(),
-              })
-              .nullable(),
-          })
-          .nullable(),
-        baseRefName: z.string().min(1),
-        commits: z.object({
-          nodes: z.array(
-            z.object({
-              commit: z.object({
-                statusCheckRollup: z
-                  .object({
-                    contexts: z.object({
-                      nodes: z.array(checkContextSchema.nullable()),
-                      pageInfo: z.object({ hasNextPage: z.boolean() }),
-                    }),
-                  })
-                  .nullable(),
-              }),
-            }),
-          ),
-        }),
+      pullRequest: requiredChecksSchema.extend({
         reviewRequests: z.object({
           nodes: z.array(
             z
@@ -261,7 +274,17 @@ export async function readReviewAgainReadiness(
       markedBy(comment, target.botUserId),
   );
   if (!commentsMarked) return "none";
+  return (await readRequiredChecksPass(read, target, pull))
+    ? "ready"
+    : "checks";
+}
 
+async function readRequiredChecksPass(
+  read: GitHubRead,
+  target: { name: string; owner: string },
+  pull: z.output<typeof requiredChecksSchema>,
+): Promise<boolean> {
+  const { name, owner } = target;
   const rules = branchRulesSchema.parse(
     await read({
       operation: "github.repo.branch-rules.get",
@@ -288,9 +311,29 @@ export async function readReviewAgainReadiness(
     required,
     contexts,
     rollup?.contexts.pageInfo.hasNextPage ?? false,
-  )
-    ? "ready"
-    : "checks";
+  );
+}
+
+/**
+ * Read whether every required check of a pull request's head commit
+ * passes, so an ask for a review does not go out before CI is green.
+ */
+export async function readGitHubRequiredChecksPass(
+  read: GitHubRead,
+  target: { name: string; number: number; owner: string },
+): Promise<boolean> {
+  const { name, number, owner } = target;
+  const pull = requiredChecksReadSchema.parse(
+    await read({
+      body: {
+        ...PULL_REQUEST_REQUIRED_CHECKS,
+        variables: { name, number, owner },
+      },
+      operation: "github.pull.required-checks.get",
+      path: "/graphql",
+    }),
+  ).data.repository.pullRequest;
+  return await readRequiredChecksPass(read, target, pull);
 }
 
 // A held ask waits for the checks of one fix, which take hours at most.

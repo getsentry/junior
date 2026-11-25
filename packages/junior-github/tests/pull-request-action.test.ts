@@ -45,6 +45,8 @@ describe("next action item", () => {
       draft: false,
       mergeableStates: ["blocked"],
       merged: false,
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
       title: "feat(inbox): Add the Inbox notice",
@@ -57,7 +59,7 @@ describe("next action item", () => {
       // The repo requires a review, and no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
-      expect(requests).toEqual(["pull"]);
+      expect(requests).toEqual(["pull", "rules"]);
 
       // The change request is on the older page of reviews.
       github.reviews = [
@@ -218,28 +220,23 @@ describe("next action item", () => {
       reviews: [],
       state: "open",
     };
-    mockGitHub(github, []);
+    const requests: string[] = [];
+    mockGitHub(github, requests);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
 
       // The repo requires no review, so GitHub says that it can merge. A
-      // pending review request still comes first. A request for someone
-      // else or for a team waits on them, so no item asks the requester.
-      github.requestedReviewers = ["someone-else"];
-      await webhook.handler(pullRequestAction("review_requested"));
-      github.requestedReviewers = [];
+      // pending review request still comes first. A request for a team
+      // waits on the team, but asks nothing of the requester, so Junior asks
+      // for the requester's review too.
       github.requestedTeams = ["reviewers"];
       await webhook.handler(pullRequestAction("review_requested"));
-      expect(calls).toEqual([]);
-
-      // A request for the requester asks for their review.
-      github.requestedTeams = [];
-      github.requestedReviewers = ["requester"];
-      await webhook.handler(pullRequestAction("review_requested"));
+      expect(requests).toContain("request Requester");
       expect(calls).toMatchObject([
         { kind: "upsert", notice: { title: "Review requested · #946" } },
       ]);
+      github.requestedTeams = [];
 
       // With no request left, the same item asks to review and merge.
       github.requestedReviewers = [];
@@ -320,6 +317,8 @@ describe("next action item", () => {
       merged: false,
       // Requests for other people or for a team do not wait on the requester.
       requestedReviewers: ["someone-else"],
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
     };
@@ -496,6 +495,8 @@ describe("next action item", () => {
         draft: false,
         mergeableStates: ["blocked"],
         merged: false,
+        // The requester commented, so no one asks them for a review.
+        comments: [{ at: "2026-07-02T11:00:00Z", login: "Requester" }],
         reviews: [],
         state: "open",
       },
@@ -918,73 +919,4 @@ describe("next action item", () => {
       await fixture.close();
     }
   });
-
-  const pushedAt = "2026-07-02T12:00:00.000Z";
-  it.each<{ asks: boolean; github: Partial<GitHubState>; name: string }>([
-    { asks: true, github: {}, name: "waits on nobody" },
-    {
-      asks: true,
-      github: {
-        comments: [{ at: "2026-07-02T11:00:00.000Z", login: "Requester" }],
-      },
-      name: "the requester commented before the last push",
-    },
-    {
-      asks: false,
-      github: {
-        comments: [{ at: "2026-07-02T13:00:00.000Z", login: "Requester" }],
-      },
-      name: "the requester commented after the last push, so Junior acts next",
-    },
-    {
-      asks: false,
-      github: {
-        reviews: [{ state: "APPROVED", user: { login: "someone-else" } }],
-      },
-      name: "it is approved and waits on others",
-    },
-    {
-      asks: false,
-      github: {
-        reviews: [
-          { state: "CHANGES_REQUESTED", user: { login: "someone-else" } },
-        ],
-      },
-      name: "a reviewer requests changes, so Junior acts next",
-    },
-    { asks: false, github: { autoMerge: true }, name: "auto-merge is on" },
-  ])(
-    "backfill asks the requester's review in limbo: $name",
-    async ({ asks, github }) => {
-      const fixture = await createGitHubFixture();
-      const requests: string[] = [];
-      mockGitHub(
-        {
-          draft: false,
-          headCommittedAt: pushedAt,
-          mergeableStates: ["blocked"],
-          merged: false,
-          reviews: [],
-          state: "open",
-          ...github,
-        },
-        requests,
-      );
-      try {
-        await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-        const h = createPluginHarness(fixture, requesterUsers);
-        await h.heartbeat(Date.parse("2026-07-03T12:00:00.000Z"));
-        await h.runStartedTasks();
-        // Only the requester, never a team or a code owner.
-        expect(
-          requests.filter((request) => request.startsWith("request")),
-        ).toEqual(asks ? ["request Requester"] : []);
-        expect(h.notices.map(({ notice }) => notice.title)).toEqual(
-          asks ? ["Review requested · #946"] : [],
-        );
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
 });

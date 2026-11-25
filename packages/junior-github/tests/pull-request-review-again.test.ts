@@ -566,11 +566,6 @@ describe("review again after a change request", () => {
       webhookState: "approved" as const,
     },
     {
-      name: "a comment",
-      reviews: [{ id: 301, state: "COMMENTED" }],
-      webhookState: "commented" as const,
-    },
-    {
       // With auto-merge on, a push after the approval can merge with no
       // other person, so asking again would only bother the requester.
       autoMerge: true,
@@ -597,6 +592,7 @@ describe("review again after a change request", () => {
         reviews: reviews.map((review) => ({
           ...review,
           commit_id: "head-1",
+          submitted_at: "2026-07-02T11:00:00Z",
           user: { login: "requester" },
         })),
         state: "open",
@@ -616,4 +612,83 @@ describe("review again after a change request", () => {
       }
     },
   );
+
+  it("keeps the review ask open after the requester's comment-only review, with no new GitHub request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      // A clean merge state still waits on the open ask.
+      mergeableStates: ["clean"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviewRequests: [{ at: "2026-07-02T10:00:00Z", login: "Requester" }],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    const asks = () =>
+      requests.filter((request) => request.startsWith("request"));
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      // A plain comment keeps GitHub's request.
+      await webhook.handler(
+        commented(github, "issue_comment", {
+          at: "2026-07-02T11:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+
+      // A comment-only review neither approves nor requests changes. GitHub
+      // drops the request on it, but the ask stays open, so the item stays
+      // and Junior does not ask again on GitHub.
+      github.requestedReviewers = [];
+      github.reviews = [
+        {
+          state: "COMMENTED",
+          submitted_at: "2026-07-02T12:00:00Z",
+          user: { login: "Requester" },
+        },
+      ];
+      await webhook.handler(
+        reviewSubmitted("commented", {
+          at: "2026-07-02T12:00:00Z",
+          login: "Requester",
+        }),
+      );
+      // GitHub records a reply in a review thread as a comment-only review.
+      await webhook.handler(
+        commented(github, "pull_request_review_comment", {
+          at: "2026-07-02T13:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls).toHaveLength(1);
+
+      // An approval answers the ask, so the PR is ready to merge.
+      github.reviews.push({
+        state: "APPROVED",
+        submitted_at: "2026-07-02T14:00:00Z",
+        user: { login: "Requester" },
+      });
+      await webhook.handler(
+        reviewSubmitted("approved", {
+          at: "2026-07-02T14:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls.slice(1)).toMatchObject([
+        { kind: "upsert", notice: { title: "Ready to merge · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
