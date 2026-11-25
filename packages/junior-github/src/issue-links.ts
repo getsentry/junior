@@ -321,6 +321,12 @@ async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   return Boolean(source && (await viewerCanSeeRepository(ctx, source)));
 }
 
+// The label of a live card, such as `owner/repo#12`, from the link alone.
+function linkLabel(url: URL): string | undefined {
+  const link = parseLink(url);
+  return link ? `${link.owner}/${link.name}#${link.number}` : undefined;
+}
+
 async function resolveLink(
   ctx: ObjectLinkContext,
   url: URL,
@@ -338,6 +344,7 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
   cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
+  label: linkLabel,
   objectTypes: ["task", "code_change"],
   readTool: (object) =>
     object.objectType === "code_change"
@@ -383,6 +390,7 @@ export const githubPullRequestLinks: PluginObjectLinkDefinition = {
   cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
+  label: linkLabel,
   objectTypes: ["code_change"],
   // A page of pull request cards reads GitHub in one query.
   prefetch: prefetchLinks,
