@@ -3,17 +3,11 @@
   "version": "10",
   "dialect": "postgres",
   "id": "aa4ad114-b23c-44ed-bb71-8e107096c259",
-  "prevIds": [
-    "42dc62ef-f8b2-4459-80d3-2434be56b092"
-  ],
+  "prevIds": ["42dc62ef-f8b2-4459-80d3-2434be56b092"],
   "footprints": [
     {
       "statementType": "alter_check",
-      "statementTarget": [
-        "table",
-        "public",
-        "junior_conversations"
-      ],
+      "statementTarget": ["table", "public", "junior_conversations"],
       "writes": [
         "s|ck|public.junior_conversations.junior_conversations_kind_parent_check"
       ],
