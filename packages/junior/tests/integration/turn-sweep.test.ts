@@ -173,10 +173,8 @@ describe("Turn sweep", () => {
 
   it("sends nothing for a queued Turn that waits behind a running one", async () => {
     const runningId = await claimWithoutMessage();
-    const running = await harness.turn(runningId);
     const { turnId: waitingId } = await createTurn(harness.engineCtx, {
       conversationId: harness.conversationId,
-      actorIdentityId: running.actorIdentityId,
       priority: TURN_PRIORITY.normal,
     });
     await age(waitingId, 10);

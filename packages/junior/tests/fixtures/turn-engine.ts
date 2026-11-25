@@ -109,7 +109,6 @@ export async function startTurnEngine(): Promise<TurnEngine> {
   await fixture.sql.db().insert(juniorTurns).values({
     id: turnId,
     conversationId: CONVERSATION_ID,
-    actorIdentityId: "identity:actor",
     state: "queued",
     priority: 0,
   });
@@ -151,6 +150,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
         conversationId: CONVERSATION_ID,
         turnId,
         actorIdentityId: "identity:actor",
+        groupKey: "group:actor",
         source: {
           kind: "slack",
           teamId: "T123",
