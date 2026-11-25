@@ -6,7 +6,6 @@ import {
   createSpaceBodySchema,
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,
-  setSpaceConfigBodySchema,
   spaceConfigurationSchema,
   spaceListQuerySchema,
   spaceListSchema,
@@ -330,32 +329,11 @@ function setArchived(space: MockSpace, archived: boolean): void {
   space.archived = [];
 }
 
-/** Keys that the mock's plugins read, as the API lists them. */
-const MOCK_CONFIG_KEYS = [
-  "github.repo",
-  "linear.team",
-  "sentry.org",
-  "sentry.project",
-];
-const CONFIG_KEY_RE = /^[a-z0-9]+(?:\.[a-z0-9-]+)+$/;
-const SECRET_KEY_RE =
-  /(?:^|[_.-])(token|secret|password|passphrase|api[-_]?key|private[-_]?key|credential|auth)(?:$|[_.-])/i;
-
-/** Check a configuration key with the API's rules, or return its error. */
-function configKeyError(key: string): string | undefined {
-  if (!CONFIG_KEY_RE.test(key))
-    return `Invalid configuration key "${key}"; expected dotted lowercase namespace (for example "provider.repo")`;
-  if (SECRET_KEY_RE.test(key))
-    return `Configuration key "${key}" appears to be secret-related and is not allowed`;
-  return undefined;
-}
-
 function configurationResponse(space: MockSpace): Response {
   return jsonResponse(spaceConfigurationSchema, {
     entries: [...space.configuration]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, entry]) => ({ key, ...entry })),
-    keys: MOCK_CONFIG_KEYS,
   });
 }
 
@@ -446,30 +424,6 @@ export function createMockSpaceRoutes(): Hono<{
   app.get("/:spaceId/configuration", (c) => {
     const space = findSpace({ spaceId: c.req.param("spaceId") });
     return space instanceof Response ? space : configurationResponse(space);
-  });
-  app.put("/:spaceId/configuration/:key", async (c) => {
-    const space = findSpace({ spaceId: c.req.param("spaceId") });
-    if (space instanceof Response) return space;
-    if (!space.viewerMember)
-      return errorResponse("Join the Space to change it.", 403);
-    const body = setSpaceConfigBodySchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid request body.", 400);
-    const key = c.req.param("key").trim();
-    const error = configKeyError(key);
-    if (error) return errorResponse(error, 400);
-    space.configuration.set(key, {
-      updatedAt: new Date().toISOString(),
-      value: body.data.value,
-    });
-    return configurationResponse(space);
-  });
-  app.delete("/:spaceId/configuration/:key", (c) => {
-    const space = findSpace({ spaceId: c.req.param("spaceId") });
-    if (space instanceof Response) return space;
-    if (!space.viewerMember)
-      return errorResponse("Join the Space to change it.", 403);
-    space.configuration.delete(c.req.param("key"));
-    return configurationResponse(space);
   });
   return app;
 }
