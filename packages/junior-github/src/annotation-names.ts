@@ -199,7 +199,13 @@ export function githubAnnotationNamesTask(
         // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
         await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
       }
-      if (failure) throw failure;
+      if (failure) {
+        // The moves changed later keys, so the retry starts over too.
+        if (moves.size > 0) {
+          await ctx.state.set(PROGRESS_KEY, { slices: progress.slices });
+        }
+        throw failure;
+      }
       const slices = progress.slices + 1;
       const last = batch.at(-1);
       await ctx.state.set(

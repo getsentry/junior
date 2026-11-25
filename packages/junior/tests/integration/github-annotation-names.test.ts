@@ -327,6 +327,59 @@ describe("GitHub Annotations without GitHub's id of their object", () => {
     expect(await heartbeat()).toBe(0);
   });
 
+  it("start over when a failed slice moved a repository, so the moved objects get names", async () => {
+    for (let number = 1; number <= BATCH; number += 1) {
+      await saveLegacyAnnotation(await conversation(`slack:C123:b-${number}`), {
+        key: `getsentry/junior#${number}`,
+        kind: "object",
+        objectType: "task",
+        url: `https://github.com/getsentry/junior/issues/${number}`,
+      });
+    }
+    // `getsentry/zz` is now `getsentry/aa`, whose keys sort before the
+    // cursor that the first slice leaves.
+    const failing = await conversation("slack:C123:moved-failing");
+    for (const [id, number] of [
+      [await conversation("slack:C123:moved"), 1],
+      [failing, 2],
+    ] as const) {
+      await saveLegacyAnnotation(id, {
+        key: `getsentry/zz#${number}`,
+        kind: "object",
+        objectType: "task",
+        url: `https://github.com/getsentry/zz/issues/${number}`,
+      });
+    }
+    stubIssues("getsentry/junior");
+    stubIssues("getsentry/aa");
+    mswServer.use(
+      http.get(`${API}/repos/getsentry/zz/issues/:number`, ({ params }) =>
+        params["number"] === "1"
+          ? HttpResponse.json({
+              html_url: "https://github.com/getsentry/aa/issues/1",
+              id: 1_000,
+              number: 1,
+            })
+          : HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+      ),
+      http.get(`${API}/repos/getsentry/zz`, () =>
+        HttpResponse.json({ full_name: "getsentry/aa", id: 98 }),
+      ),
+    );
+
+    await heartbeat();
+    await heartbeat();
+    while ((await tasks.deliver()) > 0);
+
+    expect(await annotationsOf(failing)).toEqual([
+      expect.objectContaining({
+        key: "getsentry/aa#2",
+        subjectId: "2000",
+        subjectKind: "github:issue",
+      }),
+    ]);
+  });
+
   it("leave an object that GitHub keeps failing to read after the last delivery", async () => {
     const issue = await conversation("slack:C123:failing-issue");
     await saveLegacyAnnotation(issue, {
