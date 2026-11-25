@@ -5,14 +5,19 @@ import {
   type AnnotationAction,
   type ConversationAnnotation,
   type ConversationAnnotationInput,
+  type ObjectSubject,
   type PluginAnnotations,
+  type PluginConversationAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
-import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import {
+  conversationDetailTouch,
+  nextDetailVersion,
+} from "@/chat/conversations/sql/detail-version";
 import {
   INBOX_SUBJECT_KINDS,
   pluginSubjectKind,
@@ -150,6 +155,52 @@ export async function upsertPluginAnnotation(
           : undefined),
       },
     });
+}
+
+/**
+ * Mark each Conversation that annotates one object of a plugin as changed,
+ * so its detail and its row read the live card again. Writes no Annotation.
+ */
+export async function touchAnnotatedConversations(
+  db: JuniorDatabase,
+  plugin: string,
+  subject: ObjectSubject,
+): Promise<void> {
+  const table = juniorConversationAnnotations;
+  await db
+    .update(juniorConversations)
+    .set({ detailVersion: nextDetailVersion })
+    .where(
+      inArray(
+        juniorConversations.conversationId,
+        db
+          .select({ conversationId: table.conversationId })
+          .from(table)
+          .where(
+            and(
+              eq(table.subjectKind, pluginSubjectKind(plugin, subject.kind)),
+              eq(table.subjectId, subject.id),
+            ),
+          ),
+      ),
+    );
+}
+
+/** Create the Annotations capability of one plugin. */
+export function createPluginConversationAnnotations(args: {
+  db: () => JuniorDatabase;
+  plugin: string;
+}): PluginConversationAnnotations {
+  return {
+    forConversation: (conversationId) =>
+      createPluginAnnotations({
+        conversationId,
+        db: args.db(),
+        plugin: args.plugin,
+      }),
+    objectChanged: async (subject) =>
+      await touchAnnotatedConversations(args.db(), args.plugin, subject),
+  };
 }
 
 export function createPluginAnnotations(args: {

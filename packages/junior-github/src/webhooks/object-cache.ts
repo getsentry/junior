@@ -1,4 +1,5 @@
 import type {
+  ObjectSubject,
   PluginCache,
   PluginState,
   PluginTaskStarter,
@@ -14,6 +15,7 @@ import {
   mergeGitHubObject,
   mergeGitHubPullRequest,
 } from "../object-cache.js";
+import { GITHUB_INBOX_SUBJECTS } from "../inbox-subjects.js";
 import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
 import { startGitHubPullRequestPatch } from "../pull-request-patches.js";
 
@@ -76,9 +78,35 @@ function goneKey(key: string): string {
   return `gone:${key}`;
 }
 
+const objectIdSchema = z.object({ id: z.number().int().positive() });
+
+// The subject of the webhook's issue or pull request: GitHub's id, which
+// names the object in Annotations. The cache entry does not keep it.
+function webhookSubject(
+  body: unknown,
+  field: "issue" | "pull_request",
+): ObjectSubject | undefined {
+  const parsed = z.object({ [field]: objectIdSchema }).safeParse(body);
+  if (!parsed.success) return undefined;
+  return {
+    id: String(parsed.data[field]!.id),
+    kind:
+      field === "issue"
+        ? GITHUB_INBOX_SUBJECTS.issue
+        : GITHUB_INBOX_SUBJECTS.pullRequest,
+  };
+}
+
+// Whether a cache write changes what a card shows.
+function sameValue(current: unknown, next: unknown): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+}
+
 interface RefreshArgs {
   body: unknown;
   cache: PluginCache;
+  /** Marks the Conversations that annotate a changed object as changed. */
+  objectChanged(subject: ObjectSubject): Promise<void>;
   nowMs: number;
   state: PluginState;
   tasks: PluginTaskStarter;
@@ -97,6 +125,7 @@ async function refreshPullRequest(
   );
   let patch = false;
   let conflicted = false;
+  let changed = false;
   await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
     const merged = mergeGitHubPullRequest(current, payload);
     patch = merged?.patch ?? false;
@@ -105,13 +134,15 @@ async function refreshPullRequest(
     conflicted =
       merged?.fields.state === "open" &&
       (payload.mergeable === false || (patch && current?.mergeable === false));
-    return (
-      merged && {
-        ...GITHUB_PULL_REQUEST_CACHE,
-        value: reviewChanged ? withoutReview(merged.fields) : merged.fields,
-      }
-    );
+    const value = merged && {
+      ...GITHUB_PULL_REQUEST_CACHE,
+      value: reviewChanged ? withoutReview(merged.fields) : merged.fields,
+    };
+    changed = Boolean(value) && !sameValue(current, value?.value);
+    return value;
   });
+  const subject = webhookSubject(args.body, "pull_request");
+  if (changed && subject) await args.objectChanged(subject);
   if (conflicted) {
     await markGitHubConflict(args.state, {
       number: payload.number,
@@ -228,8 +259,10 @@ export async function refreshGitHubObjectCache(
     );
     // A moved issue redirects to its new repository. The payload is about
     // the old one, so the next read follows the redirect again.
+    const subject = webhookSubject(args.body, "issue");
     if (action === "transferred") {
       await args.cache.delete(key);
+      if (subject) await args.objectChanged(subject);
       return;
     }
     // A deleted issue is gone, as a read would find. A late delivery from
@@ -237,13 +270,17 @@ export async function refreshGitHubObjectCache(
     if (action === "deleted") {
       await args.state.set(goneKey(key), true, GONE_TTL_MS);
       await args.cache.update(key, () => ({ ttlMs: GONE_TTL_MS, value: null }));
+      if (subject) await args.objectChanged(subject);
       return;
     }
     if (await args.state.get(goneKey(key))) return;
+    let changed = false;
     await args.cache.update<typeof issue | null>(key, (current) => {
       const value = mergeGitHubObject(current, issue);
+      changed = Boolean(value) && !sameValue(current, value);
       return value && { ...GITHUB_ISSUE_CACHE, value };
     });
+    if (changed && subject) await args.objectChanged(subject);
     return;
   }
   const target = checkEventTarget(args.body, args.eventName);

@@ -232,6 +232,8 @@ export function createGitHubWebhookRoute(args: {
         cache: args.cache,
         eventName,
         nowMs: Date.now(),
+        objectChanged: async (subject) =>
+          await args.annotations.objectChanged(subject),
         state: args.state,
         tasks: args.tasks,
       });
