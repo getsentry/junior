@@ -23,9 +23,8 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A child agent is an ordinary Conversation. Its `kind`, `thread` or
   `task`, is the only switch for its behavior, and it never changes.
 - Each Turn of a child acts for exactly one Actor, with no more authority
-  than the parent Turn that gave the work. A child's result or message runs
-  in its parent as the child Turn's Actor only when that Actor is the Actor
-  of a parent message to that child. Otherwise it runs as the system.
+  than the parent Turn that gave the work. A person's Turn in a Thread
+  cannot start or message child agents.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
 - Only a root delivers to its Location. A Thread shows its Turns to people.
