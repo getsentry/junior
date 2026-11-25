@@ -379,6 +379,9 @@ test("a member adds people to a private Space with the people picker", async ({
   await members.getByRole("button", { exact: true, name: "Add" }).click();
   await expect(search).toHaveCount(0);
   await expect(members.getByText("Casey Nguyen")).toBeVisible();
+  await expect(
+    members.getByRole("heading", { level: 3, name: "Members 3" }),
+  ).toBeVisible();
 });
 
 test("leaving a private Space leaves the page, and a non-member cannot find it", async ({
