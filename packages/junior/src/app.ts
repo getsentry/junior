@@ -819,12 +819,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const turnSteps = await turnStepConsumer(engineCtx, {
-    client: createGatewayModelClient(),
-    bot: chatConfig.bot,
-    // Core Turns have no tools yet.
-    tools: [],
-  });
   const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -863,8 +857,18 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let turnStepPOST:
     | ReturnType<typeof engineCtx.queue.createCallback>
     | undefined;
-  app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, (c) => {
-    turnStepPOST ??= engineCtx.queue.createCallback(turnSteps);
+  // Built on the first step message, like the callbacks above. It builds the
+  // Turn prompt layouts, so building it at startup would slow every cold
+  // start, and a failure there would stop every route of the app.
+  app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, async (c) => {
+    turnStepPOST ??= engineCtx.queue.createCallback(
+      await turnStepConsumer(engineCtx, {
+        client: createGatewayModelClient(),
+        bot: chatConfig.bot,
+        // Core Turns have no tools yet.
+        tools: [],
+      }),
+    );
     return turnStepPOST(c.req.raw);
   });
   let deliveryPOST:
