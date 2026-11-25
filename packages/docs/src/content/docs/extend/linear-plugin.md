@@ -105,7 +105,7 @@ it. Without it, action review treats Linear as an internal destination.
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
 ### Conversation defaults
 
@@ -114,7 +114,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default owning team for issue creation when a request does not name one.
 
-- **Define:** `jr-rpc config set linear.team <team>`
+- **Define:** ask Junior to set `linear.team`
 - **Install-wide default:** `configDefaults["linear.team"]`
 - **Required:** No
 - **Environment override:** None
@@ -126,7 +126,7 @@ Default owning team for issue creation when a request does not name one.
 
 Default project for issue creation when a request does not name one. Use it only when the conversation is genuinely centered on one project.
 
-- **Define:** `jr-rpc config set linear.project <project>`
+- **Define:** ask Junior to set `linear.project`
 - **Install-wide default:** `configDefaults["linear.project"]`
 - **Required:** No
 - **Environment override:** None

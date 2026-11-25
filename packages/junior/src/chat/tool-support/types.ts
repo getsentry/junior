@@ -31,6 +31,7 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -122,6 +123,8 @@ interface BaseToolRuntimeContext {
   surface?: AgentTurnSurface;
   userText?: string;
   configuration?: Record<string, unknown>;
+  /** The Slack channel's configuration, when the Run has a channel. */
+  locationConfiguration?: LocationConfigurationService | undefined;
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
   workspace: SandboxWorkspace;

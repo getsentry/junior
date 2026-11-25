@@ -47,7 +47,7 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
-import { setSpaceConfigurationToolDefinition } from "@/chat/tools/set-space-configuration";
+import { setConfigurationToolDefinition } from "@/chat/tools/set-configuration";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
@@ -199,9 +199,9 @@ const CORE_TOOLS = {
     when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
   },
-  setSpaceConfiguration: {
-    when: ({ listedTools }) => listedTools.spaces,
-    definition: () => setSpaceConfigurationToolDefinition,
+  setConfiguration: {
+    when: ({ listedTools }) => listedTools.settings,
+    definition: () => setConfigurationToolDefinition,
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),

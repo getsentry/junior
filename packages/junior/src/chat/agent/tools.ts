@@ -158,7 +158,6 @@ export async function createRunSandbox(
     conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
     credentialAuditSource: credentialAuditSource(args.run.source),
-    actor: args.currentActor,
     artifacts: attachmentStorage
       ? createArtifactSync({
           conversationId: args.run.conversationId,
@@ -167,8 +166,6 @@ export async function createRunSandbox(
         })
       : undefined,
     locationConfiguration: args.run.environment?.locationConfiguration,
-    configurationValues: args.configurationValues,
-    getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: async (sandbox) => {
       const actor = args.currentActor;
       if (actor) {
@@ -470,6 +467,7 @@ export async function wireAgentTools(
     spaceId: args.spaceId,
     userText: args.userInput,
     configuration: args.configurationValues,
+    locationConfiguration: args.run.environment?.locationConfiguration,
     egress: createPluginEgress({
       credentialAuditSource: auditSource,
       credentialContext: args.run.credentialContext,

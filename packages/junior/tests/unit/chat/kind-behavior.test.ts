@@ -19,7 +19,7 @@ const rootTurn = {
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    spaces: true,
+    settings: true,
     reply: false,
     reportBlocked: "none",
     noReply: true,
@@ -51,7 +51,7 @@ const agentInThreadTurn = {
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    spaces: false,
+    settings: false,
     reply: false,
     reportBlocked: "parent",
     noReply: true,
@@ -79,7 +79,7 @@ const automationTurn = {
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,
-    spaces: false,
+    settings: false,
     reply: true,
     reportBlocked: "automation",
   },
@@ -94,7 +94,7 @@ describe("turnBehavior", () => {
       expected: {
         ...rootTurn,
         relatedConversations: false,
-        tools: { ...rootTurn.tools, spaces: false },
+        tools: { ...rootTurn.tools, settings: false },
       },
     },
     // A person's reply in the run's thread runs like a root Turn.
@@ -128,7 +128,7 @@ describe("turnBehavior", () => {
       inbox: true,
       subscriptions: true,
       userCustomization: true,
-      spaces: true,
+      settings: true,
     });
   });
 
