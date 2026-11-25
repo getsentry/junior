@@ -392,6 +392,20 @@ describe("child agent task work", () => {
         turnId: "turn_helper",
       });
       await processChild();
+      // The helper's result is data, not the person's instruction. The
+      // Turn still runs as the person.
+      const helperInput = (
+        await getConversationEventStore().loadCurrentHistory(
+          childConversationId,
+        )
+      ).find(
+        (event) =>
+          event.data.type === "user_message" &&
+          JSON.stringify(event.data).includes("Helper fact."),
+      );
+      expect(helperInput?.data).toMatchObject({
+        provenance: { authority: "context", actor: slackInvocationInput.actor },
+      });
       // A Turn records each input Message once. Its reply is a
       // `message_handled` row, not an edit of the Message.
       await expectNoMessageRewrites(childConversationId);
