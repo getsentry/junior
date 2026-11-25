@@ -43,6 +43,15 @@ import {
 // long child note.
 const QUIET_NOTE_TEXT_MAX_LENGTH = 1_000;
 
+// A quiet update becomes a note, so the note carries what the agent said as
+// current state.
+function quietSummary(update: AgentUpdate): string {
+  const text = update.text.trim().slice(0, QUIET_NOTE_TEXT_MAX_LENGTH);
+  return text
+    ? `The agent ended a Turn with no reply. Its note: ${text}`
+    : "The agent ended a Turn with no reply.";
+}
+
 const SUMMARIES: Record<AgentUpdateStatus, string> = {
   blocked: "The conversation is blocked.",
   done: "The conversation finished a Turn.",
@@ -120,7 +129,12 @@ export async function deliverAgentUpdate(args: {
           }
           if (args.update.quiet || isQuietEvent(current, eventType)) {
             if (!turnConversations.has(current.conversationId)) {
-              await addQuietEventNote({ event, subscription: current });
+              await addQuietEventNote({
+                event: args.update.quiet
+                  ? { ...event, trustedSummary: quietSummary(args.update) }
+                  : event,
+                subscription: current,
+              });
             }
             return true;
           }
@@ -208,10 +222,7 @@ export async function deliverToStarter(args: {
         identifier: args.conversationId,
         namespace: CORE_EVENT_NAMESPACE,
         occurredAtMs: args.nowMs,
-        // The note keeps what the child found as current state.
-        trustedSummary: update.text.trim()
-          ? `The agent ended a Turn with no reply. Its note: ${update.text.trim().slice(0, QUIET_NOTE_TEXT_MAX_LENGTH)}`
-          : "The agent ended a Turn with no reply.",
+        trustedSummary: quietSummary(update),
       },
       subscription: {
         conversationId: sender.parentConversationId,

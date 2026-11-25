@@ -3,6 +3,7 @@ import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   EVENT_WAIT_MS,
+  quietEventNoteKey,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -10,7 +11,13 @@ import {
   enqueueAutomatedInput,
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
-import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import { hasConversationNote } from "@/chat/conversations/notes";
+import { mapBounded } from "@/chat/fan-out";
+import {
+  publishAgentUpdate,
+  starterWatchId,
+  updateEventKey,
+} from "@/chat/conversations/watch-events";
 import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
@@ -345,6 +352,19 @@ export function createEndStoppedChildWork(options: {
           turnIds.has(message.sender.turnId),
       )
     ) {
+      return;
+    }
+    // A quiet `noReply` end reached the starter as a note, not a message.
+    const heardQuietly = await mapBounded([...turnIds], (turnId) =>
+      hasConversationNote({
+        conversationId: sender.parentConversationId,
+        key: quietEventNoteKey(
+          starterWatchId(conversationId),
+          updateEventKey(conversationId, { type: "turn", turnId }),
+        ),
+      }),
+    );
+    if (heardQuietly.some(Boolean)) {
       return;
     }
     const [turn] = turns;

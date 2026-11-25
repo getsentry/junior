@@ -471,6 +471,43 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
+  // A quiet update reaches each Watch on the Thread as a note that carries
+  // the Thread's note, as the starter's note does.
+  it("gives a Watch on a Thread the Thread's note when its noReply end is quiet", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "thread");
+      await createDeployWatch(harness, childId);
+      await createWatch(
+        {
+          conversationId: slackParentConversationId,
+          events: ["agent.update"],
+          expiresAtMs: Date.now() + 600_000,
+          identifier: childId,
+          intent: "Follow the deploy check.",
+          label: "Deploy check thread",
+          namespace: "junior",
+          resourceType: "agent",
+        },
+        { state: harness.state },
+      );
+      await sendPersonMessage(harness, childId, "person-1");
+      harness.onRun((run) =>
+        finishRun(run, { noReply: { note: "The deploy is green." } }),
+      );
+      await harness.drain(childId);
+
+      expect(
+        (await parentNoteTexts()).filter((text) =>
+          text.includes("Deploy check thread"),
+        ),
+      ).toEqual([expect.stringContaining("Its note: The deploy is green.")]);
+    } finally {
+      await harness.close();
+    }
+  });
+
   // A person's Turn in a Thread reports to the parent like an agent's Turn.
   // The person also sees its final text. Final text while a helper works is
   // a message, as a `reply` is. With a Watch left after `noReply`, the Thread

@@ -100,7 +100,8 @@ export type UpdateKey =
   | { type: "waiting"; inboxItemId: string }
   | { type: "stopped"; stoppedAtMs: number };
 
-function updateEventKey(conversationId: string, key: UpdateKey): string {
+/** The Event key of one update, so a retry delivers it once. */
+export function updateEventKey(conversationId: string, key: UpdateKey): string {
   // The key keeps the legacy resource type, so a retry across the rename
   // still delivers the update once.
   const prefix = `${CORE_EVENT_NAMESPACE}:${LEGACY_AGENT_RESOURCE_TYPE}:${conversationId}`;
