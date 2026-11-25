@@ -1,6 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import * as memorySqlSchema from "@/db/schema/memory";
 import type { MemoryDb } from "@/chat/memory/store";
 
 export interface MemoryFixture {
@@ -16,7 +15,7 @@ export async function createMemoryFixture(): Promise<MemoryFixture> {
     throw new Error("Memory tests need the Junior Postgres test harness.");
   }
   const pool = new pg.Pool({ connectionString });
-  const db = drizzle(pool, { schema: memorySqlSchema });
+  const db = drizzle({ client: pool });
   return {
     db: () => db,
     execute: async (statement, params = []) => {

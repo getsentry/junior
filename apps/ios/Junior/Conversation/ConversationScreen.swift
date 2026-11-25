@@ -5,9 +5,11 @@ import SwiftUI
 /// transcript pinned to the latest message, queued messages, and the composer.
 struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
+  @State private var renaming: MCPConversation?
   @State private var atBottom = true
   @State private var width: CGFloat = 0
 
@@ -41,9 +43,13 @@ struct ConversationScreen: View {
       }
     }
     .onChange(of: model.state != nil) { _, loaded in
-      if loaded, app.openDetails {
-        app.openDetails = false
+      if loaded, window.openDetails {
+        window.openDetails = false
         showDetails = true
+      }
+      if loaded, window.openRename {
+        window.openRename = false
+        renaming = model.conversation
       }
     }
     .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
@@ -54,6 +60,10 @@ struct ConversationScreen: View {
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+    .onChange(of: app.savedTitleVersion) { model.state = model.state?.applying(app.savedTitle) }
+    .renameAlert($renaming) { _, title in
+      Task { await model.write("renameConversation", ["title": .string(title)], as: RenameResult.self, app: app) }
     }
   }
 
@@ -83,7 +93,7 @@ struct ConversationScreen: View {
       Button("Conversation details", systemImage: "info.circle") { showDetails = true }
       if let url = model.conversation?.url.flatMap(URL.init(string:)) {
         Button("Share", systemImage: "square.and.arrow.up") { shareURL = url }
-        Button("Open on the web", systemImage: "safari") { app.openLink(url.absoluteString) }
+        Button("Open on the web", systemImage: "safari") { window.openLink(url.absoluteString) }
       }
       Button("Copy as Markdown", systemImage: "doc.on.doc") {
         UIPasteboard.general.string = model.markdown(agentName: app.agentName)
@@ -99,12 +109,13 @@ struct ConversationScreen: View {
             Task { await model.write("pinConversation", ["pinned": .bool(!pinned)], as: PinResult.self, app: app) }
           }
         }
+        Button("Rename", systemImage: "pencil") { renaming = conversation }
         Button("Unfollow", systemImage: "bell.slash") {
           Task {
             if await model.write(
               "setConversationSubscription", ["subscribed": false], as: SubscriptionResult.self, app: app)
             {
-              app.path.removeLast()
+              window.path.removeLast()
             }
           }
         }
@@ -122,7 +133,7 @@ struct ConversationScreen: View {
         }
       }
       Button("App menu", systemImage: "line.3.horizontal") {
-        withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = true }
+        withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
       }
     } label: {
       Icon("ellipsis", size: 18)
@@ -200,6 +211,7 @@ struct ConversationScreen: View {
 }
 
 private struct PinResult: Decodable, Sendable { var pinnedAt: Timestamp? }
+private struct RenameResult: Decodable, Sendable { var title: String }
 private struct ArchiveResult: Decodable, Sendable { var archivedAt: Timestamp? }
 private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
 
@@ -321,7 +333,7 @@ private struct ConversationComposer: View {
   @Environment(AppModel.self) private var app
   let model: ConversationModel
   @State private var text = ""
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   private var canSend: Bool {
     // Not before the page loads: the send's refresh needs the cursor.
@@ -339,7 +351,9 @@ private struct ConversationComposer: View {
     } content: {
       ComposerSurface(focused: focused) {
         HStack(alignment: .bottom, spacing: 0) {
-          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
+            if canSend { send(interrupt: false) }
+          }
           HStack(spacing: 12) {
             if working {
               Button {

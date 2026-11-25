@@ -8,7 +8,18 @@ on:
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"
+  # CI calls this workflow for pull requests into main and core-next that
+  # change apps/ios, so `ci / required` waits for it.
+  workflow_call:
+    inputs:
+      skip_ui:
+        description: Skip the UI tests and screenshots, and run only the build.
+        type: boolean
+        default: false
+  # CI does not run for stacked pull requests, so this workflow runs on its
+  # own for them.
   pull_request:
+    branches-ignore: [main, core-next]
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"
@@ -23,7 +34,7 @@ concurrency:
 jobs:
   build:
     name: test / build
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -43,13 +54,16 @@ jobs:
 
   ui:
     name: test / ui and screenshots
-    runs-on: macos-26
+    if: ${{ !inputs.skip_ui }}
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      - name: Test the beta status script
+        run: node --test apps/ios/scripts/ios-beta.test.mjs
       - name: Install the CI tools
         run: brew bundle --file=apps/ios/Brewfile.ci
       - name: Start the mock MCP server
@@ -87,7 +101,8 @@ jobs:
 
   ipad:
     name: screenshots / ipad ${{ matrix.orientation }}
-    runs-on: macos-26
+    if: ${{ !inputs.skip_ui }}
+    runs-on: xcode-27
     timeout-minutes: 30
     strategy:
       fail-fast: false

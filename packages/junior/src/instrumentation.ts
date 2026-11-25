@@ -16,14 +16,16 @@ export {
 } from "@/chat/sentry-route-name";
 
 // Junior records its own gen_ai spans with usage and cost. These SDK spans
-// would duplicate them, and Pi reads provider streams itself, so they have no
-// usage. Remove this filter after getsentry/sentry-javascript#25869.
+// would duplicate them, and the provider ones have no usage because Pi reads
+// provider streams itself. Remove this filter after
+// getsentry/sentry-javascript#25869.
 const MANUAL_GEN_AI_INTEGRATIONS = new Set([
   "Anthropic_AI",
   "Google_GenAI",
   "Groq",
   "Mistral",
   "OpenAI",
+  "PiAi",
   "TogetherAI",
   "VercelAI",
 ]);

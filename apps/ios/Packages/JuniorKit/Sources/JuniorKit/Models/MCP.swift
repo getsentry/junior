@@ -7,10 +7,15 @@ import Foundation
 public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var conversationId: String
   public var title: String
+  /// What was asked and what happened, as of the last Turn.
+  public var summary: String?
   public var status: ConversationStatus
   /// A Turn runs or waits to start. `status` can read `needs_input` meanwhile,
   /// so live views poll and show work on this, not on `status`.
   public var turnActive: Bool
+  /// The viewer state over this Conversation and its child agents. Lists
+  /// show this, not `status`.
+  public var treeState: ConversationTreeState
   /// `slack`, `api` (the dashboard or MCP), `scheduler`, or `internal`.
   public var surface: String
   public var channelName: String?
@@ -25,20 +30,26 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var id: String { conversationId }
 
   private enum CodingKeys: String, CodingKey {
-    case conversationId, title, status, turnActive, surface, channelName, locationUrl, startedAt, lastSeenAt
-    case archivedAt, pinnedAt, url
+    case conversationId, title, summary, status, turnActive, treeState, surface, channelName, locationUrl, startedAt
+    case lastSeenAt, archivedAt, pinnedAt, url
   }
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     conversationId = try container.decode(String.self, forKey: .conversationId)
     title = try container.decode(String.self, forKey: .title)
+    summary = try container.decodeIfPresent(String.self, forKey: .summary)
     status = try container.decode(ConversationStatus.self, forKey: .status)
     // Junior 0.310 and older send no `turnActive`; their `active` status
     // covers a running Turn, so a phone stays usable against an older server.
     turnActive =
       try container.decodeIfPresent(Bool.self, forKey: .turnActive)
       ?? (status == .working || status.rawValue == "active")
+    // Junior 0.310 and older send no `treeState` either, so their lists keep
+    // the old reading of `status`.
+    treeState =
+      try container.decodeIfPresent(ConversationTreeState.self, forKey: .treeState)
+      ?? (status == .needsInput ? .needsYou : turnActive ? .working : .done)
     surface = try container.decode(String.self, forKey: .surface)
     channelName = try container.decodeIfPresent(String.self, forKey: .channelName)
     locationUrl = try container.decodeIfPresent(String.self, forKey: .locationUrl)
@@ -61,37 +72,6 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
 
 public struct ConversationList: Decodable, Sendable {
   public var conversations: [MCPConversation]
-}
-
-/// A Conversation's Brief: its summary, intent, outcome, and state.
-public struct Brief: Decodable, Sendable, Hashable {
-  public struct Outcome: Decodable, Sendable, Hashable {
-    /// `in_progress`, `answered`, `done`, `partial`, `blocked`, or `abandoned`.
-    public var status: String
-    public var text: String
-  }
-
-  public struct Decision: Decodable, Sendable, Hashable {
-    public var text: String
-    public var by: String?
-    public var kind: String
-  }
-
-  public struct Link: Decodable, Sendable, Hashable {
-    /// `code_change`, `resource`, or `url`.
-    public var kind: String
-    public var label: String
-    public var url: String
-    public var status: String?
-  }
-
-  public var summary: String
-  public var intent: String
-  public var outcome: Outcome
-  public var decisions: [Decision]
-  public var facts: [String]
-  public var links: [Link]
-  public var updatedAt: Timestamp
 }
 
 public struct Attachment: Decodable, Sendable, Hashable {
@@ -138,7 +118,6 @@ public struct PendingAuthorization: Decodable, Sendable, Hashable {
 /// `getConversation`: the state of one Conversation and a cursor to follow it.
 public struct ConversationState: Decodable, Sendable {
   public var conversation: MCPConversation
-  public var brief: Brief?
   /// Newest assistant message. Set only without `after`.
   public var lastReply: MCPMessage?
   /// Messages after `after`, oldest first. Set only with `after`.
@@ -192,6 +171,12 @@ public struct InboxItem: Decodable, Sendable, Hashable, Identifiable {
   public var createdAt: Timestamp
   public var updatedAt: Timestamp
   public var url: String?
+
+  /// The dashboard's `needsViewer` rule (`itemNeedsUser`): an open `action`
+  /// item assigned to the viewer. Notices, such as a reply notice, and items
+  /// for Everyone do not count. MCP sends no `assignees` for Everyone and for
+  /// no one, so a listed assignee and `canAct` mean the viewer is one.
+  public var needsViewer: Bool { status == "open" && kind == "action" && canAct && !assignees.isEmpty }
 }
 
 public struct InboxItemList: Decodable, Sendable {

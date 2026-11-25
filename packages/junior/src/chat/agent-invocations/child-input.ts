@@ -14,7 +14,7 @@ import { readParentMessage } from "./parent-message-input";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
-  AGENT_REPLY_EVENT_TYPE,
+  isAgentUpdateEventType,
 } from "./result-event-type";
 import type { ChildAgentSender } from "./types";
 
@@ -30,18 +30,19 @@ type ChildAgentInput = {
 function childAgentInputKind(
   namespace: string | undefined,
   eventType: string | undefined,
+  watchId: string | undefined,
 ): ChildAgentInput["kind"] | undefined {
-  if (namespace !== AGENT_INVOCATION_EVENT_NAMESPACE) {
+  if (namespace !== AGENT_INVOCATION_EVENT_NAMESPACE || !eventType) {
     return undefined;
   }
-  switch (eventType) {
-    case AGENT_MESSAGE_EVENT_TYPE:
-      return "message";
-    case AGENT_REPLY_EVENT_TYPE:
-      return "reply";
-    default:
-      return undefined;
+  if (eventType === AGENT_MESSAGE_EVENT_TYPE) {
+    return "message";
   }
+  // A Watch delivers the same agent update from a Conversation that is not
+  // a child agent. It names its Watch, and a child's update does not.
+  return isAgentUpdateEventType(eventType) && watchId === undefined
+    ? "reply"
+    : undefined;
 }
 
 /** Read the child that one reply or message Event names. */
@@ -55,6 +56,7 @@ export function childAgentInput(
   const kind = childAgentInputKind(
     metadata.event.namespace,
     metadata.event.eventType,
+    metadata.event.subscriptionId,
   );
   return kind ? { kind, senderId: metadata.event.identifier } : undefined;
 }
@@ -65,10 +67,19 @@ export function childAgentInput(
  */
 export function isChildAgentEvent(
   meta:
-    | Pick<ConversationMessageMeta, "eventNamespace" | "eventType">
+    | Pick<
+        ConversationMessageMeta,
+        "eventNamespace" | "eventType" | "eventWatchId"
+      >
     | undefined,
 ): boolean {
-  return Boolean(childAgentInputKind(meta?.eventNamespace, meta?.eventType));
+  return Boolean(
+    childAgentInputKind(
+      meta?.eventNamespace,
+      meta?.eventType,
+      meta?.eventWatchId,
+    ),
+  );
 }
 
 /**

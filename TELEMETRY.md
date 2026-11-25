@@ -31,8 +31,8 @@ table documents its attributes and how to read them. Paths are under
 - `gen_ai.conversation.id` also names child agents. Count root Conversations
   by `app.conversation.root_id`.
 - Each provider event records a Code change again. Count Code changes by
-  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
-  `open`, `closed`, or `merged`.
+  `vcs.provider.name`, `vcs.repository.name`, and `vcs.change.id`.
+  `vcs.change.state` is `open`, `closed`, or `merged`.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only warnings and audit info events (`app.log.audit:true`),
@@ -83,6 +83,7 @@ attributes. Nested logs and spans inherit them.
 | Inbox item change not delivered     | `inbox_item.*`, span `inbox_item.deliver`                                                          | `chat/inbox-items/`                                            |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
+| Workload identity mint failed        | span `credential.workload_identity.mint`, `sandbox.egress.credential.unavailable`                    | `chat/credentials/workload-identity.ts`                         |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `chat/memory/`                                                  |
 | Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
@@ -99,11 +100,12 @@ attributes. Nested logs and spans inherit them.
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
-| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
+| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.inbox_item.push`, `notification.push.send` | `chat/notifications/`                                           |
+| Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
-| Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+| Dashboard feedback by topic         | `app.feedback.topic` (`agent`, `new_ui`)                                                            | `packages/junior-dashboard/src/client/sentry.ts`                |
 | Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
 
 ## Trace Shape

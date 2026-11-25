@@ -1,0 +1,234 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "591c4ce6-a11f-4420-9389-04358d8bfce3",
+  "prevIds": ["16d23deb-2218-4f8d-8ca6-8f27e9aad3a5"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "storage_provider"
+      ],
+      "writes": [
+        "s|col|public.junior_attachments.storage_provider",
+        "n|col|public.junior_attachments.storage_provider",
+        "e|col|public.junior_attachments.storage_provider"
+      ],
+      "reads": ["n|tbl|public.junior_attachments", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "provider_id"
+      ],
+      "writes": [
+        "s|col|public.junior_attachments.provider_id",
+        "n|col|public.junior_attachments.provider_id",
+        "e|col|public.junior_attachments.provider_id"
+      ],
+      "reads": ["n|tbl|public.junior_attachments", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "vision_summary"
+      ],
+      "writes": [
+        "s|col|public.junior_attachments.vision_summary",
+        "n|col|public.junior_attachments.vision_summary",
+        "e|col|public.junior_attachments.vision_summary"
+      ],
+      "reads": ["n|tbl|public.junior_attachments", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_attachments", "provider"],
+      "writes": ["s|colprop|public.junior_attachments.provider.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.provider"
+      ],
+      "sqlHash": "f27dcc14c6e8bb30"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_attachments",
+        "junior_attachments_gc_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_attachments_gc_idx",
+        "n|idx|public.junior_attachments_gc_idx",
+        "e|idx|public.junior_attachments_gc_idx",
+        "n|rel|public.junior_attachments_gc_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.storage_provider",
+        "n|col|public.junior_attachments.delete_requested_at",
+        "n|col|public.junior_attachments.created_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "783147947ee8798c"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_attachments",
+        "junior_attachments_provider_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_attachments_provider_idx",
+        "n|idx|public.junior_attachments_provider_idx",
+        "e|idx|public.junior_attachments_provider_idx",
+        "n|rel|public.junior_attachments_provider_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.conversation_id",
+        "n|col|public.junior_attachments.provider",
+        "n|col|public.junior_attachments.provider_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "storage_provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "provider_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "vision_summary",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "junior_attachments_provider_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "provider_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"provider\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_attachments_gc_idx\"]",
+      "set": {
+        "columns": [
+          {
+            "value": "storage_provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "delete_requested_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ]
+      }
+    }
+  ]
+}

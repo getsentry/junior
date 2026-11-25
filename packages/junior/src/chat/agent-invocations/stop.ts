@@ -6,7 +6,7 @@ import {
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
-import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
@@ -21,12 +21,8 @@ import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
-import { createDeliverToParent } from "./result";
-import {
-  getChildAgentLockName,
-  getPersonStopTurnId,
-  isPersonStopTurnId,
-} from "./ids";
+import { parentResultActor } from "./parent-result";
+import { getChildAgentLockName, isPersonStopTurnId } from "./ids";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
@@ -227,13 +223,13 @@ export async function cancelWaitingParentMessages(
 }
 
 /**
- * Tell the parent of a Task that a person stops it, when the stop cuts its
- * work: a waiting parent message or a running Turn. Call it before the stop
- * request is saved, so a failure leaves the stop to be retried. A Thread, a
- * Task with no open work, and a run that an earlier stop already cut stay
- * quiet. The result is keyed by the stop time, which a redelivery of the
- * same stop keeps, so a retry adds nothing even when a worker took the
- * waiting work in between.
+ * Tell the parent of a child agent that a person stops it, when the stop
+ * cuts work: waiting input or a running Turn, whoever started it. Call it
+ * before the stop request is saved, so a failure leaves the stop to be
+ * retried. An idle child already sent its result, so it stays quiet, and so
+ * does a run that an earlier stop already cut. The result is keyed by the
+ * stop time, which a redelivery of the same stop keeps, so a retry adds
+ * nothing even when a worker took the waiting work in between.
  */
 export async function reportPersonStopToParent(
   conversationId: string,
@@ -247,11 +243,7 @@ export async function reportPersonStopToParent(
     return;
   }
   const conversation = await getConversationStore().get({ conversationId });
-  if (
-    !conversation ||
-    turnBehavior({ kind: conversation.kind, personInput: false })
-      .failureNotice !== "parent"
-  ) {
+  if (!conversation) {
     return;
   }
   const work = await getConversationWorkState({
@@ -269,16 +261,26 @@ export async function reportPersonStopToParent(
     const parentMessage = readParentMessage(message);
     return parentMessage ? [parentMessage] : [];
   });
-  if (!runId && !firstWaiting) {
+  const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
+  if (!runId && !work?.messages.length) {
     return;
   }
-  const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
-  await createDeliverToParent(options)({
-    actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
+  await publishAgentUpdate(
     conversationId,
-    result: { kind: "stopped", text: "A person stopped this task." },
-    turnId: getPersonStopTurnId(options.stoppedAtMs),
-  });
+    { type: "stopped", stoppedAtMs: options.stoppedAtMs },
+    {
+      queue: options.queue,
+      // A waiting parent message keeps the Actor of the agent that sent it.
+      starter: turn?.actor
+        ? parentResultActor(turn.actor, turn.source?.kind)
+        : (firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR),
+      state: options.state,
+      update: async () => ({
+        status: "stopped",
+        text: `A person stopped this ${conversation.kind}.`,
+      }),
+    },
+  );
 }
 
 /**

@@ -9,10 +9,10 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { tabIconAccentSpots } from "../tab-icon";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   // One ask, so its row's Done takes the count to zero.
@@ -67,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
     await expect(page).toHaveTitle("(1) Inbox - Junior");
 
@@ -75,7 +75,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/settings`);
     await expect(page).toHaveTitle("(1) Settings - Junior");
 
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await closeCheckoutAsks(page);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
     await expect(page).toHaveTitle("Inbox - Junior");
@@ -86,13 +86,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const icon = page.locator('link[rel="icon"]');
     await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
 
     await closeCheckoutAsks(page);
     await expect(page).toHaveTitle("Inbox - Junior");
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
+  });
+
+  test("the tab icon count fills the top-left corner, clear of the eye", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockOneAsk(page);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const accentSpots = await tabIconAccentSpots(page);
+    expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
   });
 
   test("turning off the tab count hides it in the title and on the icon", async ({
@@ -189,7 +199,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await recordTitles(page);
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveTitle("(1) Inbox - Junior");
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Done/ }).click();
@@ -214,7 +224,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
     await mockInboxItems(page, { open: [rollout, alert] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, alert.title);
@@ -245,7 +255,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, migration, license],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const cards = todo.locator("[data-inbox-row]");
     await expect(cards).toHaveCount(3);

@@ -1,0 +1,132 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e5548800-176a-4813-b15f-ad5ab28448ca",
+  "prevIds": ["32dd3537-b73d-47f5-adf2-d4a355ec6f28"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_artifacts", "visibility"],
+      "writes": [
+        "s|col|public.junior_artifacts.visibility",
+        "n|col|public.junior_artifacts.visibility",
+        "e|col|public.junior_artifacts.visibility"
+      ],
+      "reads": ["n|tbl|public.junior_artifacts", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_artifacts", "public"],
+      "writes": ["s|colprop|public.junior_artifacts.public.default"],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.public"
+      ],
+      "sqlHash": "4680ea3f240fee50"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_artifacts",
+        "junior_artifacts_public_sha_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_artifacts_public_sha_uidx",
+        "n|idx|public.junior_artifacts_public_sha_uidx",
+        "e|idx|public.junior_artifacts_public_sha_uidx",
+        "n|rel|public.junior_artifacts_public_sha_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.conversation_id",
+        "n|col|public.junior_artifacts.sha256"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_artifacts"],
+      "writes": [
+        "s|ck|public.junior_artifacts.junior_artifacts_visibility_check",
+        "n|ck|public.junior_artifacts.junior_artifacts_visibility_check",
+        "e|ck|public.junior_artifacts.junior_artifacts_visibility_check",
+        "n|con|public.junior_artifacts.junior_artifacts_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.visibility",
+        "n|col|public.junior_artifacts.public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_artifacts",
+        "name": "visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'public'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_artifacts",
+        "name": "junior_artifacts_public_sha_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "sha256",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_artifacts\".\"visibility\" = 'public'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_artifacts",
+        "name": "junior_artifacts_visibility_check",
+        "value": "\"junior_artifacts\".\"visibility\" in ('conversation', 'internal', 'public')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_artifacts\",\"public\"]",
+      "set": {
+        "default": "true"
+      }
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
   hasSandboxEgressLeaseTransformForHost,
+  isWorkloadIdentityProvider,
   sandboxEgressCredentialLease,
   SandboxEgressCredentialError,
   selectSandboxEgressGrant,
@@ -673,6 +674,7 @@ export async function executeCredentialedEgressRequest(input: {
         provider,
         grantSelection,
         credentialContext,
+        operation,
       );
     } catch (error) {
       if (!(error instanceof SandboxEgressCredentialError)) {
@@ -836,6 +838,37 @@ export async function executeCredentialedEgressRequest(input: {
         "error.type": `http_${upstream.status}`,
       });
     }
+    // A workload identity token always acts as the same service account or
+    // app, so a new token cannot fix an HTTP 403. Apps and Google APIs also
+    // use 403 for resource access and quota errors, so egress forwards the
+    // 403 body and keeps the shared lease.
+    const workloadIdentity = isWorkloadIdentityProvider(provider);
+    if (
+      upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS &&
+      workloadIdentity
+    ) {
+      // A federated bot credential has no account that a person can connect,
+      // so report it as unavailable instead of starting an auth flow.
+      const message = `Upstream rejected the ${provider} workload identity credential with HTTP ${upstream.status}.`;
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status),
+      });
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
+      await upstream.body?.cancel().catch(() => undefined);
+      return authRequiredResult(
+        {
+          grant: lease.grant,
+          kind: "unavailable",
+          message,
+          provider,
+        },
+        `${message}\n`,
+      );
+    }
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
@@ -864,7 +897,8 @@ export async function executeCredentialedEgressRequest(input: {
     }
     if (
       upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
-      !retriedAfter403
+      !retriedAfter403 &&
+      !workloadIdentity
     ) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
@@ -890,11 +924,13 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearSandboxEgressCredentialLease(
-        provider,
-        lease.grant,
-        credentialContext,
-      );
+      if (!workloadIdentity) {
+        await clearSandboxEgressCredentialLease(
+          provider,
+          lease.grant,
+          credentialContext,
+        );
+      }
       await recordSandboxPermissionDenied({
         credentialContext,
         provider,

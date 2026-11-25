@@ -9,6 +9,7 @@ import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+import { mockSearchRows } from "./search-fixture";
 import type * as DashboardApp from "../src/app";
 
 // The built dashboard. A plain string keeps the type check from needing a
@@ -140,6 +141,19 @@ export function waitForSettingsReads(page: Page) {
       ),
     ),
   );
+}
+
+/**
+ * Scroll the window to the top over a few frames with no input event, as a
+ * scrollbar drag does.
+ */
+export async function dragScrollbarToTop(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
 }
 
 /** Whether a request is a background read that may outlive a test. */
@@ -337,6 +351,51 @@ export async function startDashboardE2eServer(
   };
 }
 
+/** The memories of the mocked Memories page. */
+const MEMORY_RECORDS = [
+  {
+    actions: [
+      {
+        confirmation: "Forget this memory?",
+        href: "/api/memory/memories/memory-1",
+        label: "Forget",
+        method: "DELETE",
+        tone: "danger",
+      },
+    ],
+    id: "memory-1",
+    title: "I prefer concise summaries.",
+    metadata: [
+      { label: "Type", value: "Preference" },
+      { label: "Learned", value: "Automatic" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
+    ],
+  },
+  {
+    actions: [],
+    id: "memory-2",
+    title: "Release notes should include migration risks.",
+    metadata: [
+      { label: "Type", value: "Knowledge" },
+      { label: "Learned", value: "Explicit" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
+    ],
+  },
+  {
+    actions: [],
+    id: "memory-3",
+    title: "Start incident reviews with the customer impact.",
+    metadata: [
+      { label: "Type", value: "Procedure" },
+      { label: "Learned", value: "Automatic" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
+    ],
+  },
+];
+
 /** Stub shared APIs and pin browser current time for dashboard page specs. */
 export async function mockDashboardApis(
   page: Page,
@@ -460,57 +519,18 @@ export async function mockDashboardApis(
     await route.fulfill({ json: memory });
   });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
-    const records = [
-      {
-        actions: [
-          {
-            confirmation: "Forget this memory?",
-            href: "/api/memory/memories/memory-1",
-            label: "Forget",
-            method: "DELETE",
-            tone: "danger",
-          },
-        ],
-        id: "memory-1",
-        title: "I prefer concise summaries.",
-        metadata: [
-          { label: "Type", value: "Preference" },
-          { label: "Learned", value: "Automatic" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
-        ],
-      },
-      {
-        actions: [],
-        id: "memory-2",
-        title: "Release notes should include migration risks.",
-        metadata: [
-          { label: "Type", value: "Knowledge" },
-          { label: "Learned", value: "Explicit" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
-        ],
-      },
-      {
-        actions: [],
-        id: "memory-3",
-        title: "Start incident reviews with the customer impact.",
-        metadata: [
-          { label: "Type", value: "Procedure" },
-          { label: "Learned", value: "Automatic" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
-        ],
-      },
-    ];
     await route.fulfill({
       json: {
         type: "list",
         emptyText: "No memories yet.",
         searchPlaceholder: "Search memories",
-        records,
+        records: MEMORY_RECORDS,
       },
     });
+  });
+  // Typed text finds the same memories through `/api/search`.
+  await mockSearchRows(page, {
+    memories: () => MEMORY_RECORDS.map(({ id, title }) => ({ id, title })),
   });
   await mockAutomationApis(page);
   await page.route("**/api/automations/*/executions", async (route) => {

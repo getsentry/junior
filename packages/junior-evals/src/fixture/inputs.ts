@@ -82,7 +82,7 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Files that the person added to the message. */
   files?: FileInput[];
-  /** Send it to the person's Lead, which `GET /api/lead` finds or makes. */
+  /** Send it to the Lead of a new Space that the person creates. */
   lead?: boolean;
   text: string;
 }

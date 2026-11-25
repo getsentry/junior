@@ -3,15 +3,9 @@ import {
   messageChildAgent,
   spawnChildAgent,
 } from "@/chat/agent-invocations/create";
-import {
-  getAgentReplyMessageId,
-  getTurnReplyKey,
-} from "@/chat/agent-invocations/ids";
+import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
@@ -31,6 +25,7 @@ import {
   loadTurnEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
@@ -69,7 +64,7 @@ async function createHarness(agentRunner: AgentRunner) {
     close: async () => await fixture.close(),
     conversationStore,
     /** Deliver a result of a child's Turn to its parent. */
-    deliver: createDeliverToParent({ queue, state }),
+    deliver: createPublishChildTurn({ queue, state }),
     mailbox: async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [],
@@ -96,7 +91,7 @@ async function createHarness(agentRunner: AgentRunner) {
     processNext: async (conversationId: string) =>
       await work.process(queue.takeMessageFor(conversationId)),
     queue,
-    /** Spawn a child agent as the parent's `spawnAgent` does. */
+    /** Spawn a child agent as the parent's `startAgent` does. */
     spawn: async (input: {
       agentName?: string;
       idempotencyKey: string;
@@ -145,10 +140,7 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: childId,
-        result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
-        },
+        update: { status: "done", text: "Old finding." },
         turnId,
       });
 
@@ -219,6 +211,11 @@ describe("stopping child agents", () => {
 
   it("drops a child's unread reply, also one that arrives late, when its parent stops it", async () => {
     const harness = await createHarness({ run: finishRun });
+    const quietResult = expect.objectContaining({
+      input: expect.objectContaining({
+        text: expect.stringMatching(/^<agent-result [^>]*status="done"/),
+      }),
+    });
     try {
       const childId = await harness.spawn({
         agentName: "researcher",
@@ -226,22 +223,19 @@ describe("stopping child agents", () => {
         input: "watch deploys",
       });
       await harness.processNext(childId);
-      // A later Turn of the child, such as for a Watch Event, replies.
+      // The task Turn ended the child's work with no answer, so its parent
+      // has a result. A later Turn of the child, such as for a Watch Event,
+      // replies.
       await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
-        result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
-        },
+        update: { status: "done", text: "Old finding." },
         turnId: "turn_watch-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
         expect.objectContaining({
-          inboundMessageId: getAgentReplyMessageId(
-            childId,
-            getTurnReplyKey("turn_watch-event", "call-old-reply"),
-          ),
+          inboundMessageId: getAgentReplyMessageId(childId, "turn_watch-event"),
         }),
       ]);
 
@@ -251,15 +245,12 @@ describe("stopping child agents", () => {
       // A reply that the Turn sent before the stop reaches the parent's
       // mailbox after the stop dropped the unread ones.
       const sendLateReply = async () =>
-        await enqueueChildResultToParent({
+        await enqueueStarterUpdate({
           actor: EVENT_SYSTEM_ACTOR,
-          messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
+          messageKey: "turn_watch-event",
           nowMs: beforeStopMs,
           queue: harness.queue,
-          result: {
-            kind: "reply",
-            reply: { text: "Late finding.", toolCallId: "call-late-reply" },
-          },
+          update: { status: "done", text: "Late finding." },
           sender: {
             childConversationId: childId,
             parentConversationId,
@@ -288,15 +279,18 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: watcherId,
-        result: {
-          kind: "reply",
-          reply: { text: "Build finding.", toolCallId: "call-build-reply" },
-        },
+        update: { status: "done", text: "Build finding." },
         turnId: "turn_build-event",
       });
-      await expect(harness.mailbox(parentConversationId)).resolves.toHaveLength(
-        1,
-      );
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
+        expect.objectContaining({
+          inboundMessageId: getAgentReplyMessageId(
+            watcherId,
+            "turn_build-event",
+          ),
+        }),
+      ]);
       await stopConversation({
         conversationId: watcherId,
         conversationStore: harness.conversationStore,
@@ -386,7 +380,7 @@ describe("stopping child agents", () => {
         status: "completed",
       });
       const parentMessages = await harness.mailbox(parentConversationId);
-      expect(parentMessages.map(eventType)).toEqual(["agent.reply"]);
+      expect(parentMessages.map(eventType)).toEqual(["agent.update"]);
       expect(parentMessages[0]!.input.text).toMatch(
         /^<agent-result [^>]*status="stopped"/,
       );
@@ -417,16 +411,13 @@ describe("stopping child agents", () => {
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: doneHelperId,
-        result: { kind: "blocked", text: "Helper needs a token." },
+        update: { status: "blocked", text: "Helper needs a token." },
         turnId: "turn_done-helper",
       });
       await harness.deliver({
         actor: invocationInput.actor,
         conversationId: openHelperId,
-        result: {
-          kind: "reply",
-          reply: { text: "Open helper finding.", toolCallId: "call-reply" },
-        },
+        update: { status: "done", text: "Open helper finding." },
         turnId: "turn_open-helper",
       });
       expect(
@@ -455,7 +446,7 @@ describe("stopping child agents", () => {
           }),
         ]),
       );
-      // A late spawnAgent call of the stopped child starts no work.
+      // A late startAgent call of the stopped child starts no work.
       await expect(
         harness.spawn({
           idempotencyKey: "tree-late-helper",

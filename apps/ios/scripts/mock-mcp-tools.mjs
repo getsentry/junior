@@ -18,6 +18,23 @@ const AFTER_MESSAGE_LIMIT = 20;
 const EVENT_SCAN_LIMIT = 200;
 const RECENT_RUN_LIMIT = 10;
 
+// The dashboard mock has no reply notice: the Inbox item that a reply in a
+// Conversation without a Location adds for its starter (`reply-notice.ts`).
+// Its body is the preview of the latest reply.
+const REPLY_NOTICE = {
+  id: "qa-reply-dashboard-qa",
+  kind: "notice",
+  status: "open",
+  title: "Dashboard QA edge cases",
+  body: "I mean the empty, loading, and failed transcript states.",
+  assignedToEveryone: false,
+  assignees: [{ displayName: "Dashboard User" }],
+  canAct: true,
+  conversationIds: ["internal:dashboard-qa"],
+  createdAt: "2026-08-07T07:00:58.000Z",
+  updatedAt: "2026-08-07T07:01:09.000Z",
+};
+
 /** A tool error that the client model can read, like `mcpToolError`. */
 class ToolError extends Error {}
 
@@ -49,6 +66,7 @@ const messageText = {
   max: 32_000,
   description: "Message text.",
 };
+const conversationTitle = { type: "string", trim: true, min: 1, max: 200 };
 const idempotencyKey = {
   type: "string",
   trim: true,
@@ -161,14 +179,28 @@ export function createMockMcpTools({ app, origin }) {
     }
   }
 
-  function mcpConversation(summary) {
+  // The Conversations that wait on the viewer. The dashboard mock has no
+  // viewer state, so this stands in for the server's `needs_you`. It checks
+  // only each Conversation, not its child agents.
+  async function readWaitingIds() {
+    const waiting = await apiJson("GET", "/inbox-items/waiting-conversations");
+    return new Set(waiting.conversations.map((row) => row.conversationId));
+  }
+
+  function mcpConversation(summary, waitingIds) {
     const id = summary.conversationId;
+    const running = summary.turnActive && !stopped.has(id);
     return {
       conversationId: id,
       title: summary.displayTitle,
+      summary: summary.summary,
       status: stopped.has(id) ? "done" : summary.status,
-      turnActive: summary.turnActive && !stopped.has(id),
-      treeState: summary.treeState,
+      turnActive: running,
+      treeState: waitingIds.has(id)
+        ? "needs_you"
+        : running
+          ? "working"
+          : "done",
       watching: summary.watching,
       surface: summary.surface,
       channelName: summary.channelNameRedacted
@@ -340,7 +372,8 @@ export function createMockMcpTools({ app, origin }) {
           trim: true,
           max: 200,
           optional: true,
-          description: "Text to search for in titles and Briefs.",
+          description:
+            "Text to search for in titles, summaries, and Annotation labels and titles.",
         },
         status: {
           enum: ["active", "archived"],
@@ -352,8 +385,15 @@ export function createMockMcpTools({ app, origin }) {
       async run({ q, status }) {
         const query = new URLSearchParams({ status });
         if (q) query.set("q", q);
-        const feed = await apiJson("GET", `/conversations?${query}`);
-        return { conversations: feed.conversations.map(mcpConversation) };
+        const [feed, waitingIds] = await Promise.all([
+          apiJson("GET", `/conversations?${query}`),
+          readWaitingIds(),
+        ]);
+        return {
+          conversations: feed.conversations.map((row) =>
+            mcpConversation(row, waitingIds),
+          ),
+        };
       },
     },
     {
@@ -361,7 +401,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, including its summary, the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -388,20 +428,8 @@ export function createMockMcpTools({ app, origin }) {
           : mcpMessages(detail.events)
               .filter((message) => message.role === "assistant")
               .at(-1);
-        const brief = detail.brief?.content;
         return {
-          conversation: mcpConversation(detail),
-          brief: brief
-            ? {
-                summary: brief.summary,
-                intent: brief.intent,
-                outcome: brief.outcome,
-                decisions: brief.decisions,
-                facts: brief.facts,
-                links: brief.links,
-                updatedAt: detail.brief.updatedAt,
-              }
-            : undefined,
+          conversation: mcpConversation(detail, await readWaitingIds()),
           lastReply,
           messages: newer?.messages,
           hasMore: newer?.hasMore ? true : undefined,
@@ -551,6 +579,26 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
+      name: "renameConversation",
+      scope: "conversations:manage",
+      title: "Rename conversation",
+      description:
+        "Rename one of your conversations for everyone in it. Later turns keep the new title. The Slack thread does not change. Returns the stored title.",
+      annotations: MANAGE,
+      input: {
+        conversationId,
+        title: conversationTitle,
+      },
+      async run({ conversationId: id, title }) {
+        const result = await apiJson(
+          "PATCH",
+          `/conversations/${enc(id)}/title`,
+          { title },
+        );
+        return { title: result.title };
+      },
+    },
+    {
       name: "setConversationAutoArchive",
       scope: "conversations:manage",
       title: "Set conversation auto-archive",
@@ -676,10 +724,7 @@ export function createMockMcpTools({ app, origin }) {
       input: {
         message: messageText,
         title: {
-          type: "string",
-          trim: true,
-          min: 1,
-          max: 200,
+          ...conversationTitle,
           optional: true,
           description:
             "Short title for the conversation. Omit it to generate one from the message.",
@@ -797,7 +842,11 @@ export function createMockMcpTools({ app, origin }) {
         if (id) query.set("conversationId", id);
         const list = await apiJson("GET", `/inbox-items?${query}`);
         const words = q?.toLowerCase();
-        const items = list.items
+        const notice =
+          !id || REPLY_NOTICE.conversationIds.includes(id)
+            ? [REPLY_NOTICE]
+            : [];
+        const items = [...list.items, ...notice]
           .filter(
             (item) =>
               item.status === "open" &&
@@ -825,6 +874,7 @@ export function createMockMcpTools({ app, origin }) {
         },
       },
       async run({ id }) {
+        if (id === REPLY_NOTICE.id) return { item: mcpInboxItem(REPLY_NOTICE) };
         const result = await api("GET", `/inbox-items/${enc(id)}`);
         if (result.status === 404) {
           throw new ToolError("Inbox item not found.");

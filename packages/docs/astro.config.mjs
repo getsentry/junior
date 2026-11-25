@@ -124,6 +124,10 @@ export default defineConfig({
             { label: "Plugins", link: "/extend/" },
             { label: "Build a Plugin", link: "/extend/build-a-plugin/" },
             {
+              label: "Workload Identity Credentials",
+              link: "/extend/workload-identity/",
+            },
+            {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
             },
@@ -153,6 +157,7 @@ export default defineConfig({
             { label: "Restream Plugin", link: "/extend/restream-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
+            { label: "Vimeo Plugin", link: "/extend/vimeo-plugin/" },
             { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },

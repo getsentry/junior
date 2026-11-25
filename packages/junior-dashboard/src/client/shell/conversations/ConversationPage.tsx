@@ -28,9 +28,8 @@ import { usePinConversation } from "../../conversations/usePinConversation";
 import { useConversationSubscription } from "../../conversations/useConversationSubscription";
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
-import { RenameConversationDialog } from "../../conversations/RenameConversationDialog";
 import {
-  conversationIsResponding,
+  conversationShowsThinking,
   isChildConversation,
 } from "../../conversations/transcript";
 import {
@@ -61,8 +60,11 @@ import {
 } from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
-import { ConversationPageDock } from "../../conversations/ConversationPageDock";
+import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
+import { ConversationDock } from "./ConversationDock";
 import {
   saveDetailsOpen,
   useDetailsStartOpen,
@@ -78,7 +80,6 @@ import { ConversationEventLogLoading } from "../../conversations/ConversationEve
 import {
   adjacentEventLogSeqs,
   eventLogRows,
-  filterEventLogRows,
 } from "../../conversations/eventLog";
 import {
   TranscriptSearchProvider,
@@ -101,13 +102,8 @@ import {
   itemConversationId,
   inboxItemIdFromToolCall,
 } from "../../inbox/inboxItemFormat";
-import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
-import {
-  ConversationAnnotations,
-  conversationCost,
-  ConversationPrivacyChip,
-} from "../../conversations/ConversationMeta";
+import { ConversationPrivacyChip } from "../../conversations/ConversationMeta";
 import {
   buildConversations,
   conversationDetailTitle,
@@ -198,7 +194,7 @@ export function ConversationPage(props: {
     eventOpen ? false : undefined,
   );
   // A sidebar review chip links here with the review param. It opens
-  // details at To do, even below the width where details open alone.
+  // details at its Inbox items, even below the width where details open alone.
   const reviewOpen =
     searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
   useEffect(() => {
@@ -244,17 +240,16 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  const { known: kindKnown, lead } = useLeadPageKind(
-    props.conversationId,
-    props.detail.data,
-  );
+  const { known: kindKnown, lead } = useLeadPageKind(props.detail.data);
+  const spaceId = props.detail.data?.space?.id;
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  // A Lead has no details: it is private and never archives.
-  const detailsShown = showDetails && !zen.active && kindKnown && !lead;
+  // A Lead's details are its Space's.
+  const detailsShown =
+    showDetails && !zen.active && kindKnown && (!lead || Boolean(spaceId));
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -282,6 +277,7 @@ export function ConversationPage(props: {
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
+  const [movingToSpace, setMovingToSpace] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
@@ -596,15 +592,12 @@ export function ConversationPage(props: {
     !selectedEvent &&
     (transcriptPending || holdShown || linkedTurnId !== undefined);
   const showEvent = Boolean(selectedEvent) || eventLoading;
-  // Step through the same filtered rows that the event log shows.
+  // Step through the rows that the event log shows. The new UI's log has no
+  // search, so the transcript search must not filter them.
   const events = transcript?.events;
-  const normalizedSearch = search.trim().toLowerCase();
   const eventRows = useMemo(
-    () =>
-      eventOpen && events
-        ? filterEventLogRows(eventLogRows(events), normalizedSearch)
-        : [],
-    [eventOpen, events, normalizedSearch],
+    () => (eventOpen && events ? eventLogRows(events) : []),
+    [eventOpen, events],
   );
   const turnContextPanel = useMemo<TurnContextPanel>(
     () => ({
@@ -650,7 +643,9 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {detailsShown ? (
+      {detailsShown && lead && spaceId ? (
+        <SpaceDetailsPanel onClose={closeDetails} spaceId={spaceId} />
+      ) : detailsShown && !lead ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -721,15 +716,8 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               lead={kindKnown ? lead : undefined}
+              spaceId={spaceId}
               agentTree={conversationDetail?.agentTree}
-              autoArchive={conversationDetail?.autoArchive}
-              summary={conversationDetail?.summary}
-              summaryMentions={conversationDetail?.summaryMentions}
-              contextTags={conversationContextTags(
-                conversation,
-                conversationDetail?.annotations,
-              )}
-              cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               errors={[
                 // A refused restore names the archived ancestor to restore
@@ -768,9 +756,6 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              linkedWork={
-                links.length ? <ConversationAnnotations links={links} /> : null
-              }
               menu={{
                 actions: {
                   archive: () => {
@@ -785,6 +770,7 @@ export function ConversationPage(props: {
                   continueInSlack: () => setContinueInSlackOpen(true),
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
                   subscription: (subscribed) => subscription.mutate(subscribed),
@@ -809,6 +795,11 @@ export function ConversationPage(props: {
               }}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
+              rename={{
+                editing: renaming,
+                onEditingChange: setRenaming,
+                onSave: (next) => rename.mutate(next),
+              }}
               privacy={
                 <ConversationPrivacyChip
                   visibility={conversation?.visibility}
@@ -817,6 +808,11 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
+              space={
+                conversation?.space ? (
+                  <SpaceChip className="shrink-0" space={conversation.space} />
+                ) : null
+              }
               state={
                 displayState ? (
                   <ConversationStateIcon state={displayState} />
@@ -867,6 +863,7 @@ export function ConversationPage(props: {
                   lastSeq={detail.data?.events.at(-1)?.seq}
                   lead={lead}
                   prefill={leadFirstRun.prefill}
+                  spaceId={spaceId}
                 >
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
@@ -906,7 +903,7 @@ export function ConversationPage(props: {
                       responding={
                         !detail.error &&
                         !history.newer &&
-                        conversationIsResponding(detail.data)
+                        conversationShowsThinking(detail)
                       }
                       onOpenSubagentTranscript={onOpenSubagentTranscript}
                       search={search}
@@ -926,25 +923,22 @@ export function ConversationPage(props: {
             </TranscriptColumn>
           }
           dock={
-            canReply ? (
-              <div
-                className="contents"
-                onFocusCapture={engageComposer}
-                onPointerDownCapture={engageComposer}
-              >
-                <ConversationPageDock
-                  conversationId={conversationId}
-                  detail={detail}
-                  focusRequest={replyFocusRequest}
-                  hasNewerPage={Boolean(history.newer)}
-                  live={live}
-                  onFocusRequestDone={setReplyFocusDoneKey}
-                  onPinRequest={requestPin}
-                  placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
-                  ref={replyRef}
-                />
-              </div>
-            ) : undefined
+            <ConversationDock
+              canReply={canReply}
+              conversationId={conversationId}
+              detail={detail}
+              focusRequest={replyFocusRequest}
+              hasNewerPage={Boolean(history.newer)}
+              lead={lead}
+              live={live}
+              onEngage={engageComposer}
+              onFocusRequestDone={setReplyFocusDoneKey}
+              onPinRequest={requestPin}
+              placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
+              ref={replyRef}
+              spaceId={spaceId}
+              view={view}
+            />
           }
         />
       </ConversationSidePanelLayout>
@@ -981,17 +975,17 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-      {renaming ? (
-        <RenameConversationDialog
-          onClose={() => setRenaming(false)}
-          onSave={(next) => rename.mutate(next)}
-          title={title}
-        />
-      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}
           onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
+      {movingToSpace ? (
+        <MoveToSpaceDialog
+          conversationId={conversationId}
+          current={conversation?.space ?? null}
+          onClose={() => setMovingToSpace(false)}
         />
       ) : null}
     </div>

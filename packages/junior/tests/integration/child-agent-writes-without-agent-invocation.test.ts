@@ -22,7 +22,7 @@ import {
 } from "@/chat/conversations/session-stop";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -306,19 +306,25 @@ describe("spawn and messageAgent", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       release.resolve();
 
-      await expect(last).resolves.toEqual(expect.any(String));
-      await expect(over).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      // Settle both at once: the over-limit spawn can reject while the last
+      // one still runs.
+      const [lastResult, overResult] = await Promise.allSettled([last, over]);
+      expect(lastResult).toEqual({
+        status: "fulfilled",
+        value: expect.any(String),
+      });
+      expect(overResult).toEqual({
+        status: "rejected",
+        reason: expect.any(AgentInvocationLimitError),
+      });
     } finally {
       await harness.close();
     }
   });
 
-  it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
-  ])(
-    "tells only a Task's parent when its Turn fails ($kind)",
-    async ({ kind, notices }) => {
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when its Turn fails",
+    async (kind) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -336,11 +342,7 @@ describe("spawn and messageAgent", () => {
           (await mailboxTexts(harness, slackParentConversationId)).filter(
             (text) => text.includes('status="failed"'),
           ),
-        ).toEqual(
-          Array.from({ length: notices }, () =>
-            expect.stringContaining("The model is unavailable."),
-          ),
-        );
+        ).toEqual([expect.stringContaining("The model is unavailable.")]);
         // The dashboard shows the failed work as failed, for both kinds.
         expect(
           (await loadSubagentEvents(slackParentConversationId)).filter(
@@ -641,7 +643,7 @@ describe("spawn and messageAgent", () => {
       await expect(spawn(harness, "call-1")).rejects.toBeInstanceOf(
         AgentStoppedError,
       );
-      const tool = createSpawnAgentTool(
+      const tool = createStartAgentTool(
         bindSpawnAgent(parentRun(), {
           conversationStore: harness.conversationStore,
           queue: harness.queue,

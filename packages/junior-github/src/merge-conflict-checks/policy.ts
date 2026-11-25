@@ -30,10 +30,11 @@
  */
 import type {
   EventInput,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
 import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
@@ -42,7 +43,7 @@ import {
   type GitHubConflictFix,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
-import { pullRequestRow } from "../pull-request-outcomes/store.js";
+import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import type {
@@ -297,6 +298,7 @@ async function addUnlandedItem(args: {
  * so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   conflict: GitHubMergeConflict;
   db: GitHubDb;
   draft: boolean;
@@ -312,7 +314,10 @@ export async function applyGitHubConflictPolicy(args: {
   title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
+  const change = await findGitHubPullRequest(args.codeChanges, args.ref);
+  if (change?.state !== "open") return args.events;
   const t = juniorGitHubPullRequests;
+  const pullRequest = eq(t.pullRequestId, change.providerId);
   const [row] = await args.db
     .select({
       askedAt: t.conflictFixAskedAt,
@@ -320,7 +325,7 @@ export async function applyGitHubConflictPolicy(args: {
       resumedAt: t.conflictFixesResumedAt,
     })
     .from(t)
-    .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
+    .where(pullRequest)
     .limit(1);
   if (!row) return args.events;
   const nowMs = args.now.getTime();
@@ -343,7 +348,7 @@ export async function applyGitHubConflictPolicy(args: {
           headSha: args.conflict.headSha,
         }),
       })
-      .where(pullRequestRow(args.ref));
+      .where(pullRequest);
     return args.events;
   }
   try {
@@ -352,7 +357,7 @@ export async function applyGitHubConflictPolicy(args: {
     await args.db
       .update(t)
       .set({ conflictFixAskedAt: args.now })
-      .where(pullRequestRow(args.ref));
+      .where(pullRequest);
   } catch (error) {
     logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
       number: args.ref.number,
@@ -400,6 +405,7 @@ export async function closeGitHubConflictItem(args: {
  * again.
  */
 export async function closeGitHubConflictItems(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn">;
   numbers: number[];
@@ -409,11 +415,16 @@ export async function closeGitHubConflictItems(args: {
   status: "done" | "dismissed";
 }): Promise<void> {
   if (args.numbers.length === 0) return;
-  const { repositoryFullName } = args;
-  const openers = await listGitHubPullRequestOpeners(args.db, {
-    numbers: args.numbers,
-    repositoryFullName,
-  });
+  const { numbers, repositoryFullName } = args;
+  const [openers, changes] = await Promise.all([
+    listGitHubPullRequestOpeners(args.db, { numbers, repositoryFullName }),
+    args.codeChanges.list({
+      repository: { name: repositoryFullName, numbers },
+    }),
+  ]);
+  const pullRequestIds = new Map(
+    changes.map((change) => [change.number, change.providerId]),
+  );
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
   const close = async (number: number, conversationId: string) => {
     try {
@@ -424,11 +435,12 @@ export async function closeGitHubConflictItems(args: {
           reason: args.reason,
           status: args.status,
         });
-      if (closed) {
+      const pullRequestId = pullRequestIds.get(number);
+      if (closed && pullRequestId) {
         await args.db
           .update(juniorGitHubPullRequests)
           .set({ conflictFixAskedAt: null })
-          .where(pullRequestRow({ number, repositoryFullName }));
+          .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId));
       }
     } catch (error) {
       logFailOpenFailure(

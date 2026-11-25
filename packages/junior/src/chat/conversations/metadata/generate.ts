@@ -88,8 +88,6 @@ function promptInput(args: {
   const entries = boundedEntries(args.input.entries);
   const messages = entries.filter((entry) => entry.role !== "tool");
   const tools = entries.filter((entry) => entry.role === "tool");
-  const keptMessages = [...messages];
-  const keptTools: ModelEntry[] = [];
   const base = {
     conversation: {
       title: args.input.title,
@@ -100,38 +98,76 @@ function promptInput(args: {
     codeChanges: args.input.codeChanges,
     resources: args.input.resources,
   };
-  const serialize = (): string => {
-    const kept = new Set([...keptMessages, ...keptTools]);
-    // Transcript text is untrusted, so it must not close the input tag.
-    return tagJson({
-      ...base,
-      omitted: {
-        messages: messages.length - keptMessages.length,
-        toolResults: tools.length - keptTools.length,
-      },
-      entries: entries.filter((entry) => kept.has(entry)),
-    });
-  };
+  // Measure each entry once and serialize once. A long Conversation has
+  // thousands of entries, and serializing them all again for each entry
+  // that it drops or adds blocks the event loop for many seconds.
+  // `tagJson` escapes one character at a time, so the escaped length of the
+  // input is the sum of the escaped lengths of its parts.
+  const emptyLength = tagJson({
+    ...base,
+    omitted: { messages: 0, toolResults: 0 },
+    entries: [],
+  }).length;
+  // Exact length of the input: the empty input with each "0" replaced by
+  // its omitted count, plus each kept entry and one comma between entries.
+  const lengthOf = (
+    keptMessages: number,
+    keptTools: number,
+    entryChars: number,
+  ): number =>
+    emptyLength -
+    2 +
+    String(messages.length - keptMessages).length +
+    String(tools.length - keptTools).length +
+    entryChars +
+    Math.max(0, keptMessages + keptTools - 1);
+  const entryLength = (entry: ModelEntry) => tagJson(entry).length;
 
-  let text = serialize();
-  while (text.length > MAX_INPUT_CHARS && keptMessages.length > 0) {
-    keptMessages.shift();
-    text = serialize();
+  // Drop the oldest messages until the rest fit.
+  const messageLengths = messages.map(entryLength);
+  let messageChars = messageLengths.reduce((sum, length) => sum + length, 0);
+  let firstKeptMessage = 0;
+  while (
+    firstKeptMessage < messages.length &&
+    lengthOf(messages.length - firstKeptMessage, 0, messageChars) >
+      MAX_INPUT_CHARS
+  ) {
+    messageChars -= messageLengths[firstKeptMessage]!;
+    firstKeptMessage += 1;
   }
-  if (text.length > MAX_INPUT_CHARS) {
+  const keptMessageCount = messages.length - firstKeptMessage;
+  if (lengthOf(keptMessageCount, 0, messageChars) > MAX_INPUT_CHARS) {
     throw new Error(
       "Conversation metadata input exceeds the 60,000 character limit",
     );
   }
+
+  // Fill the rest of the budget with the newest tool results that fit.
+  const kept = new Set(messages.slice(firstKeptMessage));
+  let keptToolCount = 0;
+  let entryChars = messageChars;
   for (let index = tools.length - 1; index >= 0; index -= 1) {
-    keptTools.push(tools[index]!);
-    const candidate = serialize();
-    if (candidate.length <= MAX_INPUT_CHARS) {
-      text = candidate;
-    } else {
-      keptTools.pop();
+    const tool = tools[index]!;
+    const length = entryLength(tool);
+    if (
+      lengthOf(keptMessageCount, keptToolCount + 1, entryChars + length) <=
+      MAX_INPUT_CHARS
+    ) {
+      kept.add(tool);
+      keptToolCount += 1;
+      entryChars += length;
     }
   }
+
+  // Transcript text is untrusted, so it must not close the input tag.
+  const text = tagJson({
+    ...base,
+    omitted: {
+      messages: messages.length - keptMessageCount,
+      toolResults: tools.length - keptToolCount,
+    },
+    entries: entries.filter((entry) => kept.has(entry)),
+  });
 
   return [
     renderTag("conversation-metadata-input", {}, [text]),

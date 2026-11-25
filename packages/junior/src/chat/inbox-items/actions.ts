@@ -1,8 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
+import { setTodoStatusByUser } from "@/chat/todos/store";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -12,8 +13,11 @@ import { deliverInboxItemChange, type InboxItemDelivery } from "./changes";
 import type { InboxItemChange } from "./messages";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   canUserReadInboxItem,
+  inboxItemTodo,
   isAutomationAlertItem,
+  isInboxItemForEveryone,
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
@@ -29,8 +33,11 @@ import {
   type InboxItem,
 } from "./store";
 
-/** What a person can do with an Inbox item. */
-export type InboxItemAction = "take" | "submit" | "dismiss";
+/**
+ * What a person can do with an Inbox item. A To-do's item takes only
+ * `done` and `dismiss`, and only a To-do's item takes `done`.
+ */
+export type InboxItemAction = "take" | "submit" | "dismiss" | "done";
 
 /** An expected failure of a person action, for the API to report. */
 export class InboxItemActionError extends Error {
@@ -65,7 +72,9 @@ export function reviewItemChange(
   user: User,
 ): InboxItemChange {
   if (action === "take") return { kind: "taken", user };
-  if (action === "submit") return { kind: "submitted", user };
+  if (action === "submit" || action === "done") {
+    return { kind: "submitted", user };
+  }
   return { kind: "dismissed", user };
 }
 
@@ -75,7 +84,7 @@ export function reviewItemChange(
  */
 function isSameClose(
   item: InboxItem,
-  action: Exclude<InboxItemAction, "take">,
+  action: Exclude<InboxItemAction, "take" | "done">,
   user: User,
 ): boolean {
   return (
@@ -134,6 +143,22 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
+  const todo = inboxItemTodo(item);
+  if (todo) {
+    if (action !== "done" && action !== "dismiss") {
+      throw new InboxItemActionError(
+        "invalid",
+        "A To-do item takes only Done or Dismiss.",
+      );
+    }
+    return await closeTodoItem(item, user, nowMs, action);
+  }
+  if (action === "done") {
+    throw new InboxItemActionError(
+      "invalid",
+      "Only a To-do item can be marked done.",
+    );
+  }
 
   if (action === "take") {
     if (item.status !== "open") {
@@ -167,7 +192,13 @@ export async function actOnInboxItem(args: {
   let closed = item;
   let closedNow = false;
   if (item.status === "open") {
-    if (!canActOnInboxItem(item, user.id)) {
+    // Anyone who can see a public question can answer it. Dismiss keeps the
+    // assignee rule (`canAnswerInboxItem`).
+    const allowed =
+      action === "submit"
+        ? canAnswerInboxItem(item, user.id)
+        : canActOnInboxItem(item, user.id);
+    if (!allowed) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",
@@ -222,13 +253,52 @@ export async function actOnInboxItem(args: {
 }
 
 /**
+ * Close a To-do item for its assignee through its To-do: Done marks the
+ * To-do done, and Dismiss drops it. The To-do change closes the item as
+ * done or dismissed (`syncTodoInboxItems`), and the agent sees it in its
+ * next `<todo-delta>`, so it sends no message and starts no Turn. A retry
+ * after the item closed the same way by the same person succeeds.
+ */
+async function closeTodoItem(
+  item: InboxItem,
+  user: User,
+  nowMs: number,
+  action: "dismiss" | "done",
+): Promise<InboxItem> {
+  const todo = inboxItemTodo(item)!;
+  if (item.status === "open") {
+    if (!canActOnInboxItem(item, user.id)) {
+      throw new InboxItemActionError(
+        "forbidden",
+        "Only an assignee can act on this item.",
+      );
+    }
+    await setTodoStatusByUser(getSqlExecutor(), {
+      assignedOnly: true,
+      conversationId: todo.conversationId,
+      id: todo.id,
+      nowMs,
+      status: action === "done" ? "done" : "dropped",
+      userId: user.id,
+    });
+  }
+  const closed = await readInboxItemForUser(user, item.id);
+  if (
+    closed.status !== closedStatus(action) ||
+    closed.closedBy?.userId !== user.id
+  ) {
+    throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
+  return closed;
+}
+
+/**
  * Return whether a reply from this User answers an open action item, or is
  * a retry of the reply from this User that closed it.
  */
 function replyAnswers(item: InboxItem, user: User | undefined): boolean {
   if (item.status !== "open") return item.closedBy?.userId === user?.id;
-  if (item.assignedToEveryone) return false;
-  if (item.assignees.length === 0) return true;
+  if (isInboxItemForEveryone(item)) return false;
   return (
     user !== undefined &&
     item.assignees.some((assignee) => assignee.userId === user.id)
@@ -258,14 +328,15 @@ function messageAnswer(
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
  * - The agent added it in this Conversation, its owner.
- * - The replier is an assigned User, or the item has no assignees. A Slack
- *   replier without a Junior User closes only items with no assignees.
+ * - The replier is an assigned User. A Slack replier without a Junior User
+ *   closes no item.
  * - The decision model says that the reply answers this item
  *   (`matchReplyToInboxItems`). Other open items in the thread stay open.
  *   When the decision fails, all items stay open.
  *
- * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the Inbox. Each item closes as `done` with
+ * Items for Everyone (`isInboxItemForEveryone`, also an item with no
+ * assignees), or only for other people, stay open. They need an answer on
+ * the card or the Inbox. Each item closes as `done` with
  * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.

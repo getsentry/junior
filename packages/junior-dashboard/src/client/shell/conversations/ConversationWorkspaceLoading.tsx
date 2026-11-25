@@ -71,7 +71,8 @@ function ConversationHomeLoading() {
   );
 }
 
-function ConversationDetailLoading() {
+/** A Conversation page while its transcript loads. */
+export function ConversationDetailLoading() {
   return (
     <section
       aria-label="Selected conversation"

@@ -626,7 +626,9 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: () => "System prompt",
+    buildCoreSystemPromptSections: () => [
+      { name: "core", text: "System prompt" },
+    ],
   };
 });
 

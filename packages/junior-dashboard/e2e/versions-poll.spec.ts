@@ -179,7 +179,7 @@ test.describe("checks less often while the reader is away", () => {
 
 test.describe("refreshes each Conversation on screen from its token", () => {
   test.use({ controlTimers: true });
-  test("an Inbox card shows its pull request merged when the token moves @new", async ({
+  test("an Inbox card shows its pull request merged when the token moves", async ({
     page,
     dashboard,
   }) => {
@@ -242,7 +242,20 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    // The card reads the pull request live.
+    await page.route(/\/api\/objects\?/, async (route) => {
+      const response = await route.fetch();
+      const report: {
+        objects: { object?: { status?: string }; url: string }[];
+      } = await response.json();
+      for (const entry of report.objects) {
+        if (merged && entry.url.endsWith("/getsentry/payments/pull/91")) {
+          entry.object = { ...entry.object, status: "merged" };
+        }
+      }
+      await route.fulfill({ response, json: report });
+    });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
@@ -263,7 +276,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     for (let step = 0; step < 6; step += 1) await tick();
     expect(detailReads).toBe(settled);
 
-    // The moved token refreshes the card.
+    // The moved token refreshes the Conversation and the live card.
     merged = true;
     token = "1:2";
     await page.clock.fastForward(5_000);
@@ -271,7 +284,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     expect(detailReads).toBe(settled + 1);
   });
 
-  test("a card whose Conversation read failed reads it again @new", async ({
+  test("a card whose Conversation read failed reads it again", async ({
     page,
     dashboard,
   }) => {
@@ -319,7 +332,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     await rowHead(page, "Pin the release train").click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);
     // The reads that mounting the row starts are done after one check.

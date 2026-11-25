@@ -4,7 +4,6 @@ import {
 } from "@sentry/junior-testing/postgres/fixture";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { vi, type Mock } from "vitest";
-import * as googleSqlSchema from "../src/db/schema";
 import type { GoogleDb } from "../src/store";
 
 export const ACCOUNT_EMAIL = "junior@example.com";
@@ -22,9 +21,7 @@ export function stubGoogleEnv(): void {
 
 /** Connect to this worker's migrated Google plugin database. */
 export async function createGoogleDb(): Promise<PostgresTestFixture<GoogleDb>> {
-  return await createPostgresTestFixture((pool) =>
-    drizzle(pool, { schema: googleSqlSchema }),
-  );
+  return await createPostgresTestFixture((pool) => drizzle({ client: pool }));
 }
 
 /** Build an unsigned identity token with the given claims. */

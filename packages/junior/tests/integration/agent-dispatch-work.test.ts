@@ -9,7 +9,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   readScheduledAutomation,
@@ -401,17 +401,11 @@ describe("agent dispatch conversation work", () => {
       nowMs: Date.now() - 120_000,
       parentConversationId: conversationId,
     });
-    await enqueueChildResultToParent({
+    await enqueueStarterUpdate({
       actor: { name: "automation-run", platform: "system" },
       nowMs: Date.now() - 60_000,
       queue,
-      result: {
-        kind: "reply",
-        reply: {
-          text: "The release is green.",
-          toolCallId: "call-child-reply",
-        },
-      },
+      update: { status: "done", text: "The release is green." },
       messageKey: "call-child-reply",
       sender: child,
       turnId: "turn_watch-follow-up-child",

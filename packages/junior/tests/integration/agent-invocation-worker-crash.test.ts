@@ -8,10 +8,8 @@ import {
   getParentMessageId,
 } from "@/chat/agent-invocations/ids";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -33,12 +31,14 @@ import {
   loadSubagentEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import {
   createConversationWorkHarness,
   runHeartbeatAfterLeasesExpire,
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { webTestActor } from "../fixtures/conversation";
 import { finishRun } from "../fixtures/thread-input";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { StateAdapter } from "chat";
@@ -61,7 +61,7 @@ function readingAgentRunner() {
   return { agentRunner, runs };
 }
 
-/** Spawn one child agent of a parent, as `spawnAgent` does. */
+/** Spawn one child agent of a parent, as `startAgent` does. */
 async function spawnChild(
   options: {
     conversationStore: ConversationStore;
@@ -101,17 +101,19 @@ describe("child agent worker crash", () => {
     await disconnectStateAdapter();
   });
 
-  // When every try of a child Turn is killed, a Task's parent learns it, and
-  // a Thread keeps the stored failure. A Task whose lost Turn already replied
-  // sent its answer. A reply of an earlier Turn does not answer the lost one.
+  // When every try of a child Turn is killed, its parent learns it, whoever
+  // started the Turn. A child whose lost Turn already replied sent its answer. A reply of an earlier Turn does not
+  // answer the lost one.
   it.each([
     { kind: "task" as const, notices: 1, replied: "no" },
     { kind: "task" as const, notices: 0, replied: "this Turn" },
+    { kind: "task" as const, notices: 0, replied: "this Turn quietly" },
     { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
-    { kind: "thread" as const, notices: 0, replied: "no" },
+    { kind: "thread" as const, notices: 1, replied: "no" },
+    { kind: "thread" as const, notices: 1, replied: "no", person: true },
   ])(
-    "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied)",
-    async ({ kind, notices, replied }) => {
+    "tells a child's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied, person: $person)",
+    async ({ kind, notices, person, replied }) => {
       vi.useFakeTimers({
         now: 1_800_000_000_000,
         toFake: ["Date", "setInterval", "clearInterval"],
@@ -132,22 +134,32 @@ describe("child agent worker crash", () => {
           `loop-crash-helper-${kind}`,
           { parentConversationId: childId },
         );
-        // The helper's `reply` wakes the child on the Conversation loop.
-        await enqueueChildResultToParent({
-          actor: invocationInput.actor,
-          messageKey: "helper-reply",
-          queue,
-          result: {
-            kind: "reply",
-            reply: { text: "Helper fact.", toolCallId: "helper-reply" },
-          },
-          sender: {
-            childConversationId: helperId,
-            parentConversationId: childId,
-          },
-          turnId: "turn_helper",
-          state,
-        });
+        if (person) {
+          // A person's Message wakes the Thread instead.
+          await appendAndEnqueueWebMessage(
+            {
+              actor: webTestActor,
+              conversationId: childId,
+              idempotencyKey: "person-1",
+              message: "What did you find?",
+            },
+            options,
+          );
+        } else {
+          // The helper's `reply` wakes the child on the Conversation loop.
+          await enqueueStarterUpdate({
+            actor: invocationInput.actor,
+            messageKey: "helper-reply",
+            queue,
+            update: { status: "done", text: "Helper fact." },
+            sender: {
+              childConversationId: helperId,
+              parentConversationId: childId,
+            },
+            turnId: "turn_helper",
+            state,
+          });
+        }
         vi.setSystemTime(Date.now() + 60_000);
         if (replied === "an earlier Turn") {
           // An earlier Turn read its input and replied.
@@ -169,24 +181,23 @@ describe("child agent worker crash", () => {
             inboundMessageIds: [earlier],
             state,
           });
-          await createDeliverToParent({ queue, state })({
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
-            result: {
-              kind: "reply",
-              reply: { text: "Earlier answer.", toolCallId: "call-earlier" },
-            },
+            update: { status: "done", text: "Earlier answer." },
             turnId: buildDeterministicTurnId(earlier),
           });
         }
-        if (replied === "this Turn") {
-          // The Turn sent its `reply`, and then its worker was lost.
-          await createDeliverToParent({ queue, state })({
+        if (replied === "this Turn" || replied === "this Turn quietly") {
+          // The Turn sent its `reply`, or a quiet note, and then its worker
+          // was lost.
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: childId,
-            result: {
-              kind: "reply",
-              reply: { text: "Answer.", toolCallId: "call-answer" },
+            update: {
+              quiet: replied === "this Turn quietly",
+              status: "done",
+              text: "Answer.",
             },
             turnId: buildDeterministicTurnId(
               getAgentReplyMessageId(helperId, "helper-reply"),
@@ -217,12 +228,9 @@ describe("child agent worker crash", () => {
     },
   );
 
-  it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
-  ])(
-    "tells only a Task's parent when every try of its spawned task is killed ($kind)",
-    async ({ kind, notices }) => {
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when every try of its spawned task is killed",
+    async (kind) => {
       vi.useFakeTimers({
         now: 1_800_000_000_000,
         toFake: ["Date", "setInterval", "clearInterval"],
@@ -253,11 +261,7 @@ describe("child agent worker crash", () => {
           (await parentMessageTexts()).filter((text) =>
             text.includes("worker failed repeatedly"),
           ),
-        ).toEqual(
-          Array.from({ length: notices }, () =>
-            expect.stringMatching(/status="failed"/),
-          ),
-        );
+        ).toEqual([expect.stringMatching(/status="failed"/)]);
         await expect(
           conversationStore.get({ conversationId: childConversationId }),
         ).resolves.toMatchObject({ execution: { status: "failed" } });

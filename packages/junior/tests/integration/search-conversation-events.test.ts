@@ -1,6 +1,6 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   createWebSource,
   type PluginEmbedder,
@@ -21,6 +21,9 @@ import {
   runEventSearchBackfill,
 } from "@/chat/conversations/event-search-backfill";
 import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
+import { SEARCHABLE_EVENT_TYPES } from "@/chat/conversations/event-search-text";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
@@ -28,6 +31,14 @@ import {
   juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { slackInvocationInput } from "../fixtures/agent-invocations";
+import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
+import {
+  createHarness,
+  finishRun,
+  startThread,
+} from "../fixtures/thread-input";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -545,6 +556,24 @@ describe("searchConversationEvents", () => {
     await expect(
       executeTool({ query: "lease.ts" }, { ...context(), turnId: "turn-ask" }),
     ).resolves.toMatchObject({ events: [{ seq: 2 }] });
+
+    // More events without text than one embedding batch do not end the run
+    // before the older events that have text.
+    await events.append(
+      CURRENT_CONVERSATION_ID,
+      Array.from({ length: 40 }, (_, index) => ({
+        createdAtMs: 13 + index,
+        data: {
+          type: "message" as const,
+          messageId: `m-blank-${index}`,
+          role: "assistant" as const,
+          text: "\n",
+        },
+      })),
+    );
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(2);
   });
 
   it("backfills the index of recently active Conversations from the heartbeat", async () => {
@@ -681,6 +710,69 @@ describe("searchConversationEvents", () => {
       outcome: "completed",
       run: { conversations: 2, lexemes: 0, vectors: 0 },
     });
+  });
+
+  it("indexes the events of every ended Turn of a child agent without the backfill", async () => {
+    const harness = await createHarness();
+    // Searchable events of one Conversation, and those with stored lexemes.
+    const indexed = async (conversationId: string) => {
+      const [events, lexemes] = await Promise.all([
+        getDb()
+          .select({ seq: juniorConversationEvents.seq })
+          .from(juniorConversationEvents)
+          .where(
+            and(
+              eq(juniorConversationEvents.conversationId, conversationId),
+              inArray(juniorConversationEvents.type, [
+                ...SEARCHABLE_EVENT_TYPES,
+              ]),
+            ),
+          ),
+        getDb()
+          .select({ seq: juniorConversationEventLexemes.seq })
+          .from(juniorConversationEventLexemes)
+          .where(
+            eq(juniorConversationEventLexemes.conversationId, conversationId),
+          ),
+      ]);
+      return { events: events.length, lexemes: lexemes.length };
+    };
+    try {
+      // A Thread runs no session tasks, so the event search task skips it.
+      const threadId = await startThread(harness, "index-thread");
+      harness.onRun(finishRun);
+      await harness.drain(threadId);
+      const thread = await indexed(threadId);
+      expect(thread.events).toBeGreaterThan(0);
+      expect(thread.lexemes).toBe(thread.events);
+
+      // A Task whose every try fails.
+      const { childConversationId: taskId } = await spawnChildAgent(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: `index-failed-task:${harness.agentName}`,
+          kind: "task",
+          parentToolCallId: "index-failed-task",
+          parentTurnId: "index-failed-task",
+        },
+        {
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        },
+      );
+      harness.onRun(undefined);
+      for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+        await harness.drain(taskId);
+        await runHeartbeatAfterLeasesExpire(harness.queue);
+      }
+      const task = await indexed(taskId);
+      expect(task.events).toBeGreaterThan(0);
+      expect(task.lexemes).toBe(task.events);
+    } finally {
+      await disconnectStateAdapter();
+      await harness.close();
+    }
   });
 
   it("omits replacement history from unknown event versions", async () => {

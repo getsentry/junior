@@ -17,13 +17,6 @@ and facts about their world. Plugins add guidance.
 - Steering text is plain. Each rule says what to do and, when that is not
   obvious, why, so the model can apply it to new cases.
 
-## Entry points
-
-- Operators: `SOUL.md` for voice and `WORLD.md` for facts and workflow.
-- Plugins: fixed guidance in the system prompt, and context for each
-  request.
-- Repos: `AGENTS.md` in a checkout, at Turn start and when it changes.
-
 ## Rules
 
 - Core rules win over operator voice, operator facts, and plugin guidance.
@@ -48,3 +41,10 @@ and facts about their world. Plugins add guidance.
   as stopping early, are tested in the same evals.
 - Text names only the tools, arguments, and modes that exist where it
   shows.
+
+## Gaps
+
+- Some core rules set length with words, not numbers: "concise",
+  "briefly", and "as short as the job allows". The rules for child agents,
+  Automation runs, and Quick questions use them. This breaks "length,
+  count, and time are numbers".

@@ -9,15 +9,13 @@ export class AgentNameInUseError extends Error {
 /** Parent already has the maximum number of active child agents. */
 export class AgentInvocationLimitError extends Error {
   constructor(limit: number) {
-    super(
-      `Parent already has ${limit} active child agent invocations (limit ${limit})`,
-    );
+    super(`Parent already has ${limit} active child agents (limit ${limit})`);
     this.name = "AgentInvocationLimitError";
   }
 }
 
 /**
- * The Conversation that calls spawnAgent is too deep to start child agents,
+ * The Conversation that calls startAgent is too deep to start child agents,
  * or its parent chain does not end at a root.
  */
 export class AgentDepthLimitError extends Error {

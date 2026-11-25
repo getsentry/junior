@@ -74,9 +74,10 @@ If Junior should receive events or report PR/issue outcomes, also:
 
 1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
-3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
-   Issue comment, Pull request, Pull request review, Pull request review
-   comment, Push, and Release.
+3. Subscribe the App to: Check run, Check suite, Deployment, Deployment
+   status, Issues, Issue comment, Pull request, Pull request review, Pull
+   request review comment, Push, and Release. Check run events keep the
+   check counts on pull request cards current.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -327,8 +328,8 @@ The next Vercel deploy applies this plugin's migrations, because the scaffolded
 build runs [junior upgrade](/cli/upgrade/). For a local database, run
 `pnpm exec junior upgrade` yourself.
 
-The migrations create the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and outcome tracking. Opened pull
+The migrations create the `junior_github_pull_requests` projection used by
+webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
 
@@ -558,9 +559,41 @@ The pull request was opened.
 </details>
 
 <details class="event">
+<summary><code>pull_request.reopened</code></summary>
+
+The pull request was reopened after it closed without merging.
+
+</details>
+
+<details class="event">
 <summary><code>pull_request.ready_for_review</code></summary>
 
 The pull request became ready for review.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.converted_to_draft</code></summary>
+
+The pull request was converted to a draft.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.synchronized</code></summary>
+
+The pull request got new commits: a push or a force push to its head
+branch. Each push sends this event, also a push by Junior. So it is not in the
+suggested events, and the watch that Junior creates for its own pull requests
+does not get it by default.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.review_requested</code></summary>
+
+Someone asked a person or a team to review the pull request. Each reviewer
+that GitHub adds sends one event. The summary names the reviewer.
 
 </details>
 
@@ -666,6 +699,27 @@ that Junior published for a fix count as fixes, so a merge or force push for
 work that a person asked for does not. Junior stores those, with the times
 of the latest Resume and the latest item. Each head commit publishes one
 event.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.merge_conflict.resolved</code></summary>
+
+The pull request had merge conflicts, and now GitHub can merge it cleanly.
+GitHub sends no webhook for this either. When Junior reads a conflict, it
+marks the pull request for 30 days. The reads that mark it are the merge
+conflict checks, a `pull_request` webhook, the merge state read after a push,
+and a card that shows the pull request. When a watch, event automation, or
+snooze wants this event, a comment, review, or check result on the pull
+request also reads its merge state, the same as for
+`pull_request.merge_conflict`. After each push, Junior reads the merge state
+again a few seconds later. When a read finds no conflict on a marked pull
+request, Junior publishes this event and removes the mark. A pull request that
+had no conflict sends no event. Each head commit publishes one event. A
+conflict that a change on the base branch fixes, with no push to the pull
+request, publishes at the next read: the next comment, review, check result,
+or push. For pull requests that Junior opened, a push to the default branch
+also starts that read. Trusted data includes the full head SHA.
 
 </details>
 

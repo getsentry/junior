@@ -1,7 +1,6 @@
 import {
   getClient,
   getCurrentScope,
-  startInactiveSpan,
   type BrowserOptions,
 } from "@sentry/browser";
 import { createServer } from "node:http";
@@ -34,7 +33,7 @@ describe("dashboard browser Sentry", () => {
   it("does not start without a server DSN", () => {
     vi.stubGlobal("window", {});
 
-    initDashboardSentry("classic");
+    initDashboardSentry();
 
     expect(getClient()).toBeUndefined();
   });
@@ -47,7 +46,7 @@ describe("dashboard browser Sentry", () => {
       },
     });
 
-    initDashboardSentry("classic");
+    initDashboardSentry();
 
     const options = getClient()?.getOptions();
     expect(options?.dsn).toBe("https://public@example.com/1");
@@ -80,7 +79,7 @@ describe("dashboard browser Sentry", () => {
     });
   });
 
-  it("sends a Reply rating with the reader, comment, and shell", async () => {
+  it("sends a Reply rating with the reader and comment", async () => {
     vi.stubGlobal("window", {
       __JUNIOR_DASHBOARD_SENTRY__: {
         dsn: "https://public@example.com/1",
@@ -91,7 +90,7 @@ describe("dashboard browser Sentry", () => {
         pathname: "/conversations/c1",
       },
     });
-    initDashboardSentry("inbox");
+    initDashboardSentry();
     const items: unknown[] = [];
     getClient()?.on("beforeEnvelope", (envelope) => {
       items.push(...envelope[1].map(([, payload]) => payload));
@@ -119,7 +118,6 @@ describe("dashboard browser Sentry", () => {
         },
       },
       tags: {
-        "app.dashboard.ui": "inbox",
         "app.reply.rating": "bad",
         "gen_ai.conversation.id": "c1",
         "messaging.message.id": "m1",
@@ -141,7 +139,7 @@ describe("dashboard browser Sentry", () => {
     ]);
   });
 
-  it("sends general feedback with its topic and shell", async () => {
+  it("sends general feedback with its topic", async () => {
     vi.stubGlobal("window", {
       __JUNIOR_DASHBOARD_SENTRY__: {
         dsn: "https://public@example.com/1",
@@ -149,7 +147,7 @@ describe("dashboard browser Sentry", () => {
       },
       location: { origin: "http://localhost", pathname: "/" },
     });
-    initDashboardSentry("inbox");
+    initDashboardSentry();
     const items: unknown[] = [];
     getClient()?.on("beforeEnvelope", (envelope) => {
       items.push(...envelope[1].map(([, payload]) => payload));
@@ -172,38 +170,8 @@ describe("dashboard browser Sentry", () => {
           source: "dashboard_feedback",
         },
       },
-      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+      tags: { "app.feedback.topic": "new_ui" },
     });
-  });
-
-  it("names the shell on every span", async () => {
-    vi.stubGlobal("window", {
-      __JUNIOR_DASHBOARD_SENTRY__: {
-        dsn: "https://public@example.com/1",
-        tracesSampleRate: 1,
-      },
-    });
-    initDashboardSentry("classic");
-    const client = getClient();
-    const items: unknown[] = [];
-    client?.on("beforeEnvelope", (envelope) => {
-      items.push(...envelope[1].map(([, payload]) => payload));
-    });
-
-    startInactiveSpan({ name: "Click", op: "ui.action" }).end();
-    await client?.flush();
-
-    expect(items).toMatchObject([
-      {
-        items: [
-          {
-            attributes: {
-              "app.dashboard.ui": { type: "string", value: "classic" },
-            },
-          },
-        ],
-      },
-    ]);
   });
 
   it("records each compressed body size on its own fetch span", async () => {
@@ -236,7 +204,7 @@ describe("dashboard browser Sentry", () => {
     });
     const originalFetch = globalThis.fetch;
     try {
-      initDashboardSentry("classic");
+      initDashboardSentry();
       const client = getClient();
       const spans: Span[] = [];
       client?.on("beforeEnvelope", (envelope) => {

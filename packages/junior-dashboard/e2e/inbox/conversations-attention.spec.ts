@@ -3,10 +3,7 @@ import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { viewAsParticipant } from "./conversationMenu";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
-  const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-
+test.describe("new UI", () => {
   /** The Conversations bundle, which lists every Conversation with its menu. */
   function conversationsList(page: Page): Locator {
     return page.getByRole("region", { name: "Conversations", exact: true });
@@ -41,7 +38,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const title = "Investigate checkout latency";
       const row = rowLink(list, title);
@@ -116,7 +113,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const rows = list.getByRole("listitem");
       const waiting = rows.filter({
@@ -132,6 +129,18 @@ test.describe("new UI", { tag: "@new" }, () => {
       const filter = (name: string) =>
         filters.getByRole("link", { exact: true, name });
       await expect(filter("All")).toHaveAttribute("aria-current", "page");
+      // All, the default, is at the right edge, after Pinned.
+      await expect(filters.getByRole("link")).toHaveText([
+        /^Done$/,
+        /^Watching$/,
+        /^Working$/,
+        /^Needs you$/,
+        /^Pinned$/,
+        /^All$/,
+      ]);
+      await screenshot(page, "conversation-state-filters", {
+        lightTheme: true,
+      });
 
       // Needs you lists only the rows that wait on the viewer.
       await filter("Needs you").click();
@@ -174,7 +183,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const finishedRow = list.getByRole("link", {
         name: /Closed issue summary/,
@@ -183,11 +192,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       // The row menu shows the rows of the `⋯` menu, in the same order.
       await expect(page.getByRole("menuitem")).toHaveText([
         "Share",
-        "Copy as Markdown",
-        "Open event log",
         "Pin",
         "Rename",
+        "Copy as Markdown",
         "Subscribe",
+        "Open event log",
         "Archive",
       ]);
       await screenshot(page, "conversation-row-context-menu", {
@@ -201,7 +210,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const renameRequest = page.waitForRequest(
         (request) =>
@@ -227,16 +236,6 @@ test.describe("new UI", { tag: "@new" }, () => {
 
       await page.reload();
       await expect(renamedRow).toBeVisible();
-
-      // The `⋯` menu renames too.
-      await page.goto(
-        `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-      );
-      await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-      await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
-        "Investigate checkout latency",
-      );
     });
   });
 });

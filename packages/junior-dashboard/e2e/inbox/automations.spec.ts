@@ -15,8 +15,7 @@ function gate() {
   return { promise, resolve: () => resolve() };
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** One option in a filter of the Automations filter panel or sheet. */
   function filterOption(page: Page, filter: string, option: string) {
     return page
@@ -119,7 +118,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // Groups follow the latest run, so fix the day that the list reads.
     await page.clock.setFixedTime(LIST_NOW);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Automations" })

@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
+  "prevIds": ["0ad4af18-c2ba-4c0f-b7dd-8444087166ad"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_briefs",
+        "outcome_status"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_briefs.outcome_status",
+        "n|col|public.junior_conversation_briefs.outcome_status",
+        "e|col|public.junior_conversation_briefs.outcome_status"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_briefs", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_briefs",
+        "name": "outcome_status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

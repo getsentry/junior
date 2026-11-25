@@ -304,22 +304,6 @@ export function useLinkedConversationTitles(
   }).map((query) => query.data ?? undefined);
 }
 
-/**
- * Count the open action items assigned to the viewer, for the nav. The
- * versions poll refreshes it when it changes.
- */
-export function useInboxItemCountData(enabled: boolean) {
-  return useQuery({
-    enabled,
-    queryKey: [...INBOX_ITEMS_QUERY_KEY, "count"],
-    queryFn: revalidatedJsonQuery(
-      inboxItemCountSchema,
-      "/api/inbox-items/count",
-    ),
-    retry: false,
-  });
-}
-
 const INBOX_ITEM_ACTION_KEY = [...INBOX_ITEMS_QUERY_KEY, "action"];
 
 const inboxItemActionVariablesSchema = z.object({
@@ -380,6 +364,10 @@ function changeCounts(
           ),
           decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
           needsViewer: Math.max(0, count.needsViewer + by),
+          todos: Math.max(
+            0,
+            count.todos + (item.todoId === undefined ? 0 : by),
+          ),
         },
         "contentVersion",
       ),

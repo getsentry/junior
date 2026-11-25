@@ -11,8 +11,7 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   /** Show or hide Details beside the chat. A wide screen opens it at first. */
@@ -49,7 +48,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page);
     await page.setViewportSize({ height: 560, width: 1440 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const scroller = list.locator(".overflow-y-auto").first();
     const head = rowHead(list, checkout);
@@ -91,7 +90,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // Back returns to the same entry, scroll position, and open row.
     await back.click();
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
+    await expect(page).toHaveURL(/\/inbox\?view=conversations$/);
     await expect
       .poll(() => scroller.evaluate((node) => node.scrollTop))
       .toBe(top);
@@ -104,7 +103,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/conversations\//);
     await setDetails(page, false);
     await page.keyboard.press("Escape");
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
+    await expect(page).toHaveURL(/\/inbox\?view=conversations$/);
   });
 
   test("the first Esc closes Details, and the second goes back", async ({
@@ -112,7 +111,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await openRow(
       page
         .getByRole("region", { name: "To do" })
@@ -129,7 +128,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.keyboard.press("Escape");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
   });
 
   test("+ opens a new Conversation in the main area", async ({
@@ -137,22 +136,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page.getByRole("button", { name: "New conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\/new$/);
     await expect(
       page.getByRole("heading", { name: "What do you need?" }),
     ).toBeVisible();
     await expect(page.getByLabel("Start a conversation")).toBeFocused();
-    // The pane keeps its entries beside the composer.
+    // The pane keeps its entries beside the composer. The composer is no
+    // Conversation yet, so the Inbox row stays the page.
     await expect(
       page.getByRole("navigation", { name: "Primary" }).getByRole("link", {
         name: /^Inbox/,
       }),
-    ).toBeVisible();
+    ).toHaveAttribute("aria-current", "page");
     await screenshot(page, "inbox-new-conversation", { lightTheme: true });
     await page.getByRole("link", { name: "Back to Inbox" }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
   });
 
   test("the list loads older Conversations as it scrolls", async ({
@@ -193,7 +193,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const older = page.getByRole("link", { name: /An older conversation/ });
     await expect(older).toHaveCount(0);
     expect(olderPage).toBe(0);
@@ -218,7 +218,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await primary.getByRole("link", { name: /^Automations/ }).click();
     await expect(page).toHaveURL(/\/automations/);
     await page.goBack();
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
+    await expect(page).toHaveURL(/\/inbox\?view=conversations$/);
     await expect(older).toBeVisible();
     expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
   });
@@ -233,11 +233,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
     await mockInboxItems(page, { open: [rollout, other] });
-    await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${other.id}`);
     // The Inbox has no row for it, so the link leaves the URL.
     await expect
       .poll(() => new URL(page.url()).searchParams.has("item"))
@@ -256,6 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
@@ -268,7 +270,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.abort()
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${kept.id}`);
     const row = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
     await expect(row).toHaveAttribute("data-expanded", "true");
     await expect
@@ -281,7 +283,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.evaluate((url) => {
       history.pushState(null, "", url);
       dispatchEvent(new PopStateEvent("popstate"));
-    }, `/?item=${other.id}`);
+    }, `/inbox?item=${other.id}`);
     await expect
       .poll(() => new URL(page.url()).searchParams.has("item"))
       .toBe(false);
@@ -300,6 +302,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",
@@ -310,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.abort()
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${kept.id}`);
     const row = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
     await expect(row).toHaveAttribute("data-expanded", "true");
     await expect
@@ -322,7 +325,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.evaluate((url) => {
       history.pushState(null, "", url);
       dispatchEvent(new PopStateEvent("popstate"));
-    }, `/?item=${sibling.id}`);
+    }, `/inbox?item=${sibling.id}`);
     await expect
       .poll(() => new URL(page.url()).searchParams.has("item"))
       .toBe(false);
@@ -342,6 +345,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",
@@ -357,7 +361,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       if (cursor === "1") await keptPageHeld;
       return route.fallback();
     });
-    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${kept.id}`);
     const keptRow = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
     await expect(keptRow).toHaveAttribute("data-expanded", "true");
     await expect
@@ -376,7 +380,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.evaluate((url) => {
       history.pushState(null, "", url);
       dispatchEvent(new PopStateEvent("popstate"));
-    }, `/?item=${sibling.id}`);
+    }, `/inbox?item=${sibling.id}`);
     await expect(
       page.locator(`li[data-inbox-row="todo:${sibling.id}"]`),
     ).toHaveAttribute("data-expanded", "true");
@@ -389,8 +393,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page);
     await page.setViewportSize({ height: 560, width: 1440 });
     // An item link names the Inbox entry, so phones open the list.
-    await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
-    await expect(page).toHaveURL(/\/\?view=inbox$/);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=${rollout.id}`);
+    await expect(page).toHaveURL(/\/inbox\?view=inbox$/);
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
     await expect(asks).toContainText(rollout.request.question);
     const scroller = page
@@ -406,7 +410,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox/ })
       .click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(asks).toContainText(rollout.request.question);
     await expect
       .poll(() => scroller.evaluate((node) => node.scrollTop))
@@ -419,7 +423,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The linked item is past the first page, so its row loads on its own.
     await mockInboxItems(page, { open: [audit, rollout], pageSize: 1 });
-    await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=${rollout.id}`);
     const linkedRow = page.locator(`li[data-inbox-row="todo:${rollout.id}"]`);
     await expect(linkedRow).toHaveAttribute("data-expanded", "true");
 
@@ -427,8 +431,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await primary.getByRole("link", { name: /^Automations/ }).click();
     await expect(page).toHaveURL(/\/automations/);
     await primary.getByRole("link", { name: /^Inbox/ }).click();
-    // `/` and `/?view=inbox` are one list with one place.
-    await expect(page).toHaveURL(/\/(\?view=inbox)?$/);
+    // `/inbox` and `/inbox?view=inbox` are one list with one place.
+    await expect(page).toHaveURL(/\/inbox(\?view=inbox)?$/);
     await expect(linkedRow).toHaveAttribute("data-expanded", "true");
   });
 
@@ -471,13 +475,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await mockInboxItems(page, { open: [rollout] });
     await page.goto(
-      `${dashboard.baseURL}/?view=conversations&item=${rollout.id}`,
+      `${dashboard.baseURL}/inbox?view=conversations&item=${rollout.id}`,
     );
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
     await expect(asks).toContainText(rollout.title);
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is in view.
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
+    await expect(page).toHaveURL(/\/inbox\?view=conversations$/);
   });
 
   test("a failed page still lets another list show its loaded rows", async ({
@@ -543,7 +547,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .evaluate((node) => (node.scrollTop = node.scrollHeight));
 
     // Conversations loads every page it can, until one fails.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(async () => {
       await scrollToEnd("Conversations");
       await expect(retry).toBeVisible({ timeout: 1000 });
@@ -554,7 +558,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // failure does not show there.
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Inbox\b/ }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
     await scrollToEnd("Inbox");
     await expect(retry).toHaveCount(0);
@@ -583,7 +587,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await mockInboxItems(page);
       // Old links redirect to the item's link, which names the Inbox entry.
       await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
-      await expect(page).toHaveURL(/\/\?view=inbox$/);
+      await expect(page).toHaveURL(/\/inbox\?view=inbox$/);
       await expect(
         page.getByRole("region", { name: `${checkout}: asks` }),
       ).toContainText(rollout.request.question);
@@ -594,13 +598,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
     }) => {
       await mockInboxItems(page);
-      await page.goto(`${dashboard.baseURL}/`);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
       await screenshot(page, "inbox-phone-entries", { lightTheme: true });
 
       await entries.getByRole("link", { name: /^Inbox/ }).click();
-      await expect(page).toHaveURL(/\/\?view=inbox$/);
+      await expect(page).toHaveURL(/\/inbox\?view=inbox$/);
       const todo = page.getByRole("region", { name: "To do" });
       await expect(
         todo.getByRole("link", { name: new RegExp(checkout) }),
@@ -613,7 +617,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await asks.getByRole("link", { name: "Open conversation" }).click();
       await expect(page).toHaveURL(/\/conversations\//);
       await page.getByRole("link", { name: "Back to Inbox" }).click();
-      await expect(page).toHaveURL(/\/\?view=inbox$/);
+      await expect(page).toHaveURL(/\/inbox\?view=inbox$/);
     });
   });
 
@@ -625,15 +629,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
     }) => {
       await mockInboxItems(page);
-      await page.goto(`${dashboard.baseURL}/`);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       // A list leaves its path as the place Back returns to.
       await entries.getByRole("link", { name: /^Snoozed/ }).click();
-      await expect(page).toHaveURL(/\/\?view=snoozed$/);
+      await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
       await page
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
 
       await page
         .getByRole("list", { name: "In flight" })
@@ -642,7 +646,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .click();
       await expect(page).toHaveURL(/\/conversations\//);
       await page.getByRole("link", { name: /^Back to / }).click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     });
   });
 
@@ -654,7 +658,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
     }) => {
       await mockInboxItems(page);
-      await page.goto(`${dashboard.baseURL}/?view=inbox`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
       const composer = page.getByLabel("Start a conversation");
       await page.getByRole("button", { name: "New conversation" }).click();
       await expect(page).toHaveURL(/\/conversations\/new$/);
@@ -690,7 +694,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A Conversations row names its Conversation; an Inbox row names its
     // item.
     await mockInboxItems(page, { open: [rollout] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const head = rowHead(list, checkout);
     const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
@@ -724,12 +728,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     await expect(middle).toHaveURL(/\/conversations\//);
     await middle.close();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
 
     // An ask pill expands the row in place.
     await expandRow(head);
     await expect(asks).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await asks.getByRole("link", { name: "Open conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.goBack();
@@ -743,7 +751,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.clock.install();
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const head = rowHead(list, checkout);
     const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
@@ -811,7 +819,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         subtree: true,
       });
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const row = page
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]")

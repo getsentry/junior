@@ -25,10 +25,6 @@ function navItem(
   return { key, label: NAV_PAGES[key].label, to: NAV_PAGES[key].to };
 }
 
-/** The nav item key of the viewer's Lead, a Conversation page. */
-export const LEAD_NAV_KEY = "lead";
-
-const CODE_NAV_ITEM = navItem("code");
 const SYSTEM_NAV_ITEM = navItem("system");
 
 /** Build the signed-in primary nav, holding auth slots while shell data loads. */
@@ -39,38 +35,30 @@ export function buildPrimaryNavItems(input: {
   primaryUserPages: PluginUserPageLink[];
   /** What waits on the viewer: To do in the Inbox. */
   inboxCount?: number | undefined;
-  /** The viewer's Lead, once its id loads. */
-  leadPath?: string | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the
   // Automations slot while core data catches up so the header does not jump.
   const reserveAuthPrimaryNav =
     input.loading && isAuthPrimaryNavPath(input.pathname);
   const showTasksNav = input.loggedIn || reserveAuthPrimaryNav;
-  // Signed-in viewers find Code and System in the profile menu. Without an
-  // account there is no profile menu, so the pages stay here.
+  // Signed-in viewers find System in the profile menu. Without an account
+  // there is no profile menu, so the page stays here.
   const showAccountPages = !input.loading && !input.loggedIn;
 
   return [
-    ...(input.loggedIn && input.leadPath
-      ? [{ key: LEAD_NAV_KEY, label: "Lead", to: input.leadPath }]
-      : []),
     { ...navItem("inbox"), count: input.inboxCount },
+    navItem("code"),
     ...(showTasksNav ? [navItem("automations")] : []),
     ...input.primaryUserPages.map(userPageNavItem),
-    ...(showAccountPages ? [CODE_NAV_ITEM, SYSTEM_NAV_ITEM] : []),
+    ...(showAccountPages ? [SYSTEM_NAV_ITEM] : []),
   ];
 }
 
-/** Build the pages in the profile menu: plugin profile pages, Code, and System. */
+/** Build the pages in the profile menu: plugin profile pages, and System. */
 export function buildProfileNavItems(
   profileUserPages: PluginUserPageLink[],
 ): DashboardHeaderNavItem[] {
-  return [
-    ...profileUserPages.map(userPageNavItem),
-    CODE_NAV_ITEM,
-    SYSTEM_NAV_ITEM,
-  ];
+  return [...profileUserPages.map(userPageNavItem), SYSTEM_NAV_ITEM];
 }
 
 function userPageNavItem(page: PluginUserPageLink): DashboardHeaderNavItem {

@@ -1,10 +1,54 @@
-import { mockInboxItems, rowHead } from "./inbox-fixture";
-import { expect, test } from "../test";
+import type { Page } from "@playwright/test";
 
-// Pins in In flight keep the viewer's order: only pins drag, and a drag
+import { mobile } from "../screenshot";
+import { expect, test } from "../test";
+import { holdTouch } from "./browserMenu";
+import { mockInboxItems, rowHead } from "./inbox-fixture";
+
+const PIN_TITLES = ["Alpha pin", "Bravo pin", "Charlie pin"];
+const pinId = (index: number) => `slack:CPINS:${1770000000 + index}.000100`;
+
+/**
+ * Serve three idle pins in In flight, and keep the order that a reorder
+ * saves, so the feed refetch after the save shows it.
+ */
+async function servePins(page: Page) {
+  let order = PIN_TITLES.map((_, index) => pinId(index));
+  await page.route("**/api/conversations/pin-order", (route) => {
+    order = route.request().postDataJSON().conversationIds;
+    return route.fulfill({ json: { conversationIds: order } });
+  });
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    return route.fulfill({
+      response,
+      json: {
+        ...feed,
+        conversations: PIN_TITLES.map((displayTitle, index) => {
+          const conversationId = pinId(index);
+          return {
+            ...feed.conversations[0],
+            conversationId,
+            displayTitle,
+            isParticipant: true,
+            pinnedAt: "2026-08-07T10:00:00.000Z",
+            pinPosition: order.indexOf(conversationId),
+            status: "done",
+            turnActive: false,
+          };
+        }),
+        nextCursor: undefined,
+      },
+    });
+  });
+  await mockInboxItems(page, { open: [] });
+}
+
+// Pins in In flight keep the viewer's order, above every busy row: only
+// pins drag, and a drag, Alt+ArrowUp or Alt+ArrowDown, or the row menu
 // saves that order.
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a drag in In flight moves only that pin in the stored order", async ({
     dashboard,
     page,
@@ -26,8 +70,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         response,
         json: {
           ...feed,
-          // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
-          // shows it first.
+          // Stored order Alpha, Bravo, Charlie. Charlie runs, and still
+          // keeps its place.
           conversations: [
             pin(0, "Alpha pin", "done"),
             pin(1, "Bravo pin", "done"),
@@ -38,12 +82,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Charlie pin/,
       /Alpha pin/,
       /Bravo pin/,
+      /Charlie pin/,
     ]);
     // Every row shows, so there is nothing to expand.
     await expect(page.getByRole("button", { name: "Show all" })).toHaveCount(0);
@@ -104,7 +148,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations&pinned=1`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations&pinned=1`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
     // Pinned lists every pin, and no other row.
@@ -165,13 +209,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       )
         saves.push(request.postDataJSON());
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
-    // The running Conversation that is not pinned shows first.
+    // The running Conversation that is not pinned shows after the pins.
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
       /Alpha pin/,
       /Bravo pin/,
+      /Delta run/,
     ]);
     const running = inFlight.getByRole("link", { name: /Delta run/ });
     const alpha = inFlight.getByRole("link", { name: /Alpha pin/ });
@@ -185,9 +229,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await running.dragTo(bravo, { steps: 10 });
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
       /Alpha pin/,
       /Bravo pin/,
+      /Delta run/,
     ]);
     expect(saves).toEqual([]);
     // A pin dropped on the running row lands on the nearest pin instead.
@@ -196,12 +240,78 @@ test.describe("new UI", { tag: "@new" }, () => {
         response.request().method() === "PUT" &&
         response.url().includes("/api/conversations/pin-order"),
     );
-    await bravo.dragTo(running, { steps: 10 });
+    await alpha.dragTo(running, { steps: 10 });
     expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [
         "slack:CPINS:1770000001.000100",
         "slack:CPINS:1770000000.000100",
       ],
+    });
+  });
+
+  test("the row menu moves a pin in In flight", async ({ dashboard, page }) => {
+    await servePins(page);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const inFlight = page.getByRole("list", { name: "In flight" });
+    const rows = inFlight.getByRole("listitem");
+    await expect(rows).toHaveText([/Alpha pin/, /Bravo pin/, /Charlie pin/]);
+    const menu = page.getByRole("menu");
+
+    // The first pin cannot move up.
+    await inFlight
+      .getByRole("link", { name: /Alpha pin/ })
+      .click({ button: "right" });
+    await expect(
+      menu.getByRole("menuitem", { name: "Move up" }),
+    ).toBeDisabled();
+    await menu.getByRole("menuitem", { name: "Move down" }).click();
+    await expect(rows).toHaveText([/Bravo pin/, /Alpha pin/, /Charlie pin/]);
+
+    // The last pin cannot move down. The `⋯` menu has the same rows.
+    await inFlight.getByRole("link", { name: /Charlie pin/ }).hover();
+    await inFlight
+      .getByRole("button", { name: "Open menu for Charlie pin" })
+      .click();
+    await expect(
+      menu.getByRole("menuitem", { name: "Move down" }),
+    ).toBeDisabled();
+    await menu.getByRole("menuitem", { name: "Move up" }).click();
+    await expect(rows).toHaveText([/Bravo pin/, /Charlie pin/, /Alpha pin/]);
+  });
+
+  test.describe("on a touch phone", () => {
+    test.use({
+      hasTouch: true,
+      viewport: { height: mobile.height, width: mobile.width },
+    });
+
+    test("a long press on a pin opens the menu that moves it", async ({
+      dashboard,
+      page,
+    }) => {
+      await servePins(page);
+      await page.goto(`${dashboard.baseURL}/inbox`);
+      const inFlight = page.getByRole("list", { name: "In flight" });
+      const rows = inFlight.getByRole("listitem");
+      await expect(rows).toHaveText([/Alpha pin/, /Bravo pin/, /Charlie pin/]);
+      const menu = page.getByRole("menu");
+
+      // A finger held past the long press delay opens the row menu. Lift it
+      // at once: emulated touch adds a mouse click to the lift, and the menu
+      // closes on one that comes long after it opened.
+      const lift = await holdTouch(
+        page,
+        inFlight.getByRole("link", { name: /Charlie pin/ }),
+        { x: 40, y: 8 },
+      );
+      await expect(menu).toBeVisible();
+      await lift();
+      // The last pin cannot move down.
+      await expect(
+        menu.getByRole("menuitem", { name: "Move down" }),
+      ).toBeDisabled();
+      await menu.getByRole("menuitem", { name: "Move up" }).tap();
+      await expect(rows).toHaveText([/Alpha pin/, /Charlie pin/, /Bravo pin/]);
     });
   });
 });

@@ -9,14 +9,14 @@
 //       directory on the last line. `--mock` sets
 //       JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true. DIR defaults to
 //       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>. Every error, span,
-//       and log that Nitro and the queue worker send to Sentry Local goes
-//       to DIR/telemetry.ndjson.
+//       and log that Nitro sends to Sentry Local goes to
+//       DIR/telemetry.ndjson.
 //   node instance.mjs doctor RUN_DIR
 //       Read-only. Exit 0 only when the instance of RUN_DIR is safe to drive.
 //   node instance.mjs crash-worker RUN_DIR [--when FILE]
-//       SIGKILL the queue worker of this run, then start a new one the way a
-//       code change does, and print both pids. `--when` waits until FILE
-//       exists first, for example the snapshot of a running Turn.
+//       Make Nitro replace the app worker of this run, the way a code change
+//       does. This ends a running Turn as a crash does. `--when` waits until
+//       FILE exists first, for example the snapshot of a running Turn.
 //   node instance.mjs stop RUN_DIR
 //       Stop what launch started, and drop the run's databases. Keep RUN_DIR
 //       and its evidence.
@@ -251,8 +251,7 @@ async function launch(args) {
 
   const env = { ...process.env };
   env["DATABASE_URL"] = `postgres://junior:junior@localhost:54322/${database}`;
-  env["JUNIOR_QUEUE_REDIS_URL"] = `redis://localhost:6382/${redisDb}`;
-  env["REDIS_URL"] = env["JUNIOR_QUEUE_REDIS_URL"];
+  env["REDIS_URL"] = `redis://localhost:6382/${redisDb}`;
   env["JUNIOR_STATE_ADAPTER"] = "redis";
   // A disposable key for this run only. Never write it to a file.
   env["JUNIOR_ENCRYPTION_KEYS"] ||=
@@ -448,25 +447,6 @@ async function stop(runDir, log = console.log) {
   return 0;
 }
 
-/** The queue worker in the recorded `pnpm dev` tree, or undefined. */
-function queueWorkerOf(pid) {
-  return descendants(pid).find((child) => {
-    try {
-      // ps, not /proc: macOS has no /proc. -ww stops ps from cutting the
-      // command at the terminal width.
-      return execFileSync(
-        "ps",
-        ["-ww", "-o", "command=", "-p", String(child)],
-        {
-          encoding: "utf8",
-        },
-      ).includes("dev-queue-worker.mjs");
-    } catch {
-      return false;
-    }
-  });
-}
-
 async function crashWorker(runDir, args) {
   const at = args.indexOf("--when");
   if (at >= 0) {
@@ -476,24 +456,20 @@ async function crashWorker(runDir, args) {
       await sleep(500);
     }
   }
-  const pid = Number(readFileSync(join(runDir, "dev.pid"), "utf8"));
-  const worker = queueWorkerOf(pid);
-  if (!worker) throw new Error("this run has no queue worker");
-  process.kill(worker, "SIGKILL");
-  console.log(`killed queue worker ${worker}`);
-  // `pnpm dev` starts a new worker when an app entry file changes. A new
-  // mtime is enough, and it leaves no diff.
+  const devLog = join(runDir, "dev.log");
+  const logStart = readFileSync(devLog, "utf8").length;
+  // Nitro builds the app again and replaces its worker when an app file
+  // changes. A new mtime is enough, and it leaves no diff.
   const now = new Date();
   utimesSync(join(repoRoot, "apps/example/server.ts"), now, now);
   for (let i = 0; i < 60; i++) {
-    const next = queueWorkerOf(pid);
-    if (next && next !== worker) {
-      console.log(`started queue worker ${next}`);
+    if (readFileSync(devLog, "utf8").slice(logStart).includes("Server built")) {
+      console.log("Nitro replaced the app worker");
       return 0;
     }
     await sleep(1000);
   }
-  throw new Error("no new queue worker after 60 seconds");
+  throw new Error("Nitro did not rebuild the app in 60 seconds");
 }
 
 const [command, ...args] = process.argv.slice(2);

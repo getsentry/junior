@@ -36,12 +36,19 @@ export const inboxItemSchema = z
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
+    /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
-    /** True when the viewer can take, submit, or dismiss it. */
+    /** True when the viewer can take, submit, dismiss, or mark it done. */
     canAct: z.boolean(),
+    /**
+     * True when the viewer can answer the open question. A public question
+     * takes an answer from anyone who can see it, also when `canAct` is
+     * false.
+     */
+    canAnswer: z.boolean(),
     /** True when the viewer can act and is not already the only assignee. */
     canTake: z.boolean(),
     closeReason: z.string().min(1).optional(),
@@ -90,6 +97,11 @@ export const inboxItemSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Set on the reply notice of a Conversation's starter. Its body is a
+     * short preview of the reply, which its Turn's message holds in full.
+     */
+    replyNotice: z.literal(true).optional(),
     request: inboxItemRequestSchema.optional(),
     /**
      * The top of the owner Conversation's tree that the viewer can see, at
@@ -132,6 +144,12 @@ export const inboxItemSchema = z
       .strict()
       .optional(),
     title: z.string().min(1),
+    /**
+     * The id of the To-do that the item shows, for a To-do assigned to the
+     * viewer. Its owner Conversation holds the To-do. The item takes Done
+     * instead of an answer or Dismiss.
+     */
+    todoId: z.number().int().positive().optional(),
     updatedAt: z.string().datetime(),
     visibility: z.enum(["public", "private"]),
     /**
@@ -255,6 +273,8 @@ export const inboxItemCountSchema = z
      * item for them, as Snoozed lists them. 0 without `include=snoozed`.
      */
     snoozed: z.number().int().nonnegative(),
+    /** The `needsViewer` items that show a To-do (`todoId`). */
+    todos: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -297,6 +317,8 @@ export const inboxItemParamsSchema = z
 export const inboxItemActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("take") }).strict(),
   z.object({ action: z.literal("dismiss") }).strict(),
+  /** Mark the To-do of a To-do item done. */
+  z.object({ action: z.literal("done") }).strict(),
   z
     .object({
       action: z.literal("submit"),

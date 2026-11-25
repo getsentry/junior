@@ -107,7 +107,7 @@ describe("gateway request timing", () => {
   }
 
   async function runChat(attempts: number) {
-    const traced = createTracedStreamFn(gatewayStream(attempts));
+    const traced = createTracedStreamFn({ base: gatewayStream(attempts) });
     const stream = await traced(
       { id: "anthropic/claude-test" } as Model<"anthropic-messages">,
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

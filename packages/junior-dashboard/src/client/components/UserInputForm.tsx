@@ -18,7 +18,6 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
-import { useInboxUi } from "../uiShell";
 import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -216,7 +215,6 @@ export function UserInputForm(props: {
   /** False when the answer takes no words, so the form has no note. */
   words?: boolean;
 }) {
-  const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
   const choiceField = buttonUserInputField(props.request);
   // A plugin action sends on click. It reads no words, so it has no note.
@@ -454,10 +452,7 @@ export function UserInputForm(props: {
       {fieldCount > 1 ? (
         <p
           aria-live="polite"
-          className={cn(
-            "m-0 -mt-1 text-xs text-dashboard-text-muted",
-            inbox && "text-right",
-          )}
+          className="m-0 -mt-1 text-right text-xs text-dashboard-text-muted"
         >
           {answeredCount} of {fieldCount} answered
         </p>

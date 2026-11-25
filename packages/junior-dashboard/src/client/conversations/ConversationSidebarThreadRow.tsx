@@ -11,7 +11,6 @@ import {
 import { conversationDisplayTitle } from "../format";
 import { Spinner } from "../components/ui/spinner";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
-import { useInboxUi } from "../uiShell";
 import type { Conversation } from "../types";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChildConversationStatusIcon } from "./ChildConversationStatus";
@@ -33,16 +32,12 @@ import {
 import { formatCompactAge } from "../time";
 import { conversationTurnIsActive } from "./turnActivity";
 
-// Line the first level up with the root title, then step in per level. Deep
-// trees stop stepping in, so titles keep their width.
-const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
-// The new UI's rows have a wider glyph column and gap (`sidebarGrid`).
-// Inbox Threads start on the row title's left edge, 2rem in.
-const INBOX_DEPTH_INDENT = ["pl-7", "pl-11", "pl-15"];
-const ROW_GRID = "grid-cols-[0.875rem_minmax(0,1fr)_auto] gap-x-2 pr-3";
-const INBOX_ROW_GRID = "grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 pr-2";
-const TOGGLE_GRID = "grid-cols-[0.875rem_minmax(0,1fr)] gap-x-2 pr-3";
-const INBOX_TOGGLE_GRID = "grid-cols-[1rem_minmax(0,1fr)] gap-x-3 pr-2";
+// Threads start on the row title's left edge, 2rem in, then step in per
+// level. Deep trees stop stepping in, so titles keep their width. The glyph
+// column and gap match the sidebar rows (`sidebarGrid`).
+const DEPTH_INDENT = ["pl-7", "pl-11", "pl-15"];
+const ROW_GRID = "grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 pr-2";
+const TOGGLE_GRID = "grid-cols-[1rem_minmax(0,1fr)] gap-x-3 pr-2";
 
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
@@ -64,7 +59,6 @@ export const ConversationSidebarThreadRow = memo(
     selected: boolean;
   }) {
     const prefetch = usePrefetchConversation(props.conversation.id);
-    const inbox = useInboxUi();
     const archive = useArchiveConversation(props.conversation.id, {
       onError: () => props.onArchiveError(props.conversation, true),
       onSuccess: (archivedAt) => {
@@ -92,7 +86,6 @@ export const ConversationSidebarThreadRow = memo(
     const title = conversationDisplayTitle(props.conversation);
     // The API takes an archive only from participants.
     const participant = props.conversation.isParticipant;
-    const indent = inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT;
     return (
       <div
         className={cn(
@@ -105,8 +98,8 @@ export const ConversationSidebarThreadRow = memo(
           aria-current={props.selected ? "page" : undefined}
           className={cn(
             "grid min-w-0 items-center rounded-lg py-1 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-            inbox ? INBOX_ROW_GRID : ROW_GRID,
-            indent[Math.min(props.depth, indent.length - 1)],
+            ROW_GRID,
+            DEPTH_INDENT[Math.min(props.depth, DEPTH_INDENT.length - 1)],
             participant && `max-sm:pr-10 ${ROW_ACTIONS_FADE_CLASS}`,
           )}
           to={conversationPath(props.conversation.id)}
@@ -195,14 +188,13 @@ export function ConversationSidebarThreadToggle(props: {
   hiddenCount: number;
   onToggle(): void;
 }) {
-  const inbox = useInboxUi();
   return (
     <button
       aria-expanded={props.expanded}
       className={cn(
         "group grid min-w-0 cursor-pointer items-center rounded-lg py-1 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-        inbox ? INBOX_TOGGLE_GRID : TOGGLE_GRID,
-        (inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT)[0],
+        TOGGLE_GRID,
+        DEPTH_INDENT[0],
       )}
       onClick={props.onToggle}
       type="button"
@@ -221,13 +213,12 @@ export function ConversationSidebarThreadToggle(props: {
  * lists them all.
  */
 export function ConversationSidebarThreadsOmitted(props: { count: number }) {
-  const inbox = useInboxUi();
   return (
     <p
       className={cn(
         "grid min-w-0 py-1 font-sans text-xs text-dashboard-text-faint",
-        inbox ? INBOX_TOGGLE_GRID : TOGGLE_GRID,
-        (inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT)[0],
+        TOGGLE_GRID,
+        DEPTH_INDENT[0],
       )}
     >
       <span className="col-start-2">+{props.count} more</span>

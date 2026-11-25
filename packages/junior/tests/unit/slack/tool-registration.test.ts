@@ -179,11 +179,11 @@ describe("Slack tool registration", () => {
     expect(tools["searchConversationMessages"]?.source?.id).toBe(
       "conversations",
     );
-    expect(tools["searchConversations"]?.exposure).toBe("deferred");
-    expect(tools["searchConversations"]?.source?.id).toBe("conversations");
-    expect(
-      tools["searchConversations"]?.inputSchema["properties"],
-    ).toHaveProperty("channel_id");
+    expect(tools["listAgents"]?.exposure).toBe("deferred");
+    expect(tools["listAgents"]?.source?.id).toBe("agents");
+    expect(tools["listAgents"]?.inputSchema["properties"]).toHaveProperty(
+      "query",
+    );
     expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
     expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
     expect(tools["stopWatchingResources"]?.exposure).toBe("deferred");
@@ -203,20 +203,17 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("searchConversations");
+    expect(tools).toHaveProperty("listAgents");
   });
 
-  it("registers Conversation search without a channel filter outside Slack", () => {
+  it("registers Conversation search outside Slack", () => {
     const tools = createTools(
       [],
       {},
       { ...ctx(), conversationPrivacy: "public" },
     );
 
-    expect(tools).toHaveProperty("searchConversations");
-    expect(
-      tools["searchConversations"]?.inputSchema["properties"],
-    ).not.toHaveProperty("channel_id");
+    expect(tools).toHaveProperty("listAgents");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 
@@ -354,7 +351,7 @@ describe("Slack tool registration", () => {
     expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
     expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
 
-    // An Agent invocation reports the need to its parent.
+    // A child agent reports the need to its parent.
     const childTools = createTools(
       [],
       {},
@@ -459,7 +456,6 @@ describe("agent tool binding", () => {
       listedTools: {
         ...behavior.tools,
         agents: "children_and_parent",
-        reply: "parent",
         reportBlocked: "parent",
       },
       spawnAgent,

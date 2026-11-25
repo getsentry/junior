@@ -11,9 +11,14 @@ import * as z from "zod";
 import { defineJuniorPlugins } from "@/app";
 import { spawnChildAgent as spawnChild } from "@/chat/agent-invocations/create";
 import { listChildAgents } from "@/chat/agent-invocations/list";
+import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import type { Actor } from "@/chat/actor";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { commitMessages } from "@/chat/conversations/projection";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import type { ConversationEventData } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore } from "@/chat/db";
 import {
@@ -99,19 +104,33 @@ export async function loadTurnEvents(conversationId: string) {
   );
 }
 
-export async function loadSubagentEvents(conversationId: string) {
+/** Load the history event data of the given types, in order. */
+export async function loadEventsOfType<T extends ConversationEventData["type"]>(
+  conversationId: string,
+  ...types: T[]
+): Promise<Extract<ConversationEventData, { type: T }>[]> {
   return (await getConversationEventStore().loadHistory(conversationId))
     .map((event) => event.data)
-    .filter(
-      (data) =>
-        data.type === "subagent_started" || data.type === "subagent_ended",
+    .filter((data): data is Extract<ConversationEventData, { type: T }> =>
+      (types as string[]).includes(data.type),
     );
 }
 
+export async function loadSubagentEvents(conversationId: string) {
+  return await loadEventsOfType(
+    conversationId,
+    "subagent_started",
+    "subagent_ended",
+  );
+}
+
 export async function loadMessageEvents(conversationId: string) {
-  return (await getConversationEventStore().loadHistory(conversationId))
-    .map((event) => event.data)
-    .filter((data) => data.type === "message");
+  return await loadEventsOfType(conversationId, "message");
+}
+
+/** Assert that the Conversation never rewrote a stored Message. */
+export async function expectNoMessageRewrites(conversationId: string) {
+  expect(await loadEventsOfType(conversationId, "message_updated")).toEqual([]);
 }
 
 type ChildAgentArgs = {
@@ -128,7 +147,7 @@ export type SpawnedChild = {
   parentConversationId: string;
 };
 
-/** Spawn a child agent as `spawnAgent` does. */
+/** Spawn a child agent as `startAgent` does. */
 export async function spawnChildAgent(
   args: ChildAgentArgs,
 ): Promise<SpawnedChild> {
@@ -313,7 +332,7 @@ export async function prepareSummarizedHistory(conversationId: string) {
 }
 
 /**
- * Commit parent history with an earlier `reply` and the `spawnAgent` call of
+ * Commit parent history with an earlier `reply` and the `startAgent` call of
  * a fork. Returns the id of that call.
  */
 export async function prepareForkParentHistory(): Promise<string> {
@@ -354,7 +373,7 @@ export async function prepareForkParentHistory(): Promise<string> {
           {
             type: "toolCall",
             id: toolCallId,
-            name: "spawnAgent",
+            name: "startAgent",
             arguments: { fork: true, task: invocationInput.input },
           },
         ],
@@ -399,4 +418,33 @@ export function upkeepPlugins(
       },
     }),
   ]);
+}
+
+/**
+ * Send the agent update of one child Turn to its starter and Watches, as
+ * the end of the Turn does.
+ */
+export function createPublishChildTurn(options: {
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+}) {
+  return async (input: {
+    actor: Actor;
+    conversationId: string;
+    turnId: string;
+    update: AgentUpdate;
+  }): Promise<void> =>
+    await publishAgentUpdate(
+      input.conversationId,
+      {
+        type: input.update.status === "failed" ? "turn_failed" : "turn",
+        turnId: input.turnId,
+      },
+      {
+        queue: options.queue,
+        starter: input.actor,
+        state: options.state,
+        update: async () => input.update,
+      },
+    );
 }

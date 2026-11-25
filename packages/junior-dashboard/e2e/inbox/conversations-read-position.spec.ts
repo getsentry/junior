@@ -9,8 +9,7 @@ import {
 } from "../read-position-fixture";
 import { desktop, mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   /** Scroll to the end of the transcript until `row` renders. */
   async function scrollDownTo(transcript: Locator, row: Locator) {
     await expect(async () => {
@@ -285,7 +284,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       mock.pagedDetail = true;
       mock.servesUnreadPage = true;
       const pageRequests = recordPageRequests(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const row = page.getByRole("link", { name: /Read position/ }).first();
 
       // A pointer that moves across the row fetches nothing.

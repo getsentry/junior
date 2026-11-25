@@ -24,29 +24,6 @@ can act on it.
   To do, Up for grabs, and other sections, around the normal Inbox rows.
   It adds no color.
 
-## Entry points
-
-- Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
-  Conversations view.
-- The stack title, which opens the root Conversation. A click on empty
-  space in the stack's header does the same.
-- A right-click anywhere on a stack, which opens the root Conversation's
-  menu, as on its Conversation row.
-- A row click, which opens the row and its answer form.
-- On each row, on hover: Dismiss, Snooze, and the row's main step, as
-  icons with their names as tooltips. The main step comes last. On a code
-  change row it opens the change on its provider, such as "Review on
-  GitHub". A row with no main step, such as a question, shows Expand. A
-  touch screen has no hover, so there a row shows its actions only once it
-  is open. Rows do not repeat them.
-- On a stack: Dismiss and Snooze, as quiet buttons in the order of a
-  row's actions, and the stack's item count once, right-most. The buttons
-  do not repeat the count. Their names say what they cover, such as
-  "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
-  the open asks that the viewer can act on.
-- On a Conversation row, on hover: Archive, Pin, then Open, last.
-- A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
-
 ## Rules
 
 Grouping:
@@ -89,7 +66,8 @@ Grouping:
 Actions:
 
 - Each row carries its own answer, Dismiss, and Snooze. An answer closes
-  the item as done. None of them act on the other rows of the stack.
+  the item as done. A "To do for you" row carries Dismiss, Snooze, and
+  Done: only its assignee closes their To-do. None of them act on the other rows of the stack.
 - A row that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
@@ -134,3 +112,6 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
+- When a Snooze fails, the row comes back with an error toast that offers
+  no Retry. This breaks "when it fails, only that row comes back, and a
+  toast offers Retry".

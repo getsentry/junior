@@ -38,6 +38,10 @@ export interface ConversationMessageMeta {
   /** Resource identifier of the first Event, such as a Conversation id. */
   eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
+  /** What the first Event says happened, when it is an agent update. */
+  eventStatus?: string;
+  /** Watch that delivered the first Event. Omitted for other input. */
+  eventWatchId?: string;
   /**
    * The Watch Events when several arrived together. A Message that also
    * records Inbox item changes lists its own Event here even when it has

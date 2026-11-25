@@ -1,0 +1,67 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b6c17b84-b3b9-4da9-a15c-866625ef4635",
+  "prevIds": ["ff567d34-57b2-44b8-adf8-c88d68e35eeb"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_unarchived_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "n|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "e|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "n|rel|public.junior_conversation_participants_unarchived_activity_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "e|col|public.junior_conversation_participants.user_id",
+        "e|col|public.junior_conversation_participants.last_message_at",
+        "e|col|public.junior_conversation_participants.root_conversation_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_auto_archive_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|idx|public.junior_conversation_participants_auto_archive_idx",
+        "e|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|rel|public.junior_conversation_participants_auto_archive_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "ffae98c9338da638"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_participants_unarchived_activity_idx\"]"
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_participants_auto_archive_idx\"]",
+      "set": {
+        "where": "\"junior_conversation_participants\".\"auto_archive\""
+      }
+    }
+  ]
+}

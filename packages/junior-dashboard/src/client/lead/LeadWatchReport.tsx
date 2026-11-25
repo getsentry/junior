@@ -1,5 +1,6 @@
 import { useContext } from "react";
 import { Link } from "react-router";
+import { AGENT_UPDATE_EVENT_TYPE } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { transcriptColumnsClass } from "../conversations/TranscriptRows";
@@ -10,22 +11,45 @@ import { LeadPage } from "./leadPage";
 import type { LeadWorkState } from "./leadWork";
 import { leadWorkStatus } from "./LeadWorkStatus";
 
-const reports: Record<string, { state: LeadWorkState; verb: string }> = {
-  "conversation.completed": { state: "done", verb: "finished" },
-  "conversation.failed": { state: "failed", verb: "failed" },
-  "conversation.stopped": { state: "done", verb: "stopped" },
-  "conversation.waiting": { state: "needs_you", verb: "needs you" },
+type Report = { state: LeadWorkState; verb: string };
+
+const done: Report = { state: "done", verb: "finished" };
+
+const reports: Record<string, Report> = {
+  blocked: { state: "needs_you", verb: "is blocked" },
+  // Agent updates stored before `done` name it `completed`.
+  completed: done,
+  done,
+  failed: { state: "failed", verb: "failed" },
+  stopped: { state: "done", verb: "stopped" },
+  waiting: { state: "needs_you", verb: "needs you" },
 };
 
-/** Whether a transcript message is a status Event of a watched Conversation. */
+// Watch Events from before agent updates. Stored Lead transcripts keep them.
+const legacyReports: Record<string, Report | undefined> = {
+  "conversation.completed": done,
+  "conversation.failed": reports["failed"],
+  "conversation.stopped": reports["stopped"],
+  "conversation.waiting": reports["waiting"],
+};
+
+function watchReport(message: TranscriptViewMessage): Report | undefined {
+  if (message.eventNamespace !== "junior" || !message.eventType) {
+    return undefined;
+  }
+  if (message.eventType === AGENT_UPDATE_EVENT_TYPE) {
+    return message.eventWatchId && message.eventStatus
+      ? reports[message.eventStatus]
+      : undefined;
+  }
+  return legacyReports[message.eventType];
+}
+
+/** Whether a transcript message is an agent update of a watched Conversation. */
 export function isConversationWatchReport(
   message: TranscriptViewMessage,
 ): boolean {
-  return (
-    message.eventNamespace === "junior" &&
-    message.eventType !== undefined &&
-    message.eventType in reports
-  );
+  return watchReport(message) !== undefined;
 }
 
 /**
@@ -37,7 +61,7 @@ export function LeadWatchReport(props: {
   timestamp?: number | undefined;
 }) {
   const lead = useContext(LeadPage);
-  const report = reports[props.message.eventType ?? ""];
+  const report = watchReport(props.message);
   if (!report) return null;
   const status = leadWorkStatus[report.state];
   const Icon = status.icon;

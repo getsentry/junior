@@ -18,13 +18,6 @@ returns a result that shows the model its next step.
 - No part of a result is lost without notice. When a result is cut, the
   model learns that it was cut, how much there is, and how to get the rest.
 
-## Entry points
-
-- The model: direct tools in every Turn, and deferred tools through
-  `searchTools`.
-- Plugins: the tools that a plugin adds, and MCP tools from an MCP provider.
-- Dashboard: tool calls and results in a Conversation transcript.
-
 ## Rules
 
 - A tool description says what the tool does and what it returns. The
@@ -51,3 +44,20 @@ returns a result that shows the model its next step.
   Sentry.
 - MCP tools keep the names and results of their provider. Junior's own
   wrappers around them follow these rules.
+
+## Gaps
+
+- A tool that cannot work in a Turn stays in the tool list. The model
+  learns only from a separate note, or from a failed call, that it cannot
+  use it. This breaks "the model sees only the tools and arguments that can
+  work in the current Turn".
+- Some results cut long text and add only "…", such as Conversation
+  summaries in search results. The model does not learn how much is
+  missing or how to get it. This breaks "no part of a result is lost
+  without notice".
+- Some arguments have no description, such as arguments of the Automation,
+  Inbox item, and Google Calendar tools. This breaks "an argument
+  description says what the value is".
+- `userLookup` finds a person by a plain name through pages of the Slack
+  member list. In a large workspace it can miss the person. This breaks "it
+  never pages through a provider's whole list to find a name".

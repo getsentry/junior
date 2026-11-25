@@ -1,22 +1,15 @@
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
-  githubLinkedIssues,
 } from "../conversation-footer.js";
 import type {
   GitHubPullRequestConversationsInput,
-  GitHubPullRequestLinkedIssuesInput,
   GitHubPullRequestOutcomeInput,
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
-// GitHub counts these on each pull request payload.
-const count = z.number().int().nonnegative();
-
-// `ready_for_review` and `converted_to_draft` change only the draft state.
-// `synchronize` is a push, which changes the size.
+// GitHub can deliver the first push (`synchronize`) before `opened`.
 const pullRequestLifecycleActionsSchema = z.enum([
   "opened",
   "closed",
@@ -31,13 +24,9 @@ const canonicalPullRequestOutcomeSchema = z
     action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
-        additions: count.optional(),
         body: z.string().nullable().optional(),
-        changed_files: count.optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
-        deletions: count.optional(),
-        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -61,13 +50,9 @@ const pullRequestOutcomeSchema = z
     action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
-        additions: count.optional(),
         body: z.string().nullable().optional(),
-        changed_files: count.optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
-        deletions: count.optional(),
-        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -89,13 +74,9 @@ const pullRequestOutcomeSchema = z
     canonicalPullRequestOutcomeSchema.parse({
       action: provider.action,
       pull_request: {
-        additions: provider.pull_request.additions,
         body: provider.pull_request.body,
-        changed_files: provider.pull_request.changed_files,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
-        deletions: provider.pull_request.deletions,
-        draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
@@ -160,25 +141,6 @@ function timestamp(value: string | null | undefined): Date | undefined {
   return Number.isFinite(parsed.getTime()) ? parsed : undefined;
 }
 
-/** The size of a pull request payload. Undefined when it counts nothing. */
-function githubPullRequestSize(pullRequest: {
-  additions?: number | undefined;
-  changed_files?: number | undefined;
-  deletions?: number | undefined;
-}): CodeChangeSize | undefined {
-  const size: CodeChangeSize = {};
-  if (pullRequest.additions !== undefined) {
-    size.additions = pullRequest.additions;
-  }
-  if (pullRequest.deletions !== undefined) {
-    size.deletions = pullRequest.deletions;
-  }
-  if (pullRequest.changed_files !== undefined) {
-    size.changedFiles = pullRequest.changed_files;
-  }
-  return Object.keys(size).length > 0 ? size : undefined;
-}
-
 /** Normalize only the fields required for the Junior-owned PR projection. */
 export function normalizeGitHubPullRequestOutcome(args: {
   body: unknown;
@@ -237,15 +199,12 @@ export function normalizeGitHubPullRequestOutcome(args: {
   return {
     candidateOwned,
     closedAt,
-    // A close keeps the stored draft state.
-    draft: closed ? undefined : pullRequest.draft,
     mergedAt,
     number: pullRequest.number,
     openedAt,
     pullRequestId: String(pullRequest.id),
     repositoryFullName: parsed.repository.full_name,
     repositoryId: String(parsed.repository.id),
-    size: githubPullRequestSize(pullRequest),
     state,
     title: pullRequest.title,
     updatedAt,
@@ -269,31 +228,6 @@ export function normalizeGitHubPullRequestConversations(args: {
   return conversationIds.length > 0
     ? {
         conversationIds,
-        pullRequestId: String(parsed.data.pull_request.id),
-      }
-    : undefined;
-}
-
-/** Normalize linked issues written into a Junior-owned PR body by its bot. */
-export function normalizeGitHubPullRequestLinkedIssues(args: {
-  body: unknown;
-  botEmail?: string | undefined;
-}): GitHubPullRequestLinkedIssuesInput | undefined {
-  const parsed = pullRequestConversationSchema.safeParse(args.body);
-  if (!parsed.success) return undefined;
-  if (
-    !isBotLogin(parsed.data.pull_request.user.login, args.botEmail) ||
-    !isBotLogin(parsed.data.sender.login, args.botEmail)
-  ) {
-    return undefined;
-  }
-  const linkedIssues = githubLinkedIssues(
-    parsed.data.pull_request.body,
-    parsed.data.repository.full_name,
-  );
-  return linkedIssues.length > 0
-    ? {
-        linkedIssues,
         pullRequestId: String(parsed.data.pull_request.id),
       }
     : undefined;

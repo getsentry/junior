@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -19,7 +16,7 @@ import {
 
 const actor = slackInvocationInput.actor;
 
-/** Spawn a child agent of `parentConversationId` as `spawnAgent` does. */
+/** Spawn a child agent of `parentConversationId` as `startAgent` does. */
 async function spawn(
   harness: Harness,
   idempotencyKey: string,
@@ -35,7 +32,7 @@ async function spawn(
   });
 }
 
-/** Run the child's queued task to its end without a `reply`. */
+/** Run the child's queued task to its end with no final text. */
 async function finishTask(harness: Harness, conversationId: string) {
   harness.onRun(finishRun);
   await harness.drain(conversationId);
@@ -55,26 +52,12 @@ describe("nested child agents", () => {
   it("sends each nested child's reply up to its parent as the Actor that started the tree", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
-    const deliver = createDeliverToParent({
-      queue: harness.queue,
-      state: harness.state,
-    });
     // The child that replies runs the result of its own child first.
-    const replyAfterResult = async (
-      sender: string,
-      text: string,
-      parentConversationId: string,
-    ) => {
-      await deliver({
-        actor,
-        conversationId: sender,
-        result: { kind: "reply", reply: { text, toolCallId: "call-reply" } },
-        turnId: `turn_${text}`,
-      });
+    const replyAfterResult = async (conversationId: string, text: string) => {
       // The result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      harness.onRun(finishRun);
-      await harness.processUntilRun(parentConversationId);
+      harness.onRun(async (run) => await finishRun(run, { finalText: text }));
+      await harness.processUntilRun(conversationId);
       harness.onRun(undefined);
       return harness.runs.at(-1)!;
     };
@@ -82,17 +65,20 @@ describe("nested child agents", () => {
       const child = await spawn(harness, "nested-child");
       const helper = await spawn(harness, "nested-helper", child);
       const grandHelper = await spawn(harness, "nested-grand-helper", helper);
-      for (const conversationId of [child, helper, grandHelper]) {
+      // Each child's own child agent still works, so these Turns end with no
+      // result.
+      for (const conversationId of [child, helper]) {
         await finishTask(harness, conversationId);
       }
+      harness.onRun(
+        async (run) =>
+          await finishRun(run, { finalText: "Grand helper fact: 42." }),
+      );
+      await harness.drain(grandHelper);
 
       // The result runs on the helper as the Actor that started the tree,
       // with the root Location.
-      const helperRun = await replyAfterResult(
-        grandHelper,
-        "Grand helper fact: 42.",
-        helper,
-      );
+      const helperRun = await replyAfterResult(helper, "Helper fact: 42.");
       expect(helperRun).toMatchObject({
         actor,
         conversationId: helper,
@@ -106,22 +92,9 @@ describe("nested child agents", () => {
 
       // Each child reports from the Turn that read the result of its own
       // child.
-      const childRun = await replyAfterResult(
-        helper,
-        "Helper fact: 42.",
-        child,
-      );
+      const childRun = await replyAfterResult(child, "Final answer: 42.");
       expect(childRun).toMatchObject({ actor, conversationId: child });
       expect(childRun.instruction.text).toContain("Helper fact: 42.");
-      await deliver({
-        actor,
-        conversationId: child,
-        result: {
-          kind: "reply",
-          reply: { text: "Final answer: 42.", toolCallId: "call-reply" },
-        },
-        turnId: "turn_final",
-      });
       const parentMessages =
         (
           await getConversationWorkState({
@@ -130,7 +103,7 @@ describe("nested child agents", () => {
         )?.messages ?? [];
       expect(parentMessages).toHaveLength(1);
       expect(parentMessages[0]!.input.text).toMatch(
-        /^<agent-result [^>]*status="completed"/,
+        /^<agent-result [^>]*status="done"/,
       );
       expect(parentMessages[0]!.input.text).toContain("Final answer: 42.");
     } finally {
@@ -146,9 +119,9 @@ describe("nested child agents", () => {
       parentConversationId: string,
       text: string,
     ) =>
-      await enqueueChildResultToParent({
+      await enqueueStarterUpdate({
         actor,
-        result: { kind: "reply", reply: { text, toolCallId: text } },
+        update: { status: "done", text },
         messageKey: text,
         queue: harness.queue,
         sender: { childConversationId: sender, parentConversationId },
@@ -182,14 +155,61 @@ describe("nested child agents", () => {
         /^<agent-message /,
       );
 
-      // With no open work left, the reply is the child's result.
+      // With no open work left, the reply is the child's result. The
+      // helper's result runs on the child first.
       const done = await spawn(harness, "done-child");
       const doneHelper = await spawn(harness, "done-helper", done);
       await finishTask(harness, doneHelper);
+      vi.setSystemTime(Date.now() + 60_000);
+      await finishTask(harness, done);
       await sendReply(done, slackParentConversationId, "Final answer.");
       expect(await lastText(slackParentConversationId)).toMatch(
-        /^<agent-result [^>]*status="completed"/,
+        /^<agent-result [^>]*status="done"/,
       );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("reports a Task whose helper ended its work with noReply", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const endWith = async (
+      conversationId: string,
+      answer: Parameters<typeof finishRun>[1],
+    ) => {
+      harness.onRun(async (run) => await finishRun(run, answer));
+      await harness.drain(conversationId);
+      harness.onRun(undefined);
+    };
+    const texts = async (conversationId: string) =>
+      (await getConversationWorkState({ conversationId }))?.messages.map(
+        (message) => message.input.text,
+      );
+    try {
+      const child = await spawn(harness, "quiet-child");
+      const helper = await spawn(harness, "quiet-helper", child);
+      // The child replies while its helper works, so the parent reads a
+      // message, not the child's result.
+      await endWith(child, { finalText: "Partial findings." });
+      await endWith(helper, { noReply: { note: "Helper found nothing." } });
+      await expect(texts(child)).resolves.toEqual([
+        expect.stringMatching(
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nHelper found nothing\.\n/,
+        ),
+      ]);
+
+      // The helper's result waits out its batch window.
+      vi.setSystemTime(Date.now() + 60_000);
+      await endWith(child, { noReply: { note: "The findings stand." } });
+      await expect(texts(slackParentConversationId)).resolves.toEqual([
+        expect.stringMatching(
+          /^<agent-message [^>]*>\n[\s\S]*\nPartial findings\.\n/,
+        ),
+        expect.stringMatching(
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nThe findings stand\.\n/,
+        ),
+      ]);
     } finally {
       await harness.close();
     }

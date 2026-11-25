@@ -10,8 +10,7 @@ import {
   prReview,
 } from "./inbox-fixture";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   function todoRows(page: Page): Locator {
     return page
       .getByRole("region", { name: "To do" })
@@ -23,7 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await page.goto(`${dashboard.baseURL}/`);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const row = todoRows(page).first();
       await expandRow(row.locator("a[data-inbox-head]").first());
       await expect(row).toHaveAttribute("data-expanded", "true");
@@ -41,7 +40,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test("Esc collapses the open row", async ({ dashboard, page }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const row = todoRows(page).first();
     await expandRow(row.locator("a[data-inbox-head]").first());
     await expect(row).toHaveAttribute("data-expanded", "true");
@@ -53,7 +52,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     // Each To do entry is a row, or a stack of rows. When the first
     // entry's last ask leaves, the next entry's first row opens.
     const entryRow = (index: number) =>
@@ -144,7 +143,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const asks = await closableAsks(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(asks.row(0).locator("a[data-inbox-head]").first());
     await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
 
@@ -160,7 +159,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const asks = await closableAsks(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(asks.row(0).locator("a[data-inbox-head]").first());
     await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
 
@@ -182,7 +181,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Reduced motion leaves a row with no animation, so a wrong leave has
     // already opened the next row by the next frames.
     const asks = await closableAsks(page, { pageSize: 3 });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(asks.row(0).locator("a[data-inbox-head]").first());
     await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
     const openRows = page.locator("li[data-inbox-row][data-expanded]");

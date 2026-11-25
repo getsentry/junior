@@ -4,15 +4,7 @@
     "tool-result": ["index", "is_error", "tool"]
   },
   "packages/junior/src/chat/agent-invocations/result.ts": {
-    "agent-message": ["conversation_id", "name", "source", "title"],
-    "agent-result": [
-      "conversation_id",
-      "name",
-      "source",
-      "status",
-      "title",
-      "waiting_on"
-    ]
+    "agent-message": ["conversation_id", "name", "source", "title"]
   },
   "packages/junior/src/chat/agent-invocations/top-level-message.ts": {
     "agent-message": ["conversation_id", "source"]
@@ -58,5 +50,15 @@
     "message": ["author_id", "author_name", "source"],
     "task": ["about", "event"],
     "watch": ["about"]
+  },
+  "packages/junior/src/chat/agent-invocations/agent-update.ts": {
+    "agent-result": [
+      "conversation_id",
+      "name",
+      "source",
+      "status",
+      "title",
+      "waiting_on"
+    ]
   }
 }

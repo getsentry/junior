@@ -79,6 +79,7 @@ public actor DemoServer {
     case "archiveConversation": return try archive(arguments)
     case "archiveDoneConversations": return archiveDone()
     case "pinConversation": return try pin(arguments)
+    case "renameConversation": return try rename(arguments)
     case "setConversationAutoArchive":
       _ = try conversationIndex(arguments)
       return .object(["autoArchive": .bool(arguments.flag("autoArchive") ?? true)])
@@ -171,9 +172,10 @@ public actor DemoServer {
     var conversation = DemoConversation(
       summary: [
         "conversationId": .string(id), "title": .string(arguments.text("title") ?? title(for: message)),
-        "status": "working", "turnActive": true, "surface": "api", "startedAt": stamp, "lastSeenAt": stamp,
+        "status": "working", "turnActive": true, "treeState": "working", "surface": "api",
+        "startedAt": stamp, "lastSeenAt": stamp,
         "url": .string(JuniorServer.demo.page("/conversations/\(id)")!.absoluteString),
-      ], brief: nil, messages: [], pending: [], authorization: nil, listed: true)
+      ], messages: [], pending: [], authorization: nil, listed: true)
     let messageId = append(message, to: &conversation)
     conversations.insert(conversation, at: 0)
     remember(arguments, id, messageId)
@@ -201,6 +203,7 @@ public actor DemoServer {
     ])
     conversation.summary["status"] = "working"
     conversation.summary["turnActive"] = true
+    conversation.summary["treeState"] = "working"
     conversation.summary["lastSeenAt"] = stamp
     conversation.summary["archivedAt"] = nil
     conversation.replyAt = now().addingTimeInterval(Self.replyDelay)
@@ -219,6 +222,7 @@ public actor DemoServer {
       ])
       conversations[index].summary["status"] = "done"
       conversations[index].summary["turnActive"] = false
+      conversations[index].summary["treeState"] = "done"
       conversations[index].summary["lastSeenAt"] = stamp
       conversations[index].replyAt = nil
     }
@@ -283,6 +287,15 @@ public actor DemoServer {
     return .object(["pinnedAt": conversations[index].summary["pinnedAt"] ?? .null])
   }
 
+  private func rename(_ arguments: JSONObject) throws -> JSONValue {
+    let index = try conversationIndex(arguments)
+    guard let title = arguments.text("title"), title.utf16.count <= conversationTitleMaxLength else {
+      throw DemoToolError("The title must have 1 to \(conversationTitleMaxLength) characters.")
+    }
+    conversations[index].summary["title"] = .string(title)
+    return .object(["title": .string(title)])
+  }
+
   /// Unsubscribe removes the Conversation from the viewer's feed.
   private func subscribe(_ arguments: JSONObject) throws -> JSONValue {
     let index = try conversationIndex(arguments)
@@ -308,6 +321,7 @@ public actor DemoServer {
     conversations[index].replyAt = nil
     conversations[index].summary["turnActive"] = false
     conversations[index].summary["status"] = "done"
+    conversations[index].summary["treeState"] = "done"
     return .object([
       "conversationId": id, "status": "requested", "stoppedInboundMessageIds": .array(dropped),
       "stoppedMessages": .array([]),
@@ -408,7 +422,6 @@ typealias JSONObject = [String: JSONValue]
 /// whether the viewer's feed lists it, and when its canned reply comes.
 struct DemoConversation {
   var summary: JSONObject
-  var brief: JSONValue?
   var messages: [JSONObject]
   var pending: [JSONValue]
   var authorization: JSONValue?
@@ -419,15 +432,14 @@ struct DemoConversation {
   var lastSeq: Int { messages.last.map(messageSeq) ?? -1 }
   var lastSeenAt: Date { parsedDate(summary["lastSeenAt"]) }
 
-  /// Titles and Briefs, as the real search reads them.
+  /// Titles and summaries, as the real search reads them.
   var searchText: String {
-    [summary["title"]?.string, brief?["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
+    [summary["title"]?.string, summary["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
   }
 
   /// The `getConversation` fields without the cursor and messages.
   var state: JSONObject {
     var state: JSONObject = ["conversation": .object(summary), "pendingMessages": .array(pending)]
-    state["brief"] = brief
     state["authorization"] = authorization
     return state
   }

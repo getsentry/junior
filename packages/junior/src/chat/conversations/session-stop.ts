@@ -22,7 +22,7 @@ import {
 import type { StopConversationWorkResult } from "@/chat/task-execution/state";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import { juniorConversations } from "@/db/schema";
-import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
@@ -98,7 +98,7 @@ export async function enqueueAutomatedInput(
  * in each mailbox, ends a Turn that waits for sign-in, and asks each running
  * Turn to stop. Each Turn it ends records one cancelled `turn_completed`.
  * Watches stay, and each Conversation that this stop starts reports
- * `conversation.stopped` to them. A Conversation that already stopped later
+ * a `stopped` agent update to them. A Conversation that already stopped later
  * keeps that stop, so a retried or cascaded stop does not move it back.
  */
 export async function stopConversationTree(
@@ -165,10 +165,21 @@ export async function stopConversationTree(
   });
   const queue = options.queue ?? getVercelConversationWorkQueue();
   await mapBounded(reported, (conversationId) =>
-    publishConversationStatus(
+    publishAgentUpdate(
       conversationId,
       { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
-      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+      {
+        nowMs: stoppedAt.getTime(),
+        queue,
+        // Whoever stopped the tree knows. A person's stop of a child agent
+        // tells its starter in `reportPersonStopToParent`.
+        starter: false,
+        state: options.state,
+        update: async () => ({
+          status: "stopped",
+          text: "This conversation was stopped.",
+        }),
+      },
     ),
   );
   return await mapBounded(conversationIds, async (conversationId) => {

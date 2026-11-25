@@ -90,7 +90,6 @@ describe("dashboard canonical-event mock routes", () => {
     await expect(me.json()).resolves.toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
-      experimentalUi: false,
       user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 
@@ -769,5 +768,63 @@ describe("dashboard mock sends", () => {
     expect((await readDetail(DASHBOARD_QA_CONVERSATION_ID)).forks).toEqual([
       conversationId,
     ]);
+  });
+});
+
+describe("dashboard mock Spaces", () => {
+  afterEach(() => {
+    resetMockDashboardState();
+  });
+
+  const app = createDashboardApp({
+    agentName: "Junior",
+    authRequired: false,
+    allowedDomains: [],
+    mockConversations: true,
+  });
+  const patch = (path: string, body: unknown) =>
+    app.fetch(
+      new Request(`http://localhost/api${path}`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+  const archivedAt = async (conversationId: string) =>
+    conversationDetailReportSchema.parse(
+      await (
+        await app.fetch(
+          new Request(
+            `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+          ),
+        )
+      ).json(),
+    ).archivedAt;
+
+  it("restores only the Conversations that the Space's archive archived", async () => {
+    // Both roots are in the Billing migration Space.
+    const billing = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
+    const onItsOwn = "internal:history-6";
+    const withTheSpace = "internal:questions-qa";
+    const archived = await patch(
+      `/conversations/${encodeURIComponent(onItsOwn)}/archive`,
+      { applyToChildren: true, archived: true, lastSeenAt: NOW },
+    );
+    expect(archived.status).toBe(200);
+    const ownArchive = await archivedAt(onItsOwn);
+    expect(ownArchive).toBeTruthy();
+
+    expect(
+      (await patch(`/spaces/${billing}/archive`, { archived: true })).status,
+    ).toBe(200);
+    expect(await archivedAt(withTheSpace)).toBeTruthy();
+    // The Space's archive leaves the earlier archive as it was.
+    expect(await archivedAt(onItsOwn)).toBe(ownArchive);
+
+    expect(
+      (await patch(`/spaces/${billing}/archive`, { archived: false })).status,
+    ).toBe(200);
+    expect(await archivedAt(withTheSpace)).toBeFalsy();
+    expect(await archivedAt(onItsOwn)).toBe(ownArchive);
   });
 });

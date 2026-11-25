@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "17669830-0478-4c94-b1f6-6743605513dd",
+  "prevIds": ["8824dd3b-a083-4147-b86e-47e85fbad32f"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "delivery_paused_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.delivery_paused_at",
+        "n|col|public.junior_conversations.delivery_paused_at",
+        "e|col|public.junior_conversations.delivery_paused_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "delivery_paused_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

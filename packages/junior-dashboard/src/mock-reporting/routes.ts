@@ -79,6 +79,7 @@ import { mockChartPng } from "./chart-png";
 import { errorResponse } from "./errors";
 import { mountMockPeopleRoutes } from "./people-routes";
 import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
+import { registerMockSearchRoutes } from "./search-routes";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -86,7 +87,7 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
-import { createMockLeadRoutes } from "./lead";
+import { createMockSpaceLeadRoutes } from "./lead";
 import { readMockConversationOutline } from "./outline";
 import {
   answerMockInboxItemByReply,
@@ -142,6 +143,15 @@ import {
 } from "./watches";
 import { addMockInboxItemRoutes } from "./inbox-item-routes";
 import { readMockConversationTodos, setMockTodoStatus } from "./todos";
+import {
+  addMockConversationSpaceRoute,
+  createMockSpaceRoutes,
+  filterMockConversationsBySpace,
+  mockSpaceForWork,
+  startMockConversationInSpace,
+  withMockSpace,
+  withMockSpaces,
+} from "./spaces";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
 function withMockFeedIncludes(
@@ -303,18 +313,24 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(locationDetailReportSchema, report)
       : errorResponse("Location not found.", 404);
   });
-  app.route("/lead", createMockLeadRoutes());
+  app.route("/spaces", createMockSpaceLeadRoutes());
+  app.route("/spaces", createMockSpaceRoutes());
+  addMockConversationSpaceRoute(app);
   app.get("/conversations", (c) => {
     const query = conversationFeedQuerySchema.safeParse(c.req.query());
     if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
     const repositoryId = query.data.codeRepositoryId;
+    const { spaceId } = query.data;
     const readFeed = (status: "active" | "archived") => {
-      const feed = readMockConversationFeed(query.data.actorEmail, status);
+      const feed = withMockSpaces(
+        readMockConversationFeed(query.data.actorEmail, status),
+      );
       // Like the API, only the viewer's own feed says what they answered.
       if (repositoryId)
         return filterMockConversationsByRepository(feed, repositoryId);
+      if (spaceId) return filterMockConversationsBySpace(feed, spaceId);
       return query.data.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
     };
     const report = readFeed(query.data.status);
@@ -322,7 +338,10 @@ export function createMockReportingApi(): Hono<{
       const page = mockConversationFeedPage(feed, {
         ...(query.data.cursor ? { cursor: query.data.cursor } : undefined),
         pinsFirst:
-          !query.data.q && !repositoryId && query.data.status === "active",
+          !query.data.q &&
+          !repositoryId &&
+          !spaceId &&
+          query.data.status === "active",
       });
       return page
         ? jsonResponse(
@@ -377,10 +396,15 @@ export function createMockReportingApi(): Hono<{
     if (!viewer) return errorResponse("Sign in to send messages.", 401);
     const body = createConversationBodySchema.safeParse(await c.req.json());
     if (!body.success) return errorResponse("Invalid request body.", 400);
+    const { spaceId, ...create } = body.data;
+    const target = spaceId ? mockSpaceForWork(spaceId) : undefined;
+    if (target && "error" in target)
+      return errorResponse(target.error, target.status);
     const conversationId = createMockConversation({
       actorIdentity: viewerIdentity(viewer),
-      ...body.data,
+      ...create,
     });
+    if (spaceId) startMockConversationInSpace(conversationId, spaceId);
     return acceptMockSend(conversationId, body.data, viewer);
   });
   app.post("/conversations/:conversationId/messages", async (c) => {
@@ -585,7 +609,7 @@ export function createMockReportingApi(): Hono<{
     const { conversationId } = params.data;
     const report = readMockConversationDetail(conversationId, query.data.limit);
     if (!report) return errorResponse("Conversation not found.", 404);
-    const detail = withMockReadPosition(report);
+    const detail = withMockSpace(withMockReadPosition(report));
     const mailbox = query.data.mailbox
       ? readMockConversationPendingMessages(conversationId)
       : undefined;
@@ -878,6 +902,7 @@ export function createMockReportingApi(): Hono<{
     }),
   );
   addMockInboxItemRoutes(app);
+  registerMockSearchRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

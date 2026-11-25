@@ -8,6 +8,7 @@ import {
   type AgentRunOutcome,
 } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnAnswer } from "@/chat/turn-answer";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { openConversationProjection } from "@/chat/conversations/projection";
@@ -116,7 +117,8 @@ export async function createHarness() {
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 // The checkpoint fields of a run's input: its history, then its instruction.
-function runInputCheckpoint(run: AgentRun) {
+/** The first checkpoint of a run's Turn, as the agent saves it. */
+export function runInputCheckpoint(run: AgentRun) {
   const history = run.history?.messages ?? [];
   return {
     actor: run.actor!,
@@ -169,22 +171,50 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
 
 /**
  * End a run's Turn with `answer`, as the agent does when it calls `reply` or
- * `noReply`, and save the Turn's completed record.
+ * `noReply`, and save the Turn's completed record. A `finalText` answer ends
+ * a Turn that is not gated with that final response. With `assistantText`,
+ * the Turn ends on that model message after its input, as a model Turn does.
  */
 export async function finishRun(
   run: AgentRun,
-  answer: TurnAnswer = { noReply: {} },
+  answer: TurnAnswer | { finalText: string } = { noReply: {} },
+  assistantText?: string,
 ): Promise<AgentRunOutcome> {
   const input = runInputCheckpoint(run);
   await saveTurnCheckpoint({ ...input, mode: "running" });
   await run.durability?.onInputCommitted?.();
   await saveTurnCheckpoint({ ...input, mode: "completed" });
+  const ending =
+    "finalText" in answer
+      ? {
+          newMessages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: answer.finalText }],
+              stopReason: "stop",
+              timestamp: Date.now(),
+            },
+          ],
+        }
+      : { answer, newMessages: [] };
+  const piMessages =
+    assistantText === undefined
+      ? undefined
+      : [
+          ...input.messages,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: assistantText }],
+            stopReason: "stop",
+            timestamp: Date.now(),
+          } as PiMessage,
+        ];
   return completedAgentRun(
     buildTurnResult({
-      answer,
+      ...ending,
       generatedFileCount: 0,
       modelId: "test-model",
-      newMessages: [],
+      piMessages,
       reasoningLevel: "medium",
       shouldTrace: false,
       toolCalls: [],

@@ -2,12 +2,8 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import {
-  getAgentReplyMessageId,
-  getTurnReplyKey,
-} from "@/chat/agent-invocations/ids";
+import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
 import type { AgentRun } from "@/chat/agent/types";
 import {
@@ -43,6 +39,7 @@ import {
   loadTurnEvents,
   spawnChildAgent,
   startRunningChildAgent,
+  createPublishChildTurn,
 } from "../../../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
 import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
@@ -239,23 +236,17 @@ describe("conversation stop API", () => {
     });
     // Its Turn took its task and replied.
     await work.process(queue.takeMessageFor(done.childConversationId));
-    await createDeliverToParent({ queue, state })({
+    await createPublishChildTurn({ queue, state })({
       actor: invocationInput.actor,
       conversationId: done.childConversationId,
-      result: {
-        kind: "reply",
-        reply: { text: "Child fact: 42.", toolCallId: "call-reply" },
-      },
+      update: { status: "done", text: "Child fact: 42." },
       turnId: "turn_done-child",
     });
     await ackMessages({
       conversationId: created.conversationId,
       conversationStore,
       inboundMessageIds: [
-        getAgentReplyMessageId(
-          done.childConversationId,
-          getTurnReplyKey("turn_done-child", "call-reply"),
-        ),
+        getAgentReplyMessageId(done.childConversationId, "turn_done-child"),
       ],
       leaseToken,
       state,
@@ -366,7 +357,7 @@ describe("conversation stop API", () => {
 
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent.reply"]);
+    ).resolves.toEqual(["agent.update"]);
     const [stopped] =
       (
         await getConversationWorkState({
@@ -444,15 +435,15 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    await createDeliverToParent({ queue, state })({
+    await createPublishChildTurn({ queue, state })({
       actor: invocationInput.actor,
       conversationId: child.childConversationId,
-      result: { kind: "blocked", text: "Child needs a token." },
+      update: { status: "blocked", text: "Child needs a token." },
       turnId: "turn_blocked-child",
     });
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent.reply"]);
+    ).resolves.toEqual(["agent.update"]);
 
     const response = await stopRequest(
       fixture,

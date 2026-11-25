@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { inputFileSchema } from "@/chat/attachments/input";
-import { idempotencyKeySchema } from "./conversation";
+import { idempotencyKeySchema } from "./conversation-create";
 
 /**
  * Ask to upload one file for a Message. `conversationId` names an existing

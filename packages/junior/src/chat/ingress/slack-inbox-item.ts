@@ -3,7 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
 import { logException } from "@/chat/logging";
 import {
-  canActOnInboxItem,
+  canAnswerInboxItem,
   isPluginInboxItem,
 } from "@/chat/inbox-items/access";
 import {
@@ -32,8 +32,8 @@ import {
   parseSlackInboxItemFormTarget,
   type SlackInboxItemClick,
 } from "@/chat/slack/inbox-item-card";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import {
-  createSlackInboxItemShow,
   resolveSlackInboxItemCardConversationId,
   syncInboxItemSlackCards,
 } from "@/chat/slack/inbox-item-card-sync";
@@ -142,7 +142,7 @@ async function act(args: {
   });
   const delivery: InboxItemDelivery = {
     queue: services.queue,
-    show: createSlackInboxItemShow(() => services.adapter),
+    show: createInboxItemShow(() => services.adapter),
   };
   let recordOnly = args.action === "dismiss";
   let item: InboxItem;
@@ -234,7 +234,7 @@ async function openAnswerForm(args: {
     await tellPerson(target, actor.slackUserId, error.message);
     return;
   }
-  if (!canActOnInboxItem(item, actor.user.id)) {
+  if (!canAnswerInboxItem(item, actor.user.id)) {
     await tellPerson(
       target,
       actor.slackUserId,

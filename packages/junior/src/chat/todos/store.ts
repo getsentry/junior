@@ -1,25 +1,33 @@
 /**
  * Durable To-dos of a Conversation. The list's own agent changes them with
  * `updateTodos`; a person can change a status in the dashboard. A child
- * agent can close the To-dos assigned to it, and core closes the rest on the
- * child's result. Each
+ * agent can close the To-dos assigned to it, and a read closes the rest
+ * once the child's result has reached this Conversation. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
+import { readAgentUpdateStatus } from "@/chat/agent-invocations/agent-update";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { mapBounded } from "@/chat/fan-out";
+import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { syncTodoInboxItems } from "./inbox-items";
 import { todoRef } from "./tool-output";
 import {
   isOpenTodoStatus,
+  OPEN_TODO_STATUSES,
   type ClosedTodoStatus,
   type Todo,
   type TodoStatus,
@@ -88,15 +96,31 @@ function validateChange(rows: Map<number, TodoRow>, change: TodoChange) {
   }
 }
 
+// A Drizzle transaction, not `executor.transaction`: the Inbox item writes
+// of `syncTodoInboxItems` open their own transactions, which nest as
+// savepoints only inside a Drizzle one. Call it outside an executor
+// transaction. `sync` syncs the Conversation's To-do items in the
+// transaction. The items that it added or changed push after the commit,
+// because the push reads them outside the transaction.
 async function withTodosLock<T>(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  callback: () => Promise<T>,
+  callback: (
+    db: JuniorDatabase,
+    sync: (nowMs: number) => Promise<void>,
+  ) => Promise<T>,
 ): Promise<T> {
-  return await executor.withLock(
-    `${TODOS_LOCK_PREFIX}:${conversationId}`,
-    async () => await executor.transaction(callback),
-  );
+  let itemIds: string[] = [];
+  const result = await executor.db().transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`${TODOS_LOCK_PREFIX}:${conversationId}`}))`,
+    );
+    return await callback(tx, async (nowMs) => {
+      itemIds = await syncTodoInboxItems(tx, { conversationId, nowMs });
+    });
+  });
+  await mapBounded(itemIds, (itemId) => syncInboxItemPush(itemId));
+  return result;
 }
 
 /**
@@ -111,8 +135,7 @@ export async function changeTodos(
 ): Promise<{ todos: Todo[]; replacedPersonChanges: Todo[] }> {
   const { change, conversationId } = args;
   const now = new Date(args.nowMs);
-  return await withTodosLock(executor, conversationId, async () => {
-    const db = executor.db();
+  return await withTodosLock(executor, conversationId, async (db, sync) => {
     const rows = new Map(
       (
         await db
@@ -137,7 +160,7 @@ export async function changeTodos(
       .map((update) => update.id);
     const replacedPersonChanges =
       replacedIds.length > 0
-        ? (await listTodos(executor, conversationId)).filter((todo) =>
+        ? (await readTodos(db, conversationId)).filter((todo) =>
             replacedIds.includes(todo.id),
           )
         : [];
@@ -195,9 +218,10 @@ export async function changeTodos(
       changedIds.push(inserted!.id);
     }
     /* oxlint-enable no-await-in-loop */
+    await sync(args.nowMs);
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
-    const todos = await listTodos(executor, conversationId);
+    const todos = await readTodos(db, conversationId);
     return {
       todos: changedIds.flatMap(
         (id) => todos.find((todo) => todo.id === id) ?? [],
@@ -209,11 +233,15 @@ export async function changeTodos(
 
 /**
  * Set the status of one To-do for a person, and return the To-do. Returns
- * undefined when the Conversation has no such To-do.
+ * undefined when the Conversation has no such To-do. With `assignedOnly`,
+ * the To-do must still be open and assigned to the person when the change
+ * applies under the lock, so Done on a stale Inbox item cannot close a
+ * To-do that the agent gave to someone else.
  */
 export async function setTodoStatusByUser(
   executor: JuniorSqlDatabase,
   args: {
+    assignedOnly?: boolean;
     conversationId: string;
     id: number;
     nowMs: number;
@@ -221,9 +249,9 @@ export async function setTodoStatusByUser(
     userId: string;
   },
 ): Promise<Todo | undefined> {
-  return await withTodosLock(executor, args.conversationId, async () => {
-    const updated = await executor
-      .db()
+  const { conversationId } = args;
+  return await withTodosLock(executor, conversationId, async (db, sync) => {
+    const updated = await db
       .update(juniorTodos)
       .set({
         status: args.status,
@@ -234,14 +262,21 @@ export async function setTodoStatusByUser(
       })
       .where(
         and(
-          eq(juniorTodos.conversationId, args.conversationId),
+          eq(juniorTodos.conversationId, conversationId),
           eq(juniorTodos.id, args.id),
+          args.assignedOnly
+            ? and(
+                eq(juniorTodos.assigneeUserId, args.userId),
+                inArray(juniorTodos.status, [...OPEN_TODO_STATUSES]),
+              )
+            : undefined,
         ),
       )
       .returning({ id: juniorTodos.id });
     if (updated.length === 0) return undefined;
-    await touchConversationDetail(executor.db(), [args.conversationId]);
-    const todos = await listTodos(executor, args.conversationId);
+    await sync(args.nowMs);
+    await touchConversationDetail(db, [conversationId]);
+    const todos = await readTodos(db, conversationId);
     return todos.find((todo) => todo.id === args.id);
   });
 }
@@ -252,7 +287,7 @@ export async function setTodoStatusByUser(
  * in its next `<todo-delta>`. Returns the changed To-dos.
  */
 async function closeChildTodos(
-  executor: JuniorSqlDatabase,
+  db: JuniorDatabase,
   args: {
     childConversationId: string;
     conversationId: string;
@@ -262,7 +297,6 @@ async function closeChildTodos(
 ): Promise<Todo[]> {
   const ids = [...args.statuses.keys()];
   if (ids.length === 0) return [];
-  const db = executor.db();
   /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
   for (const [id, status] of args.statuses) {
     await db
@@ -283,26 +317,9 @@ async function closeChildTodos(
   }
   /* oxlint-enable no-await-in-loop */
   await touchConversationDetail(db, [args.conversationId]);
-  return (await listTodos(executor, args.conversationId)).filter((todo) =>
+  return (await readTodos(db, args.conversationId)).filter((todo) =>
     ids.includes(todo.id),
   );
-}
-
-function selectChildTodos(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-  childConversationId: string,
-) {
-  return executor
-    .db()
-    .select({ id: juniorTodos.id, status: juniorTodos.status })
-    .from(juniorTodos)
-    .where(
-      and(
-        eq(juniorTodos.conversationId, conversationId),
-        eq(juniorTodos.assigneeConversationId, childConversationId),
-      ),
-    );
 }
 
 /**
@@ -350,9 +367,8 @@ export async function closeTodosForChild(
     .from(juniorTodos)
     .where(assigned);
   if (!owner) return rejectUnassigned(ids);
-  return await withTodosLock(executor, owner.conversationId, async () => {
-    const rows = await executor
-      .db()
+  return await withTodosLock(executor, owner.conversationId, async (db) => {
+    const rows = await db
       .select({ id: juniorTodos.id })
       .from(juniorTodos)
       .where(
@@ -361,7 +377,7 @@ export async function closeTodosForChild(
     const found = new Set(rows.map((row) => row.id));
     const others = ids.filter((id) => !found.has(id));
     if (others.length > 0) return rejectUnassigned(others);
-    return await closeChildTodos(executor, {
+    return await closeChildTodos(db, {
       childConversationId: args.childConversationId,
       conversationId: owner.conversationId,
       nowMs: args.nowMs,
@@ -376,46 +392,136 @@ function rejectUnassigned(ids: readonly number[]): never {
   );
 }
 
+/** A child's result that reached a Conversation: who sent it, how it ended, and when. */
+type ReceivedChildResult = {
+  atMs: number;
+  childConversationId: string;
+  status: ClosedTodoStatus;
+};
+
 /**
- * Close every open To-do of the parent that is assigned to one child agent,
- * when the child's result reaches the parent. Returns the closed To-dos.
+ * Read the child results that wait in a Conversation's mailbox. A done
+ * result closes the child's To-dos as done, and a stopped one drops them.
+ * A Turn reads its To-dos when it builds its prompt, before it takes its
+ * input out of the mailbox, so a read sees every result there.
  */
-export async function closeOpenTodosOfChild(
-  executor: JuniorSqlDatabase,
-  args: {
-    childConversationId: string;
-    nowMs: number;
-    parentConversationId: string;
-    status: ClosedTodoStatus;
-  },
-): Promise<Todo[]> {
-  return await withTodosLock(executor, args.parentConversationId, async () => {
-    const open = (
-      await selectChildTodos(
-        executor,
-        args.parentConversationId,
-        args.childConversationId,
-      )
-    ).filter((row) => isOpenTodoStatus(row.status));
-    return await closeChildTodos(executor, {
-      childConversationId: args.childConversationId,
-      conversationId: args.parentConversationId,
-      nowMs: args.nowMs,
-      statuses: new Map(open.map((row) => [row.id, args.status])),
-    });
+async function readReceivedChildResults(
+  conversationId: string,
+): Promise<ReceivedChildResult[]> {
+  const work = await getConversationWorkState({ conversationId });
+  return (work?.execution.pendingMessages ?? []).flatMap((message) => {
+    const sender = readInboundMessageSender(message);
+    const metadata = message.input.metadata;
+    const result = isEventMailboxMetadata(metadata)
+      ? readAgentUpdateStatus(metadata.event.status)
+      : undefined;
+    const status =
+      result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;
+    return sender && status
+      ? [
+          {
+            atMs: message.createdAtMs,
+            childConversationId: sender.conversationId,
+            status,
+          },
+        ]
+      : [];
   });
 }
 
-/** List every To-do of one Conversation, oldest first, with assignees resolved. */
+/**
+ * Close the open To-dos of a Conversation whose child's result reached it
+ * after the To-do last changed: done when the child completed, dropped when
+ * it was stopped. The received results decide it, so a repeat read changes
+ * nothing.
+ */
+async function settleChildTodos(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+  todos: readonly Todo[],
+): Promise<boolean> {
+  const assigned = todos.filter(
+    (todo) => todo.assignee.kind === "agent" && isOpenTodoStatus(todo.status),
+  );
+  if (assigned.length === 0) return false;
+  const results = await readReceivedChildResults(conversationId);
+  if (results.length === 0) return false;
+  const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
+  for (const todo of assigned) {
+    if (todo.assignee.kind !== "agent") continue;
+    const childId = todo.assignee.conversationId;
+    // The newest result after the To-do's last change decides it. A To-do
+    // given to a child after its result waits for the next one.
+    const latest = results
+      .filter(
+        (result) =>
+          result.childConversationId === childId &&
+          result.atMs > todo.updatedAtMs,
+      )
+      .reduce<ReceivedChildResult | undefined>(
+        (newest, result) =>
+          !newest || result.atMs >= newest.atMs ? result : newest,
+        undefined,
+      );
+    if (!latest) continue;
+    const statuses =
+      byChild.get(childId) ?? new Map<number, ClosedTodoStatus>();
+    statuses.set(todo.id, latest.status);
+    byChild.set(childId, statuses);
+  }
+  if (byChild.size === 0) return false;
+  const nowMs = Date.now();
+  await withTodosLock(executor, conversationId, async (db) => {
+    // Close only To-dos that no change replaced since the read.
+    const current = new Map(
+      (await readTodos(db, conversationId)).map((todo) => [
+        todo.id,
+        todo.version,
+      ]),
+    );
+    /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
+    for (const [childConversationId, statuses] of byChild) {
+      const unchanged = new Map(
+        [...statuses].filter(
+          ([id]) =>
+            current.get(id) === todos.find((todo) => todo.id === id)?.version,
+        ),
+      );
+      await closeChildTodos(db, {
+        childConversationId,
+        conversationId,
+        nowMs,
+        statuses: unchanged,
+      });
+    }
+    /* oxlint-enable no-await-in-loop */
+  });
+  return true;
+}
+
+/**
+ * List every To-do of one Conversation, oldest first, with assignees
+ * resolved. A To-do assigned to a child agent that has finished or stopped
+ * since it last changed is closed first.
+ */
 export async function listTodos(
   executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<Todo[]> {
+  const todos = await readTodos(executor.db(), conversationId);
+  return (await settleChildTodos(executor, conversationId, todos))
+    ? await readTodos(executor.db(), conversationId)
+    : todos;
+}
+
+async function readTodos(
+  db: JuniorDatabase,
   conversationId: string,
 ): Promise<Todo[]> {
   const assignedUser = alias(juniorUsers, "assigned_user");
   const changedByUser = alias(juniorUsers, "changed_by_user");
   const changedByAgent = alias(juniorAgentBindings, "changed_by_agent");
-  const rows = await executor
-    .db()
+  const rows = await db
     .select({
       todo: juniorTodos,
       agentName: juniorAgentBindings.name,

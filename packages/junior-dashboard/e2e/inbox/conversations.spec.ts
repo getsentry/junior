@@ -1,11 +1,14 @@
+import { conversationMenuRow } from "./conversationMenu";
 import type { Page } from "@playwright/test";
+import { readClipboard } from "../clipboard";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
+import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+  const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 
   async function openActiveConversation(page: Page, baseURL: string) {
     await page.goto(
@@ -31,7 +34,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`, {
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`, {
       waitUntil: "domcontentloaded",
     });
     const list = page.getByRole("region", {
@@ -230,13 +233,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    await expect(
-      page
-        .getByRole("region", { exact: true, name: "Conversations" })
-        .getByRole("link", { name: /Checkout latency triage/ })
-        .first(),
-    ).toBeVisible();
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+        await expect(
+          page
+            .getByRole("region", { exact: true, name: "Conversations" })
+            .getByRole("link", { name: /Checkout latency triage/ })
+            .first(),
+        ).toBeVisible();
+      },
+      // One of them reads the viewer's Spaces for the pane.
+      { requests: 9, serialRounds: 2 },
+    );
     expect(requests).toBe(1);
 
     // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
@@ -257,6 +267,68 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     expect(await extraFeedFetch).toBe(false);
     expect(requests).toBe(1);
+  });
+
+  test("loads a finished conversation within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    // A running Conversation polls every 2 seconds, so a slow load would
+    // count a poll. Measure a finished one, which does not poll its detail.
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(
+          `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+          { waitUntil: "networkidle" },
+        );
+        await expect(
+          page.getByRole("heading", {
+            name: "Deployment investigation failed",
+            exact: true,
+          }),
+        ).toBeVisible();
+      },
+      // One of them reads the viewer's Spaces for the pane.
+      { requests: 11, serialRounds: 2 },
+    );
+  });
+
+  test("reads the card of each link once, for rows near the screen", async ({
+    page,
+    dashboard,
+  }) => {
+    const asked: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/objects") {
+        asked.push(...url.searchParams.getAll("url"));
+      }
+    });
+    const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
+    // A pull request of a row below the fold.
+    const below = "https://github.com/getsentry/relay/pull/3396";
+    const firstRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/objects",
+    );
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+    await firstRead;
+    // A row's links and the links in its summary share one read.
+    expect(repeated()).toEqual([]);
+    expect(asked).not.toContain(below);
+
+    const belowRead = page.waitForResponse((response) =>
+      new URL(response.url()).searchParams
+        .getAll("url")
+        .some((url) => url === below),
+    );
+    await page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("link", { name: /Inbox comfortable rows pass/ })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await belowRead;
+    expect(repeated()).toEqual([]);
   });
 
   test("keeps cached conversation and draft available through reconnect", async ({
@@ -299,7 +371,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     const conversation = page.getByRole("listitem").filter({
       has: page.getByRole("link", { name: /Checkout latency triage/ }),
@@ -490,7 +562,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     const trigger = page.getByRole("button", {
@@ -510,16 +582,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       popover.getByRole("menuitem", { name: "Settings", exact: true }),
     ).toHaveAttribute("href", "/settings");
-    // Low-traffic pages live here instead of the primary nav.
+    // Low-traffic pages live here instead of the primary nav. Code has its
+    // own row in the pane.
     await expect(
       popover.getByRole("menuitem", { name: "Code", exact: true }),
-    ).toHaveAttribute("href", "/code");
+    ).toHaveCount(0);
     await expect(
       popover.getByRole("menuitem", { name: "System", exact: true }),
     ).toHaveAttribute("href", "/system");
-    await expect(
-      primary.getByRole("link", { name: /^(Code|System)$/ }),
-    ).toHaveCount(0);
+    await expect(primary.getByRole("link", { name: /^System$/ })).toHaveCount(
+      0,
+    );
     await expect(
       popover.getByRole("menuitem", { name: "Log out" }),
     ).toBeVisible();
@@ -549,7 +622,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     test.use({ controlTimers: true });
 
     test("after the hover pause", async ({ page, dashboard }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const trigger = page.getByRole("button", {
         name: /^(Open|Close) profile menu for Dashboard User/,
       });
@@ -653,7 +726,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(copy).toBeEnabled();
     await copy.click();
     await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
-    const markdown = await page.evaluate(() => navigator.clipboard.readText());
+    const markdown = await readClipboard(page);
     expect(markdown).toContain("# Advisor review");
     expect(markdown).toContain("Review the dashboard plan before editing.");
     expect(markdown).toContain("Review complete; no blocking issues found.");
@@ -670,8 +743,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     await reply.hover();
     await reply.getByRole("button", { name: "Copy message" }).click();
     await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       "Review complete; no blocking issues found.",
+    );
+
+    // Its input copies too, and links to itself. Only replies take a rating.
+    const input = drawer
+      .getByRole("article")
+      .filter({ hasText: "Review the dashboard plan before editing." });
+    await input.hover();
+    await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
+      0,
+    );
+    await input.getByRole("button", { name: "Copy message" }).click();
+    expect(await readClipboard(page)).toBe(
+      "Review the dashboard plan before editing.",
+    );
+    await input.getByRole("button", { name: "Copy link to message" }).click();
+    expect(await readClipboard(page)).toBe(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
     );
 
     // The shortcut searches the drawer's transcript, not the page behind it.
@@ -737,9 +827,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
     );
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await expect(
-      page.getByRole("menuitem", { name: "Pin", exact: true }),
-    ).toBeDisabled();
+    await expect(conversationMenuRow(page, "Pin")).toBeDisabled();
   });
 
   test("rates a Junior Reply once, with time to change it", async ({

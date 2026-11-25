@@ -78,8 +78,7 @@ const conversationMatchSchema = z
       .describe("Top linked resources, such as pull requests"),
     channel_id: z.string().min(1).optional(),
     channel_name: z.string().min(1).optional(),
-    permalink: z.string().url().optional(),
-    dashboard_url: z.string().url().optional(),
+    url: z.string().url().optional().describe("Link to the conversation."),
     archived: z
       .literal(true)
       .optional()
@@ -101,8 +100,9 @@ async function conversationMatch(
   channels: ConversationSearchChannelPort | undefined,
 ): Promise<ConversationMatch> {
   const dashboardUrl = getDashboardConversationLink(match.conversationId);
+  // Link the dashboard. The provider thread is only a fallback.
   const channelFields = channels
-    ? await channels.describeMatch(match)
+    ? await channels.describeMatch(match, { includeUrl: !dashboardUrl })
     : undefined;
   return {
     conversation_id: match.conversationId,
@@ -120,7 +120,7 @@ async function conversationMatch(
     ...(match.excerpt ? { excerpt: match.excerpt } : undefined),
     ...(match.links.length > 0 ? { links: match.links } : undefined),
     ...channelFields,
-    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(dashboardUrl ? { url: dashboardUrl } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     ...(match.transcriptPurged
       ? { transcript_purged: true as const }
@@ -190,7 +190,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Only conversations that your person takes part in: the person of this Turn, or of this Lead. Default false.",
+          "Only conversations that the person of this Turn takes part in. Default false.",
         ),
       roots_only: z
         .boolean()

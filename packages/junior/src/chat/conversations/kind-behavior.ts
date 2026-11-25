@@ -22,8 +22,9 @@ export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
 export type TurnBehavior = {
   /**
    * `location`: the runtime delivers the final response to the Location.
-   * `conversation`: the final response stays in the Conversation. Only the
-   * text of a `reply` call leaves it.
+   * `conversation`: the final response stays in the Conversation. A child
+   * agent's final response also goes to its parent, and an Automation run
+   * posts only the text of its `reply` call.
    */
   delivery: "location" | "conversation";
   /**
@@ -51,25 +52,20 @@ export type TurnBehavior = {
   waitsForSignIn: boolean;
   /**
    * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
-   * reminded once.
+   * reminded once. Its final text is never delivered. Only an Automation run
+   * is gated, because its reply goes to people in a channel.
    */
   gated: boolean;
-  /**
-   * The error that fails a gated Turn that still has no answer after the
-   * reminder. Without it, the Turn ends quietly.
-   */
-  missingAnswerError?: string;
-  /**
-   * `parent`: a failed Turn, also one that ends without an answer, sends its
-   * failure to the parent agent. `none`: the failure stays in the
-   * Conversation and in telemetry.
-   */
-  failureNotice: "none" | "parent";
   /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
    */
   sessionTasks: boolean;
+  /**
+   * A completed Turn updates the Conversation summary that search reads.
+   * With `sessionTasks`, the session tasks include this update.
+   */
+  conversationMetadata: boolean;
   /**
    * The first request of the Conversation gets the open Conversations that
    * may cover the same work. A child agent or an Automation run already
@@ -82,11 +78,16 @@ export type TurnBehavior = {
     subscriptions: boolean;
     userCustomization: boolean;
     /**
-     * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
-     * agent's mailbox. `automation`: the run's Destination, then its Slack
-     * thread.
+     * The Turn changes a Space for its person, such as the Space's settings.
+     * Only a person's request changes a Space, so only a person's Turn has
+     * it.
      */
-    reply: "none" | "parent" | "automation";
+    spaces: boolean;
+    /**
+     * The Turn has `reply`. Only a gated Turn has it. The reply goes to the
+     * run's Destination, then its Slack thread.
+     */
+    reply: boolean;
     /**
      * Who gets a blocked report. `parent`: the parent agent. `automation`:
      * the Automation is blocked with the reason.
@@ -112,15 +113,16 @@ const ROOT: TurnBehavior = {
   idleNeedsPendingWork: false,
   waitsForSignIn: true,
   gated: false,
-  failureNotice: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    reply: "none",
+    spaces: true,
+    reply: false,
     reportBlocked: "none",
     noReply: true,
   },
@@ -131,6 +133,7 @@ const ROOT: TurnBehavior = {
 const ROOT_RUNTIME_TURN: TurnBehavior = {
   ...ROOT,
   relatedConversations: false,
+  tools: { ...ROOT.tools, spaces: false },
 };
 
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
@@ -146,23 +149,25 @@ const PERSON_IN_THREAD: TurnBehavior = {
 };
 
 // A child agent's Turn comes from its parent, its child agents, or its
-// Watches. Its final response stays in its Conversation, and only a `reply`
-// reaches the parent.
+// Watches. Its final response stays in its Conversation and is its reply to
+// the parent.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
-  gated: true,
-  failureNotice: "none",
+  gated: false,
   sessionTasks: false,
+  // Only its parent reads a Task, so a Task has no summary.
+  conversationMetadata: false,
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    reply: "parent",
+    spaces: false,
+    reply: false,
     reportBlocked: "parent",
     noReply: true,
   },
@@ -173,6 +178,8 @@ const AGENT_IN_THREAD: TurnBehavior = {
   ...CHILD_AGENT_TURN,
   promptMode: "thread",
   sender: "agent",
+  // People find a Thread by its summary.
+  conversationMetadata: true,
 };
 
 // Every Turn of a Thread lists the tools of both senders, so the Thread keeps
@@ -182,14 +189,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
-};
-
-// A Task does work for its parent, so its parent learns when it fails or ends
-// without an answer.
-const AGENT_IN_TASK: TurnBehavior = {
-  ...CHILD_AGENT_TURN,
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
+  spaces: PERSON_IN_THREAD.tools.spaces,
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -201,12 +201,13 @@ const AUTOMATION_RUN: TurnBehavior = {
   idleNeedsPendingWork: true,
   waitsForSignIn: true,
   gated: true,
-  failureNotice: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
-    reply: "automation",
+    spaces: false,
+    reply: true,
     reportBlocked: "automation",
   },
 };
@@ -219,6 +220,14 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   promptMode: "automation",
   sender: "person",
   relatedConversations: false,
+};
+
+// An Automation Conversation lists the tools of the run and of a person who
+// replies, so its tool list stays the same. The run's own Turns keep the
+// Space tool disabled.
+const AUTOMATION_TOOLS: TurnBehavior["tools"] = {
+  ...AUTOMATION_RUN.tools,
+  spaces: PERSON_IN_AUTOMATION.tools.spaces,
 };
 
 // A Lead finds, starts, and steers its person's other Conversations, and
@@ -240,6 +249,7 @@ const LEAD_TOOLS = [
   "stopWatchingResources",
   "systemTime",
   "updateUserCustomization",
+  "setSpaceConfiguration",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -252,12 +262,14 @@ const LEAD_DIRECT_TOOLS = [
   "searchEventTypes",
   "listWatches",
   "stopWatchingResources",
+  "setSpaceConfiguration",
 ] as const satisfies readonly (typeof LEAD_TOOLS)[number][];
 
 const LEAD: TurnBehavior = {
   ...ROOT,
   promptMode: "lead",
   sessionTasks: false,
+  conversationMetadata: false,
   tools: {
     ...ROOT.tools,
     agents: "lead",
@@ -280,7 +292,7 @@ export function turnBehavior(args: {
     case "thread":
       return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
-      if (!args.personInput) return AGENT_IN_TASK;
+      if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
@@ -296,9 +308,9 @@ export function turnBehavior(args: {
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   switch (mode) {
     case "automation":
-      return AUTOMATION_RUN.tools;
+      return AUTOMATION_TOOLS;
     case "child_agent":
-      return AGENT_IN_TASK.tools;
+      return CHILD_AGENT_TURN.tools;
     case "thread":
       return THREAD_TOOLS;
     case "conversation":
@@ -316,16 +328,32 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
   return kind !== "task";
 }
 
+/**
+ * Return whether a person can put a Conversation of this kind in a Space. A
+ * child is in the Space of its root, and a Lead never moves.
+ */
+export function canMoveToSpace(kind: ConversationKind): boolean {
+  return kind === "root" || kind === "automation";
+}
+
+/**
+ * Return whether only members of the Conversation's Space can send it a
+ * Message. A Space's Lead talks only to its members.
+ */
+export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
+  return kind === "lead";
+}
+
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation" || kind === "lead";
 }
 
 /**
- * Return whether a Watch on this Conversation would repeat what already
- * reaches the watcher: a child agent's results and messages go to its parent.
+ * Return whether the watcher started this Conversation, so it already has
+ * the Watch that its parent edge makes and a second one would repeat it.
  */
-export function watchRepeatsChildResults(
+export function watcherStartedConversation(
   target: { parentConversationId?: string },
   watcherConversationId: string,
 ): boolean {

@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "cc66b510-d9f2-4926-a86f-97f38ab69432",
+  "prevIds": ["894b7102-5ab1-47d8-9b36-8cb377781910"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_agent_invocations",
+        "agent_type"
+      ],
+      "writes": [
+        "s|col|public.junior_agent_invocations.agent_type",
+        "n|col|public.junior_agent_invocations.agent_type",
+        "e|col|public.junior_agent_invocations.agent_type"
+      ],
+      "reads": ["n|tbl|public.junior_agent_invocations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "agent_type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

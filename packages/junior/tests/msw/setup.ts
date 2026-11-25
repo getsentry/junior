@@ -4,6 +4,7 @@ import { resetGitHubApiMockState } from "./handlers/github-api";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import { resetSlackApiMockState } from "./handlers/slack-api";
 import { enforceUnhandledExternalRequestFailure, mswServer } from "./server";
+import { resetWorkloadIdentityMockState } from "./handlers/workload-identity";
 
 // Force test-safe Slack credentials at module evaluation time so any test module
 // importing bot/chat runtime at top-level sees deterministic values.
@@ -37,6 +38,7 @@ afterEach(() => {
   resetEvalMcpAuthMockState();
   resetGitHubApiMockState();
   resetSlackApiMockState();
+  resetWorkloadIdentityMockState();
 });
 
 afterAll(() => {

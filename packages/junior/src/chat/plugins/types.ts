@@ -4,6 +4,7 @@ import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
   PluginServiceAccountConfig,
+  PluginWorkloadIdentityCredentials,
 } from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
@@ -45,11 +46,16 @@ export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   domains: string[];
   apiHeaders?: Record<string, string>;
-  authTokenEnv: string;
+  /** Env var of a host token, and the Sandbox placeholder's name. Optional with `oauth`. */
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
 }
 
-export type PluginCredentials = OAuthBearerCredentials;
+export type WorkloadIdentityCredentials = PluginWorkloadIdentityCredentials;
+
+export type PluginCredentials =
+  | OAuthBearerCredentials
+  | WorkloadIdentityCredentials;
 
 export interface PluginEnvVarDeclaration {
   default?: string;

@@ -1,10 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -221,6 +219,29 @@ describe("merge conflict check on webhook events", () => {
     expect(conflicts()).toHaveLength(2);
   });
 
+  it("drops the conflict mark on a clean read that only conflict waiters start", async () => {
+    const fixes = () =>
+      h.published.filter(
+        (event) => event.eventType === "pull_request.merge_conflict.resolved",
+      );
+    await deliver("delivery-1");
+    expect(conflicts()).toHaveLength(2);
+
+    // A change on the base branch fixed it, and nothing waits for the fix.
+    pullRequest = pullRequestResponse({
+      headSha: "1111111111111111111111111111111111111111",
+      mergeable: true,
+      mergeableState: "clean",
+    });
+    await deliver("delivery-2");
+    const published = fixes().length;
+
+    // A waiter that comes later does not get that earlier fix.
+    h.watches.fixes = true;
+    await deliver("delivery-3");
+    expect(fixes()).toHaveLength(published);
+  });
+
   it("uses the mergeability in a pull request webhook without reading the pull request", async () => {
     await deliver(
       "delivery-1",
@@ -351,23 +372,41 @@ describe("merge conflict check on webhook events", () => {
           });
         }),
       );
-      const row = (number: number, state: "merged" | "open") => ({
-        number,
-        openedAt: new Date(pushedAt - 60 * minute),
-        pullRequestId: `${number}0`,
-        repositoryFullName: "getsentry/junior",
-        repositoryId: "1",
-        state,
-        updatedAt: new Date(pushedAt - 60 * minute),
+      const updatedAt = new Date(pushedAt - 60 * minute);
+      await recordJuniorPullRequest(fixture, {
+        number: 946,
+        updatedAt,
       });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
+      await recordJuniorPullRequest(fixture, {
+        number: 947,
+        updatedAt,
+      });
+      await recordJuniorPullRequest(fixture, {
+        finishedAt: updatedAt,
+        number: 948,
+        state: "merged",
+        updatedAt,
+      });
     });
 
     afterEach(() => {
       vi.useRealTimers();
+    });
+
+    it("clears a conflict that the cache entry still knows when the pull request is mergeable", async () => {
+      const key = "pulls:getsentry/junior#947";
+      await h.cache.update(key, () => ({
+        ttlMs: 60 * minute,
+        value: { head: { sha: headSha }, mergeable: false, state: "open" },
+      }));
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+
+      expect(await h.cache.get(key)).toEqual({
+        head: { sha: headSha },
+        mergeable: true,
+        state: "open",
+      });
     });
 
     it("publishes a conflict with one search for a burst of pushes", async () => {
@@ -431,6 +470,17 @@ describe("merge conflict check on webhook events", () => {
 
       await heartbeat(pushedAt + 4 * minute);
       expect(searches).toHaveLength(2);
+    });
+
+    it("checks after a push that names the repository in another case", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "GetSentry/Junior"),
+      );
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toEqual([
+        "repo:getsentry/junior is:pr is:open author:app/sentry-junior",
+      ]);
     });
 
     it("does not check after a push to another branch", async () => {

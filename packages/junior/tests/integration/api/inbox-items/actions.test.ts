@@ -22,7 +22,7 @@ import {
   insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -280,65 +280,6 @@ describe("inbox item actions API", () => {
     ]);
   });
 
-  it("shows a Conversation's items to the people in it", async () => {
-    const fixture = await createConversationFixture();
-    const ana = await user("ana@example.com");
-    const cal = await user("cal@example.com");
-    await user("ben@example.com");
-    // A public dashboard Conversation that Ben started. Ana joined and then
-    // unsubscribed, so she is an inactive Participant.
-    await getConversationStore().recordActivity({
-      actor: { email: "ben@example.com" },
-      conversationId: "local:web:shared",
-      destination: { platform: "local", conversationId: "local:web:shared" },
-      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
-      source: "web",
-      visibility: "public",
-    });
-    await getDb()
-      .insert(juniorConversationParticipants)
-      .values({
-        lastMessageAt: new Date(1),
-        rootConversationId: "local:web:shared",
-        unsubscribedAt: new Date(2),
-        userId: ana.id,
-      });
-    // An event Turn asks without naming anyone, so the item goes to the
-    // active Participants: only Ben.
-    const tool = createAddInboxItemTool(
-      {
-        conversationId: "local:web:shared",
-        resolveActorIdentity: async () => undefined,
-        source: { kind: "event" } as any,
-      },
-      createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
-    );
-    const { item } = await (tool as any).execute(
-      {
-        kind: "action",
-        title: "Close the tracking issue?",
-        body: "The pull request merged.",
-        request: REQUEST,
-      },
-      {},
-    );
-    const ids = async (viewer: User, path: string) =>
-      (await (await api(fixture, viewer).get(path)).json()).items.map(
-        (listed: any) => listed.id,
-      );
-
-    // Ana is not assigned, so the item is not in her Inbox. She is
-    // still a Participant, so the Conversation view shows it.
-    expect(await ids(ana, "")).toEqual([]);
-    expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
-      item.id,
-    ]);
-    expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
-    // Cal can view the public Conversation but does not take part in it.
-    expect(await ids(cal, "?conversationId=local:web:shared")).toEqual([]);
-    expect((await api(fixture, cal).get(`/${item.id}`)).status).toBe(404);
-  });
-
   it("closes an action item for every assignee on the first submit", async () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
@@ -377,6 +318,7 @@ describe("inbox item actions API", () => {
       needsViewer: 1,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     // The Conversations of the action item wait on Ana, but not on Cal.
     expect(
@@ -403,7 +345,8 @@ describe("inbox item actions API", () => {
     expect(calList.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "notice" }),
-        expect.objectContaining({ id, canAct: false }),
+        // Cal can see the public question, so he can answer it.
+        expect.objectContaining({ id, canAct: false, canAnswer: true }),
       ]),
     );
     // The inbox list drops the items that are assigned only to others.
@@ -463,6 +406,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
@@ -523,6 +467,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
   });
 
@@ -788,12 +733,14 @@ describe("inbox item actions API", () => {
       needsViewer: 29,
       codeChanges: 2,
       snoozed: 0,
+      todos: 0,
     });
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
       decisions: 0,
       needsViewer: 1,
       codeChanges: 1,
       snoozed: 0,
+      todos: 0,
     });
   });
 
@@ -818,6 +765,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
@@ -892,6 +840,7 @@ describe("inbox item actions API", () => {
       needsViewer: 1,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),

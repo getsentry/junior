@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -7,6 +7,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  type AnyPgColumn,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
@@ -23,6 +24,22 @@ import { juniorUsers } from "./users";
  * a value here and to the owner check.
  */
 export type InboxItemOwnerKind = "conversation" | "automation";
+
+/**
+ * The words of an Inbox item for search: its title, ranked above its body.
+ * The `simple` config keeps each word as typed, so a prefix of it matches.
+ */
+export function inboxItemSearchDocument(table: {
+  body: AnyPgColumn;
+  title: AnyPgColumn;
+}): SQL {
+  return sql`(setweight(to_tsvector('simple', ${table.title}), 'A') || setweight(to_tsvector('simple', ${table.body}), 'B'))`;
+}
+
+/** The lowercase title of an Inbox item, for typo-tolerant search. */
+export function inboxItemFuzzyTitle(table: { title: AnyPgColumn }): SQL {
+  return sql`lower(${table.title})`;
+}
 
 /**
  * One Inbox item: something that needs a person. An action item stores its
@@ -91,10 +108,11 @@ export const juniorInboxItems = pgTable(
     // An agent's action asks a question. A plugin's action asks for a step
     // outside Junior, such as a merge, and the plugin closes it. An
     // Automation alert asks its creator to fix the Automation, and core
-    // closes it when the Automation recovers.
+    // closes it when the Automation recovers. A To-do's action asks its
+    // assignee to do the To-do, and core closes it when the To-do closes.
     check(
       "junior_inbox_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%') and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%' or ${table.dedupeKey} like 'todo:%') and ${table.answer} is null)))`,
     ),
     // Only core adds Automation alerts, with the reserved key prefix.
     check(
@@ -143,6 +161,14 @@ export const juniorInboxItems = pgTable(
     index("junior_inbox_items_answered_idx")
       .on(table.ownerId, table.closedByUserId, table.closedAt)
       .where(sql`${table.answer} is not null`),
+    index("junior_inbox_items_search_idx").using(
+      "gin",
+      inboxItemSearchDocument(table),
+    ),
+    index("junior_inbox_items_title_trgm_idx").using(
+      "gin",
+      sql`${inboxItemFuzzyTitle(table)} gin_trgm_ops`,
+    ),
   ],
 );
 
@@ -204,4 +230,38 @@ export const juniorInboxItemSlackCards = pgTable(
     messageTs: text("message_ts").notNull(),
   },
   (table) => [primaryKey({ columns: [table.itemId, table.conversationId] })],
+);
+
+/**
+ * One notification of one Inbox item event to one assigned User on one
+ * channel: a Slack card in a thread of the item, or a web push. The key stops a second send for the same event, also on a
+ * retry. `skip_reason` says why a `skipped` row sent nothing. A `sent` row
+ * becomes `cleared` when the item closes, so the devices can close it.
+ */
+export const juniorInboxItemDeliveries = pgTable(
+  "junior_inbox_item_deliveries",
+  {
+    itemId: text("item_id")
+      .notNull()
+      .references(() => juniorInboxItems.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => juniorUsers.id, { onDelete: "cascade" }),
+    channel: text("channel").$type<"slack" | "web_push">().notNull(),
+    event: text("event").$type<"created" | "reply" | "wake">().notNull(),
+    status: text("status").$type<"sent" | "skipped" | "cleared">().notNull(),
+    skipReason: text("skip_reason"),
+    createdAt: timestamptz("created_at").notNull(),
+    updatedAt: timestamptz("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.itemId, table.userId, table.channel, table.event],
+    }),
+    index("junior_inbox_item_deliveries_user_status_idx").on(
+      table.userId,
+      table.status,
+      table.updatedAt,
+    ),
+  ],
 );

@@ -1,8 +1,5 @@
 import * as z from "zod";
-import {
-  codeChangeSizeSchema,
-  codeChangeStateSchema,
-} from "@sentry/junior-plugin-api";
+import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
 export const codeChangeSummarySchema = z
   .object({
@@ -51,11 +48,23 @@ export const codeRepositorySummarySchema = z
   })
   .strict();
 
+/**
+ * Where a code change came from: the Automation that ran its first
+ * Conversation, or else that Conversation's root. Code · Mine stacks the
+ * changes of one source.
+ */
+export const codeChangeStackSchema = z
+  .object({
+    /** The Automation id, or the root Conversation id. */
+    id: z.string().min(1),
+    kind: z.enum(["automation", "conversation"]),
+    title: z.string().optional(),
+  })
+  .strict();
+
 export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
-    /** Whether the code change is a draft. Readers ignore it unless open. */
-    draft: z.boolean(),
     id: z.string().uuid(),
     /**
      * Latest push, review, or comment by a person. Absent when the code
@@ -67,8 +76,8 @@ export const codeChangeSummaryReportSchema = z
     openedAt: z.string(),
     provider: z.string().min(1),
     repository: z.string().min(1),
-    /** Lines and files changed. Unknown parts are absent. */
-    size: codeChangeSizeSchema.optional(),
+    /** Set only on a person's changes, when the viewer may read the source. */
+    stack: codeChangeStackSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().optional(),
     url: z.string().url().optional(),
@@ -97,7 +106,6 @@ export const codeChangeSearchQuerySchema = z
 /** A tracked code change that a Message can link to. */
 export const mentionableCodeChangeSchema = z
   .object({
-    draft: z.boolean(),
     number: z.number().int(),
     /** `owner/repo`. */
     repository: z.string(),
@@ -181,6 +189,7 @@ export type CodeActivityDay = z.infer<typeof codeActivityDaySchema>;
 export type CodeChangeSearchReport = z.infer<
   typeof codeChangeSearchReportSchema
 >;
+export type CodeChangeStack = z.infer<typeof codeChangeStackSchema>;
 export type CodeChangeSummaryReport = z.infer<
   typeof codeChangeSummaryReportSchema
 >;
