@@ -26,10 +26,7 @@ import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-rep
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
-import type {
-  ChildAgentKind,
-  ChildAgentRef,
-} from "@/chat/agent-invocations/types";
+import type { ChildAgentKind } from "@/chat/agent-invocations/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -93,8 +90,6 @@ export type SpawnAgentInput = {
 /** Handle returned after a child-agent task is durably scheduled. */
 export type SpawnAgentResult = {
   childConversationId: string;
-  /** Child agents of the parent that still work, read after the spawn. */
-  workingChildAgents: ChildAgentRef[];
 };
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */
@@ -126,11 +121,6 @@ export type MessageAgentResult = {
    * started no work.
    */
   delivery: "noted" | "queued" | "started";
-  /**
-   * Child agents of the sender that still work, read after the message. Set
-   * only for a message to a child agent.
-   */
-  workingChildAgents?: ChildAgentRef[];
 };
 
 /**

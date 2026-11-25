@@ -14,7 +14,6 @@ import {
   AGENT_TYPES,
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
-import { waitForChildAgentsStep } from "@/chat/agent-invocations/next-step";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
@@ -181,11 +180,9 @@ export function createStartAgentTool(
         throw error;
       }
       const url = getDashboardConversationLink(result.childConversationId);
-      const nextStep = waitForChildAgentsStep(result.workingChildAgents);
       return {
         conversation_id: result.childConversationId,
         ...(url ? { url } : undefined),
-        ...(nextStep ? { next_step: nextStep } : undefined),
       };
     },
   });

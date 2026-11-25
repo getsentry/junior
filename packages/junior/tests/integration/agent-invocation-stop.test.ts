@@ -152,7 +152,6 @@ describe("stopping child agents", () => {
       await expect(stopAgent(childId)).resolves.toEqual({
         conversation_id: childId,
         stopped: true,
-        next_step: 'Child agent "researcher" stopped and sends no result.',
       });
       const work = await getConversationWorkState({
         conversationId: childId,
@@ -193,8 +192,6 @@ describe("stopping child agents", () => {
       await expect(stopAgent(childId)).resolves.toEqual({
         conversation_id: childId,
         stopped: false,
-        next_step:
-          'Child agent "researcher" had already stopped and sends no result.',
       });
       // A message from the parent starts new work on the stopped child, in
       // the same parent Turn as the stop.
@@ -204,22 +201,12 @@ describe("stopping child agents", () => {
       await expect(
         getConversationStoppedAtMs(childId),
       ).resolves.toBeUndefined();
-      // The listing tells the parent to wait for the result.
-      await expect(
-        createListAgentsTool({ conversationId: parentConversationId }).execute!(
-          {},
-          {},
-        ),
-      ).resolves.toEqual({
-        agents: [
-          expect.objectContaining({
-            conversation_id: childId,
-            status: "running",
-          }),
-        ],
-        next_step:
-          'Child agent "researcher" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.',
-      });
+      await expect(listAgents()).resolves.toEqual([
+        expect.objectContaining({
+          conversation_id: childId,
+          status: "running",
+        }),
+      ]);
       // The new task does not bring back the stopped work's reply.
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
     } finally {
@@ -372,7 +359,7 @@ describe("stopping child agents", () => {
       await expect(
         stopAgent(pendingId, "local:test:other-parent"),
       ).rejects.toMatchObject({ name: "ToolInputError" });
-      await expect(stopAgent(pendingId)).resolves.toMatchObject({
+      await expect(stopAgent(pendingId)).resolves.toEqual({
         conversation_id: pendingId,
         stopped: true,
       });
@@ -426,11 +413,6 @@ describe("stopping child agents", () => {
     const harness = await createHarness(neverRunAgentRunner());
     try {
       const childId = await harness.spawn({ idempotencyKey: "tree-child" });
-      // A sibling keeps working through the stop.
-      const siblingId = await harness.spawn({
-        agentName: "reviewer",
-        idempotencyKey: "tree-sibling",
-      });
       const openHelperId = await harness.spawn({
         idempotencyKey: "tree-open-helper",
         parentConversationId: childId,
@@ -467,7 +449,6 @@ describe("stopping child agents", () => {
       await expect(stopAgent(childId)).resolves.toEqual({
         conversation_id: childId,
         stopped: true,
-        next_step: `Child agent "${childId}" stopped and sends no result. Child agent "reviewer" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.`,
       });
 
       await expect(listChildAgents(childId)).resolves.toEqual(
@@ -495,18 +476,12 @@ describe("stopping child agents", () => {
       const [held] = await stoppedConversationMessageTexts(childId);
       expect(held).toContain("Helper needs a token.");
       expect(held).toContain("Open helper finding.");
-      await expect(listAgents()).resolves.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            conversation_id: childId,
-            status: "stopped",
-          }),
-          expect.objectContaining({
-            conversation_id: siblingId,
-            status: "running",
-          }),
-        ]),
-      );
+      await expect(listAgents()).resolves.toEqual([
+        expect.objectContaining({
+          conversation_id: childId,
+          status: "stopped",
+        }),
+      ]);
     } finally {
       await harness.close();
     }

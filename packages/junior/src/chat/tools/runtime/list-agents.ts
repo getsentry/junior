@@ -1,16 +1,18 @@
 import * as z from "zod";
-import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
-  childAgentWorks,
+  subscribableResourceSchema,
+  type PluginEmbedder,
+} from "@sentry/junior-plugin-api";
+import {
   listAgentRelatives,
   type ParentAgent,
 } from "@/chat/agent-invocations/list";
-import { waitForChildAgentsStep } from "@/chat/agent-invocations/next-step";
 import {
   searchConversations,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import type { ConversationStatus } from "@/chat/conversations/store";
+import { conversationWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
@@ -149,6 +151,11 @@ const listedAgentSchema = z
       .optional()
       .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
+    subscribable: subscribableResourceSchema
+      .optional()
+      .describe(
+        "Watch it with watchEvents to hear its updates. Only on siblings and other matches, whose updates do not arrive by themselves.",
+      ),
     todos: z
       .array(todoOutputSchema)
       .optional()
@@ -186,6 +193,8 @@ async function parentTodos(
     .map((todo) => parentTodo(todo, conversationId));
 }
 
+// Results of a child agent arrive as new tasks, so only a sibling or a
+// match outside the team offers a Watch.
 function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
@@ -208,6 +217,14 @@ function listedChildAgent(
       ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
+    ...(relation === "sibling"
+      ? {
+          subscribable: conversationWatch({
+            conversationId: agent.childConversationId,
+            title: agent.title ?? agent.agentName ?? agent.childConversationId,
+          }),
+        }
+      : undefined),
   };
 }
 
@@ -222,6 +239,10 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
     ...(url ? { url } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     updated_at: new Date(match.updatedAtMs).toISOString(),
+    subscribable: conversationWatch({
+      conversationId: match.conversationId,
+      title: match.title ?? match.conversationId,
+    }),
   };
 }
 
@@ -238,7 +259,7 @@ export const listAgentsToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first.",
+    "List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -280,11 +301,8 @@ export function createListAgentsTool(
     ...listAgentsToolDefinition,
     execute: async (input) => {
       const query = input.query ?? undefined;
-      if (!query) {
-        const { agents, working } = await listTeam(context);
-        return withNextStep({ agents }, working);
-      }
-      const [{ agents: team, working }, personUserId] = await Promise.all([
+      if (!query) return { agents: await listTeam(context) };
+      const [team, personUserId] = await Promise.all([
         listTeam(context),
         context.resolvePersonUserId?.(),
       ]);
@@ -303,17 +321,14 @@ export function createListAgentsTool(
       const members = new Map(
         team.map((agent) => [agent.conversation_id, agent]),
       );
-      return withNextStep(
-        {
-          agents: matches.map((match) => ({
-            ...(members.get(match.conversationId) ?? listedMatch(match)),
-            ...(match.summary
-              ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
-              : undefined),
-          })),
-        },
-        working,
-      );
+      return {
+        agents: matches.map((match) => ({
+          ...(members.get(match.conversationId) ?? listedMatch(match)),
+          ...(match.summary
+            ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
+            : undefined),
+        })),
+      };
     },
   });
 }
@@ -323,24 +338,11 @@ type TeamContext = {
   parentConversationId?: string | undefined;
 };
 
-// Results of the child agents that still work arrive by themselves, so a
-// list that shows one tells the agent to wait instead of listing again.
-function withNextStep<T extends { agents: ListedAgent[] }>(
-  output: T,
-  working: readonly ChildAgent[],
-): T & { next_step?: string } {
-  const nextStep = waitForChildAgentsStep(working);
-  return nextStep ? { ...output, next_step: nextStep } : output;
-}
-
 /**
  * List the team of one conversation: itself and its parent for a child
- * agent, its child agents, then its siblings. `working` holds its child
- * agents that still work.
+ * agent, its child agents, then its siblings.
  */
-async function listTeam(
-  context: TeamContext,
-): Promise<{ agents: ListedAgent[]; working: ChildAgent[] }> {
+async function listTeam(context: TeamContext): Promise<ListedAgent[]> {
   const { children, parent, self, siblings } =
     await listAgentRelatives(context);
   // listAgentRelatives reads the parent only from the runtime context,
@@ -348,7 +350,7 @@ async function listTeam(
   const todos = parent
     ? await parentTodos(parent.conversationId, context.conversationId)
     : [];
-  const agents: ListedAgent[] = [
+  return [
     ...(self ? [listedChildAgent("self", self)] : []),
     ...(parent
       ? [
@@ -364,5 +366,4 @@ async function listTeam(
     ...children.map((agent) => listedChildAgent("child", agent)),
     ...siblings.map((agent) => listedChildAgent("sibling", agent)),
   ];
-  return { agents, working: children.filter(childAgentWorks) };
 }

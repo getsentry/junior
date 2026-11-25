@@ -350,8 +350,6 @@ describe("child agents", () => {
             status: "running",
           }),
         ],
-        next_step:
-          'Child agent "Deploy check" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.',
       });
       await expect(
         listUnreportedSiblingAgents(
@@ -372,11 +370,10 @@ describe("child agents", () => {
       });
       await harness.processUntilRun(childId);
       statuses.push(await listAgents.execute!({}, {}));
-      const running = {
-        agents: [expect.objectContaining({ status: "running" })],
-        next_step: expect.stringContaining('"Deploy check" still works'),
-      };
-      expect(statuses).toEqual([running, running]);
+      expect(statuses).toEqual([
+        { agents: [expect.objectContaining({ status: "running" })] },
+        { agents: [expect.objectContaining({ status: "running" })] },
+      ]);
 
       await expect(
         createStopAgentTool(slackParentConversationId).execute!(
@@ -384,7 +381,6 @@ describe("child agents", () => {
           {},
         ),
       ).resolves.toMatchObject({ stopped: true });
-      // No child works, so the listing names no next step.
       await expect(listAgents.execute!({}, {})).resolves.toEqual({
         agents: [expect.objectContaining({ status: "stopped" })],
       });

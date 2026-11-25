@@ -13,8 +13,6 @@ import {
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/api/conversations/access";
 import { getConversationStore, getDb } from "@/chat/db";
-import { executionIsActive } from "@/chat/conversations/sql/status";
-import type { Conversation } from "@/chat/conversations/store";
 import { watchRepeatsChildResults } from "@/chat/conversations/kind-behavior";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
@@ -129,7 +127,7 @@ function ttlMs(input: Input): number {
 async function requireWatchableConversation(
   watcherConversationId: string,
   conversationId: string,
-): Promise<Conversation | undefined> {
+): Promise<void> {
   if (
     !(await canReadConversation(getDb(), watcherConversationId, conversationId))
   ) {
@@ -143,15 +141,6 @@ async function requireWatchableConversation(
       `${conversationId} is a child agent of this Conversation. Its results and messages already arrive here without a Watch.`,
     );
   }
-  return target;
-}
-
-// The Watch delivers each agent update, so the watcher waits for it instead
-// of checking the Conversation again.
-function conversationWatchNextStep(target: Conversation | undefined): string {
-  return target && executionIsActive(target.execution.status)
-    ? "The conversation is working, and its next agent update arrives here as a new task when its Turn ends. Do other work or end this turn instead of checking on it."
-    : "The conversation is not working now, and its next agent update arrives here as a new task after its next Turn. Do other work or end this turn instead of checking on it.";
 }
 
 /** Static definition of `watchEvents` for the deployment event catalog. */
@@ -205,16 +194,12 @@ export function createWatchEventsTool(
         ...input,
         resourceType: input.resource_type,
       });
-      const nextStep =
+      if (
         input.namespace === CORE_EVENT_NAMESPACE &&
         input.resource_type === CONVERSATION_RESOURCE_TYPE
-          ? conversationWatchNextStep(
-              await requireWatchableConversation(
-                context.conversationId,
-                identifier,
-              ),
-            )
-          : undefined;
+      ) {
+        await requireWatchableConversation(context.conversationId, identifier);
+      }
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
@@ -246,7 +231,6 @@ export function createWatchEventsTool(
       };
       return {
         ...details,
-        ...(nextStep ? { next_step: nextStep } : undefined),
       };
     },
   });

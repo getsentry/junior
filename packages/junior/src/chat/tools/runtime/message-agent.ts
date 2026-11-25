@@ -4,9 +4,7 @@ import {
   AgentMessageTargetError,
   AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
-import { waitForChildAgentsStep } from "@/chat/agent-invocations/next-step";
 import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
-import type { MessageAgentResult } from "@/chat/agent/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -20,12 +18,12 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   delivery: z
     .enum(["started", "queued", "noted"])
     .describe(
-      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work. noted: this conversation is stopped, so the child agent got the message as a note that it sees when it next runs.",
+      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work. noted: this conversation is stopped, so the child agent got the message as a note that it sees when it next runs, and it started no work. Do not send it again.",
     ),
 });
 
 export const messageAgentToolDefinition = zodToolDefinition({
-  description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. It does not start a new agent.`,
+  description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. It does not start a new agent.`,
   exposure: "modelOnly",
   // Action review judges the actions that the message names.
   approvalMode: "auto",
@@ -56,20 +54,6 @@ export const messageAgentToolDefinition = zodToolDefinition({
     .strict(),
   outputSchema: messageAgentOutputSchema,
 });
-
-/**
- * Steer after a message to a child agent. Its result arrives by itself, and
- * a stopped sender gets none.
- */
-function messageNextStep(result: MessageAgentResult): string | undefined {
-  if (!result.workingChildAgents) {
-    return undefined;
-  }
-  if (result.delivery === "noted") {
-    return "This conversation is stopped, so the child agent started no work and sends no result. End this turn.";
-  }
-  return waitForChildAgentsStep(result.workingChildAgents);
-}
 
 /**
  * Create the tool that sends one message to the parent, a child agent, or
@@ -116,11 +100,9 @@ export function createMessageAgentTool(
         }
         throw error;
       }
-      const nextStep = messageNextStep(result);
       return {
         conversation_id: result.conversationId,
         delivery: result.delivery,
-        ...(nextStep ? { next_step: nextStep } : undefined),
       };
     },
   });

@@ -10,7 +10,6 @@ describe("startAgent", () => {
   it("normalizes nullable optional fields before invoking the runtime control", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
-      workingChildAgents: [],
     });
     const tool = createStartAgentTool(spawnAgent, { owner: "none" });
 
@@ -39,7 +38,6 @@ describe("startAgent", () => {
   it("passes the agent type and fork through", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
-      workingChildAgents: [],
     });
     const tool = createStartAgentTool(spawnAgent, { owner: "none" });
 

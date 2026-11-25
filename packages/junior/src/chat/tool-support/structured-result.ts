@@ -21,18 +21,6 @@ export const juniorToolOutputSchema = z
     /** True when this attempt did not finish before its time budget. */
     timed_out: z.boolean().optional(),
     continuation: juniorToolContinuationSchema.optional(),
-    /**
-     * Steering from code: a fact from state that the model could not see
-     * before the call, and the next step, in at most 2 sentences. A tool
-     * sets it only then. It never gives approval or widens scope.
-     */
-    next_step: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "What the call found and what to do next, from state that you could not see before it.",
-      ),
   })
   .passthrough();
 

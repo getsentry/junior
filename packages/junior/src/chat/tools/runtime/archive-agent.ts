@@ -1,8 +1,6 @@
 import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import { listWorkingChildAgents } from "@/chat/agent-invocations/list";
-import { waitForChildAgentsStep } from "@/chat/agent-invocations/next-step";
 import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import {
@@ -76,25 +74,6 @@ async function requireNoPersonUse(conversationId: string): Promise<void> {
   }
 }
 
-/**
- * The archived child agent, and the other child agents that still work,
- * whose results arrive by themselves.
- */
-async function archivedOutput(
-  conversationId: string,
-  childConversationId: string,
-  archivedAt: string,
-) {
-  const nextStep = waitForChildAgentsStep(
-    await listWorkingChildAgents(conversationId),
-  );
-  return {
-    conversation_id: childConversationId,
-    archived_at: archivedAt,
-    ...(nextStep ? { next_step: nextStep } : undefined),
-  };
-}
-
 /** Create the tool that archives one child agent of one conversation. */
 export function createArchiveAgentTool(conversationId: string) {
   return zodTool({
@@ -110,11 +89,10 @@ export function createArchiveAgentTool(conversationId: string) {
         );
       }
       if (child.archivedAtMs !== undefined) {
-        return await archivedOutput(
-          conversationId,
-          childConversationId,
-          new Date(child.archivedAtMs).toISOString(),
-        );
+        return {
+          conversation_id: childConversationId,
+          archived_at: new Date(child.archivedAtMs).toISOString(),
+        };
       }
       // An open Turn, from a person or from this conversation, means the
       // child agent is in use.
@@ -124,7 +102,7 @@ export function createArchiveAgentTool(conversationId: string) {
         child.execution.status === "paused";
       if (working) {
         throw new ToolInputError(
-          `${childConversationId} is working, and its result arrives as a new task. Archive it after that, or leave it.`,
+          `${childConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
       // `apply_to_children` also archives the child agents below it, so
@@ -154,11 +132,10 @@ export function createArchiveAgentTool(conversationId: string) {
       });
       switch (result.status) {
         case "archived":
-          return await archivedOutput(
-            conversationId,
-            childConversationId,
-            result.archivedAt,
-          );
+          return {
+            conversation_id: childConversationId,
+            archived_at: result.archivedAt,
+          };
         case "conflict":
           throw new ToolInputError(
             `${childConversationId} received new activity. Check it again with listAgents before you archive it.`,

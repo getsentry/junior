@@ -116,8 +116,18 @@ describe("listAgents query", () => {
         title: "Launch decision",
         updated_at: expect.any(String),
         url: `https://junior.example.com/conversations/${encodeURIComponent(other)}`,
+        // Its updates do not reach the requester, so it offers a Watch.
+        subscribable: {
+          identifier: other,
+          label: "Conversation Launch decision",
+          namespace: "junior",
+          supported_events: ["agent.update"],
+          suggested_events: ["agent.update"],
+          type: "conversation",
+        },
       },
     ]);
+    expect(result.agents[0]).not.toHaveProperty("subscribable");
     const cut = /\[(\d+) more characters cut/.exec(
       result.agents[2].summary,
     )?.[1];

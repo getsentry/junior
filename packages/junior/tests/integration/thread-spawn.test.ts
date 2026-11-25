@@ -166,15 +166,6 @@ describe("Thread spawn and archive", () => {
         }),
         { toolCallId: "call-task" },
       );
-      // Each result names the child agents that still work, whose results
-      // arrive by themselves.
-      expect(thread.next_step).toBe(
-        'Child agent "Rollout plan" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.',
-      );
-      expect(task.next_step).toMatch(
-        /^Child agents "(Failing test|Rollout plan)", "(Failing test|Rollout plan)" still work, and each result arrives as a new task/,
-      );
-      expect(task.next_step).toContain('"Failing test"');
 
       await expect(
         harness.conversationStore.get({
@@ -271,18 +262,13 @@ describe("Thread spawn and archive", () => {
   it("archives only an idle child agent of this conversation", async () => {
     const harness = await createHarness();
     try {
-      const thread = await startThread(harness, "thread-spawn");
-      // A Task is archived the same way as a Thread. The result names the
-      // child agent that still works.
+      // A Task is archived the same way as a Thread.
       const task = await createIdleChild(harness, "task", "task");
       await expect(
         archiveAgent(slackParentConversationId, task),
-      ).resolves.toEqual({
-        conversation_id: task,
-        archived_at: expect.any(String),
-        next_step: `Child agent "${harness.agentName}" still works, and its result arrives as a new task, so do other work or end this turn instead of checking on it.`,
-      });
+      ).resolves.toMatchObject({ conversation_id: task });
 
+      const thread = await startThread(harness, "thread-spawn");
       const nestedThread = await spawnChild(
         harness,
         "nested-thread",

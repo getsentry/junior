@@ -261,13 +261,7 @@ describe("Lead", () => {
       watch(lead.conversationId, lead.conversationId),
     ).resolves.toMatchObject({ subscription_status: "active" });
     await watch(lead.conversationId, started.conversation_id);
-    // The result says when the next update arrives, so the watcher waits.
-    await expect(
-      watch(boWork.conversationId, started.conversation_id),
-    ).resolves.toMatchObject({
-      next_step:
-        "The conversation is working, and its next agent update arrives here as a new task when its Turn ends. Do other work or end this turn instead of checking on it.",
-    });
+    await watch(boWork.conversationId, started.conversation_id);
     // Any kind may be watched, so a child agent of that root is too.
     const child = getSpawnedChildConversationId(
       started.conversation_id,
@@ -280,10 +274,7 @@ describe("Lead", () => {
       source: "internal",
     });
     await watch(lead.conversationId, child);
-    await expect(watch(boWork.conversationId, child)).resolves.toMatchObject({
-      next_step:
-        "The conversation is not working now, and its next agent update arrives here as a new task after its next Turn. Do other work or end this turn instead of checking on it.",
-    });
+    await watch(boWork.conversationId, child);
     // Its parent already gets its results, so a Watch would repeat them.
     await expect(watch(started.conversation_id, child)).rejects.toThrow(
       `${child} is a child agent of this Conversation.`,
