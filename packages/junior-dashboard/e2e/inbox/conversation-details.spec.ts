@@ -385,11 +385,13 @@ test.describe("new UI", () => {
       .filter({ hasText: "Dashboard transcript events should remain" })
       .getByRole("button", { name: "Go to message" })
       .click();
-    await expect(
-      page
-        .getByLabel("Conversation transcript")
-        .locator("[data-transcript-seq][data-highlighted]"),
-    ).toBeInViewport();
+    const highlighted = page
+      .getByLabel("Conversation transcript")
+      .locator("[data-transcript-seq][data-highlighted]");
+    await expect(highlighted).toBeInViewport();
+    // The mark lasts a moment, so it can end between the desktop and the
+    // mobile capture. Shoot after it ends.
+    await expect(highlighted).toHaveCount(0);
     await screenshot(page, "conversation-memory-list");
   });
 });
