@@ -77,7 +77,7 @@ const inputSchema = z
       .literal(true)
       .optional()
       .describe(
-        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person whose latest review requests changes is not asked again.",
+        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person whose latest review approves it or requests changes is not asked again.",
       ),
   })
   .strict()
@@ -119,7 +119,7 @@ const outputSchema = pluginToolOutputSchema.merge(
       .boolean()
       .optional()
       .describe(
-        "With request_review: true when GitHub asks the person for a review, false when their latest review requests changes.",
+        "With request_review: true when GitHub asks the person for a review, false when their latest review approves it or requests changes.",
       ),
     target: z.literal("updatePullRequest"),
   }),
@@ -191,10 +191,12 @@ const reviewerSchema = z.object({
  * Junior keeps a draft for its requester when marking it ready would ask the
  * code owners. A review request asks only the person it names, and the Inbox
  * item follows from it (`webhooks/pull-request-action.ts`). A person whom
- * GitHub already asks is not asked again. A person whose latest review
- * requests changes is not asked either, so the result is false: only the
- * review-again flow asks then. A comment or an approval ends GitHub's request
- * but leaves the draft waiting on them, so they are asked again.
+ * GitHub already asks is not asked again. Nor is a person whose latest
+ * review that approves or requests changes does so, and the result is false:
+ * after a change request, only the review-again flow asks, and an approved
+ * draft's item says to mark it ready. A comment-only review does not count,
+ * so a later comment neither hides a change request nor blocks a new ask.
+ * A person whose latest such review was dismissed is asked.
  */
 async function requestRequesterReview(
   egress: PluginEgress,
@@ -226,7 +228,7 @@ async function requestRequesterReview(
     return true;
   }
   const latest = pullRequest.reviews.nodes[0]?.state;
-  if (latest === "CHANGES_REQUESTED") return false;
+  if (latest === "APPROVED" || latest === "CHANGES_REQUESTED") return false;
   const response = await githubApi(egress, {
     operation: "github.pull.request_reviewers",
     method: "POST",

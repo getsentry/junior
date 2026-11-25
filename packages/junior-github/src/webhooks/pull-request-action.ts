@@ -19,7 +19,11 @@
  * reviews it and marks it ready. Junior keeps a draft for its requester when
  * marking it ready would ask the code owners, and asks only the requester on
  * GitHub (`github_updatePullRequest` `request_review`). When the draft
- * becomes ready, the same item says that GitHub asks for the review.
+ * becomes ready, the same item says that GitHub asks for the review. When
+ * the requester approves a draft that stays a draft, such as one that the
+ * repo's AGENTS.md leaves for a person to mark ready, the action is
+ * "mark_ready", and the same item says to mark it ready. It needs no new
+ * review request, so none lingers after that.
  *
  * After a change request, only an explicit signal asks the requester again:
  * Junior marks every comment of it addressed or declined, and the required
@@ -285,6 +289,8 @@ function nextAction(
   if (requested && (!requester.actedLast || !state.changesRequested)) {
     return { action: review };
   }
+  // The requester approved the draft, so the step left is to mark it ready.
+  if (state.draft && state.requesterApproved) return { action: "mark_ready" };
   if (canMerge && !state.mergeableState) return undefined;
   return {};
 }
@@ -358,6 +364,9 @@ function actionText(
   const asked = reason ? REVIEW_AGAIN_TEXT[reason] : undefined;
   if (action === "review") {
     return asked ?? `GitHub asks you to review #${number}.`;
+  }
+  if (action === "mark_ready") {
+    return `You approved #${number}. Mark it ready for review.`;
   }
   const step = `#${number} is a draft. Review it, then mark it ready for review.`;
   return asked ? `${asked} ${step}` : step;

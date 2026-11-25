@@ -1963,8 +1963,8 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.checks.recovered": expect.stringContaining(
             "mark it ready with github_updatePullRequest and draft false",
           ),
-          "pull_request.review.approved": expect.stringMatching(
-            /Mark it ready with github_updatePullRequest and draft false.*request_review true/,
+          "pull_request.review.approved": expect.stringContaining(
+            "Mark it ready with github_updatePullRequest and draft false",
           ),
         }),
       }),

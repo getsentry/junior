@@ -198,7 +198,7 @@ export const PULL_REQUEST_REVIEWER = githubGraphql(`
         reviewRequests(first: 100) {
           nodes { requestedReviewer { __typename ... on User { login } } }
         }
-        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
+        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
           nodes { state }
         }
       }

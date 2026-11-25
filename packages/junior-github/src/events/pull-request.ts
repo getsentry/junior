@@ -143,14 +143,13 @@ const DRAFT_CHECKS_RECOVERED_GUIDANCE =
 /**
  * The requester's approval is the review that a held draft waits for. Marking
  * it ready then asks the code owners after the requester has looked. A draft
- * that the requester asked to keep stays a draft. One that AGENTS.md leaves
- * for a person to mark ready stays a draft too, and the requester is asked to
- * review it again, because the approval ended the request that their Inbox
- * item follows. Whether Junior held the draft, or the requester
+ * that the requester asked to keep, or that AGENTS.md leaves for a person to
+ * mark ready, stays a draft, and its Inbox item asks the requester to mark it
+ * ready (`webhooks/pull-request-action.ts`). Whether Junior held the draft, or the requester
  * asked to keep it, is in the Conversation, so the agent decides.
  */
 const DRAFT_APPROVED_GUIDANCE =
-  "If the pull request is still a draft and `sender_login` in Verified details is `opener_username`, the person who asked for it approved it. Call github_getPullRequest and read its `agents_md`. Mark it ready with github_updatePullRequest and draft false, so GitHub asks its code owners now that this person has looked. Keep it a draft when this person asked to keep it a draft. When `agents_md` says that a person marks drafts ready, keep it a draft and call github_updatePullRequest with request_review true, so their Inbox asks them to mark it ready. Stay silent in the thread.";
+  "If the pull request is still a draft and `sender_login` in Verified details is `opener_username`, the person who asked for it approved it. Call github_getPullRequest and read its `agents_md`. Mark it ready with github_updatePullRequest and draft false, so GitHub asks its code owners now that this person has looked. Keep it a draft when this person asked to keep it a draft, or when `agents_md` says that a person marks drafts ready: their Inbox then asks them to mark it ready. Stay silent in the thread.";
 
 /**
  * State changes that need no action but that a later Turn must know, so that

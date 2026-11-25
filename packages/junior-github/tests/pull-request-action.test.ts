@@ -432,8 +432,31 @@ describe("next action item", () => {
         },
       ]);
 
-      // The requester marks it ready without a review. GitHub still asks
-      // them, so the same item now says only that.
+      // The requester approves it, but it stays a draft, such as when the
+      // repo's AGENTS.md leaves it for a person to mark ready. The same item
+      // now gives the one step left.
+      github.requestedReviewers = [];
+      github.reviews = [{ state: "APPROVED", user: { login: "requester" } }];
+      await webhook.handler(
+        reviewSubmitted("approved", { login: "requester" }),
+      );
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `You approved #946. Mark it ready for review.\n\n${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject,
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      });
+
+      // GitHub asks them again before they mark it ready. Once it is
+      // ready, the same item says only that GitHub asks for the review.
+      github.requestedReviewers = ["requester"];
+      github.reviews = [];
       github.draft = false;
       github.mergeableStates = ["blocked"];
       await webhook.handler(pullRequestAction("ready_for_review"));
@@ -449,7 +472,7 @@ describe("next action item", () => {
           waitsOnAssignees: true,
         },
       });
-      expect(calls).toHaveLength(2);
+      expect(calls).toHaveLength(3);
     } finally {
       await fixture.close();
     }
