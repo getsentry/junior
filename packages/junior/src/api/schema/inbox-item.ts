@@ -3,7 +3,10 @@ import {
   objectTypeSchema,
   ownedObjectAnnotationSchema,
 } from "@sentry/junior-plugin-api";
-import { inboxItemRequestSchema } from "@/chat/inbox-items/request";
+import {
+  inboxItemNoticeRequestSchema,
+  inboxItemRequestSchema,
+} from "@/chat/inbox-items/request";
 import { actorIdentitySchema } from "./conversation";
 import {
   inboxSnoozeResourceSchema,
@@ -100,7 +103,13 @@ export const inboxItemSchema = z
       })
       .strict()
       .optional(),
-    request: inboxItemRequestSchema.optional(),
+    /**
+     * The question and its related links. A notice has only the related
+     * links, which say what it is about.
+     */
+    request: z
+      .union([inboxItemRequestSchema, inboxItemNoticeRequestSchema])
+      .optional(),
     /**
      * The top of the owner Conversation's tree that the viewer can see, at
      * any depth: the owner when it is a root, or when the viewer cannot see

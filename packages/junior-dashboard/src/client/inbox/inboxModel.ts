@@ -1,6 +1,7 @@
-import type {
-  AutomationListItem,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type AutomationListItem,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { parsePath } from "react-router";
 
@@ -85,7 +86,7 @@ export function isCodeChangeItem(item: InboxItemPayload): boolean {
 
 /** A question or approval that Junior asks with a form. */
 export function isDecisionItem(item: InboxItemPayload): boolean {
-  return Boolean(item.request);
+  return Boolean(inboxItemQuestion(item.request));
 }
 
 /** An item that shows a To-do for the viewer. */
@@ -293,7 +294,7 @@ export function inboxItemKind(item: InboxItemPayload): string {
   if (item.status !== "open") return inboxItemStatusLabel(item);
   if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
-  if (item.request) return "Question";
+  if (inboxItemQuestion(item.request)) return "Question";
   const state = pullRequestState(item);
   return state === "Other" ? "Approval" : state;
 }

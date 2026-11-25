@@ -8,9 +8,10 @@ import {
 } from "lucide-react";
 import { use, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
-import type {
-  InboxItemChangeRecord,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type InboxItemChangeRecord,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
@@ -59,7 +60,8 @@ function InboxItemPreview(props: {
   item: InboxItemPayload;
   trigger: ReactElement;
 }) {
-  const { answer, request } = props.item;
+  const { answer } = props.item;
+  const request = inboxItemQuestion(props.item.request);
   return (
     <HoverPreview
       className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
@@ -101,9 +103,10 @@ function ChangeRow(props: {
   const showQuestion = use(TranscriptShowQuestion);
   const verb = CHANGE_VERBS[record.kind];
   // An answer is final, so the item's answer is this message's answer.
+  const question = inboxItemQuestion(item.request);
   const rows =
-    record.kind === "submitted" && item.request && item.answer
-      ? answerRows(item.request, item.answer)
+    record.kind === "submitted" && question && item.answer
+      ? answerRows(question, item.answer)
       : [];
   const askLinked = useAnswerLinked(item.id);
   // The page can show a question that has a row here, or load the history
@@ -279,10 +282,11 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
       label: <>Dismissed{by}</>,
     };
   }
+  const question = inboxItemQuestion(item.request);
   return {
     answer:
-      !answerShown && item.request && item.answer
-        ? answerLine(item.request, item.answer)
+      !answerShown && question && item.answer
+        ? answerLine(question, item.answer)
         : undefined,
     icon: CircleCheck,
     iconClassName: "text-emerald-500",
