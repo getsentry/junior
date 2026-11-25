@@ -376,11 +376,10 @@ export function createEndStoppedChildWork(options: {
       },
       {
         queue: options.queue,
-        starter: await parentResultActor({
-          actor: turn?.actor ?? EVENT_SYSTEM_ACTOR,
-          conversationId,
-          source: turn?.source?.kind,
-        }),
+        starter: parentResultActor(
+          turn?.actor ?? EVENT_SYSTEM_ACTOR,
+          turn?.source?.kind,
+        ),
         update: async () => ({
           status: "failed",
           text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,

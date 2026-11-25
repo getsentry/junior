@@ -921,11 +921,7 @@ export function createConversationTurnWorker(
             failureCode,
             failureText:
               failure instanceof Error ? failure.message : String(failure),
-            reportAs: await parentResultActor({
-              actor,
-              conversationId: context.conversationId,
-              source: source.kind,
-            }),
+            reportAs: parentResultActor(actor, source.kind),
             turnId,
           });
           await indexEndedTurnEvents({

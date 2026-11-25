@@ -128,8 +128,8 @@ const ROOT_RUNTIME_TURN: TurnBehavior = {
 };
 
 // A person's Turn in a Thread runs like a Turn on a root, and reports to the
-// parent like every Turn of a child. Its child agents run as the person, and
-// `parentResultActor` keeps the person's access out of the parent.
+// parent like every Turn of a child. Its child agents run as the person, like
+// every child agent runs as the Actor of the Turn that started it.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",

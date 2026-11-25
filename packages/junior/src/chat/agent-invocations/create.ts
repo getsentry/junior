@@ -7,7 +7,6 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { Actor } from "@/chat/actor";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -141,7 +140,7 @@ type ChildAgentWorkOptions = {
  * a lost wake is recovered like any other stranded mailbox input.
  */
 async function giveChildAgentWork<T>(
-  work: Omit<Parameters<typeof buildParentMessage>[0], "authorIdentityId"> &
+  work: Parameters<typeof buildParentMessage>[0] &
     Pick<SubagentStart, "agentName" | "reasoningLevel" | "title">,
   options: ChildAgentWorkOptions,
   prepare: () => Promise<{
@@ -149,15 +148,7 @@ async function giveChildAgentWork<T>(
     value: T;
   }>,
 ): Promise<T> {
-  // The Actor of the parent's Turn gives the work, so it authors the text.
-  const message = buildParentMessage({
-    ...work,
-    authorIdentityId: await resolveActorIdentityId(
-      getSqlExecutor(),
-      work.actor,
-      work.nowMs,
-    ),
-  });
+  const message = buildParentMessage(work);
   const prepared = await getSqlExecutor().withLock(
     getChildAgentLockName(work.parentConversationId),
     async () => {

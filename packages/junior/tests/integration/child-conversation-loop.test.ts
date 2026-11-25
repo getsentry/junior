@@ -8,7 +8,6 @@ import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
 import { botConfig } from "@/chat/config";
 import type { Actor } from "@/chat/actor";
-import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { ingestEvent } from "@/chat/events/ingest";
 import { createWatch, listWatches } from "@/chat/events/store";
@@ -575,68 +574,38 @@ describe("child Turns on the Conversation loop", () => {
 
   // A person's Turn in a Thread can start a helper, which runs as that
   // person. Its result runs in the Thread as the person, and the Thread's
-  // result reaches the parent as the Event system Actor. The same chain from
-  // the person who asked for the Thread keeps their Actor. A helper's system
-  // Turn does the work of the person who asked for the helper.
-  it.each([
-    { helperActor: "requester", reportsAs: "requester" },
-    { helperActor: "person in the Thread", reportsAs: "system" },
-  ] as const)(
-    "reports a Thread result from a helper of the $helperActor as the $reportsAs",
-    async ({ helperActor, reportsAs }) => {
-      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-      const harness = await createHarness();
-      try {
-        const childId = await startIdleChild(harness, "thread");
-        const actor =
-          helperActor === "requester"
-            ? slackInvocationInput.actor
-            : webTestActor;
-        const helper = await createHelper(harness, childId, { actor });
-        // The helper's first Turn saves its task with the Actor it runs as.
-        harness.onRun((run) => finishRun(run, { finalText: "Started." }));
-        await harness.drain(helper.childConversationId);
-        await expect(
-          resolveWorkOwner({
-            actor: EVENT_SYSTEM_ACTOR,
-            conversationId: helper.childConversationId,
-            resolveActor: async () => undefined,
-          }),
-        ).resolves.toMatchObject({
-          kind: "person",
-          identity:
-            helperActor === "requester"
-              ? { provider: "slack", providerSubjectId: actor.userId }
-              : { provider: "junior", providerSubjectId: webTestActor.email },
-        });
-        const before = (await parentMessages()).length;
-        await sendHelperReply(harness, helper, actor);
-        harness.onRun((run) =>
-          finishRun(run, { finalText: "The helper is done." }),
-        );
-        await harness.drain(childId);
+  // result carries the person's Actor to the parent.
+  it("passes a Thread helper's Actor through to the parent", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "thread");
+      const helper = await createHelper(harness, childId, {
+        actor: webTestActor,
+      });
+      const before = (await parentMessages()).length;
+      await sendHelperReply(harness, helper, webTestActor);
+      harness.onRun((run) =>
+        finishRun(run, { finalText: "The helper is done." }),
+      );
+      await harness.drain(childId);
 
-        expect(harness.runs.at(-1)).toMatchObject({
-          actor,
-          conversationId: childId,
-        });
-        expect(
-          (await parentMessages())
-            .slice(before)
-            .filter((message) =>
-              message.input.text.includes("The helper is done."),
-            )
-            .map((message) => message.input.authorId),
-        ).toEqual([
-          resultAuthorId(
-            reportsAs === "requester" ? actor : EVENT_SYSTEM_ACTOR,
-          ),
-        ]);
-      } finally {
-        await harness.close();
-      }
-    },
-  );
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: webTestActor,
+        conversationId: childId,
+      });
+      expect(
+        (await parentMessages())
+          .slice(before)
+          .filter((message) =>
+            message.input.text.includes("The helper is done."),
+          )
+          .map((message) => message.input.authorId),
+      ).toEqual([resultAuthorId(webTestActor)]);
+    } finally {
+      await harness.close();
+    }
+  });
 
   it.each([
     { kind: "task", input: "helper reply" },

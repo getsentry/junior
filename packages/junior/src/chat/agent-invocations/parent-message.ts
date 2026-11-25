@@ -11,6 +11,7 @@ import {
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   appendInboundMessage,
   dropPendingMessages,
@@ -25,7 +26,6 @@ import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { renderParentAgentTask } from "@/chat/input-tags";
 import { agentTypeInstructions, type AgentType } from "./agent-types";
 import { readParentMessage, type ParentMessage } from "./parent-message-input";
-import { PARENT_MESSAGE_AUTHOR_PREFIX } from "./parent-message-authors";
 
 /**
  * Return the author id of every parent message from one parent. It matches
@@ -36,14 +36,14 @@ function parentMessageAuthorId(parentConversationId: string): string {
   return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
 }
 
+const PARENT_MESSAGE_AUTHOR_PREFIX = "parent-agent:";
+
 /**
  * Build the parent message that gives one task or message to a child. Its
  * mailbox id comes from the idempotency key, so a replay is a duplicate.
  */
 export function buildParentMessage(args: {
   actor: Actor;
-  /** Identity of `actor`, who gives the work, so the author of the text. */
-  authorIdentityId: string | undefined;
   childConversationId: string;
   credentialContext?: CredentialContext | undefined;
   fork?: true | undefined;
@@ -64,9 +64,8 @@ export function buildParentMessage(args: {
     inboundMessageId,
     input: {
       authorId: parentMessageAuthorId(args.parentConversationId),
-      ...(args.authorIdentityId
-        ? { authorIdentityId: args.authorIdentityId }
-        : undefined),
+      // A parent agent wrote the text, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata: {
         actor: args.actor,
         ...(args.credentialContext

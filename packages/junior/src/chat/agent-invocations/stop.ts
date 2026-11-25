@@ -272,11 +272,7 @@ export async function reportPersonStopToParent(
       queue: options.queue,
       // A waiting parent message keeps the Actor of the agent that sent it.
       starter: turn?.actor
-        ? await parentResultActor({
-            actor: turn.actor,
-            conversationId,
-            source: turn.source?.kind,
-          })
+        ? parentResultActor(turn.actor, turn.source?.kind)
         : (firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR),
       state: options.state,
       update: async () => ({

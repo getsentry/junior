@@ -80,13 +80,7 @@ async function finishTurn(
     conversationId: run.conversationId,
     createdAtMs: saved.finishedAtMs ?? Date.now(),
     ...(run.actor
-      ? {
-          reportAs: await parentResultActor({
-            actor: run.actor,
-            conversationId: run.conversationId,
-            source: run.source.kind,
-          }),
-        }
+      ? { reportAs: parentResultActor(run.actor, run.source.kind) }
       : undefined),
     turnId: run.turnId,
   };
