@@ -1,0 +1,16 @@
+id: prompt-public-api
+language: TypeScript
+severity: error
+message: "Host code declares prompts only with definePromptLayout and the rest of the public API in packages/junior/src/core/prompt/layout.ts. core/prompt/assemble.ts and core/prompt/diagnostics.ts belong to core."
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+ignores:
+  - packages/junior/src/core/**
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["''](@/core/prompt/(assemble|diagnostics)|(\.{1,2}/)+(.+/)?core/prompt/(assemble|diagnostics))["'']$'

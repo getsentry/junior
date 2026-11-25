@@ -1,0 +1,12 @@
+id: prompt-public-api
+valid:
+  - 'import { definePromptLayout, fragment, loader } from "@/core/prompt/layout";'
+  - 'import type { ModelSettings } from "@/core/model/client";'
+  - 'import { assemblePrompt } from "@/chat/assemble";'
+  - 'export { loader } from "../core/prompt/layout";'
+invalid:
+  - 'import { assemblePrompt } from "@/core/prompt/assemble";'
+  - 'import type { PromptDiagnostics } from "@/core/prompt/diagnostics";'
+  - 'import { assemblePrompt } from "../core/prompt/assemble";'
+  - 'import type { LoaderDiagnostics } from "../../core/prompt/diagnostics";'
+  - 'export { assemblePrompt } from "@/core/prompt/assemble";'

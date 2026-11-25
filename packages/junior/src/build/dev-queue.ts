@@ -1,7 +1,7 @@
 import type { Nitro } from "nitro/types";
 import { readQueueConfig } from "@/chat/queue/config";
 import { startLocalVercelQueueServer } from "@/chat/queue/local-server";
-import { queueCallbackRoutes } from "@/chat/queue/routes";
+import { queueCallbackRoutes } from "@/build/queue-routes";
 
 // Each topic has one consumer, so one group name serves every topic.
 const LOCAL_CONSUMER_GROUP = "local";
