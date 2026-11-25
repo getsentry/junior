@@ -5,20 +5,16 @@ import type {
   MessageAgent,
   MessageAgentInput,
 } from "@/chat/agent/types";
-import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
+import { actorFromRun } from "@/chat/agent/types";
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
-import { createAgentInvocationForMessage } from "./create";
-import {
-  getActiveAgentInvocationForConversation,
-  getLatestAgentInvocationForConversation,
-} from "./store";
+import { messageChildAgent } from "./create";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
-import { enqueueAgentInvocation } from "./work";
 
 type MessageOptions = {
   conversationStore?: ConversationStore;
@@ -48,13 +44,7 @@ export function bindMessageAgent(
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
     if (input.to === PARENT_AGENT_TARGET) {
-      // A Turn on the Conversation loop has no open agent
-      // invocation. Its newest one names the child for the parent, or its
-      // child Conversation when no agent invocation names it.
-      const sender =
-        (await getActiveAgentInvocationForConversation(run.conversationId)) ??
-        (await getLatestAgentInvocationForConversation(run.conversationId)) ??
-        (await readChildConversationSender(run.conversationId));
+      const sender = await readChildConversationSender(run.conversationId);
       if (!sender) {
         throw new AgentMessageTargetError(
           "This conversation has no parent agent",
@@ -79,6 +69,7 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       await enqueueTopLevelAgentMessage({
+        askingActor: isPersonInput(run.source.kind) ? actor : undefined,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         senderConversationId: run.conversationId,
@@ -88,22 +79,21 @@ export function bindMessageAgent(
       });
       return { conversationId: input.to, delivery: "queued" };
     }
-    const { invocation, queued } = await createAgentInvocationForMessage({
-      actor,
-      childConversationId,
-      ...(run.credentialContext
-        ? { credentialContext: run.credentialContext }
-        : undefined),
-      destination: toolInvocationDestination(run),
-      idempotencyKey: `${run.turnId}:${call.toolCallId}`,
-      input: input.text,
-      parentConversationId: run.conversationId,
-      parentToolCallId: call.toolCallId,
-    });
-    await enqueueAgentInvocation(invocation, { ...options, queue });
-    return {
-      conversationId: childConversationId,
-      delivery: queued ? "queued" : "started",
-    };
+    const { delivery } = await messageChildAgent(
+      {
+        actor,
+        childConversationId,
+        ...(run.credentialContext
+          ? { credentialContext: run.credentialContext }
+          : undefined),
+        idempotencyKey: `${run.turnId}:${call.toolCallId}`,
+        input: input.text,
+        parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
+        parentTurnId: run.turnId,
+      },
+      { ...options, queue },
+    );
+    return { conversationId: childConversationId, delivery };
   };
 }

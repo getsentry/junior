@@ -2,6 +2,7 @@ import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Actor,
+  type PluginCodeChanges,
   type PluginWorkOwner,
   type PluginLogger,
   type PluginDecider,
@@ -26,6 +27,7 @@ import {
   CONVERT_PULL_REQUEST_TO_DRAFT,
   MARK_PULL_REQUEST_READY_FOR_REVIEW,
 } from "../graphql-documents.js";
+import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
 import {
@@ -109,7 +111,9 @@ const outputSchema = pluginToolOutputSchema.merge(
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn, so the GitHub footer cannot be added. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }
@@ -166,6 +170,7 @@ export function createGitHubUpdatePullRequestTool(
       _options,
       ctx: {
         actor?: Actor | undefined;
+        codeChanges: Pick<PluginCodeChanges, "associateRequesters" | "list">;
         conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
@@ -179,7 +184,7 @@ export function createGitHubUpdatePullRequestTool(
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
-          "Invalid GitHub updatePullRequest input.",
+          "Invalid GitHub updatePullRequest input. Check the arguments against the tool schema and call it again.",
           { cause: parsedInput.error },
         );
       }
@@ -226,7 +231,9 @@ export function createGitHubUpdatePullRequestTool(
         // 404 and 422 mean the model named a missing pull request or GitHub
         // rejected the requested change, such as a base change in a stack.
         if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
+          throw new PluginToolInputError(
+            `${message}. Check repo and pull_request, and fix any field that GitHub names.`,
+          );
         }
         throw new Error(message);
       }
@@ -260,9 +267,16 @@ export function createGitHubUpdatePullRequestTool(
       // request becomes one of its requesters.
       const identity = requesterPerson(requester)?.identity;
       if (identity) {
-        await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+        const db = ctx.db as GitHubDb;
+        await recordGitHubPullRequestRequester(db, {
           identityId: identity.id,
           number: providerResult.number,
+          repositoryFullName: repo.ref,
+        });
+        await syncGitHubPullRequestRequesters({
+          codeChanges: ctx.codeChanges,
+          db,
+          numbers: [providerResult.number],
           repositoryFullName: repo.ref,
         });
       }

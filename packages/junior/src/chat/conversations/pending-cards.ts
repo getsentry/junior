@@ -1,9 +1,6 @@
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import {
-  isAgentInvocationResult,
-  listChildMessages,
-} from "@/chat/agent-invocations/child-message";
+import { listChildMessages } from "@/chat/agent-invocations/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
 import {
@@ -85,7 +82,7 @@ async function selectChildResultCards(
   const events = getConversationEventStore();
   const execution = (await getConversationWorkState({ conversationId }))
     ?.execution;
-  const messages = await listChildMessages(
+  const messages = listChildMessages(
     inputMessageIds,
     execution?.messageSenders ?? {},
   );
@@ -99,9 +96,8 @@ async function selectChildResultCards(
   );
   for (const [index, message] of messages.entries()) {
     const terminal = terminals[index];
-    // A `reply` ends the child's Turn, but it can reach the parent before the
-    // child records that end. Then its cards are the newest ones.
-    if (!terminal && isAgentInvocationResult(message)) continue;
+    // A child's result can reach the parent before the child records the end
+    // of its Turn. Then its cards are the newest ones.
     // oxlint-disable-next-line no-await-in-loop -- Newer child results select cards first.
     await selectTurnCards(
       message.sender.conversationId,

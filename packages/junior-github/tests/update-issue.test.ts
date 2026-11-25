@@ -1,5 +1,6 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
+import { githubConversationIds } from "../src/conversation-footer";
 import { gitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 const linkedUser = {
@@ -36,7 +37,7 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
     if (input.operation === "github.issue.get") {
       return new Response(
         JSON.stringify({
-          body: "Old body\n\n<!-- junior-request-attribution:start -->\nvia @lcian.\n<!-- junior-request-attribution:end -->",
+          body: "Old body\n\n<!-- junior-request-attribution:start -->\nvia @lcian.\n<!-- junior-request-attribution:end -->\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A111.222 -->\n<!-- junior-session-footer:end -->",
         }),
         { status: 200 },
       );
@@ -148,6 +149,12 @@ describe("updateIssue", () => {
     // A new requester joins the requesters already on GitHub.
     expect(body.body).toContain("via @lcian, **David Cramer**.");
     expect(body.body).toContain("[View Session](https://example.com/session)");
+    // The Conversation that wrote the body before stays in the footer, so a
+    // close still reaches its card.
+    expect(githubConversationIds(body.body)).toEqual([
+      "slack:C123:123.456",
+      "slack:C123:111.222",
+    ]);
   });
 
   it("assigns the requester and keeps the other assignees", async () => {

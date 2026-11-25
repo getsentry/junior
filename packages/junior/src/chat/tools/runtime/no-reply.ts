@@ -9,8 +9,7 @@ export const noReplyToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: true,
   },
-  description:
-    "End the Turn without a reply. Nothing is posted and nobody is notified.",
+  description: "End the Turn quietly, without a reply.",
   exposure: "modelOnly",
   inputSchema: z
     .object({
@@ -21,7 +20,7 @@ export const noReplyToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Outcome to keep in the conversation without notifying anyone, such as a routine fix that worked. Omit it when a person asked for no reply. Null is the same as omitted.",
+          "Outcome to keep in the conversation, such as a routine fix that worked. A parent agent or a watcher of this conversation can get it. Omit it when a person asked for no reply. Null is the same as omitted.",
         ),
     })
     .strict(),

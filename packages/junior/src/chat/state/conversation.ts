@@ -38,6 +38,10 @@ export interface ConversationMessageMeta {
   /** Resource identifier of the first Event, such as a Conversation id. */
   eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
+  /** What the first Event says happened, when it is an agent update. */
+  eventStatus?: string;
+  /** Watch that delivered the first Event. Omitted for other input. */
+  eventWatchId?: string;
   /**
    * The Watch Events when several arrived together. A Message that also
    * records Inbox item changes lists its own Event here even when it has
@@ -54,8 +58,8 @@ export interface ConversationMessageMeta {
   quiet?: true;
   replied?: boolean;
   /**
-   * The request words of an Event Message's inputs, such as a parent
-   * agent's task, so a resumed Turn recalls from them as the first did.
+   * The request words of an Event or parent agent Message's inputs, such
+   * as a parent agent's task, so a resumed Turn recalls from them as the first did.
    */
   requestText?: string;
   /** Person changes to Inbox items that this Message records. */

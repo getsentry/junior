@@ -1,3 +1,4 @@
+import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
 import type { EventPublisher } from "./events";
 import type { PluginState } from "./state";
@@ -96,6 +97,8 @@ export interface PluginConversationInboxItems {
 export interface InboxItemAnsweredHookContext extends PluginContext {
   /** The label of the picked choice. */
   choice: string;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
   conversationId: string;
   /** The plugin's own dedupe key of the item. */

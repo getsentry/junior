@@ -7,7 +7,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main, core-next]
+    branches: [main]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
@@ -83,7 +83,19 @@ jobs:
       pull-requests: read
       actions: read
       checks: write
+    # Each Pi model call reads the enabled gateway providers from state.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     steps:

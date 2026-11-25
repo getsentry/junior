@@ -1,15 +1,22 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { getSqlExecutor } from "@/chat/db";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
+import { upsertIdentity } from "@/chat/identities/sql";
 import { findLinkedHandle } from "@/chat/identities/user-lookup";
+import { readIdentityById } from "@/chat/plugins/viewer";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
+import { measureSql } from "../fixtures/sql-budget";
 import {
   executeTool,
   lookupTool,
   seedLinkedIdentities,
 } from "../fixtures/user-lookup";
 import {
+  getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
@@ -218,6 +225,33 @@ describe("userLookup without a provider", () => {
   });
 });
 
+// Reads in the first seconds after an Identity write skip the cache.
+function passIdentityWriteWindow() {
+  vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + 60_000);
+}
+
+describe("readIdentityById", () => {
+  it("reads a repeat lookup from the cache without SQL", async () => {
+    const slack = await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    passIdentityWriteWindow();
+    const first = await readIdentityById(slack.id);
+    expect(first?.user?.identities).toContainEqual(
+      expect.objectContaining({ provider: "github", handle: "dcramer" }),
+    );
+
+    const repeat = await measureSql(() => readIdentityById(slack.id));
+
+    expect(repeat.result).toEqual(first);
+    expect(repeat.statements).toEqual([]);
+  });
+});
+
 describe("findLinkedHandle", () => {
   const findGitHubHandle = async (query: string) =>
     await findLinkedHandle({
@@ -265,5 +299,116 @@ describe("findLinkedHandle", () => {
     await expect(findGitHubHandle("U0MISSING")).resolves.toEqual({
       status: "not_found",
     });
+  });
+
+  it("answers a repeat lookup from the cache without Slack", async () => {
+    await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    passIdentityWriteWindow();
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
+    });
+    const found = { status: "found", handle: "dcramer" };
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual(found);
+
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual(found);
+    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(1);
+  });
+
+  it("drops the handle on the next lookup after an unlink", async () => {
+    const slack = await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    passIdentityWriteWindow();
+    for (let call = 0; call < 2; call += 1) {
+      queueSlackApiResponse("users.info", {
+        body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
+      });
+    }
+    const githubHandle = async () =>
+      (await readIdentityById(slack.id))?.user?.identities.find(
+        (identity) => identity.provider === "github",
+      )?.handle;
+    const found = { status: "found", handle: "dcramer" };
+    // Both lookups are cached before the unlink.
+    await findGitHubHandle("<@U039RR91S>");
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual(found);
+    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(1);
+    await githubHandle();
+    const cached = await measureSql(githubHandle);
+    expect(cached).toMatchObject({ result: "dcramer", statements: [] });
+    const tokens = createUserTokenStore();
+    await tokens.set("U039RR91S", "github", {
+      account: { id: "12345", handle: "dcramer" },
+      accessToken: "github-access-token",
+      refreshToken: "github-refresh-token",
+    });
+
+    await unlinkProvider("U039RR91S", "github", tokens, "T0TEST");
+
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual({
+      status: "unlinked",
+    });
+    expect(await githubHandle()).toBeUndefined();
+  });
+
+  it("drops the handle when an Identity of another provider changes the match", async () => {
+    await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    passIdentityWriteWindow();
+    for (let call = 0; call < 2; call += 1) {
+      queueSlackApiResponse("users.list", { body: usersListPage() });
+    }
+    await expect(findGitHubHandle("dcramer")).resolves.toEqual({
+      status: "found",
+      handle: "dcramer",
+    });
+
+    // A second Slack user with the same verified email joins the same User.
+    await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T0TEST",
+      providerSubjectId: "U0SECOND",
+      email: "david@sentry.io",
+      emailVerified: true,
+      handle: "david2",
+    });
+
+    await expect(findGitHubHandle("dcramer")).resolves.toEqual({
+      status: "ambiguous",
+    });
+  });
+
+  it("serves the last handle while Slack fails", async () => {
+    await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    passIdentityWriteWindow();
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
+    });
+    const found = { status: "found", handle: "dcramer" };
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual(found);
+    // Past the TTL, so the next lookup asks Slack again.
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+    queueSlackApiError("users.info", { error: "fatal_error" });
+
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual(found);
+    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(2);
   });
 });

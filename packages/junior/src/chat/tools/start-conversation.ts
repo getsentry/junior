@@ -1,6 +1,7 @@
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { conversationWatch } from "@/chat/conversations/watch-events";
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
+import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { startLeadConversation } from "@/chat/lead/start-conversation";
 import { SHORT_TITLE_MAX_LENGTH } from "@/chat/services/short-title";
@@ -13,7 +14,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 /** Static definition of `startConversation`, which only a Lead lists. */
 export const startConversationToolDefinition = zodToolDefinition({
   description: [
-    "Start a new conversation that does one piece of the person's work. It is a public conversation of the person, and it starts at once.",
+    "Start a new conversation in this Space that does one piece of the work that the person asked for. It is a public conversation of the person, and it starts at once.",
     "Your task is its first message, and it runs as the person, so write the task as the person's request.",
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),
@@ -51,11 +52,7 @@ export const startConversationToolDefinition = zodToolDefinition({
       .describe(
         "ID of the new conversation. Pass it to messageAgent to steer it.",
       ),
-    dashboard_url: z
-      .string()
-      .url()
-      .optional()
-      .describe("Dashboard link of the new conversation."),
+    url: z.string().url().optional().describe("Link to the new conversation."),
     subscribable: subscribableResourceSchema.describe(
       "Watch it with watchEvents only when the person asks to hear back.",
     ),
@@ -66,7 +63,11 @@ export const startConversationToolDefinition = zodToolDefinition({
 export function createStartConversationTool(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "conversationWorkQueue" | "turnId"
+    | "conversationId"
+    | "conversationWorkQueue"
+    | "resolveActorIdentity"
+    | "source"
+    | "turnId"
   >,
 ) {
   return zodTool({
@@ -74,22 +75,33 @@ export function createStartConversationTool(
     execute: async (input, options) => {
       if (!options.toolCallId || !context.turnId) {
         throw new ToolInputError(
-          "startConversation requires an active Turn and tool call ID",
+          "startConversation requires an active Turn and tool call ID. No change to the call can fix this.",
+        );
+      }
+      // The new root runs as the member who asked, so a Turn that no person
+      // started cannot start one.
+      const person = isPersonInput(context.source.kind)
+        ? (await context.resolveActorIdentity?.())?.user
+        : undefined;
+      if (!person) {
+        throw new ToolInputError(
+          "startConversation needs a person: no member asked for this Turn's work. Tell the members what you would start instead.",
         );
       }
       const { conversationId } = await startLeadConversation({
         leadConversationId: context.conversationId,
         messageKey: `${context.turnId}:${options.toolCallId}`,
+        person,
         queue:
           context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
         task: input.task,
         title: input.title,
       });
-      const dashboardUrl = getDashboardConversationLink(conversationId);
+      const url = getDashboardConversationLink(conversationId);
       return {
         conversation_id: conversationId,
-        ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-        subscribable: conversationWatch({ conversationId, title: input.title }),
+        ...(url ? { url } : undefined),
+        subscribable: agentWatch({ conversationId, title: input.title }),
       };
     },
   });

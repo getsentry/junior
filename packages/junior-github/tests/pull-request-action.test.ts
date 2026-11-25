@@ -33,7 +33,7 @@ describe("next action item", () => {
     const requests: string[] = [];
     const github: GitHubState = {
       draft: false,
-      mergeableStates: ["clean"],
+      mergeableStates: ["blocked"],
       merged: false,
       reviews: [],
       state: "open",
@@ -44,7 +44,7 @@ describe("next action item", () => {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls, errors, failures);
 
-      // GitHub can merge it, but no one approved it yet.
+      // The repo requires a review, and no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
       expect(requests).toEqual(["pull"]);
@@ -58,6 +58,7 @@ describe("next action item", () => {
         })),
         { state: "APPROVED", user: { login: "Reviewer" } },
       ];
+      github.mergeableStates = ["clean"];
       await webhook.handler(reviewSubmitted("approved"));
       const notice = {
         conversationId: "slack:C123:1712345.0001",
@@ -168,9 +169,9 @@ describe("next action item", () => {
       releaseMerge();
       await Promise.all([failing, queued]);
       expect(errors).toEqual([
-        "GitHub ended pull request item close failed",
-        "GitHub ended pull request item close failed",
-        "GitHub pull request action failed",
+        "GitHub ended pull request change failed: Error",
+        "GitHub ended pull request change failed: Error",
+        "GitHub pull request action failed: Error",
       ]);
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
@@ -192,6 +193,81 @@ describe("next action item", () => {
         "close",
       ]);
       expect(errors).toHaveLength(3);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("asks the requester to review and merge a pull request that GitHub can merge with no review", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["clean"],
+      merged: false,
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+
+      // The repo requires no review, so GitHub says that it can merge. A
+      // pending review request still comes first. A request for someone
+      // else or for a team waits on them, so no item asks the requester.
+      github.requestedReviewers = ["someone-else"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      github.requestedReviewers = [];
+      github.requestedTeams = ["reviewers"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toEqual([]);
+
+      // A request for the requester asks for their review.
+      github.requestedTeams = [];
+      github.requestedReviewers = ["requester"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+
+      // With no request left, the same item asks to review and merge.
+      github.requestedReviewers = [];
+      await webhook.handler(pullRequestAction("review_request_removed"));
+      expect(calls.slice(1)).toMatchObject([
+        {
+          kind: "upsert",
+          notice: {
+            body: `GitHub says that #946 can merge with no review. Review it, then merge it.\n\n${PULL_URL}`,
+            dedupeKey: DEDUPE_KEY,
+            title: "Ready to merge · #946",
+            waitsOnAssignees: true,
+          },
+        },
+      ]);
+
+      // The approval keeps the same action, so the item does not change.
+      github.reviews = [{ state: "APPROVED", user: { login: "requester" } }];
+      await webhook.handler(
+        reviewSubmitted("approved", { login: "requester" }),
+      );
+      expect(calls).toHaveLength(2);
+
+      // A change request by any reviewer ends the merge.
+      github.reviews.push({
+        state: "CHANGES_REQUESTED",
+        user: { login: "someone-else" },
+      });
+      await webhook.handler(reviewSubmitted("changes_requested"));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The pull request is no longer ready to merge.",
+          status: "dismissed",
+        },
+        kind: "close",
+      });
     } finally {
       await fixture.close();
     }
@@ -295,11 +371,20 @@ describe("next action item", () => {
       await webhook.handler(pullRequestAction("reopened"));
       expect(calls.at(-1)).toEqual(review);
 
-      // Someone else approves, and GitHub can merge it. The requester merges
-      // or reviews, not both, so the same item now asks for the merge.
+      // Someone else approves, and GitHub can merge it. GitHub still asks
+      // the requester, so the item still asks for the review.
       github.mergeableStates = ["clean"];
       github.reviews = [{ state: "APPROVED", user: { login: "someone-else" } }];
       await webhook.handler(reviewSubmitted("approved"));
+      expect(calls).toHaveLength(3);
+
+      // The requester's review ends the request. The requester merges or
+      // reviews, not both, so the same item now asks for the merge.
+      github.requestedReviewers = [];
+      github.reviews.push({ state: "COMMENTED", user: { login: "requester" } });
+      await webhook.handler(
+        reviewSubmitted("commented", { login: "requester" }),
+      );
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
         notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
@@ -316,7 +401,7 @@ describe("next action item", () => {
     mockGitHub(
       {
         draft: false,
-        mergeableStates: ["clean"],
+        mergeableStates: ["blocked"],
         merged: false,
         reviews: [],
         state: "open",
@@ -343,6 +428,46 @@ describe("next action item", () => {
       await webhook.handler(reviewSubmitted("approved"));
       expect(requests).toEqual(["pull", "pull"]);
       expect(minted).toBe(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("logs the GraphQL error when GitHub returns errors with no data", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const errors: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["clean"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      [],
+    );
+    // GitHub reports GraphQL errors, such as a rate limit, with HTTP 200.
+    mswServer.use(
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message:
+                "API rate limit already exceeded for installation ID 456.",
+              type: "RATE_LIMITED",
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls, errors).handler(checkSuiteCompleted());
+      expect(errors).toEqual([
+        "GitHub pull request action failed: GitHubGraphqlError",
+      ]);
+      expect(calls).toEqual([]);
     } finally {
       await fixture.close();
     }

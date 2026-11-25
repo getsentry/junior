@@ -72,8 +72,9 @@ export type ComposerMenuRow = {
   details: ReactNode;
   insertion: ComposerInsertion;
   /**
-   * The row is from an earlier query of its source. Only the API knows
-   * whether it still matches, so Enter, Tab, and a click do nothing.
+   * The row is from an earlier query of its source, or still waits for
+   * what it inserts. Only the API knows whether it still matches, so
+   * Enter, Tab, and a click do nothing.
    */
   stale?: boolean | undefined;
 };

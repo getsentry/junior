@@ -37,7 +37,7 @@ describeEval("Tool Search", toolSearchEvals, (it) => {
   it("when the agent tool is not in the catalog, it returns none", async ({
     run,
   }) => {
-    // spawnAgent is a direct tool, so the catalog does not have it.
+    // startAgent is a direct tool, so the catalog does not have it.
     await run({ query: "spawn agent reviewer", source: null, expected: null });
   });
 
@@ -69,6 +69,17 @@ describeEval("Tool Search", toolSearchEvals, (it) => {
       query: "closing an issue",
       source: "github",
       expected: "github_updateIssue",
+    });
+  });
+
+  it("when the query asks which GitHub events can be watched, it picks the event type search", async ({
+    run,
+  }) => {
+    // watchEvents is a direct tool, so no candidate in this source watches.
+    await run({
+      query: "GitHub events watch pull request issue release deployments",
+      source: "resource-watches",
+      expected: "searchEventTypes",
     });
   });
 

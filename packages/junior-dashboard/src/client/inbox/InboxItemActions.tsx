@@ -77,7 +77,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Done,
+ * its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -106,7 +107,7 @@ export function InboxItemActions(props: {
   }, [item.id, item.status]);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
-  if (!item.canAct) {
+  if (!item.canAct && !item.canAnswer) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <p className="m-0 text-sm text-dashboard-text-muted">
@@ -139,7 +140,11 @@ export function InboxItemActions(props: {
     }
   }
 
-  const dismiss = props.dismiss ?? true;
+  // A To-do for the viewer closes with Done, its main action.
+  const todo = item.todoId !== undefined;
+  // A person who may only answer, such as a reader of a public question,
+  // gets no Dismiss or Snooze.
+  const dismiss = item.canAct && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.
@@ -170,6 +175,14 @@ export function InboxItemActions(props: {
         </Suspense>
       ) : null}
       {props.extra}
+      {todo ? (
+        <Button
+          disabled={action.isPending || sending}
+          onClick={() => void run({ action: "done" }).catch(() => {})}
+        >
+          Done
+        </Button>
+      ) : null}
     </>
   );
 
@@ -209,7 +222,7 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || snooze || dismiss || props.extra ? (
+      ) : take || snooze || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

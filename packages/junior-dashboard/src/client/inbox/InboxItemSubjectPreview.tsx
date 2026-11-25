@@ -20,6 +20,7 @@ import {
   DisplayText,
   MessageObjectsProvider,
   objectUrlKey,
+  sameTypeCard,
   useResolvedObject,
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
@@ -32,18 +33,16 @@ type Subject = NonNullable<InboxItemPayload["subject"]>;
  * Show the outside object that an item is about, such as a pull request, as
  * one card on every Inbox surface: its title, reference, state and facts,
  * such as a branch, then the first lines of its description. The card is the
- * object annotation that a plugin saved on the item's Conversation for the
- * same URL, or the card that the API resolves for the URL when none is
- * saved. The item's text leaves out a bare URL to the subject, so the card
- * shows once (`withoutStandaloneUrl`). Where the row already names the
- * subject, `titled={false}` leaves its title out, and the reference links
- * to it.
+ * one that the API resolves for the URL, so it shows the object as it is
+ * now. Until it resolves, the object annotation that a plugin saved on the
+ * item's Conversation for the same URL shows. The item's text leaves out a
+ * bare URL to the subject, so the card shows once (`withoutStandaloneUrl`).
+ * Where the row already names the subject, `titled={false}` leaves its
+ * title and size out, and the reference links to it.
  */
 export function InboxItemSubjectPreview(props: {
   subject: Subject;
   conversationId: string | undefined;
-  /** The row's head shows the subject's size. */
-  sizeShown?: boolean | undefined;
   titled?: boolean;
 }) {
   return (
@@ -56,22 +55,19 @@ export function InboxItemSubjectPreview(props: {
 function SubjectCard(props: {
   subject: Subject;
   conversationId: string | undefined;
-  sizeShown?: boolean | undefined;
   titled?: boolean;
 }) {
   const { subject } = props;
   const href = subject.url ? inboxItemSubjectHref(subject.url) : undefined;
   const detail = useQuery(conversationDetailQueryOptions(props.conversationId));
-  const saved = savedCard(detail.data?.annotations, subject, href);
-  // Ask for a live card only once the saved ones are known.
-  const liveUrl =
-    saved || (props.conversationId && detail.isPending) ? undefined : href;
-  const live = useResolvedObject(liveUrl);
+  const live = useResolvedObject(href);
   const { request } = live;
   useEffect(() => {
-    if (liveUrl) request();
-  }, [liveUrl, request]);
-  const card = saved ?? live.card;
+    if (href) request();
+  }, [href, request]);
+  const saved = savedCard(detail.data?.annotations, subject, href);
+  const card =
+    sameTypeCard(live.card, subject.objectType ?? saved?.objectType) ?? saved;
   const title = card?.title ?? subject.title ?? href ?? subject.id;
   const type = card
     ? (card.displayType ?? objectPresentation(card).label)
@@ -147,7 +143,8 @@ function SubjectCard(props: {
                   {field.value}
                 </span>
               ))}
-              {props.sizeShown || card.facts?.type !== "code_change" ? null : (
+              {/* Untitled, the row's head shows the size. */}
+              {!titled || card.facts?.type !== "code_change" ? null : (
                 <ChangeSize size={card.facts} />
               )}
             </p>
@@ -230,18 +227,7 @@ export function SubjectMergeConflict(props: { subject: Subject }) {
 }
 
 function MergeConflict(props: { subject: Subject }) {
-  const { subject } = props;
-  const href =
-    subject.objectType === "code_change" && subject.url
-      ? inboxItemSubjectHref(subject.url)
-      : undefined;
-  const { card, request } = useResolvedObject(href);
-  useEffect(() => {
-    if (href) request();
-  }, [href, request]);
-  if (card?.facts?.type !== "code_change" || card.facts.mergeable !== false) {
-    return null;
-  }
+  if (useCodeChangeFacts(props.subject)?.mergeable !== false) return null;
   return (
     <p
       className="m-0 flex items-center gap-1.5 text-sm text-dashboard-text-muted"
@@ -251,6 +237,23 @@ function MergeConflict(props: { subject: Subject }) {
       Merge conflict
     </p>
   );
+}
+
+/**
+ * Return the live facts of the code change that an item is about, from the
+ * nearest `MessageObjectsProvider`. Undefined until the card resolves, and
+ * for a subject that is not a code change.
+ */
+export function useCodeChangeFacts(subject: Subject | undefined) {
+  const href =
+    subject?.objectType === "code_change" && subject.url
+      ? inboxItemSubjectHref(subject.url)
+      : undefined;
+  const { card, request } = useResolvedObject(href);
+  useEffect(() => {
+    if (href) request();
+  }, [href, request]);
+  return card?.facts?.type === "code_change" ? card.facts : undefined;
 }
 
 // The object annotation for the subject's URL or key. A saved link with no

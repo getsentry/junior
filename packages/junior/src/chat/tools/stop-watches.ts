@@ -60,7 +60,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
           : undefined;
         if (!stopped) {
           throw new ToolInputError(
-            "Watch was not found in the current conversation or its child agents.",
+            "Watch was not found in the current conversation or its child agents. Use listWatches to find its id.",
           );
         }
         if (stopped.status === "completed") {

@@ -5,7 +5,7 @@ import {
   eventCatalogEntry,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { conversationEvents } from "@/chat/conversations/watch-events";
+import { agentEvents } from "@/chat/conversations/watch-events";
 import { workspaceSnapshotEvents } from "@/chat/sandbox/snapshot/events";
 import {
   SLACK_EVENT_NAMESPACE,
@@ -15,19 +15,19 @@ import {
 /**
  * Enabled event registrations for search, guidance, and tool schemas.
  *
- * Includes core Workspace snapshot and Conversation status events under the
+ * Includes core Workspace snapshot and agent update events under the
  * `junior` namespace, Slack channel-message events under the `slack`
  * namespace, plus every enabled plugin registration. Plugins may not use the `junior` or `slack` namespaces.
  */
 export function getEventCatalog(): EventCatalog {
   const snapshot = workspaceSnapshotEvents();
-  const conversation = conversationEvents();
+  const agent = agentEvents();
   const catalog: Record<string, EventCatalog[string]> = {
     [CORE_EVENT_NAMESPACE]: eventCatalogEntry({
       displayName: botConfig.userName,
       resourceTypes: [
         ...snapshot.resourceTypes,
-        ...conversation.resourceTypes,
+        ...agent.resourceTypes,
         {
           type: "timer",
           supportedEvents: ["timer.fired"],
@@ -36,12 +36,12 @@ export function getEventCatalog(): EventCatalog {
       ],
       events: {
         ...snapshot.events,
-        ...conversation.events,
+        ...agent.events,
         "timer.fired": { reach: "resource" },
       },
       limits: {
         ...snapshot.limits,
-        ...conversation.limits,
+        ...agent.limits,
         timer: {
           automation: false,
           watch: false,

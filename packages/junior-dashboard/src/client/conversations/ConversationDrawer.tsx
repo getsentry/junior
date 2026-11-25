@@ -235,7 +235,6 @@ function ConversationDrawerContent(
           loadingPreviousPage={query.isLoadingPreviousPage}
           onLoadPreviousPage={query.loadPreviousPage}
           search={search}
-          onSearchChange={setSearch}
           searchMatch={searchMatch.index}
           onSearchMatches={searchMatch.setMatches}
           transcript={detail}

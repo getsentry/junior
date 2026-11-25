@@ -50,14 +50,23 @@ describe("slack list create/update tools", () => {
 
     expect(first).toMatchObject({
       list_id: "LIST_ABC",
-      permalink: "https://example.invalid/files/LIST_ABC",
+      url: "https://example.invalid/files/LIST_ABC",
     });
     expect(second).toMatchObject({
       list_id: "LIST_ABC",
       deduplicated: true,
     });
 
-    expect(getCapturedSlackApiCalls("slackLists.create")).toHaveLength(1);
+    const createCalls = getCapturedSlackApiCalls("slackLists.create");
+    expect(createCalls).toHaveLength(1);
+    // Slack rejects a schema without exactly one `text` primary column.
+    const schema = createCalls[0]?.params["schema"] as Array<{
+      type: string;
+      is_primary_column?: boolean;
+    }>;
+    expect(schema.filter((column) => column.is_primary_column)).toEqual([
+      expect.objectContaining({ type: "text" }),
+    ]);
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
   });
 

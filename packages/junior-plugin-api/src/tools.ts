@@ -10,6 +10,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import type { PluginCodeChanges } from "./code";
 import { objectAnnotationSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
@@ -773,7 +774,7 @@ export interface PluginConversationMatch {
    * working. idle: waits for a message. A failed Turn shows as idle.
    */
   status: "pending" | "running" | "paused" | "idle";
-  /** Summary of the latest Brief, when it has one. */
+  /** Conversation summary, when it has one. */
   summary?: string;
   title?: string;
   /** ISO time of the latest activity. */
@@ -843,6 +844,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    * started the root. Returns nothing when nobody did.
    */
   resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+  /** The plugin's code changes in Junior's code records. */
+  codeChanges: PluginCodeChanges;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Absent when the install has no artifact storage or public base URL. */

@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "df594e91-f0ca-4906-8457-ba52f197ea1d",
+  "prevIds": ["fb278771-4d1c-4003-aa03-5179f0a37640"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_last_run_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_last_run_idx",
+        "n|idx|public.junior_automations_last_run_idx",
+        "e|idx|public.junior_automations_last_run_idx",
+        "n|rel|public.junior_automations_last_run_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.last_run_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_last_run_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "last_run_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

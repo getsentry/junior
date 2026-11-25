@@ -111,7 +111,7 @@ export async function saveAutomationCardResult<
   T extends {
     id: string;
     title: string | null;
-    dashboard_url: string | null;
+    url: string | null;
     status: string;
     status_reason: string | null;
   },
@@ -139,7 +139,7 @@ export async function saveAutomationCardResult<
     label: title,
     key: automation.id,
     title,
-    url: automation.dashboard_url,
+    url: automation.url,
     description,
     status,
     trigger: card.trigger,

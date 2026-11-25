@@ -209,7 +209,7 @@ export const gitHubCloneRepositoryTool = definePluginTool({
     const rootSegment = directory.split("/")[0] ?? directory;
     if (isReservedSandboxDirectory(rootSegment)) {
       throw new PluginToolInputError(
-        `Directory conflicts with a reserved sandbox path: ${directory}`,
+        `directory ${directory} conflicts with a reserved sandbox path. Set directory to another path, or leave it out to use repos/${repo.name}.`,
       );
     }
     const path = `${ctx.sandbox.root}/${directory}`;
@@ -225,7 +225,7 @@ export const gitHubCloneRepositoryTool = definePluginTool({
       });
       if (mkdir.exitCode !== 0) {
         throw new PluginToolInputError(
-          `Failed to create clone parent directory: ${parentDirectory}`,
+          `Could not create the parent directory ${parentDirectory}. Set directory to another path, or leave it out to use repos/${repo.name}.`,
         );
       }
     }
@@ -236,7 +236,9 @@ export const gitHubCloneRepositoryTool = definePluginTool({
       signal: commandSignal(options.signal, 30_000),
     });
     if (exists.exitCode === 0) {
-      throw new PluginToolInputError(`destination already exists: ${path}`);
+      throw new PluginToolInputError(
+        `${path} already exists. Use that checkout, or set directory to a new path.`,
+      );
     }
     // Git smart HTTP uses git-upload-pack for clone, fetch, pull, deepen, and
     // ls-remote, so egress policy cannot distinguish clone without also
@@ -264,7 +266,7 @@ export const gitHubCloneRepositoryTool = definePluginTool({
     if (clone.exitCode !== 0) {
       await removePartialClone(ctx, path);
       throw new PluginToolInputError(
-        `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
+        `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}. Check that repo names a repository that exists.`,
       );
     }
     return {

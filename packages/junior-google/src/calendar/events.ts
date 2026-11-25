@@ -280,7 +280,7 @@ export async function readOwnEventForRequester(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      `The requester's email is unknown, so the tool cannot check that they may ${action} this event.`,
+      `The requester's email is unknown, so the tool cannot check that they may ${action} this event. No change to the call can fix this.`,
     );
   }
   const path = `/calendar/v3/calendars/primary/events/${eventId}`;
@@ -315,7 +315,7 @@ export async function readOwnEventForRequester(
     )
   ) {
     throw new PluginToolInputError(
-      `Only people invited to this event can ask you to ${action} it.`,
+      `Only people invited to this event can ask you to ${action} it. No change to the call can fix this.`,
     );
   }
   return { event, eventId, path, status: "active" };

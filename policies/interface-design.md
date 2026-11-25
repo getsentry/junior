@@ -26,9 +26,8 @@ function names are part of the interface.
 
 ### Lifecycle state
 
-- Store each lifecycle, such as a Turn, an agent invocation, or an
-  Automation run, as one status value. Use a discriminated union when a field
-  is valid only in some states.
+- Store each lifecycle, such as a Turn or an Automation run, as one status
+  value. Use a discriminated union when a field is valid only in some states.
 - One function owns the transitions of each lifecycle and rejects an illegal
   one. Other code calls it. It does not write the status directly.
 - A terminal state stays terminal. A late writer must not move it back.
@@ -48,6 +47,10 @@ function names are part of the interface.
   transport, time). Do not thread an app store through callers that do not
   own it.
 - Do not use a one-field service options object. Pass the service.
+- When the host chooses all the edges of an engine, the engine takes them as
+  one context object, such as core's `EngineContext`. Each function
+  destructures only the fields that it uses in its parameters, typed with
+  `Pick`.
 - Do not add a factory, wrapper, alias, or helper that only forwards
   arguments or hides parameter threading. Call the owner directly, unless the
   layer enforces a rule, translates an edge, or owns a lifecycle change.
@@ -60,7 +63,7 @@ function names are part of the interface.
   next to the first caller.
 - A role directory or file holds only that role. `tools/` holds only tools,
   and `tool-support/` holds code that only tools use.
-  `policies/tool-design.md` owns the tool layout.
+  The `tools-dir-*` ast-grep rules enforce the tool layout.
 - Do not add catch-all modules such as `utils`, `helpers`, `common`, `misc`,
   or `shared`. They name no feature and no role, so code collects there with
   no owner. The `no-catch-all-module-paths` ast-grep rule enforces this.

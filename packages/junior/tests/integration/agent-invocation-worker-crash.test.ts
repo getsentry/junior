@@ -1,33 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import {
-  createAgentInvocation,
-  createAgentInvocationForMessage,
-} from "@/chat/agent-invocations/create";
-import {
-  getAgentInvocationTurnId,
   getAgentReplyMessageId,
+  getParentMessageId,
 } from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import {
-  createDeliverToParent,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import {
-  buildAgentInvocationInboundMessage,
-  createAndEnqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
-  appendAndEnqueueInboundMessage,
   appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   dropPendingMessages,
@@ -37,16 +23,25 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/turn-cursor";
+import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
+  destination,
   invocationInput,
+  loadSubagentEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import {
   createConversationWorkHarness,
   runHeartbeatAfterLeasesExpire,
+  type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { webTestActor } from "../fixtures/conversation";
+import { finishRun } from "../fixtures/thread-input";
+import type { ConversationStore } from "@/chat/conversations/store";
+import type { StateAdapter } from "chat";
 
 /**
  * Integration tests do not run the agent. This runner reads each run and the
@@ -66,175 +61,112 @@ function readingAgentRunner() {
   return { agentRunner, runs };
 }
 
-describe("agent invocation worker crash", () => {
+/** Spawn one child agent of a parent, as `startAgent` does. */
+async function spawnChild(
+  options: {
+    conversationStore: ConversationStore;
+    queue: ConversationWorkQueueTestAdapter;
+    state: StateAdapter;
+  },
+  idempotencyKey: string,
+  input: { kind?: "task" | "thread"; parentConversationId?: string } = {},
+) {
+  return (
+    await spawnChildAgent(
+      {
+        ...invocationInput,
+        idempotencyKey,
+        parentToolCallId: idempotencyKey,
+        parentTurnId: "parent-turn",
+        ...input,
+      },
+      options,
+    )
+  ).childConversationId;
+}
+
+async function parentMessageTexts() {
+  return (
+    (
+      await getConversationWorkState({
+        conversationId: parentConversationId,
+      })
+    )?.messages.map((message) => message.input.text) ?? []
+  );
+}
+
+describe("child agent worker crash", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
   });
 
-  it("tells the parent when every try of a child worker is killed", async () => {
-    vi.useFakeTimers({
-      now: 1_800_000_000_000,
-      toFake: ["Date", "setInterval", "clearInterval"],
-    });
-    const { conversationStore, fixture } = await prepareParentConversation();
-    // Every try is killed before the agent can run.
-    const { killWorker, queue, state } = await createConversationWorkHarness(
-      neverRunAgentRunner(),
-    );
-    try {
-      const created = await createAndEnqueueAgentInvocation(
-        { ...invocationInput, idempotencyKey: "crash-1" },
-        { conversationStore, queue, state },
-      );
-      const { childConversationId, invocationId } = created;
-
-      let followUpId = "";
-      let unappendedId = "";
-      for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
-        // Injected fault: the worker of this try is killed mid-run.
-        await killWorker(queue.takeMessageFor(childConversationId));
-        if (tries === CONVERSATION_WORK_MAX_RETRIES) {
-          // The parent gives the dying child more work. Stopped work drops
-          // its mailbox, so this task never runs either.
-          const { invocation } = await createAgentInvocationForMessage({
-            actor: invocationInput.actor,
-            childConversationId,
-            destination: invocationInput.destination,
-            idempotencyKey: "crash-follow-up",
-            input: "Also check the retry path.",
-            parentConversationId,
-            parentToolCallId: "call-message",
-          });
-          // Injected fault: the enqueue dies after its mailbox write, before
-          // it marks the invocation appended. No harness fault stops it there.
-          await appendAndEnqueueInboundMessage({
-            conversationStore,
-            message: buildAgentInvocationInboundMessage(invocation),
-            queue,
-            state,
-          });
-          followUpId = invocation.invocationId;
-          // A task whose append has not run yet starts new work instead.
-          const { invocation: unappended } =
-            await createAgentInvocationForMessage({
-              actor: invocationInput.actor,
-              childConversationId,
-              destination: invocationInput.destination,
-              idempotencyKey: "crash-unappended",
-              input: "Then check the docs.",
-              parentConversationId,
-              parentToolCallId: "call-message-2",
-            });
-          unappendedId = unappended.invocationId;
-        }
-        await runHeartbeatAfterLeasesExpire(queue);
-      }
-
-      const child = await getConversationWorkState({
-        conversationId: childConversationId,
-      });
-      expect(child?.execution.pendingMessages).toEqual([
-        expect.objectContaining({
-          input: expect.objectContaining({
-            metadata: expect.objectContaining({
-              agentInvocationId: unappendedId,
-            }),
-          }),
-        }),
-      ]);
-      await expect(getAgentInvocation(unappendedId)).resolves.toMatchObject({
-        mailboxStatus: "appended",
-        status: "pending",
-      });
-      for (const id of [invocationId, followUpId]) {
-        await expect(getAgentInvocation(id)).resolves.toMatchObject({
-          parentMailboxStatus: "appended",
-          status: "failed",
-        });
-      }
-      const parent = await getConversationWorkState({
-        conversationId: parentConversationId,
-      });
-      const stopped = expect.stringMatching(
-        /stopped because its worker failed repeatedly/,
-      );
-      expect(parent?.messages.map((message) => message.input.text)).toEqual([
-        stopped,
-        stopped,
-      ]);
-      // Nothing may resume the dead Turn.
-      await expect(
-        getTurnRecord(
-          childConversationId,
-          getAgentInvocationTurnId(invocationId),
-        ),
-      ).resolves.not.toMatchObject({
-        state: expect.stringMatching(/running|paused/),
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  // A child Turn on the Conversation loop has no agent invocation to fail.
-  // When every try is killed, a Task's parent learns it, and a Thread keeps
-  // the stored failure. A Task whose lost Turn already replied sent its
-  // answer. A reply of an earlier Turn does not answer the lost one.
+  // When every try of a child Turn is killed, its parent learns it, whoever
+  // started the Turn. A child whose lost Turn already replied sent its answer. A reply of an earlier Turn does not
+  // answer the lost one.
   it.each([
     { kind: "task" as const, notices: 1, replied: "no" },
     { kind: "task" as const, notices: 0, replied: "this Turn" },
+    { kind: "task" as const, notices: 0, replied: "this Turn quietly" },
     { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
-    { kind: "thread" as const, notices: 0, replied: "no" },
+    { kind: "thread" as const, notices: 1, replied: "no" },
+    { kind: "thread" as const, notices: 1, replied: "no", person: true },
   ])(
-    "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied)",
-    async ({ kind, notices, replied }) => {
+    "tells a child's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied, person: $person)",
+    async ({ kind, notices, person, replied }) => {
       vi.useFakeTimers({
         now: 1_800_000_000_000,
         toFake: ["Date", "setInterval", "clearInterval"],
       });
       const { conversationStore, fixture } = await prepareParentConversation();
-      const { killWorker, queue, state } = await createConversationWorkHarness(
-        neverRunAgentRunner(),
-      );
+      // The child's first task ends without a `reply`. Later tries are
+      // killed before the agent runs.
+      const { killWorker, process, queue, state } =
+        await createConversationWorkHarness({ run: finishRun });
       try {
-        const child = await createAgentInvocation({
-          ...invocationInput,
-          idempotencyKey: `loop-crash-${kind}`,
+        const options = { conversationStore, queue, state };
+        const childId = await spawnChild(options, `loop-crash-${kind}`, {
           kind,
         });
-        await completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Watching.",
-          status: "completed",
-        });
-        const helper = await createAgentInvocation({
-          ...invocationInput,
-          idempotencyKey: `loop-crash-helper-${kind}`,
-          parentConversationId: child.childConversationId,
-        });
-        // The helper's `reply` wakes the child on the Conversation loop.
-        await enqueueChildResultToParent({
-          messageKey: "helper-reply",
-          queue,
-          result: {
-            kind: "reply",
-            reply: { text: "Helper fact.", toolCallId: "helper-reply" },
-          },
-          sender: helper,
-          turnId: getAgentInvocationTurnId(helper.invocationId),
-          state,
-        });
+        await process(queue.takeMessageFor(childId));
+        const helperId = await spawnChild(
+          options,
+          `loop-crash-helper-${kind}`,
+          { parentConversationId: childId },
+        );
+        if (person) {
+          // A person's Message wakes the Thread instead.
+          await appendAndEnqueueWebMessage(
+            {
+              actor: webTestActor,
+              conversationId: childId,
+              idempotencyKey: "person-1",
+              message: "What did you find?",
+            },
+            options,
+          );
+        } else {
+          // The helper's `reply` wakes the child on the Conversation loop.
+          await enqueueStarterUpdate({
+            actor: invocationInput.actor,
+            messageKey: "helper-reply",
+            queue,
+            update: { status: "done", text: "Helper fact." },
+            sender: {
+              childConversationId: helperId,
+              parentConversationId: childId,
+            },
+            turnId: "turn_helper",
+            state,
+          });
+        }
         vi.setSystemTime(Date.now() + 60_000);
         if (replied === "an earlier Turn") {
           // An earlier Turn read its input and replied.
-          const earlier = getAgentReplyMessageId(
-            helper.invocationId,
-            "earlier-reply",
-          );
+          const earlier = getAgentReplyMessageId(helperId, "earlier-reply");
           await appendInboundMessage({
             message: {
-              conversationId: child.childConversationId,
+              conversationId: childId,
               createdAtMs: Date.now() - 1,
               delivery: "defer",
               inboundMessageId: earlier,
@@ -245,60 +177,143 @@ describe("agent invocation worker crash", () => {
             state,
           });
           await dropPendingMessages({
-            conversationId: child.childConversationId,
+            conversationId: childId,
             inboundMessageIds: [earlier],
             state,
           });
-          await createDeliverToParent({ queue, state })({
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
-            conversationId: child.childConversationId,
-            result: {
-              kind: "reply",
-              reply: { text: "Earlier answer.", toolCallId: "call-earlier" },
-            },
+            conversationId: childId,
+            update: { status: "done", text: "Earlier answer." },
             turnId: buildDeterministicTurnId(earlier),
           });
         }
-        if (replied === "this Turn") {
-          // The Turn sent its `reply`, and then its worker was lost.
-          await createDeliverToParent({ queue, state })({
+        if (replied === "this Turn" || replied === "this Turn quietly") {
+          // The Turn sent its `reply`, or a quiet note, and then its worker
+          // was lost.
+          await createPublishChildTurn({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
-            conversationId: child.childConversationId,
-            result: {
-              kind: "reply",
-              reply: { text: "Answer.", toolCallId: "call-answer" },
+            conversationId: childId,
+            update: {
+              quiet: replied === "this Turn quietly",
+              status: "done",
+              text: "Answer.",
             },
             turnId: buildDeterministicTurnId(
-              getAgentReplyMessageId(helper.invocationId, "helper-reply"),
+              getAgentReplyMessageId(helperId, "helper-reply"),
             ),
           });
         }
         for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
           // Injected fault: the worker of this try is killed mid-run.
-          await killWorker(queue.takeMessageFor(child.childConversationId));
+          await killWorker(queue.takeMessageFor(childId));
           await runHeartbeatAfterLeasesExpire(queue);
         }
 
-        const parent = await getConversationWorkState({
-          conversationId: parentConversationId,
-        });
         expect(
-          parent?.messages
-            .map((message) => message.input.text)
-            .filter((text) => text.includes("worker failed repeatedly")),
+          (await parentMessageTexts()).filter((text) =>
+            text.includes("worker failed repeatedly"),
+          ),
         ).toEqual(
           Array.from({ length: notices }, () =>
             expect.stringMatching(/status="failed"/),
           ),
         );
         await expect(
-          conversationStore.get({ conversationId: child.childConversationId }),
+          conversationStore.get({ conversationId: childId }),
         ).resolves.toMatchObject({ execution: { status: "failed" } });
       } finally {
         await fixture.close();
       }
     },
   );
+
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when every try of its spawned task is killed",
+    async (kind) => {
+      vi.useFakeTimers({
+        now: 1_800_000_000_000,
+        toFake: ["Date", "setInterval", "clearInterval"],
+      });
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const { killWorker, queue, state } = await createConversationWorkHarness(
+        neverRunAgentRunner(),
+      );
+      try {
+        const { childConversationId } = await bindSpawnAgent(
+          {
+            actor: { platform: "local", userId: "local-user" },
+            conversationId: parentConversationId,
+            destination,
+            instruction: { text: "Delegate the investigation." },
+            source: createLocalSource(parentConversationId),
+            turnId: "parent-turn",
+          },
+          { conversationStore, queue, state },
+        )!({ kind, task: "Check the deploy." }, { toolCallId: "call-1" });
+        for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+          // Injected fault: the worker of this try is killed mid-run.
+          await killWorker(queue.takeMessageFor(childConversationId));
+          await runHeartbeatAfterLeasesExpire(queue);
+        }
+
+        expect(
+          (await parentMessageTexts()).filter((text) =>
+            text.includes("worker failed repeatedly"),
+          ),
+        ).toEqual([expect.stringMatching(/status="failed"/)]);
+        await expect(
+          conversationStore.get({ conversationId: childConversationId }),
+        ).resolves.toMatchObject({ execution: { status: "failed" } });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("ends a Task's marker of its Thread when every try of the Thread is killed", async () => {
+    vi.useFakeTimers({
+      now: 1_800_000_000_000,
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const { killWorker, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+    try {
+      const taskId = await spawnChild(
+        { conversationStore, queue, state },
+        "task",
+      );
+      const { childConversationId: threadId } = await bindSpawnAgent(
+        {
+          actor: { platform: "local", userId: "local-user" },
+          conversationId: taskId,
+          destination,
+          instruction: { text: "Delegate the investigation." },
+          source: createLocalSource(taskId),
+          turnId: "task-turn",
+        },
+        { conversationStore, maxAgentDepth: 2, queue, state },
+      )!(
+        { kind: "thread", task: "Check the deploy." },
+        { toolCallId: "call-1" },
+      );
+      for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+        // Injected fault: the worker of this try is killed mid-run.
+        await killWorker(queue.takeMessageFor(threadId));
+        await runHeartbeatAfterLeasesExpire(queue);
+      }
+
+      await expect(loadSubagentEvents(taskId)).resolves.toContainEqual({
+        type: "subagent_ended",
+        subagentInvocationId: getParentMessageId(taskId, "task-turn:call-1"),
+        outcome: "error",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("resumes a killed child from its last save", async () => {
     vi.useFakeTimers({
@@ -310,113 +325,40 @@ describe("agent invocation worker crash", () => {
     const { killWorker, process, queue, state } =
       await createConversationWorkHarness(runner.agentRunner);
     try {
-      const { childConversationId, invocationId } =
-        await createAndEnqueueAgentInvocation(
-          { ...invocationInput, idempotencyKey: "lost-worker-1" },
-          { conversationStore, queue, state },
-        );
+      const childId = await spawnChild(
+        { conversationStore, queue, state },
+        "lost-worker-1",
+      );
       // Injected fault: the worker is killed after its run saved its input,
       // as at the end of its host request.
-      await killWorker(queue.takeMessageFor(childConversationId), {
+      await killWorker(queue.takeMessageFor(childId), {
         afterInputSaved: true,
       });
+      const [killedTurnId] = (await listTurnSummaries(childId)).map(
+        (turn) => turn.turnId,
+      );
       await runHeartbeatAfterLeasesExpire(queue);
-      await process(queue.takeMessageFor(childConversationId));
+      await process(queue.takeMessageFor(childId));
 
       // The next run continues the same Turn from the saved input.
-      expect(runner.runs.map(({ turn }) => turn)).toEqual([
-        expect.objectContaining({
-          lostWorkerResumeCount: 1,
-          piMessages: [
-            expect.objectContaining({
-              content: [
-                {
-                  text: expect.stringContaining(invocationInput.input),
-                  type: "text",
-                },
-              ],
-              role: "user",
-            }),
-          ],
-          resumeReason: "retry",
-          state: "paused",
-        }),
-      ]);
-      await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
-        status: "running",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("stops a resumed child whose worker is killed before it saves", async () => {
-    vi.useFakeTimers({
-      now: 1_800_000_000_000,
-      toFake: ["Date", "setInterval", "clearInterval"],
-    });
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const { killWorker, process, queue, state } =
-      await createConversationWorkHarness(neverRunAgentRunner());
-    try {
-      const { childConversationId, invocationId } =
-        await createAndEnqueueAgentInvocation(
-          { ...invocationInput, idempotencyKey: "lost-worker-2" },
-          { conversationStore, queue, state },
-        );
-      // Injected fault: the first worker is killed after its run saved its
-      // input. The worker of the resumed run is killed before it saves.
-      await killWorker(queue.takeMessageFor(childConversationId), {
-        afterInputSaved: true,
-      });
-      await runHeartbeatAfterLeasesExpire(queue);
-      await killWorker(queue.takeMessageFor(childConversationId));
-      await runHeartbeatAfterLeasesExpire(queue);
-
-      await expect(
-        process(queue.takeMessageFor(childConversationId)),
-      ).resolves.toMatchObject({ status: "completed" });
-      await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
-        errorMessage: "Agent invocation lost its worker before it could pause",
-        parentMailboxStatus: "appended",
-        status: "failed",
-      });
-      const parent = await getConversationWorkState({
-        conversationId: parentConversationId,
-      });
-      expect(parent?.messages.map((message) => message.input.text)).toEqual([
-        expect.stringMatching(/status="failed"[\s\S]*lost its worker/),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("gives a child run the deadline of its worker's host request", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const runner = readingAgentRunner();
-    const { process, queue, state } = await createConversationWorkHarness(
-      runner.agentRunner,
-    );
-    try {
-      const { childConversationId } = await createAndEnqueueAgentInvocation(
-        { ...invocationInput, idempotencyKey: "host-deadline-1" },
-        { conversationStore, queue, state },
-      );
-      // The request started before this worker took the child. The run
-      // pauses at the request deadline, not a full Turn timeout later.
-      const requestStartedAtMs = Date.now() - 60_000;
-      const message = queue.takeMessageFor(childConversationId);
-      await runWithTurnRequestDeadline(
-        () => process(message),
-        requestStartedAtMs,
-      );
-
-      expect(runner.runs.map(({ run }) => run.deadlineAtMs)).toEqual([
-        requestStartedAtMs +
-          (getChatConfig().functionMaxDurationSeconds -
-            FUNCTION_TIMEOUT_BUFFER_SECONDS) *
-            1000,
+      expect(runner.runs).toEqual([
+        {
+          run: expect.objectContaining({ turnId: killedTurnId }),
+          turn: expect.objectContaining({
+            piMessages: [
+              expect.objectContaining({
+                content: [
+                  {
+                    text: expect.stringContaining(invocationInput.input),
+                    type: "text",
+                  },
+                ],
+                role: "user",
+              }),
+            ],
+            turnId: killedTurnId,
+          }),
+        },
       ]);
     } finally {
       await fixture.close();

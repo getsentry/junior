@@ -5,9 +5,9 @@ import * as z from "zod";
  * reads with its task. Runtime code reads only these fields, never a type
  * name, so types can later come from configuration. Types do not limit tools:
  * Guardian reviews each child action against the root user's messages, as for
- * any child. A child keeps its type for later agent invocations. How a child
+ * any child. A child keeps its type for every later task. How a child
  * starts, fresh or forked from its parent's history, is not a type: see
- * `fork` on the agent invocation.
+ * `fork` in its agent config.
  */
 export const AGENT_TYPES = ["explore", "reviewer"] as const;
 
@@ -34,13 +34,13 @@ const AGENT_TYPE_DEFINITIONS: Record<
 > = {
   explore: {
     whenToUse:
-      "Investigation across code, docs, logs, telemetry, or the web. Use it when an answer needs reading across many files or sources and you need the conclusion with evidence, not the raw output.",
+      "investigation across code, docs, logs, telemetry, or the web; returns the conclusion.",
     instructions:
-      "You are an explore agent. Your job is to investigate and report, so do not change anything outside your sandbox unless the task asks for it. Report what you found with exact evidence, such as paths, lines, links, and ids.",
+      "You are an explore agent. Investigate, and do not change anything outside your sandbox unless the task asks for it. Back your answer with exact evidence, such as paths, lines, links, and ids.",
   },
   reviewer: {
     whenToUse:
-      "An independent second opinion on a change, plan, or claim. Give it the evidence to judge, not your conclusion.",
+      "an independent second opinion on a change, plan, or claim; give it the evidence, not your conclusion.",
     instructions:
       "You are a reviewer agent. Give an independent assessment. Do not assume that the parent's framing is correct: verify each claim against the evidence. Do not change anything outside your own sandbox. Report concrete problems ranked by severity, each with its evidence, and say clearly when you found none.",
   },
@@ -54,11 +54,11 @@ function agentTypeDefinition(
     : undefined;
 }
 
-/** Model-facing list of child agent types. */
+/** Model-facing list of child agent types, short enough for a param. */
 export function formatAgentTypes(): string {
   return AGENT_TYPES.map(
-    (type) => `- "${type}": ${AGENT_TYPE_DEFINITIONS[type].whenToUse}`,
-  ).join("\n");
+    (type) => `${type}: ${AGENT_TYPE_DEFINITIONS[type].whenToUse}`,
+  ).join(" ");
 }
 
 /** Return the instructions that a child of this type reads with its task. */

@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { Event } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,10 +8,8 @@ import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
-import {
-  getInboxItem,
-  waitingConversationIdsQuery,
-} from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
+import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { juniorInboxSnoozes, juniorInboxItemAssignees } from "@/db/schema";
 import {
   closeConversationFixture,
@@ -77,6 +76,7 @@ describe("snoozes", () => {
     });
   const heartbeat = () =>
     runHeartbeat({
+      sendPluginTask: sendVercelPluginTask,
       conversationWorkQueue: fixture.queue,
       dispatchForIdentity: createIdentityDispatcher({
         conversationWorkQueue: () => fixture.queue,

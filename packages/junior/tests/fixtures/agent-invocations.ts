@@ -6,17 +6,19 @@ import {
   defineJuniorPlugin,
   definePluginTool,
   pluginToolOutputSchema,
-  type Destination,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { defineJuniorPlugins } from "@/app";
+import { spawnChildAgent as spawnChild } from "@/chat/agent-invocations/create";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
-import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import type { Actor } from "@/chat/actor";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { commitMessages } from "@/chat/conversations/projection";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import type { ConversationEventData } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore } from "@/chat/db";
 import {
@@ -39,7 +41,6 @@ export const destination = {
 } as const;
 export const invocationInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
-  destination,
   input: "Summarize the durable task.",
   parentConversationId,
   reasoningLevel: "medium" as const,
@@ -63,7 +64,6 @@ export const slackInvocationInput = {
     teamId: "T123",
     userId: "U123",
   } as const,
-  destination: slackDestination,
   parentConversationId: slackParentConversationId,
 };
 
@@ -104,55 +104,67 @@ export async function loadTurnEvents(conversationId: string) {
   );
 }
 
-export async function loadSubagentEvents(conversationId: string) {
+/** Load the history event data of the given types, in order. */
+export async function loadEventsOfType<T extends ConversationEventData["type"]>(
+  conversationId: string,
+  ...types: T[]
+): Promise<Extract<ConversationEventData, { type: T }>[]> {
   return (await getConversationEventStore().loadHistory(conversationId))
     .map((event) => event.data)
-    .filter(
-      (data) =>
-        data.type === "subagent_started" || data.type === "subagent_ended",
+    .filter((data): data is Extract<ConversationEventData, { type: T }> =>
+      (types as string[]).includes(data.type),
     );
 }
 
+export async function loadSubagentEvents(conversationId: string) {
+  return await loadEventsOfType(
+    conversationId,
+    "subagent_started",
+    "subagent_ended",
+  );
+}
+
 export async function loadMessageEvents(conversationId: string) {
-  return (await getConversationEventStore().loadHistory(conversationId))
-    .map((event) => event.data)
-    .filter((data) => data.type === "message");
+  return await loadEventsOfType(conversationId, "message");
+}
+
+/** Assert that the Conversation never rewrote a stored Message. */
+export async function expectNoMessageRewrites(conversationId: string) {
+  expect(await loadEventsOfType(conversationId, "message_updated")).toEqual([]);
 }
 
 type ChildAgentArgs = {
   conversationStore: ConversationStore;
-  /** Where the child reports, when the parent has no work record yet. */
-  destination?: Destination;
   idempotencyKey: string;
   parentConversationId: string;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
 };
 
-/** Spawn a child agent that reports to the destination of the parent's run. */
+/** One child agent and the parent that spawned it. */
+export type SpawnedChild = {
+  childConversationId: string;
+  parentConversationId: string;
+};
+
+/** Spawn a child agent as `startAgent` does. */
 export async function spawnChildAgent(
   args: ChildAgentArgs,
-): Promise<AgentInvocation> {
-  const destination =
-    args.destination ??
-    (
-      await getConversationWorkState({
-        conversationId: args.parentConversationId,
-        state: args.state,
-      })
-    )?.destination;
-  if (!destination) {
-    throw new Error("Expected a parent Conversation with a destination");
-  }
-  return await createAndEnqueueAgentInvocation(
+): Promise<SpawnedChild> {
+  const { childConversationId } = await spawnChild(
     {
       ...invocationInput,
-      destination,
       idempotencyKey: args.idempotencyKey,
       parentConversationId: args.parentConversationId,
+      parentToolCallId: args.idempotencyKey,
+      parentTurnId: args.idempotencyKey,
     },
     args,
   );
+  return {
+    childConversationId,
+    parentConversationId: args.parentConversationId,
+  };
 }
 
 /**
@@ -161,44 +173,38 @@ export async function spawnChildAgent(
  */
 export async function startRunningChildAgent(
   args: ChildAgentArgs,
-): Promise<{ invocation: AgentInvocation; runId: string }> {
-  const invocation = await spawnChildAgent(args);
+): Promise<{ child: SpawnedChild; runId: string }> {
+  const child = await spawnChildAgent(args);
   // The child worker took its wake, so a queue drain does not run it.
-  args.queue.takeMessageFor(invocation.childConversationId);
+  args.queue.takeMessageFor(child.childConversationId);
   const lease = await startConversationWork({
-    conversationId: invocation.childConversationId,
+    conversationId: child.childConversationId,
     conversationStore: args.conversationStore,
     state: args.state,
   });
   const runId = (
     await getConversationWorkState({
-      conversationId: invocation.childConversationId,
+      conversationId: child.childConversationId,
       state: args.state,
     })
   )?.execution.runId;
   if (lease.status !== "acquired" || !runId) {
     throw new Error("Expected a running child agent");
   }
-  return { invocation, runId };
+  return { child, runId };
 }
 
 /** Expect a stop of the parent to have stopped its running child agent. */
 export async function expectChildAgentStopped(
-  child: { invocation: AgentInvocation; runId: string },
+  running: { child: SpawnedChild; runId: string },
   state: StateAdapter,
 ): Promise<void> {
-  const { childConversationId, invocationId, parentConversationId } =
-    child.invocation;
-  await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
-    errorMessage: "Stopped by the parent conversation",
-    parentMailboxStatus: "skipped",
-    status: "stopped",
-  });
+  const { childConversationId, parentConversationId } = running.child;
   // The child worker sees this request and aborts its run.
   await expect(
     hasConversationStop({
       conversationId: childConversationId,
-      runId: child.runId,
+      runId: running.runId,
       state,
     }),
   ).resolves.toBe(true);
@@ -326,7 +332,7 @@ export async function prepareSummarizedHistory(conversationId: string) {
 }
 
 /**
- * Commit parent history with an earlier `reply` and the `spawnAgent` call of
+ * Commit parent history with an earlier `reply` and the `startAgent` call of
  * a fork. Returns the id of that call.
  */
 export async function prepareForkParentHistory(): Promise<string> {
@@ -367,7 +373,7 @@ export async function prepareForkParentHistory(): Promise<string> {
           {
             type: "toolCall",
             id: toolCallId,
-            name: "spawnAgent",
+            name: "startAgent",
             arguments: { fork: true, task: invocationInput.input },
           },
         ],
@@ -412,4 +418,33 @@ export function upkeepPlugins(
       },
     }),
   ]);
+}
+
+/**
+ * Send the agent update of one child Turn to its starter and Watches, as
+ * the end of the Turn does.
+ */
+export function createPublishChildTurn(options: {
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+}) {
+  return async (input: {
+    actor: Actor;
+    conversationId: string;
+    turnId: string;
+    update: AgentUpdate;
+  }): Promise<void> =>
+    await publishAgentUpdate(
+      input.conversationId,
+      {
+        type: input.update.status === "failed" ? "turn_failed" : "turn",
+        turnId: input.turnId,
+      },
+      {
+        queue: options.queue,
+        starter: input.actor,
+        state: options.state,
+        update: async () => input.update,
+      },
+    );
 }

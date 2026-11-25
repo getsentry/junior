@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { type RefObject, useEffect } from "react";
+import { type RefObject, useCallback, useEffect } from "react";
 
 import { LeadMark } from "./LeadMark";
 
@@ -24,8 +24,28 @@ const PROMPTS = [
   "Tell the billing migration conversation to skip the dry run",
 ];
 
+/** The Lead's reply box placeholder. */
+export const LEAD_REPLY_PLACEHOLDER =
+  "Ask the Lead to start, find, or check on work…";
+
+/**
+ * Show the first-run intro on an empty Lead and focus its reply box. The
+ * intro's prompts and the transcript's rows fill the box with `prefill`.
+ */
+export function useLeadFirstRun(
+  shown: boolean,
+  replyRef: RefObject<{ appendText(text: string): void; focus(): void } | null>,
+) {
+  const prefill = useCallback(
+    (text: string) => replyRef.current?.appendText(text),
+    [replyRef],
+  );
+  useFocusOnLeadFirstRun(shown, replyRef);
+  return { prefill, shown };
+}
+
 /** Focus the Lead's reply box while the first-run intro shows. */
-export function useFocusOnLeadFirstRun(
+function useFocusOnLeadFirstRun(
   shown: boolean,
   replyRef: RefObject<{ focus(): void } | null>,
 ) {
@@ -44,18 +64,18 @@ export function useFocusOnLeadFirstRun(
 export function LeadFirstRun(props: { onTry(text: string): void }) {
   return (
     <section
-      aria-label="About your Lead"
+      aria-label="About this Space's Lead"
       className="grid justify-items-center gap-6 px-1 py-8 text-center md:py-14"
     >
       <LeadMark size="intro" />
       <div className="grid max-w-[34rem] gap-3">
         <h2 className="font-display text-2xl font-semibold text-dashboard-text md:text-3xl">
-          This is your Lead
+          This Space&apos;s Lead
         </h2>
         <p className="font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          Tell it what you need done. It starts a conversation for each piece of
-          work, keeps track of them, and tells you when one needs you. The work
-          itself happens in those conversations.
+          Tell it what you need done. It starts a conversation in this Space for
+          each piece of work, keeps track of them, and tells you when one needs
+          you. Every member of the Space talks to it here.
         </p>
       </div>
       <ul className="grid w-full gap-2 text-left sm:grid-cols-3">

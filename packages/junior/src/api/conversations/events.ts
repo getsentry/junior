@@ -1,5 +1,6 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
+import { isParentMessageAuthor } from "@/chat/agent-invocations/parent-message";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -154,6 +155,25 @@ function reportMessageActorIdentity(
       : undefined),
   };
   return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
+}
+
+/**
+ * Mark a child's input that its parent agent wrote, so the dashboard does not
+ * show the person who started the root as its author. Rows from before
+ * parent messages store the id of the work that wrote them. A parent message
+ * is named by its own id.
+ */
+export function reportParentAgentInput(message: {
+  agentInvocationId: unknown;
+  authorUserId: unknown;
+  messageId: string;
+}): { agentInvocationId: string } | undefined {
+  if (typeof message.agentInvocationId === "string") {
+    return { agentInvocationId: message.agentInvocationId };
+  }
+  return isParentMessageAuthor({ userId: message.authorUserId })
+    ? { agentInvocationId: message.messageId }
+    : undefined;
 }
 
 /** Project native assistant tool calls through the existing reporting shape. */
@@ -394,9 +414,13 @@ function reportEventData(args: {
         data.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...(typeof data.meta?.["agentInvocationId"] === "string"
-          ? { agentInvocationId: data.meta["agentInvocationId"] }
-          : undefined),
+        ...reportParentAgentInput({
+          agentInvocationId: data.meta?.["agentInvocationId"],
+          authorUserId: reportingMessageAuthorSchema.safeParse(
+            data.meta?.["author"],
+          ).data?.userId,
+          messageId: data.messageId,
+        }),
         ...(args.canExposePayload
           ? reportInboxItemChanges(data.meta)
           : undefined),
@@ -408,6 +432,12 @@ function reportEventData(args: {
           : undefined),
         ...(typeof data.meta?.["eventNamespace"] === "string"
           ? { eventNamespace: data.meta["eventNamespace"] }
+          : undefined),
+        ...(typeof data.meta?.["eventStatus"] === "string"
+          ? { eventStatus: data.meta["eventStatus"] }
+          : undefined),
+        ...(typeof data.meta?.["eventWatchId"] === "string"
+          ? { eventWatchId: data.meta["eventWatchId"] }
           : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.["eventIdentifier"] === "string"

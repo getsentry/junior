@@ -470,7 +470,7 @@ async function prepareSummary(
         const summaryStreamFn = createTracedStreamFn({
           conversationPrivacy: snapshot.conversationPrivacy,
           promptName: CONTEXT_COMPACTION_PROMPT_NAME,
-          ...(streamFn ? { base: streamFn } : undefined),
+          base: streamFn,
         });
         const tools = snapshot.tools.map((tool) => ({
           ...tool,

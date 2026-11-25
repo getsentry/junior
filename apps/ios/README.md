@@ -46,9 +46,9 @@ browser.
    ```
 
    A shot is `name|dashboard path|theme`. The app opens the path like the web
-   router does. `?drawer=1` opens the drawer and `?details=1` opens a
-   Conversation's details. UI tests call `POST /__reset` on the mock server
-   first, so writes from one test do not affect the next.
+   router does. `?drawer=1` opens the drawer; `?details=1` and `?rename=1`
+   open a Conversation's details and rename prompt. UI tests call
+   `POST /__reset` on the mock server first, so writes do not carry over.
 
 4. Run UI tests, one suite or test at a time:
 
@@ -83,7 +83,7 @@ use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 | Argument          | Effect                                                        |
 | ----------------- | ------------------------------------------------------------- |
-| `-JuniorServer`   | Dashboard origin. The default is `http://127.0.0.1:4317`.     |
+| `-JuniorServer`   | Dashboard origin. The default is the last server signed in to, else `https://junior-prod.sentry.dev`. |
 | `-JuniorOpen`     | A dashboard path to open, such as `/inbox?item=qa-rollout`.  |
 | `-JuniorTheme`    | `dark`, `light`, or `system`.                                 |
 | `-JuniorFixedNow` | An ISO time used as "now", for screenshots of the mock data.  |
@@ -95,13 +95,11 @@ use Console.app with the iPhone connected, or use Settings › Copy logs.
 Sign-in is Junior's MCP OAuth flow: authorization code with PKCE, Google
 sign-in and the consent page in a browser sheet, and tokens in the Keychain
 (an access token lasts an hour; refresh tokens rotate; a sign-in lasts 30
-days). Junior registers no clients: the app's `client_id` is the URL of
-`oauth-client.json` (a Client ID Metadata Document). Junior accepts only
-`https` and loopback redirect URIs, so the app takes the redirect on
-`http://127.0.0.1:<port>/callback`, as desktop MCP clients do.
-
-`AppModel.oauthClientID` points at this branch's copy on GitHub; point it at a
-stable published URL before release. Junior caches the document for 5 minutes.
+days). Every Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
+`packages/junior/src/api/mcp/oauth/client-metadata.ts`, so sign-in needs no
+hosted Client ID Metadata Document. The redirect goes to
+`junior-ios://oauth/callback`, which only this client may use. A server that
+runs an older Junior rejects the app's client ID.
 
 ## Design sources
 

@@ -2,9 +2,7 @@ import type {
   AutomationListItem,
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
-
-import type { Conversation } from "../types";
+import { parsePath } from "react-router";
 
 import {
   type InboxBundle,
@@ -18,14 +16,13 @@ import {
 /**
  * The Inbox entries in the pane, as in Google Inbox. Each one names a list
  * in the main area: the Inbox, Snoozed, Done, Conversations, then the asks
- * by type.
+ * by type. The viewer's pull requests are in Code.
  */
 export type InboxView =
   | "conversations"
   | "decisions"
   | "done"
   | "inbox"
-  | "prs"
   | "snoozed";
 
 const INBOX_VIEWS: readonly InboxView[] = [
@@ -33,7 +30,6 @@ const INBOX_VIEWS: readonly InboxView[] = [
   "decisions",
   "done",
   "inbox",
-  "prs",
   "snoozed",
 ];
 
@@ -43,7 +39,6 @@ export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
   decisions: "Decisions",
   done: "Done",
   inbox: "Inbox",
-  prs: "Pull requests",
   snoozed: "Snoozed",
 };
 
@@ -54,20 +49,26 @@ export function parseInboxView(value: string | null): InboxView {
 
 /** Read the entry of a list path, such as the return path of a Back. */
 export function inboxViewOfPath(path: string): InboxView {
-  return parseInboxView(new URLSearchParams(path.split("?")[1]).get("view"));
+  return parseInboxView(
+    new URLSearchParams(parsePath(path).search).get("view"),
+  );
 }
 
-/** The list path of an entry, with one item's row expanded when given. */
+/**
+ * The list path of an entry, with one item's row expanded when given, and
+ * its snooze dialog open when `snooze` is set.
+ */
 export function inboxViewPath(
   view: InboxView,
-  options: { itemId?: string } = {},
+  options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
-  // Phones show the entries at `/`, so an item link names its entry.
+  // Phones show the entries at `/inbox`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
+  if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
-  return search ? `/?${search}` : "/";
+  return search ? `/inbox?${search}` : "/inbox";
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
@@ -78,6 +79,11 @@ export function isCodeChangeItem(item: InboxItemPayload): boolean {
 /** A question or approval that Junior asks with a form. */
 export function isDecisionItem(item: InboxItemPayload): boolean {
   return Boolean(item.request);
+}
+
+/** An item that shows a To-do for the viewer. */
+export function isTodoItem(item: InboxItemPayload): boolean {
+  return item.todoId !== undefined;
 }
 
 /** Keep the items that one bundle holds. */
@@ -274,10 +280,12 @@ export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
 
 /**
  * What one item is, as its row says: Question, Approval, the pull request
- * state that a plugin ask names, or FYI. A closed item says how it closed.
+ * state that a plugin ask names, To do for you, or FYI. A closed item says
+ * how it closed.
  */
 export function inboxItemKind(item: InboxItemPayload): string {
   if (item.status !== "open") return inboxItemStatusLabel(item);
+  if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
   if (item.request) return "Question";
   const state = pullRequestState(item);
@@ -349,17 +357,13 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would dismiss in some rows: notices (FYI) only. Every
- * action item stays, including one assigned to Everyone, and so does every
- * item of a pinned Conversation. An Automation alert is an action item, so
- * it stays too.
+ * What a sweep would dismiss in some rows: the notices (FYI) that the
+ * viewer can dismiss. Every action item stays, including one assigned to
+ * Everyone. An Automation alert is an action item, so it stays too. A pin
+ * keeps its Conversation, not its notices.
  */
-export function sweepOf(
-  rows: readonly InboxBundle[],
-  isPinned: (conversationId: string | undefined) => boolean,
-): InboxItemPayload[] {
+export function sweepOf(rows: readonly InboxBundle[]): InboxItemPayload[] {
   return rows
-    .filter((row) => !isPinned(row.conversationId))
     .flatMap((row) => row.items)
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
@@ -392,21 +396,6 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-/**
- * The size of the code change that an item is about, as its Conversation's
- * linked work saved it. Undefined when that work has no size.
- */
-export function subjectSize(
-  item: Pick<InboxItemPayload, "subject">,
-  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
-): CodeChangeSize | undefined {
-  const url = item.subject?.url;
-  if (!url) return undefined;
-  return conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.size;
 }
 
 /**
@@ -483,7 +472,7 @@ export function linkedRowOf(
         ? linkedId
         : undefined;
     if (!open) return undefined;
-    if (view === "prs" || view === "decisions") return open.id;
+    if (view === "decisions") return open.id;
     if (view !== "inbox") return `conversation:${open.rootConversationId}`;
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);

@@ -1,0 +1,314 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "6b009b62-4fd0-46be-a5e0-f16c490d7769",
+  "prevIds": ["07b9625c-be3e-441c-8946-267bbf4340c1"],
+  "footprints": [
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "n|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "e|fk|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio",
+        "n|con|public.junior_review_items.junior_review_items_added_by_conversation_id_junior_conversatio"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "e|col|public.junior_review_items.added_by_conversation_id"
+      ]
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_open_action_added_by_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_open_action_added_by_idx",
+        "n|idx|public.junior_review_items_open_action_added_by_idx",
+        "e|idx|public.junior_review_items_open_action_added_by_idx",
+        "n|rel|public.junior_review_items_open_action_added_by_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_review_items",
+        "n|sch|public",
+        "e|col|public.junior_review_items.added_by_conversation_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automations",
+        "alert_recovered_at_ms"
+      ],
+      "writes": [
+        "s|col|public.junior_automations.alert_recovered_at_ms",
+        "n|col|public.junior_automations.alert_recovered_at_ms",
+        "e|col|public.junior_automations.alert_recovered_at_ms"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_review_items",
+        "owner_kind"
+      ],
+      "writes": [
+        "s|col|public.junior_review_items.owner_kind",
+        "n|col|public.junior_review_items.owner_kind",
+        "e|col|public.junior_review_items.owner_kind"
+      ],
+      "reads": ["n|tbl|public.junior_review_items", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_review_items",
+        "owner_id"
+      ],
+      "writes": [
+        "s|col|public.junior_review_items.owner_id",
+        "n|col|public.junior_review_items.owner_id",
+        "e|col|public.junior_review_items.owner_id"
+      ],
+      "reads": ["n|tbl|public.junior_review_items", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_review_items",
+        "added_by_conversation_id"
+      ],
+      "writes": [
+        "s|col|public.junior_review_items.added_by_conversation_id",
+        "n|col|public.junior_review_items.added_by_conversation_id",
+        "e|col|public.junior_review_items.added_by_conversation_id"
+      ],
+      "reads": ["n|tbl|public.junior_review_items", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_open_action_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_open_action_owner_idx",
+        "n|idx|public.junior_review_items_open_action_owner_idx",
+        "e|idx|public.junior_review_items_open_action_owner_idx",
+        "n|rel|public.junior_review_items_open_action_owner_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.owner_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_answered_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_answered_idx",
+        "n|idx|public.junior_review_items_answered_idx",
+        "e|idx|public.junior_review_items_answered_idx",
+        "n|rel|public.junior_review_items_answered_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.owner_id",
+        "n|col|public.junior_review_items.closed_by_user_id",
+        "n|col|public.junior_review_items.closed_at"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|ck|public.junior_review_items.junior_review_items_owner_check",
+        "n|ck|public.junior_review_items.junior_review_items_owner_check",
+        "e|ck|public.junior_review_items.junior_review_items_owner_check",
+        "n|con|public.junior_review_items.junior_review_items_owner_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.owner_kind",
+        "n|col|public.junior_review_items.dedupe_key"
+      ]
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_review_items"],
+      "writes": [
+        "s|ck|public.junior_review_items.junior_review_items_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.kind",
+        "n|col|public.junior_review_items.request",
+        "n|col|public.junior_review_items.answer",
+        "n|col|public.junior_review_items.dedupe_key",
+        "e|col|public.junior_review_items.kind",
+        "e|col|public.junior_review_items.request",
+        "e|col|public.junior_review_items.answer",
+        "e|col|public.junior_review_items.dedupe_key"
+      ],
+      "sqlHash": "c4b9d8f6c9e75822"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "alert_recovered_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "owner_kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'conversation'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "owner_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_open_action_owner_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_owner_check",
+        "value": "(\"junior_review_items\".\"owner_kind\" = 'conversation' and \"junior_review_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_review_items\".\"owner_kind\" = 'automation' and \"junior_review_items\".\"dedupe_key\" like 'automation:%')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_review_items\",\"added_by_conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_open_action_added_by_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_added_by_conversation_id_junior_conversatio\"]"
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_review_items_answered_idx\"]",
+      "set": {
+        "columns": [
+          {
+            "value": "owner_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_by_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ]
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_review_items\",\"junior_review_items_kind_check\"]",
+      "set": {
+        "value": "(\"junior_review_items\".\"kind\" = 'notice' and \"junior_review_items\".\"request\" is null and \"junior_review_items\".\"answer\" is null) or (\"junior_review_items\".\"kind\" = 'action' and (\"junior_review_items\".\"request\" is not null or ((\"junior_review_items\".\"dedupe_key\" like 'plugin:%' or \"junior_review_items\".\"dedupe_key\" like 'automation:%') and \"junior_review_items\".\"answer\" is null)))"
+      }
+    }
+  ]
+}

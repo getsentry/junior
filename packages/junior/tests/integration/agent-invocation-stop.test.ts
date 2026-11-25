@@ -1,37 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createDeliverToParent,
-  enqueueAgentInvocationResult,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
-import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import {
-  createAgentInvocation,
-  createAgentInvocationForMessage,
+  messageChildAgent,
+  spawnChildAgent,
 } from "@/chat/agent-invocations/create";
-import {
-  getAgentInvocationIdForResult,
-  getAgentInvocationTurnId,
-  getAgentReplyMessageId,
-  getTurnReplyKey,
-} from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-  listPendingAgentInvocationMailboxAppends,
-} from "@/chat/agent-invocations/store";
-import type {
-  CreateAgentInvocationInput,
-  TerminalAgentInvocation,
-} from "@/chat/agent-invocations/types";
-import {
-  createAndEnqueueAgentInvocation,
-  enqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
-import { stopConversation } from "@/chat/conversations/stop";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
+import { listChildAgents } from "@/chat/agent-invocations/list";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import type { AgentRun } from "@/chat/agent/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { stopConversation } from "@/chat/conversations/stop";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
@@ -42,16 +22,18 @@ import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   abortableAgentRunner,
   invocationInput,
-  loadSubagentEvents,
   loadTurnEvents,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   stoppedConversationMessageTexts,
   storeConversationStop,
 } from "../fixtures/conversation";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import { finishRun } from "../fixtures/thread-input";
 
 async function stopAgent(
   conversationId: string,
@@ -81,25 +63,59 @@ async function createHarness(agentRunner: AgentRunner) {
   return {
     close: async () => await fixture.close(),
     conversationStore,
+    /** Deliver a result of a child's Turn to its parent. */
+    deliver: createPublishChildTurn({ queue, state }),
     mailbox: async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [],
+    /** Give a child a message as the parent's `messageAgent` does. */
+    message: async (
+      childConversationId: string,
+      idempotencyKey: string,
+      input: string,
+    ) =>
+      await messageChildAgent(
+        {
+          actor: invocationInput.actor,
+          childConversationId,
+          idempotencyKey,
+          input,
+          parentConversationId,
+          parentToolCallId: idempotencyKey,
+          parentTurnId: idempotencyKey,
+        },
+        { queue, state },
+      ),
     process: work.process,
     /** Run the next queued wake of one Conversation. */
     processNext: async (conversationId: string) =>
       await work.process(queue.takeMessageFor(conversationId)),
     queue,
-    spawn: async (
-      overrides: Partial<CreateAgentInvocationInput> & {
-        idempotencyKey: string;
-      },
-    ) =>
-      await createAndEnqueueAgentInvocation(
-        { ...invocationInput, ...overrides },
-        { conversationStore, queue, state },
-      ),
+    /** Spawn a child agent as the parent's `startAgent` does. */
+    spawn: async (input: {
+      agentName?: string;
+      idempotencyKey: string;
+      input?: string;
+      parentConversationId?: string;
+    }) =>
+      (
+        await spawnChildAgent(
+          {
+            ...invocationInput,
+            ...input,
+            parentToolCallId: input.idempotencyKey,
+            parentTurnId: input.idempotencyKey,
+          },
+          { conversationStore, queue, state },
+        )
+      ).childConversationId,
     state,
   };
+}
+
+function eventType(message: { input: { metadata?: unknown } }) {
+  const metadata = message.input.metadata;
+  return isEventMailboxMetadata(metadata) ? metadata.event.eventType : "";
 }
 
 describe("stopping child agents", () => {
@@ -112,245 +128,171 @@ describe("stopping child agents", () => {
     const runner = abortableAgentRunner();
     const harness = await createHarness(runner.agentRunner);
     try {
-      const running = await harness.spawn({
+      const childId = await harness.spawn({
         agentName: "researcher",
         idempotencyKey: "stop-running",
         input: "long task",
       });
-      const processing = harness.processNext(running.childConversationId);
+      const processing = harness.processNext(childId);
       await runner.started();
+      const turnId = runner.runs[0]!.turnId;
       // The child replies, and the parent has not read the reply at the stop.
-      await enqueueChildResultToParent({
-        queue: harness.queue,
-        result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
-        },
-        messageKey: "call-old-reply",
-        sender: running,
-        turnId: getAgentInvocationTurnId(running.invocationId),
-        state: harness.state,
+      await harness.deliver({
+        actor: invocationInput.actor,
+        conversationId: childId,
+        update: { status: "done", text: "Old finding." },
+        turnId,
       });
 
-      await expect(stopAgent(running.childConversationId)).resolves.toEqual({
-        conversation_id: running.childConversationId,
+      await expect(stopAgent(childId)).resolves.toEqual({
+        conversation_id: childId,
         stopped: true,
       });
       const work = await getConversationWorkState({
-        conversationId: running.childConversationId,
+        conversationId: childId,
         state: harness.state,
       });
       await expect(
         hasConversationStop({
-          conversationId: running.childConversationId,
+          conversationId: childId,
           runId: work!.execution.runId!,
           state: harness.state,
         }),
       ).resolves.toBe(true);
       // The worker sees the stop request and aborts the run.
-      await expect(processing).resolves.toMatchObject({ status: "completed" });
-
-      await expect(
-        getAgentInvocation(running.invocationId),
-      ).resolves.toMatchObject({
-        errorMessage: "Stopped by the parent conversation",
-        parentMailboxStatus: "skipped",
-        status: "stopped",
+      await expect(processing).resolves.toMatchObject({
+        status: "completed",
       });
-      // The parent asked for the stop, so no result Turn wakes it.
-      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
-        expect.objectContaining({
-          inboundMessageId: getAgentReplyMessageId(
-            running.invocationId,
-            "call-old-reply",
-          ),
-        }),
-      ]);
-      await expect(
-        loadTurnEvents(running.childConversationId),
-      ).resolves.toContainEqual(
+
+      // The parent asked for the stop, so it gets no result, and the unread
+      // reply is dropped.
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      await expect(loadTurnEvents(childId)).resolves.toContainEqual(
         expect.objectContaining({
           data: expect.objectContaining({
             outcome: "cancelled",
-            turnId: getAgentInvocationTurnId(running.invocationId),
+            turnId,
             type: "turn_completed",
           }),
         }),
       );
-      await expect(
-        loadSubagentEvents(parentConversationId),
-      ).resolves.toContainEqual(
-        expect.objectContaining({
-          outcome: "aborted",
-          subagentInvocationId: running.invocationId,
-          type: "subagent_ended",
-        }),
-      );
       await expect(listAgents()).resolves.toEqual([
-        {
-          conversation_id: running.childConversationId,
-          error: "Stopped by the parent conversation",
-          kind: "task",
+        expect.objectContaining({
+          conversation_id: childId,
           name: "researcher",
-          relation: "child",
           status: "stopped",
-          task: "long task",
-          updated_at: expect.any(String),
-        },
+        }),
       ]);
-      // A repeated stop finds no open work.
-      await expect(stopAgent(running.childConversationId)).resolves.toEqual({
-        conversation_id: running.childConversationId,
+      // A repeated stop finds the child already stopped.
+      await expect(stopAgent(childId)).resolves.toEqual({
+        conversation_id: childId,
         stopped: false,
       });
       // A message from the parent starts new work on the stopped child, in
       // the same parent Turn as the stop.
-      const retask = await createAgentInvocationForMessage(
-        {
-          ...invocationInput,
-          childConversationId: running.childConversationId,
-          idempotencyKey: "after-stop",
-          input: "short task",
-          parentToolCallId: "call-after-stop",
-        },
-        Date.now() + 1,
-      );
-      await enqueueAgentInvocation(retask.invocation, {
-        queue: harness.queue,
-        state: harness.state,
-      });
-      expect(retask).toMatchObject({
-        invocation: {
-          agentName: "researcher",
-          childConversationId: running.childConversationId,
-          status: "pending",
-        },
-        queued: false,
-      });
       await expect(
-        getConversationStoppedAtMs(running.childConversationId),
+        harness.message(childId, "after-stop", "short task"),
+      ).resolves.toEqual({ delivery: "started" });
+      await expect(
+        getConversationStoppedAtMs(childId),
       ).resolves.toBeUndefined();
+      await expect(listAgents()).resolves.toEqual([
+        expect.objectContaining({
+          conversation_id: childId,
+          status: "running",
+        }),
+      ]);
       // The new task does not bring back the stopped work's reply.
-      await expect(
-        harness.processNext(parentConversationId),
-      ).resolves.toMatchObject({ status: "completed" });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
-      expect(runner.runs).toHaveLength(1);
     } finally {
       await harness.close();
     }
   });
 
-  // A reply from a Turn on the child's Conversation loop names the child's
-  // finished spawn, which the stop does not mark, so the stop drops the reply
-  // from the parent's mailbox.
-  it("drops an unread reply from a child's Conversation loop Turn when the parent stops it", async () => {
-    const runner = abortableAgentRunner();
-    const harness = await createHarness(runner.agentRunner);
+  it("drops a child's unread reply, also one that arrives late, when its parent stops it", async () => {
+    const harness = await createHarness({ run: finishRun });
+    const quietResult = expect.objectContaining({
+      input: expect.objectContaining({
+        text: expect.stringMatching(/^<agent-result [^>]*status="done"/),
+      }),
+    });
     try {
-      const child = await harness.spawn({
+      const childId = await harness.spawn({
         agentName: "researcher",
         idempotencyKey: "stop-loop-reply",
         input: "watch deploys",
       });
-      await completeAgentInvocation({
-        invocationId: child.invocationId,
-        result: "Watching.",
-        status: "completed",
-      });
-      await createDeliverToParent({
-        queue: harness.queue,
-        state: harness.state,
-      })({
+      await harness.processNext(childId);
+      // The task Turn ended the child's work with no answer, so its parent
+      // has a result. A later Turn of the child, such as for a Watch Event,
+      // replies.
+      await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
-        conversationId: child.childConversationId,
-        result: {
-          kind: "reply",
-          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
-        },
+        conversationId: childId,
+        update: { status: "done", text: "Old finding." },
         turnId: "turn_watch-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
         expect.objectContaining({
-          inboundMessageId: getAgentReplyMessageId(
-            child.invocationId,
-            getTurnReplyKey("turn_watch-event", "call-old-reply"),
-          ),
+          inboundMessageId: getAgentReplyMessageId(childId, "turn_watch-event"),
         }),
       ]);
 
       const beforeStopMs = Date.now();
-      await stopAgent(child.childConversationId);
+      await stopAgent(childId);
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       // A reply that the Turn sent before the stop reaches the parent's
       // mailbox after the stop dropped the unread ones.
       const sendLateReply = async () =>
-        await enqueueChildResultToParent({
+        await enqueueStarterUpdate({
           actor: EVENT_SYSTEM_ACTOR,
-          messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
+          messageKey: "turn_watch-event",
           nowMs: beforeStopMs,
           queue: harness.queue,
-          result: {
-            kind: "reply",
-            reply: { text: "Late finding.", toolCallId: "call-late-reply" },
+          update: { status: "done", text: "Late finding." },
+          sender: {
+            childConversationId: childId,
+            parentConversationId,
           },
-          sender: child,
           turnId: "turn_watch-event",
           state: harness.state,
         });
       await sendLateReply();
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       // The parent gives the child a new task in the same Turn.
-      const retask = await createAgentInvocationForMessage(
-        {
-          ...invocationInput,
-          childConversationId: child.childConversationId,
-          idempotencyKey: "after-loop-stop",
-          input: "short task",
-          parentToolCallId: "call-after-loop-stop",
-        },
-        Date.now() + 1,
-      );
-      await enqueueAgentInvocation(retask.invocation, {
-        queue: harness.queue,
-        state: harness.state,
-      });
+      await harness.message(childId, "after-loop-stop", "short task");
       await expect(
-        getConversationStoppedAtMs(child.childConversationId),
+        getConversationStoppedAtMs(childId),
       ).resolves.toBeUndefined();
       // The stopped Turn's retry sends the dropped reply again.
       await sendLateReply();
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
-      expect(runner.runs).toHaveLength(0);
 
       // A person's stop of a child drops its unread reply too.
-      const watcher = await harness.spawn({
+      const watcherId = await harness.spawn({
         agentName: "builder",
         idempotencyKey: "person-stop-loop-reply",
         input: "watch builds",
       });
-      await completeAgentInvocation({
-        invocationId: watcher.invocationId,
-        result: "Watching.",
-        status: "completed",
-      });
-      await createDeliverToParent({
-        queue: harness.queue,
-        state: harness.state,
-      })({
+      await harness.processNext(watcherId);
+      await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
-        conversationId: watcher.childConversationId,
-        result: {
-          kind: "reply",
-          reply: { text: "Build finding.", toolCallId: "call-build-reply" },
-        },
+        conversationId: watcherId,
+        update: { status: "done", text: "Build finding." },
         turnId: "turn_build-event",
       });
-      await expect(harness.mailbox(parentConversationId)).resolves.toHaveLength(
-        1,
-      );
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
+        expect.objectContaining({
+          inboundMessageId: getAgentReplyMessageId(
+            watcherId,
+            "turn_build-event",
+          ),
+        }),
+      ]);
       await stopConversation({
-        conversationId: watcher.childConversationId,
+        conversationId: watcherId,
         conversationStore: harness.conversationStore,
         queue: harness.queue,
         state: harness.state,
@@ -363,7 +305,7 @@ describe("stopping child agents", () => {
 
   it("ends a running child's Turn at its next step after a stored stop", async () => {
     const harness = await createHarness({
-      run: async (run) => {
+      run: async (run: AgentRun) => {
         // Only the stored stop is set. No stop request reaches the worker.
         await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.
@@ -373,18 +315,13 @@ describe("stopping child agents", () => {
       },
     });
     try {
-      const running = await harness.spawn({ idempotencyKey: "stored-stop" });
+      const childId = await harness.spawn({ idempotencyKey: "stored-stop" });
 
-      await expect(
-        harness.processNext(running.childConversationId),
-      ).resolves.toMatchObject({ status: "completed" });
+      await expect(harness.processNext(childId)).resolves.toMatchObject({
+        status: "completed",
+      });
 
-      await expect(
-        getAgentInvocation(running.invocationId),
-      ).resolves.toMatchObject({ status: "stopped" });
-      await expect(
-        loadTurnEvents(running.childConversationId),
-      ).resolves.toContainEqual(
+      await expect(loadTurnEvents(childId)).resolves.toContainEqual(
         expect.objectContaining({
           data: expect.objectContaining({
             outcome: "cancelled",
@@ -397,88 +334,62 @@ describe("stopping child agents", () => {
     }
   });
 
-  it("never runs a stopped pending child and reports other stops to the parent", async () => {
+  it("never runs a stopped pending child and reports a person's stop to the parent", async () => {
     const runner = abortableAgentRunner();
     const harness = await createHarness(runner.agentRunner);
     try {
-      const pending = await harness.spawn({
+      const pendingId = await harness.spawn({
         idempotencyKey: "stop-pending",
         input: "short task",
       });
       await expect(
-        stopAgent(pending.childConversationId, "local:test:other-parent"),
+        stopAgent(pendingId, "local:test:other-parent"),
       ).rejects.toMatchObject({ name: "ToolInputError" });
-      await expect(stopAgent(pending.childConversationId)).resolves.toEqual({
-        conversation_id: pending.childConversationId,
+      await expect(stopAgent(pendingId)).resolves.toEqual({
+        conversation_id: pendingId,
         stopped: true,
       });
-      // The stopped child takes its wake without a run. A redelivery finds
-      // no work.
-      const wake = harness.queue.takeMessageFor(pending.childConversationId);
-      await expect(harness.process(wake)).resolves.toMatchObject({
-        status: "completed",
-      });
-      await expect(harness.process(wake)).resolves.toMatchObject({
+      // The stop dropped the child's waiting task, so its wake finds no
+      // work.
+      await expect(harness.processNext(pendingId)).resolves.toMatchObject({
         status: "no_work",
       });
       expect(runner.runs).toEqual([]);
-      await expect(
-        getAgentInvocation(pending.invocationId),
-      ).resolves.toMatchObject({ status: "stopped" });
 
       // A person's stop of the child still reaches the parent, and it also
       // stops the child agents of the child.
-      const external = await harness.spawn({
+      const externalId = await harness.spawn({
         idempotencyKey: "stop-external",
         input: "long task",
       });
-      const helper = await createAgentInvocation({
-        ...invocationInput,
+      const helperId = await harness.spawn({
         idempotencyKey: "stop-external-helper",
-        parentConversationId: external.childConversationId,
+        parentConversationId: externalId,
       });
-      const processing = harness.processNext(external.childConversationId);
+      const processing = harness.processNext(externalId);
       await runner.started();
       await expect(
         stopConversation({
-          conversationId: external.childConversationId,
+          conversationId: externalId,
           conversationStore: harness.conversationStore,
           queue: harness.queue,
           state: harness.state,
         }),
       ).resolves.toMatchObject({ status: "requested" });
-      await expect(processing).resolves.toMatchObject({ status: "completed" });
-      await expect(
-        getAgentInvocation(external.invocationId),
-      ).resolves.toMatchObject({
-        errorMessage: "Agent invocation was stopped",
-        parentMailboxStatus: "appended",
-        status: "stopped",
+      await expect(processing).resolves.toMatchObject({
+        status: "completed",
       });
-      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+      const parentMessages = await harness.mailbox(parentConversationId);
+      expect(parentMessages.map(eventType)).toEqual(["agent.update"]);
+      expect(parentMessages[0]!.input.text).toMatch(
+        /^<agent-result [^>]*status="stopped"/,
+      );
+      await expect(listChildAgents(externalId)).resolves.toEqual([
         expect.objectContaining({
-          input: expect.objectContaining({
-            metadata: expect.objectContaining({
-              event: expect.objectContaining({
-                eventType: "agent_invocation.stopped",
-              }),
-            }),
-          }),
+          childConversationId: helperId,
+          status: "stopped",
         }),
       ]);
-      await expect(
-        getAgentInvocation(helper.invocationId),
-      ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
-        status: "stopped",
-      });
-      // The helper was stopped before its mailbox append. The heartbeat must
-      // not start it.
-      expect(
-        (await listPendingAgentInvocationMailboxAppends()).map(
-          (invocation) => invocation.invocationId,
-        ),
-      ).not.toContain(helper.invocationId);
     } finally {
       await harness.close();
     }
@@ -487,94 +398,70 @@ describe("stopping child agents", () => {
   it("stops every child agent below the child and holds their results", async () => {
     const harness = await createHarness(neverRunAgentRunner());
     try {
-      const child = await createAgentInvocation({
-        ...invocationInput,
-        idempotencyKey: "tree-child",
-      });
-      const openHelper = await createAgentInvocation({
-        ...invocationInput,
+      const childId = await harness.spawn({ idempotencyKey: "tree-child" });
+      const openHelperId = await harness.spawn({
         idempotencyKey: "tree-open-helper",
-        parentConversationId: child.childConversationId,
+        parentConversationId: childId,
       });
-      const doneHelper = await createAgentInvocation({
-        ...invocationInput,
+      const doneHelperId = await harness.spawn({
         idempotencyKey: "tree-done-helper",
-        parentConversationId: child.childConversationId,
+        parentConversationId: childId,
       });
-      // A completed helper sends nothing, so this one ends blocked.
-      const doneResult = (await completeAgentInvocation({
-        errorMessage: "Helper needs a token.",
-        invocationId: doneHelper.invocationId,
-        status: "blocked",
-      })) as TerminalAgentInvocation;
-      // The result and a `reply` reach the child mailbox before the stop.
-      await enqueueAgentInvocationResult(doneResult, {
-        queue: harness.queue,
-        state: harness.state,
+      // A result and a `reply` reach the child mailbox before the stop.
+      await harness.deliver({
+        actor: invocationInput.actor,
+        conversationId: doneHelperId,
+        update: { status: "blocked", text: "Helper needs a token." },
+        turnId: "turn_done-helper",
       });
-      await enqueueChildResultToParent({
-        queue: harness.queue,
-        result: {
-          kind: "reply",
-          reply: { text: "Open helper finding.", toolCallId: "call-reply" },
-        },
-        messageKey: "call-reply",
-        sender: openHelper,
-        turnId: getAgentInvocationTurnId(openHelper.invocationId),
-        state: harness.state,
+      await harness.deliver({
+        actor: invocationInput.actor,
+        conversationId: openHelperId,
+        update: { status: "done", text: "Open helper finding." },
+        turnId: "turn_open-helper",
       });
-      // The child finished its own turn while its helpers still work.
-      await expect(
-        completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Started helpers.",
-          status: "completed",
-        }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      expect(
+        (await harness.mailbox(childId)).map((message) => message.input.text),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("Helper needs a token."),
+          expect.stringContaining("Open helper finding."),
+        ]),
+      );
 
-      await expect(stopAgent(child.childConversationId)).resolves.toEqual({
-        conversation_id: child.childConversationId,
+      await expect(stopAgent(childId)).resolves.toEqual({
+        conversation_id: childId,
         stopped: true,
       });
 
+      await expect(listChildAgents(childId)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            childConversationId: openHelperId,
+            status: "stopped",
+          }),
+          expect.objectContaining({
+            childConversationId: doneHelperId,
+            status: "stopped",
+          }),
+        ]),
+      );
+      // A late startAgent call of the stopped child starts no work.
       await expect(
-        getAgentInvocation(openHelper.invocationId),
-      ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
-        status: "stopped",
-      });
-      // A late spawnAgent call of the stopped child starts no work.
-      await expect(
-        createAgentInvocation({
-          ...invocationInput,
+        harness.spawn({
           idempotencyKey: "tree-late-helper",
-          parentConversationId: child.childConversationId,
+          parentConversationId: childId,
         }),
-      ).rejects.toThrow("is stopped and cannot give work");
-      await expect(
-        getAgentInvocation(doneHelper.invocationId),
-      ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
-        status: "blocked",
-      });
+      ).rejects.toThrow("is stopped, so it cannot give work");
       // The child already had the result and the reply in its mailbox. The
       // stop holds them in one skipped Message, so they start no work.
-      await expect(harness.mailbox(child.childConversationId)).resolves.toEqual(
-        [],
-      );
-      const [held] = await stoppedConversationMessageTexts(
-        child.childConversationId,
-      );
+      await expect(harness.mailbox(childId)).resolves.toEqual([]);
+      const [held] = await stoppedConversationMessageTexts(childId);
       expect(held).toContain("Helper needs a token.");
       expect(held).toContain("Open helper finding.");
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationIdForResult(doneHelper.invocationId),
-        ),
-      ).resolves.toBeUndefined();
       await expect(listAgents()).resolves.toEqual([
         expect.objectContaining({
-          conversation_id: child.childConversationId,
+          conversation_id: childId,
           status: "stopped",
         }),
       ]);

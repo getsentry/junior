@@ -701,7 +701,6 @@ export function buildConversations(
       summary: summary.summary,
       media: summary.media,
       links: summary.links,
-      annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
@@ -735,10 +734,12 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
+      omittedThreadCount: summary.omittedThreadCount,
       awaitingAuthorization: summary.awaitingAuthorization,
       latestTurnFailed: summary.latestTurnFailed,
       viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
+      space: summary.space,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }

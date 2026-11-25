@@ -1,0 +1,92 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "108c9745-ff35-44a0-a964-26e2809e2023",
+  "prevIds": ["c4c6f36f-b111-43fc-ac7c-d7175332e4bd"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_task_executions",
+        "status"
+      ],
+      "writes": [
+        "s|col|public.junior_task_executions.status",
+        "n|col|public.junior_task_executions.status",
+        "e|col|public.junior_task_executions.status"
+      ],
+      "reads": ["n|tbl|public.junior_task_executions", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_task_executions",
+        "conversation_id"
+      ],
+      "writes": [
+        "s|colprop|public.junior_task_executions.conversation_id.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.conversation_id"
+      ],
+      "sqlHash": "d95f4e4098ec4519"
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_task_executions"],
+      "writes": [
+        "s|ck|public.junior_task_executions.junior_task_executions_status_check",
+        "n|ck|public.junior_task_executions.junior_task_executions_status_check",
+        "e|ck|public.junior_task_executions.junior_task_executions_status_check",
+        "n|con|public.junior_task_executions.junior_task_executions_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.status"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_status_check",
+        "value": "\"junior_task_executions\".\"status\" in ('blocked', 'completed', 'failed')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_task_executions\",\"conversation_id\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

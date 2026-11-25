@@ -116,9 +116,11 @@ export type MessageAgentResult = {
   conversationId: string;
   /**
    * `started`: the target child agent starts work on the message now.
-   * `queued`: the target reads it after its current work.
+   * `queued`: the target reads it after its current work. `noted`: the
+   * sender is stopped, so the child got it as a Conversation note and
+   * started no work.
    */
-  delivery: "queued" | "started";
+  delivery: "noted" | "queued" | "started";
 };
 
 /**
@@ -275,8 +277,9 @@ export type AgentEnvironment = {
   /** Queue of the app, for tools that wake other Conversations. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
   /**
-   * Bind spawnAgent to a Run, with the authority of that Run. Tool wiring
-   * binds it only when the Turn's behavior gives it agent tools.
+   * Bind the child-agent start of `startAgent` to a Run, with the
+   * authority of that Run. Tool wiring binds it only when the Turn's
+   * behavior gives it agent tools.
    */
   bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
   /** Bind messageAgent to a Run, for the agent tools that its Turn gets. */
@@ -316,12 +319,6 @@ export interface AgentHistory {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
-  /**
-   * Agent invocation that this Run advances. Only the Agent invocation worker
-   * sets it. It names the invocation and selects no behavior: `turnBehavior`
-   * does that from the Conversation kind and the Source.
-   */
-  agentInvocationId?: string;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
@@ -498,7 +495,7 @@ export function assertRunConsistency(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       // These Sources do not identify the Actor's platform.
       return;
   }

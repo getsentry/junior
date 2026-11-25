@@ -1,0 +1,244 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e0649c26-5e62-47b9-ab89-8eba226a6f60",
+  "prevIds": ["5a444536-4cd9-4f93-9afb-bd986c973f0a"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_message_attachments"],
+      "writes": [
+        "s|tbl|public.junior_message_attachments",
+        "n|tbl|public.junior_message_attachments",
+        "e|tbl|public.junior_message_attachments",
+        "n|rel|public.junior_message_attachments",
+        "n|type|public.junior_message_attachments",
+        "n|rel|public.junior_message_attachments_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_attachments", "kind"],
+      "writes": [
+        "s|col|public.junior_attachments.kind",
+        "n|col|public.junior_attachments.kind",
+        "e|col|public.junior_attachments.kind"
+      ],
+      "reads": ["n|tbl|public.junior_attachments", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_attachments", "url"],
+      "writes": [
+        "s|col|public.junior_attachments.url",
+        "n|col|public.junior_attachments.url",
+        "e|col|public.junior_attachments.url"
+      ],
+      "reads": ["n|tbl|public.junior_attachments", "n|sch|public"]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_attachments", "filename"],
+      "writes": ["s|colprop|public.junior_attachments.filename.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.filename"
+      ],
+      "sqlHash": "bd7f41ad7ce397e8"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "content_type"
+      ],
+      "writes": ["s|colprop|public.junior_attachments.content_type.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.content_type"
+      ],
+      "sqlHash": "74264e039fd25ffb"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_attachments", "bytes"],
+      "writes": ["s|colprop|public.junior_attachments.bytes.notNull"],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.bytes"
+      ],
+      "sqlHash": "f9cc18f2a37d902b"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_attachments",
+        "storage_provider"
+      ],
+      "writes": [
+        "s|colprop|public.junior_attachments.storage_provider.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.junior_attachments",
+        "n|sch|public",
+        "n|col|public.junior_attachments.storage_provider"
+      ],
+      "sqlHash": "51791ac97424f3f9"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_message_attachments",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'file'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_attachments",
+        "name": "url",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "attachment_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "position",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "junior_message_attachments_pk",
+        "columns": ["conversation_id", "seq", "attachment_id"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"filename\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"content_type\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"bytes\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_attachments\",\"storage_provider\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

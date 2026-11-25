@@ -7,20 +7,20 @@ const LARGE_RADIUS =
   /(?<![\w-])(?:[^\s:]+:)*-?rounded(?:-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee))?-(?:[2-4]?xl|\[(?!inherit\])[^\]]*\])(?![\w-])/;
 
 /**
- * Keep the classic radii in the new UI: `rounded-lg` for cards, rows, and
- * panels, and `rounded-md` for buttons, tabs, inputs, and icon tiles. Both
- * UIs share these radii, so the new UI cannot drift into rounder shapes.
+ * Keep the dashboard radii: `rounded-lg` for cards, rows, and panels, and
+ * `rounded-md` for buttons, tabs, inputs, and icon tiles, so the dashboard
+ * cannot drift into rounder shapes.
  */
 export const largeRadiusRule = defineRule({
   meta: {
     type: "problem",
     docs: {
       description:
-        "Use the classic radii, `rounded-lg` and `rounded-md`, not larger or arbitrary radii.",
+        "Use the dashboard radii, `rounded-lg` and `rounded-md`, not larger or arbitrary radii.",
     },
     messages: {
       large:
-        "`{{found}}` is rounder than the classic UI. Use `rounded-lg` for a card, row, or panel and `rounded-md` for a control, or a shared class from `client/styles.ts`, so both UIs keep one style.",
+        "`{{found}}` is rounder than the dashboard radii. Use `rounded-lg` for a card, row, or panel and `rounded-md` for a control, or a shared class from `client/styles.ts`, so the dashboard keeps one style.",
     },
   },
   create(context) {
@@ -41,7 +41,7 @@ export const largeRadiusRule = defineRule({
   },
 });
 
-/** Dashboard Oxlint rules that keep the new UI on the classic shapes. */
+/** Dashboard Oxlint rules that keep the dashboard radii. */
 export default eslintCompatPlugin({
   meta: { name: "radius" },
   rules: { "no-large-radius": largeRadiusRule },

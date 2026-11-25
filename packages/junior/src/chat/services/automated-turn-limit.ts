@@ -106,7 +106,7 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
     source.kind === "event_automation" ||
     source.kind === "scheduled_automation" ||
     source.kind === "plugin_dispatch" ||
-    source.kind === "agent_invocation"
+    source.kind === "parent_message"
   );
 }
 

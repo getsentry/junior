@@ -22,10 +22,12 @@ import {
   or,
   sql,
   type SQL,
-  type TablesRelationalConfig,
 } from "drizzle-orm";
-import { PgDatabase } from "drizzle-orm/pg-core";
-import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
+import {
+  PgAsyncDatabase,
+  type AnyPgColumn,
+  type PgQueryResultHKT,
+} from "drizzle-orm/pg-core";
 import * as z from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
 import { personSourcePlatform } from "@/chat/conversations/kind-behavior";
@@ -33,6 +35,7 @@ import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
   juniorMemorySignals,
+  memoryPrefixDocument,
 } from "@/db/schema/memory";
 import {
   EMBEDDING_METRIC,
@@ -46,6 +49,9 @@ import {
   type MemoryEmbedding,
   type MemoryEmbeddingProvider,
 } from "./embedding";
+import { withDenseRanks } from "@/search/match-ranking";
+import { prefixTsquery } from "@/search/text-match";
+import { parseTypedQuery, type TypedQuery } from "@/search/typed-query";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_SCOPES,
@@ -106,18 +112,14 @@ const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 /** Keep signal rows long enough to weigh recent activity. */
 const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
-export type MemoryDb = PgDatabase<
-  PgQueryResultHKT,
-  Record<string, unknown>,
-  TablesRelationalConfig
->;
+export type MemoryDb = PgAsyncDatabase<PgQueryResultHKT>;
 
 /**
  * Narrow the database of a plugin context to the Memory database. Core
  * passes its Postgres database, which holds the Memory tables.
  */
 export function memoryDb(db: unknown): MemoryDb {
-  if (!is(db, PgDatabase)) {
+  if (!is(db, PgAsyncDatabase)) {
     throw new TypeError("Memory needs a Postgres database.");
   }
   return db;
@@ -652,22 +654,6 @@ async function archiveExpiredRows(args: {
   return { archivedCount: archivedIds.length };
 }
 
-function withDenseRanks<T>(
-  values: T[],
-  key: (value: T) => string | number,
-): Array<{ rank: number; value: T }> {
-  let previous: string | number | undefined;
-  let rank = 0;
-  return values.map((value, index) => {
-    const current = key(value);
-    if (index === 0 || current !== previous) {
-      rank = index + 1;
-      previous = current;
-    }
-    return { rank, value };
-  });
-}
-
 async function embedOne(
   embedder: MemoryEmbeddingProvider,
   text: string,
@@ -1081,26 +1067,20 @@ function retrievalLegLimit(limit: number, overfetch: number): number {
   );
 }
 
-/** Search a bounded active candidate set with PostgreSQL full-text ranking. */
-async function searchVisibleLexicalMemories(args: {
+/**
+ * Search a bounded active candidate set with PostgreSQL full-text ranking.
+ * A GIN index on `document` finds the matches of `tsquery`, and only a
+ * bounded window of the newest ones is ranked.
+ */
+async function searchVisibleTextMemories(args: {
   db: MemoryDb;
+  document: (table: { content: AnyPgColumn; searchVector: AnyPgColumn }) => SQL;
   limit: number;
   nowMs: number;
-  query: string;
-}): Promise<MemoryMatch[]> {
+  tsquery: SQL;
+}): Promise<Array<{ memory: MemoryRecord; rank: number }>> {
+  const { document, tsquery } = args;
   const predicate = activeVisiblePredicate(args.nowMs);
-  const query = normalizeRetrievalQuery(args.query);
-  if (!query) {
-    return [];
-  }
-  const queryVector = sql`to_tsvector('english', ${query})`;
-  const tsquery = sql`(
-    SELECT COALESCE(
-      string_agg(quote_literal(term), ' | ')::tsquery,
-      ''::tsquery
-    )
-    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
-  )`;
   // GIN filter first, then rank only a bounded recent match window.
   const candidateLimit = Math.min(
     MAX_LEXICAL_RANK_CANDIDATES,
@@ -1109,16 +1089,14 @@ async function searchVisibleLexicalMemories(args: {
   const candidates = args.db
     .select()
     .from(juniorMemoryMemories)
-    .where(
-      and(predicate, sql`${juniorMemoryMemories.searchVector} @@ ${tsquery}`),
-    )
+    .where(and(predicate, sql`${document(juniorMemoryMemories)} @@ ${tsquery}`))
     .orderBy(
       desc(juniorMemoryMemories.observedAtMs),
       asc(juniorMemoryMemories.id),
     )
     .limit(candidateLimit)
     .as("lexical_candidates");
-  const textRank = sql<number>`ts_rank_cd(${candidates.searchVector}, ${tsquery})`;
+  const textRank = sql<number>`ts_rank_cd(${document(candidates)}, ${tsquery})`;
   const rows = await args.db
     .select({
       memory: {
@@ -1148,11 +1126,57 @@ async function searchVisibleLexicalMemories(args: {
     .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
   return withDenseRanks(rows, (row) => Number(row.textRank)).map(
-    ({ rank, value: row }) => ({
-      lexical: { rank },
-      memory: parseMemoryRow(row.memory),
-    }),
+    ({ rank, value: row }) => ({ memory: parseMemoryRow(row.memory), rank }),
   );
+}
+
+/** Match the stemmed `english` words of the query, as recall does. */
+async function searchVisibleLexicalMemories(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+  query: string;
+}): Promise<MemoryMatch[]> {
+  const query = normalizeRetrievalQuery(args.query);
+  if (!query) {
+    return [];
+  }
+  const queryVector = sql`to_tsvector('english', ${query})`;
+  const tsquery = sql`(
+    SELECT COALESCE(
+      string_agg(quote_literal(term), ' | ')::tsquery,
+      ''::tsquery
+    )
+    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
+  )`;
+  const matches = await searchVisibleTextMemories({
+    db: args.db,
+    document: (table) => sql`${table.searchVector}`,
+    limit: args.limit,
+    nowMs: args.nowMs,
+    tsquery,
+  });
+  return matches.map(({ memory, rank }) => ({ lexical: { rank }, memory }));
+}
+
+/**
+ * Match typed text: each word of the query starts a `simple` word of the
+ * memory, so a half-typed inflected word still matches.
+ */
+async function searchVisiblePrefixMemories(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+  query: TypedQuery;
+}): Promise<MemoryMatch[]> {
+  const matches = await searchVisibleTextMemories({
+    db: args.db,
+    document: memoryPrefixDocument,
+    limit: args.limit,
+    nowMs: args.nowMs,
+    tsquery: prefixTsquery(args.query),
+  });
+  return matches.map(({ memory, rank }) => ({ memory, prefix: { rank } }));
 }
 
 interface VectorSearchArgs {
@@ -1298,6 +1322,104 @@ async function searchVisibleVectorMemories(args: {
       ];
     },
   );
+}
+
+/**
+ * Hybrid retrieval for automatic recall, explicit search, and typed search.
+ *
+ * Keep both legs parallel and fuse ranks with RRF. Never skip lexical when
+ * vectors already hit: that drops exact/token memories and serializes the
+ * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
+ * bounded even on broad queries.
+ */
+async function retrieveVisibleMemories(args: {
+  db: MemoryDb;
+  embedder?: MemoryEmbeddingProvider | undefined;
+  input: SearchMemoriesInput;
+  nowMs: number;
+  /** Typed text, which also matches by word prefix. */
+  typed?: TypedQuery | undefined;
+  vectorMaxDistance?: number;
+}): Promise<MemoryRecord[]> {
+  const { db, embedder, nowMs, vectorMaxDistance } = args;
+  const input = searchMemoriesInputSchema.parse(args.input);
+  const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
+  const overfetch =
+    vectorMaxDistance === undefined
+      ? SEARCH_RETRIEVAL_OVERFETCH
+      : RECALL_RETRIEVAL_OVERFETCH;
+  const candidateLimit = retrievalLegLimit(limit, overfetch);
+  const query = normalizeRetrievalQuery(input.query);
+  // A failed embed means lexical-only.
+  const vectorMatches = async (): Promise<MemoryMatch[]> => {
+    const embedding =
+      embedder && query
+        ? await embedOne(embedder, query, "query").catch(() => undefined)
+        : undefined;
+    if (!embedding) {
+      return [];
+    }
+    return await searchVisibleVectorMemories({
+      db,
+      embedding,
+      limit: candidateLimit,
+      ...(vectorMaxDistance !== undefined
+        ? { maxDistance: vectorMaxDistance }
+        : undefined),
+      nowMs,
+    });
+  };
+  // Always run both legs in parallel. Conditional lexical skip is unsafe:
+  // one in-threshold vector distractor can hide a stronger lexical hit.
+  // The lexical leg does not need the embedding, so it starts while it runs.
+  const matches = await Promise.all([
+    vectorMatches(),
+    searchVisibleLexicalMemories({
+      db,
+      limit: candidateLimit,
+      nowMs,
+      query: input.query,
+    }),
+    args.typed
+      ? searchVisiblePrefixMemories({
+          db,
+          limit: candidateLimit,
+          nowMs,
+          query: args.typed,
+        })
+      : [],
+  ]);
+  return rankMemoryMatches(matches.flat(), {
+    nowMs,
+    // Slight lexical preference protects exact ids/names/timezones on ties.
+    ...(vectorMaxDistance === undefined
+      ? undefined
+      : { lexicalWeight: 1, vectorWeight: 0.85 }),
+  })
+    .slice(0, limit)
+    .map(({ memory }) => memory);
+}
+
+/**
+ * Search active public memory for text that a person is typing, with the
+ * legs, ranking, and vector cutoff of automatic recall, plus a word prefix
+ * leg, so a half-typed last word still matches.
+ */
+export async function searchTypedMemories(args: {
+  db: MemoryDb;
+  embedder?: MemoryEmbeddingProvider | undefined;
+  limit: number;
+  nowMs: number;
+  query: string;
+}): Promise<MemoryRecord[]> {
+  return await retrieveVisibleMemories({
+    db: args.db,
+    embedder: args.embedder,
+    input: { limit: args.limit, query: args.query },
+    nowMs: args.nowMs,
+    typed: parseTypedQuery(args.query),
+    vectorMaxDistance: RECALL_MAX_VECTOR_DISTANCE,
+  });
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */
@@ -1600,69 +1722,6 @@ export function createMemoryStore(
       : { created: false, memory: idempotent.memory };
   }
 
-  /**
-   * Hybrid retrieval for both automatic recall and explicit search.
-   *
-   * Keep both legs parallel and fuse ranks with RRF. Never skip lexical when
-   * vectors already hit: that drops exact/token memories and serializes the
-   * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
-   * bounded even on broad queries.
-   */
-  async function retrieveVisibleMemories(
-    rawInput: SearchMemoriesInput,
-    vectorMaxDistance: number | undefined,
-  ): Promise<MemoryRecord[]> {
-    const input = searchMemoriesInputSchema.parse(rawInput);
-    const nowMs = getNowMs();
-    const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
-    const overfetch =
-      vectorMaxDistance === undefined
-        ? SEARCH_RETRIEVAL_OVERFETCH
-        : RECALL_RETRIEVAL_OVERFETCH;
-    const candidateLimit = retrievalLegLimit(limit, overfetch);
-    const query = normalizeRetrievalQuery(input.query);
-    // A failed embed means lexical-only.
-    const vectorMatches = async (): Promise<MemoryMatch[]> => {
-      const embedding =
-        embedder && query
-          ? await embedOne(embedder, query, "query").catch(() => undefined)
-          : undefined;
-      if (!embedding) {
-        return [];
-      }
-      return await searchVisibleVectorMemories({
-        db,
-        embedding,
-        limit: candidateLimit,
-        ...(vectorMaxDistance !== undefined
-          ? { maxDistance: vectorMaxDistance }
-          : undefined),
-        nowMs,
-      });
-    };
-    // Always run both legs in parallel. Conditional lexical skip is unsafe:
-    // one in-threshold vector distractor can hide a stronger lexical hit.
-    // The lexical leg does not need the embedding, so it starts while it runs.
-    const matches = await Promise.all([
-      vectorMatches(),
-      searchVisibleLexicalMemories({
-        db,
-        limit: candidateLimit,
-        nowMs,
-        query: input.query,
-      }),
-    ]);
-    return rankMemoryMatches(matches.flat(), {
-      nowMs,
-      // Slight lexical preference protects exact ids/names/timezones on ties.
-      ...(vectorMaxDistance === undefined
-        ? undefined
-        : { lexicalWeight: 1, vectorWeight: 0.85 }),
-    })
-      .slice(0, limit)
-      .map(({ memory }) => memory);
-  }
-
   return {
     async archiveExpiredMemories(input) {
       return await archiveExpiredVisibleMemories(input, getNowMs());
@@ -1686,11 +1745,22 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(input, RECALL_MAX_VECTOR_DISTANCE);
+      return await retrieveVisibleMemories({
+        db,
+        embedder,
+        input,
+        nowMs: getNowMs(),
+        vectorMaxDistance: RECALL_MAX_VECTOR_DISTANCE,
+      });
     },
 
     async searchMemories(input) {
-      return await retrieveVisibleMemories(input, undefined);
+      return await retrieveVisibleMemories({
+        db,
+        embedder,
+        input,
+        nowMs: getNowMs(),
+      });
     },
 
     async archiveMemory(input) {

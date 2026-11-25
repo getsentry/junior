@@ -23,7 +23,7 @@ import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
 import { readProxyProperty } from "../fixtures/proxy-property";
 
-mockAcpDashboardConfig();
+mockAcpDashboardConfig("Marky");
 
 describe("remote ACP HTTP", () => {
   afterEach(async () => {
@@ -212,11 +212,9 @@ describe("remote ACP HTTP", () => {
       streamReplies("First ACP reply."),
     );
     const app = await createApp({
-      botName: "Marky",
       conversationWork: harness.conversationWork,
     });
     const secondApp = await createApp({
-      botName: "Marky",
       conversationWork: createIndependentConversationWork(harness),
     });
     const expectedFirstPromptText =

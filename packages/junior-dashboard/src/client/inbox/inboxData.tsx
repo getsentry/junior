@@ -10,12 +10,14 @@ import {
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationDisplayState } from "../conversations/ConversationStateIcon";
-import { pinnedFirst } from "../conversations/conversationSections";
+import {
+  newestFirst,
+  pinnedFirst,
+} from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import { foldNotices, fyiRows, viewRows, type InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
 import { inboxCounts } from "./inboxCounts";
-import { waitingPullRequestCount } from "./InboxPullRequests";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useInboxSnoozes } from "./inboxSnoozes";
 import {
@@ -47,8 +49,8 @@ const activityAt = (conversation: Conversation) =>
 const IN_FLIGHT_LIMIT = 5;
 
 // Asks from Conversations outside the loaded feed, such as an Automation
-// run, take their place by time among the unpinned rows. Appended, they
-// would sit below every loaded Conversation, however new they are.
+// run, take their place by time among the feed rows. Appended, they would
+// sit below every loaded Conversation, however new they are.
 function withRowsByTime(
   feedRows: ConversationRow[],
   rows: ConversationRow[],
@@ -58,10 +60,8 @@ function withRowsByTime(
   );
   const merged: ConversationRow[] = [];
   for (const row of feedRows) {
-    if (!row.conversation?.pinnedAt) {
-      while (pending[0] && Date.parse(pending[0].time) > Date.parse(row.time))
-        merged.push(pending.shift()!);
-    }
+    while (pending[0] && Date.parse(pending[0].time) > Date.parse(row.time))
+      merged.push(pending.shift()!);
     merged.push(row);
   }
   return [...merged, ...pending];
@@ -84,11 +84,13 @@ export type InboxFeedPages = {
 
 function useBuildInboxData(input: {
   conversations: Conversation[];
+  /** The first feed page has not loaded yet. */
+  conversationsPending: boolean;
   feed: InboxFeedPages;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
-  const { conversations, feed, signedIn } = input;
+  const { conversations, conversationsPending, feed, signedIn } = input;
   // To do shows the first page even while collapsed, and the waiting sort
   // puts what needs the viewer on it.
   const { items: loaded, query: itemsQuery } = useInboxItemsData({
@@ -240,19 +242,23 @@ function useBuildInboxData(input: {
     [conversations],
   );
   // Items can come from Conversations outside the loaded feed, such as an
-  // Automation run. Those titles load on their own.
+  // Automation run. Those titles load on their own, after the first feed
+  // page, so that a feed still in flight does not read every title.
   const missingIds = useMemo(
-    () => [
-      ...new Set(
-        list.flatMap((item) =>
-          item.rootConversationId &&
-          !conversationById.has(item.rootConversationId)
-            ? [item.rootConversationId]
-            : [],
-        ),
-      ),
-    ],
-    [conversationById, list],
+    () =>
+      conversationsPending
+        ? []
+        : [
+            ...new Set(
+              list.flatMap((item) =>
+                item.rootConversationId &&
+                !conversationById.has(item.rootConversationId)
+                  ? [item.rootConversationId]
+                  : [],
+              ),
+            ),
+          ],
+    [conversationById, conversationsPending, list],
   );
   const missingTitles = useLinkedConversationTitles(missingIds);
   // An item that no Conversation owns has no Conversation title.
@@ -277,7 +283,7 @@ function useBuildInboxData(input: {
   const awake = shown.filter(
     (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
   );
-  // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
+  // One pin: the Conversation's own.
   const isPinned = (conversationId: string | undefined) =>
     Boolean(conversationId && conversationById.get(conversationId)?.pinnedAt);
 
@@ -287,16 +293,25 @@ function useBuildInboxData(input: {
     inboxBundles(
       items.filter((item) => item.kind === "action" && !itemUpForGrabs(item)),
     ).filter((bundle) => bundle.needsYou);
-  const asks = awake.filter((item) => item.kind === "action");
-  const todoRows = todoRowsOf(awake);
-  const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
+  // The Inbox sections of the asks and notices that a filter keeps.
+  const rowsOf = (keep: (item: InboxItemPayload) => boolean) => {
+    const kept = awake.filter(keep);
+    return {
+      fyi: fyiRows(kept),
+      grabs: inboxBundles(
+        kept.filter((item) => item.kind === "action" && itemUpForGrabs(item)),
+      ),
+      todo: todoRowsOf(kept),
+    };
+  };
+  const { fyi, grabs: grabRows, todo: todoRows } = rowsOf(() => true);
   // An item woken a moment ago leaves Snoozed before the list refreshes.
   const snoozedRows = inboxBundles(
     shown.filter((item) => snoozedIds.has(item.id) && !snoozes.waking(item.id)),
   );
 
-  // Every Conversation, pinned first in the viewer's order, then newest
-  // activity, with its items. A Conversation outside the loaded feed joins
+  // Every Conversation, a pin in its place, newest activity first, with
+  // its items. A Conversation outside the loaded feed joins
   // when it has open items. Items that no Conversation owns are in no
   // Conversation row.
   const rowsByTime = (all: InboxBundle[]) => {
@@ -309,7 +324,7 @@ function useBuildInboxData(input: {
       bundles.map((bundle) => [bundle.conversationId, bundle]),
     );
     return withRowsByTime(
-      pinnedFirst(conversations).map((conversation): ConversationRow => ({
+      newestFirst(conversations).map((conversation): ConversationRow => ({
         bundle: bundleByConversation.get(conversation.id),
         conversation,
         conversationId: conversation.id,
@@ -327,8 +342,8 @@ function useBuildInboxData(input: {
   const conversationRows = rowsByTime(inboxBundles(awake));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Busy rows come
-  // first, a busy pin with them, then the other pins in the viewer's order.
+  // the viewer, works, or watches for an Event or Timer. Pins come first,
+  // busy or not, in the viewer's order, then the busy Conversations.
   // Collapsed, every pin shows, each one click away, and busy Conversations
   // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
@@ -342,9 +357,8 @@ function useBuildInboxData(input: {
     (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedBusy: Conversation[]) => [
+    ...pinned,
     ...unpinnedBusy,
-    ...pinned.filter(busy),
-    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   // Each badge counts its page's rows (`inboxCounts`). A row that leaves
@@ -355,28 +369,19 @@ function useBuildInboxData(input: {
   const known = closedElsewhere.length
     ? list.filter((item) => !closedElsewhere.includes(item))
     : list;
-  const pageCounts = inboxCounts({
+  const todoCounts = inboxCounts({
     hasMore: itemsQuery.hasNextPage,
     known,
     loaded: itemsQuery.data ? loaded : undefined,
-    rows: {
-      decisions: viewRows(onPage, "decisions").length,
-      prs: waitingPullRequestCount(viewRows(onPage, "prs")),
-      // A stack shows a row for each of its items.
-      todo: todoRowsOf(onPage).reduce(
-        (rows, row) => rows + row.items.length,
-        0,
-      ),
-    },
     server: serverCounts,
+    // A stack shows a row for each of its items.
+    todo: todoRowsOf(onPage).flatMap((row) => row.items),
   });
   // Snoozed and Automations count on the server. Done has no count: it
   // would need every closed item.
   const counts: Partial<Record<InboxView | "automations", number>> = {
     automations: serverCounts?.automations,
-    decisions: pageCounts.decisions,
-    inbox: pageCounts.todo,
-    prs: pageCounts.prs,
+    inbox: todoCounts.all,
     snoozed: serverCounts?.snoozed,
   };
 
@@ -390,7 +395,7 @@ function useBuildInboxData(input: {
     feed,
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
-    fyiRows: fyiRows(awake),
+    fyiRows: fyi,
     /** Keep a row's items while it leaves, after a read drops them. */
     holdLeaving,
     holdOpenRow,
@@ -413,6 +418,8 @@ function useBuildInboxData(input: {
     /** Every pin, in the viewer's stored order. */
     pinned,
     releaseHeld,
+    /** The To do, Up for grabs, and FYI rows of the items that `keep` keeps. */
+    rowsOf,
     signedIn,
     snoozedRows,
     /** Start reading Snoozed; the Inbox list calls it when it mounts. */
@@ -433,7 +440,9 @@ function useBuildInboxData(input: {
     sweeper,
     titleOf,
     /** To do's count, the same as its badge, or undefined until known. */
-    todoCount: pageCounts.todo,
+    todoCount: todoCounts.all,
+    /** To do's count and each ask type's, which add up to it. */
+    todoCounts,
     todoRows,
     grabRows,
   };
@@ -453,6 +462,7 @@ export function InboxDataProvider(props: {
   const { conversations, feed } = useInboxConversations();
   const value = useBuildInboxData({
     conversations,
+    conversationsPending: feed.isPending,
     // A failed feed page waits for Try again, as the other lists do. A list
     // end can still ask for more after the failure renders.
     feed: scrollPages({

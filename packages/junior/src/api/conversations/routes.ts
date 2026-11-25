@@ -13,6 +13,10 @@ import {
 } from "../schema/conversation-fork";
 import {
   acceptedConversationMessageSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
+} from "../schema/conversation-create";
+import {
   conversationAttachmentParamsSchema,
   conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
@@ -22,8 +26,6 @@ import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationParamsSchema,
-  createConversationBodySchema,
-  createConversationMessageBodySchema,
 } from "../schema/conversation";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
@@ -59,10 +61,6 @@ import {
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
-import {
-  renameConversationBodySchema,
-  renameConversationResponseSchema,
-} from "../schema/conversation-title";
 import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import {
@@ -94,12 +92,13 @@ import { catchUpOnConversation } from "./catch-up";
 import { reorderPinnedConversations } from "./pin";
 import { inviteToConversation } from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
-import { renameConversation } from "./rename";
 import {
   archiveConversationOperation,
   cancelQueuedMessagesOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
+  renameConversationOperation,
+  setConversationSpaceOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
@@ -149,8 +148,15 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, cursor, include, q, status } =
-        context.req.valid("query");
+      const {
+        actorEmail,
+        codeRepositoryId,
+        cursor,
+        include,
+        q,
+        spaceId,
+        status,
+      } = context.req.valid("query");
       const viewer = context.get("viewer");
       // The feed does not mark waiting rows, so the read reports their count.
       let waitingRows = 0;
@@ -163,6 +169,7 @@ export function createConversationRoutes(
           waitingRows = count;
         },
         ...(q ? { q } : undefined),
+        ...(spaceId ? { spaceId } : undefined),
         status,
         ...(viewer ? { viewer } : undefined),
       });
@@ -366,6 +373,12 @@ export function createConversationRoutes(
     apiOperationHandler(archiveConversationOperation, options),
   );
 
+  app.put(
+    "/:conversationId/space",
+    requireViewer,
+    apiOperationHandler(setConversationSpaceOperation, options),
+  );
+
   app.patch(
     "/:conversationId/pin",
     requireViewer,
@@ -429,25 +442,7 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/title",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      renameConversationBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) =>
-      jsonResponse(
-        renameConversationResponseSchema,
-        await renameConversation(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json"),
-        ),
-      ),
+    apiOperationHandler(renameConversationOperation, options),
   );
 
   app.post(

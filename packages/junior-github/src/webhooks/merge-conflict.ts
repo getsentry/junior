@@ -12,8 +12,11 @@
 import type {
   EventInput,
   EventPublisher,
+  PluginCache,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
@@ -21,7 +24,13 @@ import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
+import {
+  gitHubConflictResolvedEvents,
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "../merge-conflict-checks/resolved.js";
 import { pullRequestTargets } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 
@@ -30,10 +39,15 @@ const PULL_REQUEST_CHECK_CONCURRENCY = 5;
 
 const EVENT_TYPE = "pull_request.merge_conflict";
 
-/** Events after which the pull request cannot get a conflict. */
-const CLOSED_EVENT_TYPES = new Set([
+/**
+ * Events that start no check: after a close, the pull request cannot get a
+ * conflict. After a push, GitHub has not calculated the merge state yet,
+ * and the merge state patch reads it (`pull-request-patches.ts`).
+ */
+const UNCHECKED_EVENT_TYPES = new Set([
   "pull_request.closed_unmerged",
   "pull_request.merged",
+  "pull_request.synchronized",
 ]);
 
 /** The pull request fields that tell if it has a conflict. */
@@ -94,7 +108,7 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
     const { pullRequest, repo } = event.data ?? {};
     if (
       !event.eventType.startsWith("pull_request.") ||
-      CLOSED_EVENT_TYPES.has(event.eventType) ||
+      UNCHECKED_EVENT_TYPES.has(event.eventType) ||
       typeof pullRequest !== "number" ||
       typeof repo !== "string"
     ) {
@@ -134,9 +148,15 @@ function deliveredPullRequest(
  * mergeability when GitHub knows it. Otherwise the check reads the pull
  * request, which also makes GitHub calculate its mergeability. When GitHub
  * does not know it yet, a later event reads it again. The policy in
- * `merge-conflict-checks/policy.ts` decides if a conflict publishes.
+ * `merge-conflict-checks/policy.ts` decides if a conflict publishes. When a
+ * waiter wants `pull_request.merge_conflict.resolved`, the read also marks a
+ * conflict, and a clean read publishes the fix of a marked one
+ * (`merge-conflict-checks/resolved.ts`).
  */
 export async function loadGitHubMergeConflictEvents(args: {
+  /** The plugin cache, whose entry a clean read clears of a conflict. */
+  cache: PluginCache;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   deliveryId: string;
   events: EventInput[];
@@ -152,30 +172,53 @@ export async function loadGitHubMergeConflictEvents(args: {
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
   inboxItems: PluginConversationInboxItems;
+  /** Publishes the fix of a marked conflict that a clean read finds. */
+  publisher: Pick<EventPublisher, "publish">;
+  state: PluginState;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
   const check = async (ref: GitHubPullRequestRef): Promise<EventInput[]> => {
-    // Merge conflict events match only `repo` and `pullRequest`, so this
-    // answer is the same as for the full events.
-    if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) return [];
+    // Merge conflict events match only `repo` and `pullRequest`, so these
+    // answers are the same as for the full events. A waiter on the fix also
+    // needs the read: it marks a conflict, and a clean read publishes the fix
+    // of a marked one. The head commit names only the event key, so an empty
+    // one gives the same answer.
+    const [wantsConflict, wantsFix] = await Promise.all([
+      hasMatch(gitHubMergeConflictEvents(ref)),
+      hasMatch(gitHubConflictResolvedEvents(ref, "")),
+    ]);
+    if (!wantsConflict && !wantsFix) return [];
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??
         gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
-      if (
-        loaded.state !== "open" ||
-        loaded.mergeable !== false ||
-        loaded.mergeable_state !== "dirty"
-      ) {
+      if (loaded.state !== "open") return [];
+      if (loaded.mergeable === true) {
+        // Like the patch and the heartbeat, every clean read drops the mark,
+        // so a later waiter does not wake on a fix that came before it.
+        await clearGitHubCachedConflict(args.cache, ref, loaded.head.sha);
+        await publishGitHubConflictResolved({
+          events: args.publisher,
+          headSha: loaded.head.sha,
+          ref,
+          state: args.state,
+        });
         return [];
       }
+      if (loaded.mergeable !== false || loaded.mergeable_state !== "dirty") {
+        return [];
+      }
+      await markGitHubConflict(args.state, ref);
+      // The conflict policy and its Inbox items are for conflict waiters.
+      if (!wantsConflict) return [];
       const conflict: GitHubMergeConflict = {
         baseBranch: loaded.base.ref,
         headSha: loaded.head.sha,
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
       return await applyGitHubConflictPolicy({
+        codeChanges: args.codeChanges,
         conflict,
         db: args.db,
         draft: loaded.draft === true,

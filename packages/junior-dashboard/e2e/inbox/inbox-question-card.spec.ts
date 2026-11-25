@@ -17,8 +17,7 @@ async function precedes(first: Locator, second: Locator) {
   );
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   for (const view of [desktop, mobile]) {
     test(`an Inbox question shows its question, then Junior's message, then the form (${view.name})`, async ({
       dashboard,
@@ -32,7 +31,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         }
       });
       // The mock's own question, which waits on the viewer.
-      await page.goto(`${dashboard.baseURL}/?view=inbox&item=qa-rollout`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
       const row = page
         .locator("[data-inbox-row]")
         .filter({ hasText: "Approve the payments-v42 rollout" });

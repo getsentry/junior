@@ -35,7 +35,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -57,6 +57,8 @@ export interface CreateConversationInput {
   title?: string;
   /** New roots default public. Continues never rewrite visibility. */
   visibility?: ConversationPrivacy;
+  /** Space of the new root. The caller checks that the person may use it. */
+  spaceId?: string;
 }
 
 /** Input for one web Message. */
@@ -75,6 +77,8 @@ export interface AppendWebMessageInput {
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the conversation root. */
+  rootSpaceId?: string;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -139,9 +143,12 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
  * Conversation: a dashboard Conversation, a Slack thread, or a Thread.
  */
 export function acceptsWebMessages(
-  conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
+  conversation: Pick<
+    Conversation,
+    "conversationId" | "destination" | "kind" | "parentConversationId"
+  >,
 ): boolean {
-  if (!isTopLevelKind(conversation.kind)) return conversation.kind === "thread";
+  if (!isTopLevel(conversation)) return conversation.kind === "thread";
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
@@ -247,6 +254,8 @@ export async function recordWebConversationActivity(args: {
   rootVisibility?: ConversationPrivacy;
   /** Applied only when this call creates the Conversation root. */
   rootKind?: TopLevelConversationKind;
+  /** Applied only when this call creates the Conversation root. */
+  rootSpaceId?: string;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -275,8 +284,11 @@ export async function recordWebConversationActivity(args: {
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
     ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
+    ...(isNewRoot && args.rootSpaceId
+      ? { spaceId: args.rootSpaceId }
+      : undefined),
   });
-  return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
+  return existing && !isTopLevel(existing) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */
@@ -300,6 +312,7 @@ export async function createAndEnqueueConversation(
       uploads: input.uploads,
       ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
+      ...(input.spaceId ? { rootSpaceId: input.spaceId } : undefined),
     },
     options,
   );
@@ -337,6 +350,7 @@ export async function appendAndEnqueueWebMessage(
     nowMs,
     ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
+    ...(input.rootSpaceId && { rootSpaceId: input.rootSpaceId }),
   });
   let attachments: MessageAttachment[] = [];
   if (input.uploads?.length) {

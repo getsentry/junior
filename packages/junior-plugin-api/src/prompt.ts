@@ -71,11 +71,12 @@ export function definePromptContext<
 /** One request-scoped plugin contribution to the model-visible user prompt. */
 export type UserPromptContribution = PromptMessage | PromptContextContribution;
 
-/** Stable platform context for plugin system prompt guidance. */
-export type SystemPromptContext = Pick<
-  PluginContext,
-  "db" | "log" | "plugin"
-> & {
+/**
+ * What a plugin `systemPrompt` hook gets: the platform of the system prompts
+ * that it adds to. It has no database or cache. A plugin that needs data does
+ * its own I/O.
+ */
+export type SystemPromptBuildContext = Pick<PluginContext, "log" | "plugin"> & {
   platform: Platform;
 };
 

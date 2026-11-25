@@ -14,7 +14,12 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
   @Test func decodesEveryToolResult() throws {
     let list = try fixture("searchConversations", as: ConversationList.self)
     #expect(!list.conversations.isEmpty)
+    // `status` reads `needs_input` for a Conversation that waits on someone,
+    // but only `treeState` says whether that is you.
+    #expect(list.conversations.contains { $0.status == .needsInput && $0.treeState == .done })
+    #expect(list.conversations.contains { $0.status != .needsInput && $0.treeState == .needsYou })
     let state = try fixture("getConversation", as: ConversationState.self)
+    #expect(state.conversation.summary?.isEmpty == false)
     #expect(state.lastReply?.isAssistant == true)
     #expect(state.messages == nil)
     let after = try fixture("getConversation-after", as: ConversationState.self)
@@ -27,6 +32,16 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     _ = try fixture("createConversation", as: AcceptedMessage.self)
     let items = try fixture("searchInboxItems", as: InboxItemList.self)
     #expect(items.items.allSatisfy { $0.status == "open" })
+    // A reply notice lists for its starter, but the badge counts neither it
+    // nor an item for Everyone.
+    let notice = try #require(items.items.first { $0.kind == "notice" })
+    #expect(notice.canAct && !notice.needsViewer)
+    // A To-do is an action with no question and no Conversation.
+    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
+    #expect(todo.question == nil && todo.conversationIds.isEmpty && todo.needsViewer)
+    var forEveryone = try #require(items.items.first { $0.needsViewer })
+    forEveryone.assignees = []
+    #expect(!forEveryone.needsViewer)
     _ = try fixture("getInboxItem", as: InboxItemResult.self)
     let automations = try fixture("searchAutomations", as: AutomationList.self)
     #expect(automations.total >= automations.automations.count)
@@ -35,7 +50,8 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
   }
 
   @Test func readsConversationsFromAnOlderJunior() throws {
-    // Junior 0.310 and older send their old statuses and no `turnActive`.
+    // Junior 0.310 and older send their old statuses, and no `turnActive` or
+    // `treeState`.
     func row(_ status: String) throws -> MCPConversation {
       let json = """
         {"conversationId":"c1","title":"T","status":"\(status)","surface":"api",\
@@ -45,6 +61,9 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     }
     #expect(try row("active").turnActive)
     #expect(try !row("completed").turnActive)
+    #expect(try row("needs_input").treeState == .needsYou)
+    #expect(try row("active").treeState == .working)
+    #expect(try row("completed").treeState == .done)
   }
 
   @Test func archiveKeepsTheExactLastSeenAt() throws {

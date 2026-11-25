@@ -4,17 +4,12 @@ import {
   $createTabNode,
   $createTextNode,
   $getRoot,
-  $getSelection,
-  $isRangeSelection,
-  $isTextNode,
   type LexicalNode,
-  type TextNode,
 } from "lexical";
 
 import { mentionText } from "../composerMentionToken";
 import {
   referenceText,
-  splitComposerText,
   type ComposerReference,
   type ComposerTextPart,
 } from "../composerReferences";
@@ -46,70 +41,21 @@ export function $readComposerText(): string {
 }
 
 /**
- * Replace the draft with message text. Each `<@U…>` becomes a mention, and
- * each reference token of `splitComposerText` becomes a chip.
+ * Replace the draft with message text, as it is. `$styleComposerDraft`
+ * then styles its Markdown and turns its tokens into chips.
  */
-export function $writeComposerText(text: string, lookup: ComposerLookup): void {
+export function $writeComposerText(text: string): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
-  for (const node of composerNodes(text, lookup)) paragraph.append(node);
+  for (const { node } of plainTextNodes(text)) paragraph.append(node);
   root.append(paragraph);
-}
-
-/**
- * Turn the mention and reference tokens in one text node into chips, for
- * pasted or restored text. A caret in the node keeps its place in the
- * text, so one inside or right after a token lands after its chip.
- */
-export function $replaceComposerTokens(
-  node: TextNode,
-  lookup: ComposerLookup,
-): void {
-  const text = node.getTextContent();
-  if (!text.includes("<")) return;
-  const parts = splitComposerText(text, lookup.origin);
-  if (parts.every((part) => "text" in part)) return;
-  const selection = $getSelection();
-  const caret =
-    $isRangeSelection(selection) && selection.anchor.key === node.getKey()
-      ? selection.anchor.offset
-      : undefined;
-  const pieces = composerPieces(parts, lookup);
-  let last: LexicalNode = node;
-  for (const piece of pieces) {
-    last.insertAfter(piece.node);
-    last = piece.node;
-  }
-  node.remove();
-  if (caret !== undefined) $placeCaret(pieces, caret);
 }
 
 type ComposerPiece = { node: LexicalNode; length: number };
 
-// Put the caret at `caret` characters into the replaced text.
-function $placeCaret(pieces: ComposerPiece[], caret: number): void {
-  let start = 0;
-  for (const { node, length } of pieces) {
-    const end = start + length;
-    if (caret <= end) {
-      if ($isTextNode(node)) node.select(caret - start, caret - start);
-      else if (caret === start) node.selectPrevious();
-      else node.selectNext(0, 0);
-      return;
-    }
-    start = end;
-  }
-}
-
-function composerNodes(text: string, lookup: ComposerLookup): LexicalNode[] {
-  return composerPieces(splitComposerText(text, lookup.origin), lookup).map(
-    ({ node }) => node,
-  );
-}
-
-// Each node with the length of the message text that it stands for.
-function composerPieces(
+/** Each node of message text parts, with the length of the text it stands for. */
+export function $composerPieces(
   parts: ComposerTextPart[],
   lookup: ComposerLookup,
 ): ComposerPiece[] {

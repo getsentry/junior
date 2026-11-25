@@ -49,7 +49,7 @@ runtime-postinstall:
         sha256="9543d968a6bd3b00da7ef20053717494beba7962e6cea01368d82857c8ea926b"
         tmp="$(mktemp -d)"
         trap 'rm -rf "$tmp"' EXIT
-        curl -fsSL "$url" -o "$tmp/$archive"
+        curl -fsSL --retry 3 "$url" -o "$tmp/$archive"
         echo "${sha256}  $tmp/$archive" | sha256sum -c -
         tar -xzf "$tmp/$archive" -C "$tmp"
         mkdir -p /vercel/sandbox/.junior/bin

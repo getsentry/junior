@@ -99,9 +99,12 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
   );
 }
 
-/** Chart buckets for the selected range from a repository report. */
-export function repositoryActivity(
-  data: CodeRepositoryReport,
+/** Chart buckets for the selected range from a code report. */
+export function codeActivity(
+  data: Pick<
+    CodeRepositoryReport,
+    "activityDays" | "activityHours" | "activitySixHours"
+  >,
   range: TimeRangeDays,
 ) {
   return selectTimeSeries({

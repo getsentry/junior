@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { waitForOutlineRead } from "./harness";
 
 // Three open questions. "Handle the negative invoices" is also for a
 // teammate; the other two are for the viewer alone.
@@ -12,10 +13,22 @@ async function openConversation(page: Page, baseURL: string) {
   );
 }
 
-/** Record the body of each request to a path that the page sends. */
+/**
+ * Reload the Conversation, and wait for the outline that each visit reads.
+ */
+async function reloadConversation(page: Page) {
+  const outlineRead = waitForOutlineRead(page, THREE_QUESTIONS_ID);
+  await page.reload();
+  await outlineRead;
+}
+
+/**
+ * Record the body of each request to a path that the page sends, once the
+ * server answers it.
+ */
 function recordBodies(page: Page, path: string) {
   const bodies: unknown[] = [];
-  page.on("request", (request) => {
+  page.on("requestfinished", (request) => {
     if (new URL(request.url()).pathname.endsWith(path)) {
       bodies.push(request.postDataJSON());
     }
@@ -32,7 +45,6 @@ for (const view of [desktop, mobile]) {
     page,
   }) => {
     await page.setViewportSize(view);
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const snoozes = recordBodies(page, "/api/inbox/snoozes");
     await openConversation(page, dashboard.baseURL);
     await expect(
@@ -78,7 +90,7 @@ for (const view of [desktop, mobile]) {
     ).toHaveCount(0);
     // The transcript opens at the latest message again, and the pill counts
     // the two questions that still wait.
-    await page.reload();
+    await reloadConversation(page);
     await expect(
       page.getByRole("button", { name: "2 questions waiting" }),
     ).toBeVisible();
@@ -91,7 +103,6 @@ for (const view of [desktop, mobile]) {
     page,
   }) => {
     await page.setViewportSize(view);
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const snoozes = recordBodies(page, "/api/inbox/snoozes");
     await openConversation(page, dashboard.baseURL);
 
@@ -132,7 +143,7 @@ for (const view of [desktop, mobile]) {
           .getByRole("button", { name: /^Handle the negative invoices/ }),
       ).toHaveCount(0);
     }
-    await page.reload();
+    await reloadConversation(page);
     await expect(
       page.getByRole("button", { name: "2 questions waiting" }),
     ).toBeVisible();
@@ -183,23 +194,19 @@ test("a Slack card's Snooze link opens the item's snooze dialog", async ({
     ]);
 });
 
-// Only the inbox project runs `@new` tests.
-test(
-  "an Inbox question card reads Dismiss, Snooze, then Send",
-  {
-    tag: "@new",
-  },
-  async ({ dashboard, page }) => {
-    await page.setViewportSize(desktop);
-    await page.goto(
-      `${dashboard.baseURL}/?view=inbox&item=qa-migration-negative`,
-    );
-    const inboxCard = page.locator('[data-inbox-card="qa-migration-negative"]');
-    await expect(inboxCard).toContainText(
-      "What should happen to the 12 negative invoices?",
-    );
-    await expect(
-      inboxCard.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
-    ).toHaveText(["Dismiss", "Snooze", "Send"]);
-  },
-);
+test("an Inbox question card reads Dismiss, Snooze, then Send", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/inbox?view=inbox&item=qa-migration-negative`,
+  );
+  const inboxCard = page.locator('[data-inbox-card="qa-migration-negative"]');
+  await expect(inboxCard).toContainText(
+    "What should happen to the 12 negative invoices?",
+  );
+  await expect(
+    inboxCard.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
+  ).toHaveText(["Dismiss", "Snooze", "Send"]);
+});

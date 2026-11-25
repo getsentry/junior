@@ -24,8 +24,7 @@ fix, or a dependency update.
 
 The issue lets maintainers find architecture problems before you write code.
 For agent behavior, a prompt change often hides the real cause. Read
-`policies/` (start with `policies/agent-steering.md`) before you propose a
-change.
+`design/prompts.md` and `policies/` before you propose a change.
 
 Junior checks each new pull request, including drafts. If a larger change has
 no linked issue, Junior closes the pull request and explains why. Open an
@@ -84,6 +83,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-vimeo`
 - `@sentry/junior-xdotcom`
 
 Run `pnpm release:check` after you change this list. It keeps CI, the bump

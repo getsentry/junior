@@ -1,14 +1,11 @@
-import {
-  MAX_INPUT_ATTACHMENTS,
-  messageAttachmentSchema,
-} from "@/chat/attachments/input";
+import { messageAttachmentSchema } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationKindSchema } from "./conversation-kind";
-import { conversationTitleSchema } from "./conversation-title";
 import { conversationTreeStateSchema } from "./conversation-tree-state";
+import { spaceRefSchema } from "./space";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -139,41 +136,6 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
 ]);
 
-/** Client key that makes a retried send the same Message. */
-export const idempotencyKeySchema = z.string().trim().min(1).max(200);
-
-export const createConversationMessageBodySchema = z
-  .object({
-    idempotencyKey: idempotencyKeySchema,
-    message: z.string().trim().max(32_000),
-    /** Uploads from `POST /api/conversations/attachment-uploads`. */
-    uploadIds: z
-      .array(z.string().min(1).max(64))
-      .max(MAX_INPUT_ATTACHMENTS)
-      .optional(),
-  })
-  .strict()
-  .refine(
-    (body) => Boolean(body.message || body.uploadIds?.length),
-    "Add a message or a file.",
-  );
-
-export const createConversationBodySchema =
-  createConversationMessageBodySchema.safeExtend({
-    /** Saved title. Title generation runs only when it is omitted. */
-    title: conversationTitleSchema.optional(),
-    /** New roots default public. Private roots stay participant-only. */
-    visibility: z.enum(["private", "public"]).optional(),
-  });
-
-export const acceptedConversationMessageSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    messageId: z.string().min(1),
-    status: z.enum(["accepted", "duplicate"]),
-  })
-  .strict();
-
 export const actorIdentitySchema = z
   .object({
     /**
@@ -270,6 +232,11 @@ export const conversationSummaryReportSchema = z
     parentConversationId: z.string().min(1).optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
+    /**
+     * The Space of the root, or null for a one-off. A child is in the Space
+     * of its root. Feed rows and the detail only.
+     */
+    space: spaceRefSchema.nullable().optional(),
     status: conversationReportStatusSchema,
     /** Feed rows and the detail only. */
     treeState: conversationTreeStateSchema.optional(),
@@ -308,12 +275,9 @@ export const conversationSummaryReportSchema = z
     locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
-     * Plugin-owned resource links for this conversation.
-     * Present on the conversation feed when the viewer can see private content.
-     * Clients must not fetch provider state while rendering these links.
+     * Plugin-selected annotations for the compact conversation row. The feed
+     * sends only these; the detail also sends the full `annotations`.
      */
-    annotations: z.array(conversationAnnotationReportSchema).optional(),
-    /** Plugin-selected annotations for the compact conversation row. */
     sidebarAnnotations: z.array(conversationSidebarAnnotationSchema).optional(),
     assignedWork: z.boolean().optional(),
     finishedWorkAt: z.string().datetime().optional(),
@@ -361,7 +325,7 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     /** Identity id of the author. Detail `authors` maps it to the person. */
     actorIdentityId: z.string().min(1).optional(),
-    /** Agent invocation whose input this is. An agent wrote it, not a person. */
+    /** Set on input that an earlier release's agent wrote, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
@@ -372,6 +336,10 @@ const conversationReportMessageEventDataSchema = z
      */
     eventIdentifier: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
+    /** What the first Event says happened, when it is an agent update. */
+    eventStatus: z.string().min(1).optional(),
+    /** Watch that delivered the first Event. */
+    eventWatchId: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
@@ -869,6 +837,12 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Conversation last. Root Conversations omit it.
      */
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
+    /**
+     * Plugin-owned annotations of this Conversation and its tree, when the
+     * viewer can see private content. Clients must not fetch provider state
+     * while rendering them.
+     */
+    annotations: z.array(conversationAnnotationReportSchema).optional(),
     /** The viewer's effective auto-archive choice. Participants only. */
     autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
@@ -976,12 +950,3 @@ export type ConversationDetailReport = z.infer<
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type CreateConversationBody = z.infer<
-  typeof createConversationBodySchema
->;
-export type CreateConversationMessageBody = z.infer<
-  typeof createConversationMessageBodySchema
->;
-export type AcceptedConversationMessage = z.infer<
-  typeof acceptedConversationMessageSchema
->;

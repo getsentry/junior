@@ -232,16 +232,15 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
 
 /**
  * Read what decides the requester's next action on one pull request: its
- * state, merge state, review requests, latest reviews, head commit, and
- * latest comments and review requests. A review comment reply is a review,
- * so `reviews` holds it too.
+ * state, merge state, review requests, latest reviews, and latest comments
+ * and review requests. A review comment reply is a review, so `reviews`
+ * holds it too.
  */
 export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
   query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
-        headRefOid
         isDraft
         mergeStateStatus
         state
@@ -254,7 +253,6 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
           pageInfo { hasPreviousPage startCursor }
           nodes { ...NextActionReview }
         }
-        commits(last: 1) { nodes { commit { committedDate } } }
         timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT]) {
           nodes {
             __typename
@@ -273,7 +271,61 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
     state
     submittedAt
     author { __typename login }
-    commit { oid }
+  }
+`);
+
+/**
+ * Read what decides whether a reviewer's change request is ready for their
+ * review again: whether GitHub asks them, their latest review with the
+ * reactors of its body and each of its comments, the checks of the head
+ * commit, and the branch protection's required checks of the base branch.
+ */
+export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
+  query PullRequestReviewAgain($owner: String!, $name: String!, $number: Int!, $reviewer: String!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        baseRefName
+        baseRef { refUpdateRule { requiredStatusCheckContexts } }
+        reviewRequests(first: 100) {
+          nodes { requestedReviewer { __typename ... on User { login } } }
+        }
+        reviews(last: 1, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+          nodes {
+            databaseId
+            state
+            body
+            ...FeedbackReactors
+            comments(first: 100) {
+              totalCount
+              nodes { databaseId ...FeedbackReactors }
+            }
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes {
+                    __typename
+                    ... on CheckRun { name status conclusion }
+                    ... on StatusContext { context state }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fragment FeedbackReactors on Reactable {
+    reactionGroups {
+      content
+      reactors(first: 100) { nodes { ... on Bot { databaseId } } }
+    }
   }
 `);
 
@@ -294,7 +346,6 @@ export const PULL_REQUEST_REVIEWS_BEFORE = githubGraphql(`
     state
     submittedAt
     author { __typename login }
-    commit { oid }
   }
 `);
 
@@ -367,4 +418,145 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
       }),
     }),
   );
+}
+
+// The card fields of one pull request. `pullRequestCards` repeats its
+// `repository` field and variables for each pull request.
+const PULL_REQUEST_CARD = githubGraphql(`
+  query PullRequestCards($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) { ...Card }
+    }
+  }
+
+  fragment Card on PullRequest {
+    url
+    number
+    state
+    title
+    body
+    updatedAt
+    author { login }
+    isDraft
+    merged
+    headRefName
+    headRefOid
+    baseRefName
+    mergeable
+    additions
+    deletions
+    changedFiles
+    reviewRequests(first: 5) {
+      nodes {
+        requestedReviewer {
+          ... on User { login }
+          ... on Bot { login }
+        }
+      }
+    }
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+// Only the merge state and check counts of one pull request, for the patch
+// after a push. `pullRequestHeadFacts` repeats it like the cards.
+const PULL_REQUEST_HEAD_FACT = githubGraphql(`
+  query PullRequestHeadFacts($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) { ...HeadFacts }
+    }
+  }
+
+  fragment HeadFacts on PullRequest {
+    updatedAt
+    headRefOid
+    mergeable
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+// Repeat the `repository` field and the variables of a one pull request
+// query `count` times. Pull request `i` has the alias `p<i>` and the
+// variables `$owner<i>`, `$name<i>`, and `$number<i>`.
+function aliasedPullRequests(
+  single: GitHubGraphqlOperation,
+  count: number,
+): GitHubGraphqlOperation {
+  const document = parse(single.query);
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  const indexed = (variable: VariableNode, index: number): VariableNode => ({
+    ...variable,
+    name: { kind: Kind.NAME, value: `${variable.name.value}${index}` },
+  });
+  return operation({
+    ...document,
+    definitions: document.definitions.map((definition) =>
+      definition.kind === Kind.OPERATION_DEFINITION
+        ? {
+            ...definition,
+            variableDefinitions: indexes.flatMap((index) =>
+              (definition.variableDefinitions ?? []).map((variable) => ({
+                ...variable,
+                variable: indexed(variable.variable, index),
+              })),
+            ),
+            selectionSet: {
+              ...definition.selectionSet,
+              selections: indexes.flatMap((index) =>
+                definition.selectionSet.selections.map((selection) => {
+                  const renamed = visit(selection, {
+                    Variable: (variable) => indexed(variable, index),
+                  });
+                  return renamed.kind === Kind.FIELD
+                    ? {
+                        ...renamed,
+                        alias: { kind: Kind.NAME, value: `p${index}` },
+                      }
+                    : renamed;
+                }),
+              ),
+            },
+          }
+        : definition,
+    ),
+  });
+}
+
+/**
+ * Return the query that reads the cards of `count` pull requests by
+ * repository and number, with the aliases and variables of
+ * `pullRequestVariables`. The check run counts are of each head commit.
+ * The App has no commit status permission, so statuses do not count.
+ */
+export function pullRequestCards(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_CARD, count);
+}
+
+/**
+ * Return the query that reads only the merge state and check counts of
+ * `count` pull requests by repository and number, for the patch after a
+ * push. It has the aliases and variables of `pullRequestCards`.
+ */
+export function pullRequestHeadFacts(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_HEAD_FACT, count);
 }

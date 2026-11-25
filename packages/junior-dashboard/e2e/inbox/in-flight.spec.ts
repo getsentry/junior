@@ -1,9 +1,9 @@
-import { mockInboxItems, rowHead } from "./inbox-fixture";
+import { waitForOutlineRead } from "../harness";
+import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("In flight lists running and pinned Conversations, and the Inbox lists neither", async ({
@@ -11,7 +11,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(
       inFlight.getByRole("link", { name: new RegExp(checkout) }),
@@ -30,6 +30,26 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
+    // A right-click on an In flight row opens its Conversation menu.
+    const menu = page.getByRole("menu");
+    await pinned.click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    // On hover, its `⋯` opens the same menu.
+    await pinned.hover();
+    await inFlight
+      .getByRole("button", {
+        name: /^Open menu for Roll out payments-v42/,
+      })
+      .click();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
 
     // The Inbox lists what needs the viewer. A pinned or running
     // Conversation shows only in In flight.
@@ -45,11 +65,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pinned).toBeVisible();
     await screenshot(page, "inbox-in-flight", { view: "desktop" });
 
+    const outlineRead = waitForOutlineRead(
+      page,
+      "slack:CQA123:1770003600.000200",
+    );
     await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
+    await outlineRead;
   });
 
-  test("In flight shows every pin past five running Conversations, and Show all lists the rest", async ({
+  test("In flight shows every pin first, in the stored order, and Show all lists the rest", async ({
     dashboard,
     page,
   }) => {
@@ -89,12 +114,12 @@ test.describe("new UI", { tag: "@new" }, () => {
             ),
             conversation(6, "Running pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 0,
+              pinPosition: 1,
               status: "working",
             }),
             conversation(7, "Idle pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 1,
+              pinPosition: 0,
               status: "done",
             }),
           ],
@@ -103,44 +128,45 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
-    // Pins always show. Running Conversations fill the rows left, up to five.
-    await expect(
-      inFlight.getByRole("link", { name: /Running pin/ }),
-    ).toBeVisible();
-    await expect(
-      inFlight.getByRole("link", { name: /Idle pin/ }),
-    ).toBeVisible();
-    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
+    // Pins show first, in the stored order, whether they run or not.
+    // Running Conversations fill the rows left, up to five.
+    await expect(inFlight.getByRole("listitem")).toHaveText([
+      /Idle pin/,
+      /Running pin/,
+      /Running conversation 1/,
+      /Running conversation 2/,
+      /Running conversation 3/,
+    ]);
 
     // Show all lists every in-flight row in place, in the same order.
     const showAll = page.getByRole("button", { name: "Show all" });
     await expect(showAll).toHaveAttribute("aria-expanded", "false");
     await showAll.click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(inFlight.getByRole("listitem")).toHaveText([
+      /Idle pin/,
+      /Running pin/,
       ...Array.from(
         { length: 6 },
         (_, index) => new RegExp(`Running conversation ${index + 1}`),
       ),
-      /Running pin/,
-      /Idle pin/,
     ]);
     const showFewer = page.getByRole("button", { name: "Show fewer" });
     await expect(showFewer).toHaveAttribute("aria-expanded", "true");
     await screenshot(page, "inbox-in-flight-expanded", { lightTheme: true });
 
     // A pin still drags while the list is expanded.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
+    const save = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes("/api/conversations/pin-order"),
     );
-    await inFlight.getByRole("link", { name: /Idle pin/ }).focus();
+    await inFlight.getByRole("link", { name: /Running pin/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [7, 6].map(
+    expect((await save).request().postDataJSON()).toEqual({
+      conversationIds: [6, 7].map(
         (index) => `slack:CFLIGHT:${1770000000 + index}.000100`,
       ),
     });
@@ -155,200 +181,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     await showFewer.click();
     await expect(inFlight.getByRole("listitem")).toHaveCount(5);
     await expect(showAll).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("a drag in In flight moves only that pin in the stored order", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const pin = (index: number, displayTitle: string, status: string) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CPINS:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        pinnedAt: "2026-08-07T10:00:00.000Z",
-        pinPosition: index,
-        status,
-        turnActive: status === "working",
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
-          // shows it first.
-          conversations: [
-            pin(0, "Alpha pin", "done"),
-            pin(1, "Bravo pin", "done"),
-            pin(2, "Charlie pin", "working"),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Charlie pin/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    // Every row shows, so there is nothing to expand.
-    await expect(page.getByRole("button", { name: "Show all" })).toHaveCount(0);
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await inFlight.getByRole("link", { name: /Bravo pin/ }).focus();
-    await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [
-        "slack:CPINS:1770000001.000100",
-        "slack:CPINS:1770000000.000100",
-        "slack:CPINS:1770000002.000100",
-      ],
-    });
-  });
-
-  test("every pin shows on the first feed page, and a reorder saves them all", async ({
-    dashboard,
-    page,
-  }) => {
-    // The server's first feed page has every pin, before the page by activity
-    // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
-    // more pages follow.
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const row = (index: number, displayTitle: string, pinned: boolean) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CFEED:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        lastMessageAt: pinned
-          ? "2026-07-01T10:00:00.000Z"
-          : "2026-08-07T10:00:00.000Z",
-        pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
-        pinPosition: pinned ? index : undefined,
-        status: "done",
-        turnActive: false,
-      });
-      const cursor = new URL(route.request().url()).searchParams.get("cursor");
-      return route.fulfill({
-        response,
-        json: cursor
-          ? { ...feed, conversations: [], nextCursor: undefined }
-          : {
-              ...feed,
-              conversations: [
-                ...Array.from({ length: 4 }, (_, index) =>
-                  row(index, `Old pin ${index + 1}`, true),
-                ),
-                row(4, "Recent conversation", false),
-              ],
-              nextCursor: "page-2",
-            },
-      });
-    });
-    await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(inFlight.getByRole("listitem")).toHaveCount(4);
-    const pinned = page.getByRole("region", { name: "Pinned" });
-    await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
-
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await rowHead(pinned, "Old pin 2").focus();
-    await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [1, 0, 2, 3].map(
-        (index) => `slack:CFEED:${1770000000 + index}.000100`,
-      ),
-    });
-  });
-
-  test("only pins drag in In flight", async ({ dashboard, page }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const row = (index: number, displayTitle: string, pinned: boolean) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CPINS:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
-        pinPosition: pinned ? index : undefined,
-        status: pinned ? "done" : "working",
-        turnActive: !pinned,
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          conversations: [
-            row(0, "Alpha pin", true),
-            row(1, "Bravo pin", true),
-            row(2, "Delta run", false),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockInboxItems(page, { open: [] });
-    const saves: unknown[] = [];
-    page.on("request", (request) => {
-      if (
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order")
-      )
-        saves.push(request.postDataJSON());
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    // The running Conversation that is not pinned shows first.
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    const running = inFlight.getByRole("link", { name: /Delta run/ });
-    const alpha = inFlight.getByRole("link", { name: /Alpha pin/ });
-    const bravo = inFlight.getByRole("link", { name: /Bravo pin/ });
-    // A row that is not a pin offers no reorder keys, and a drag of it saves
-    // nothing and moves nothing.
-    await expect(running).not.toHaveAttribute("aria-keyshortcuts");
-    await expect(alpha).toHaveAttribute(
-      "aria-keyshortcuts",
-      "Alt+ArrowUp Alt+ArrowDown",
-    );
-    await running.dragTo(bravo, { steps: 10 });
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    expect(saves).toEqual([]);
-    // A pin dropped on the running row lands on the nearest pin instead.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await bravo.dragTo(running, { steps: 10 });
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [
-        "slack:CPINS:1770000001.000100",
-        "slack:CPINS:1770000000.000100",
-      ],
-    });
   });
 });

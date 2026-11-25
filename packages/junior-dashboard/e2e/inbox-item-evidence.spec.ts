@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -24,13 +24,6 @@ async function expectEvidence(question: Locator) {
   return related;
 }
 
-async function openRelatedItem(page: Page, related: Locator) {
-  await related
-    .getByRole("link", { name: "Checkout p95 rose after payments-v42" })
-    .click();
-  await expect(page).toHaveURL(/item=qa-p95-rose/);
-}
-
 for (const view of [desktop, mobile]) {
   test(`shows a question's evidence and related items above its choices (${view.name})`, async ({
     dashboard,
@@ -44,6 +37,11 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expectEvidence(question);
+    // The pill shows until the card reports that it is in full view.
+    await question.scrollIntoViewIfNeeded();
+    await expect(
+      page.getByRole("button", { name: /questions? waiting$/ }),
+    ).toHaveCount(0);
     await screenshot(page, "inbox-item-evidence-card", {
       lightTheme: true,
       view: view.name,
@@ -51,24 +49,12 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("the Inbox question links its evidence and related items @classic", async ({
+test("an Inbox question row links its evidence and related items", async ({
   dashboard,
   page,
 }) => {
   await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}/review?item=qa-rollout`);
-  const related = await expectEvidence(
-    page.getByRole("region", { name: "Answer" }),
-  );
-  await openRelatedItem(page, related);
-});
-
-test("an Inbox question row links its evidence and related items @new", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}/?view=inbox&item=qa-rollout`);
+  await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
   const related = await expectEvidence(
     page.getByRole("region", { name: "Approve the payments-v42 rollout" }),
   );

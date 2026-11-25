@@ -1,7 +1,5 @@
-import { useCodeOverviewData } from "./api";
 import type { Area } from "./components/layout/AreaSidebar";
 import type { DashboardHeaderNavItem } from "./shell/components/layout/DashboardHeader";
-import { codeRepositoryPath } from "./pages/code/codeRepositoryRoutes";
 import { memoryNavigationItems } from "./shell/pages/memory/MemoryPageLayout";
 import { NAV_PAGES, navAreaPages } from "./navPages";
 import { systemNavigationItems } from "./pages/system/SystemNavigation";
@@ -17,12 +15,12 @@ function sectionItems(root: string) {
 
 /**
  * Name the area outside the tabs that a path is in, with the pages its pane
- * lists: Settings lists the sections of its one page; System, Memories,
- * and Code list their pages, and the Memories Overview its sections; plugin
+ * lists: Settings lists the sections of its one page; System and Memories
+ * list their pages, and the Memories Overview its sections; plugin
  * pages list each other. Any other page lists every area, so the pane is
  * never empty. Tab paths have no area.
  */
-export function useArea(
+export function areaForPath(
   pathname: string,
   navItems: {
     primary: readonly DashboardHeaderNavItem[];
@@ -30,9 +28,8 @@ export function useArea(
   },
   isTabPath: boolean,
 ): Area | undefined {
-  const code = under(pathname, "/code");
-  const repositories = useCodeOverviewData(code).data?.repositories ?? [];
-  if (isTabPath) return undefined;
+  // A Space page keeps the Conversations pane, where its Space row lists.
+  if (isTabPath || under(pathname, "/spaces")) return undefined;
   if (under(pathname, NAV_PAGES.settings.to))
     return {
       items: sectionItems(NAV_PAGES.settings.to),
@@ -50,19 +47,6 @@ export function useArea(
       ],
       label: "Memories",
       root: "/memories",
-    };
-  if (code)
-    return {
-      items: [
-        { end: true, label: "Overview", to: NAV_PAGES.code.to },
-        ...repositories.map((repository) => ({
-          detail: repository.provider,
-          label: repository.name,
-          to: codeRepositoryPath(repository.id),
-        })),
-      ],
-      label: "Code",
-      root: "/code",
     };
   const more = [
     ...navItems.profile.map((item) => ({ label: item.label, to: item.to })),

@@ -1,15 +1,15 @@
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
+import { mockSearchRows } from "../search-fixture";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("opens a registered plugin page from the profile menu", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     await page
       .getByRole("button", {
@@ -245,6 +245,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
+    // ⌘K finds the same memory through `/api/search`.
+    await mockSearchRows(page, {
+      memories: () =>
+        forgotMemory
+          ? []
+          : [{ id: "memory-search", title: "Deploy runbooks live in Notion." }],
+    });
     await page.route("**/api/memory/memories/memory-search", async (route) => {
       if (route.request().method() === "GET") {
         if (forgotMemory) {
@@ -318,8 +325,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("No memories yet.")).toBeVisible();
     expect(forgetRequests).toBe(1);
 
+    // The Overview reads its summary again.
+    const overviewRead = page.waitForResponse("**/api/memory/dashboard");
     await memoryNavigation.getByRole("link", { name: "Overview" }).click();
-    await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+    await overviewRead;
   });
 
   test("lists archived memories and restores one", async ({

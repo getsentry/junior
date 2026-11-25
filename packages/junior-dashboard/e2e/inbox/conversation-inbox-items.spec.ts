@@ -10,8 +10,7 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("inbox item changes show as rows, not as context for other items", async ({
     dashboard,
     page,
@@ -118,7 +117,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const link = answer.getByRole("link", { name: answered.title });
     await expect(link).toHaveAttribute("href", `/inbox?item=${answered.id}`);
     await link.click();
-    await expect(page).toHaveURL(/\/\?view=done$/);
+    await expect(page).toHaveURL(/\/inbox\?view=done$/);
     await expect(
       page.getByRole("region", { name: `${answered.title}: how it closed` }),
     ).toBeVisible();

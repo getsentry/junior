@@ -1,0 +1,23 @@
+{
+  "tables": {
+    "junior_code_changes": {
+      "closed_at": "Too expensive to derive: the Code pages filter and count code changes by state.",
+      "merged_at": "Too expensive to derive: the Code pages filter and count code changes by state.",
+      "state": "Too expensive to derive: the Code pages filter and count code changes by state.",
+      "title": "Too expensive to derive: search matches code changes by title."
+    },
+    "junior_github_pull_request_requesters": "Junior-owned: the people who asked Junior for the pull request, and where they asked.",
+    "junior_github_pull_requests": {
+      "pull_request_id": "Junior-owned: the key of the facts that Junior records for its pull request.",
+      "commit_composition": "Too expensive to derive: it needs every commit of the pull request.",
+      "updated_at": "Junior-owned: when Junior last wrote the row.",
+      "next_action": "Junior-owned: the requester action that Junior shows in the Inbox.",
+      "ready_sync_requests": "Junior-owned: the next action check that Junior runs.",
+      "ready_sync_id": "Junior-owned: the next action check that Junior runs.",
+      "ready_sync_at": "Junior-owned: the next action check that Junior runs.",
+      "conflict_fixes_resumed_at": "Junior-owned: when a person resumed Junior's merge conflict fixes.",
+      "conflict_fix_asked_at": "Junior-owned: when Junior asked to resume merge conflict fixes.",
+      "conflict_fixes": "Junior-owned: the merge conflict fixes that Junior started."
+    }
+  }
+}

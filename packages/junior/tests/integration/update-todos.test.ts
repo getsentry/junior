@@ -1,14 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
-import {
-  enqueueAgentInvocationResult,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
-import {
-  completeAgentInvocation,
-  isTerminalAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -23,6 +15,7 @@ import {
   invocationInput,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
@@ -31,16 +24,20 @@ async function createHarness() {
   const { conversationStore, fixture } = await prepareParentConversation();
   const work = await createConversationWorkHarness(neverRunAgentRunner());
   const spawn = async (agentName: string) =>
-    await createAndEnqueueAgentInvocation(
-      {
-        ...invocationInput,
-        agentName,
-        idempotencyKey: `todos-${agentName}`,
-        input: "Review the draft",
-      },
-      { conversationStore, queue: work.queue, state: work.state },
-    );
-  const child = await spawn("Echo");
+    (
+      await spawnChildAgent(
+        {
+          ...invocationInput,
+          agentName,
+          idempotencyKey: `todos-${agentName}`,
+          input: "Review the draft",
+          parentToolCallId: `todos-${agentName}`,
+          parentTurnId: "parent-turn",
+        },
+        { conversationStore, queue: work.queue, state: work.state },
+      )
+    ).childConversationId;
+  const childConversationId = await spawn("Echo");
   const { findMentionedUserId } = createSlackInboxItemToolServices(
     () => work.queue,
   );
@@ -49,7 +46,7 @@ async function createHarness() {
     findMentionedUserId,
   );
   const childContext = {
-    conversationId: child.childConversationId,
+    conversationId: childConversationId,
     parentConversationId,
   };
   const childListAgents = createListAgentsTool(childContext);
@@ -57,42 +54,21 @@ async function createHarness() {
     childContext,
     findMentionedUserId,
   );
+  const publishChildTurn = createPublishChildTurn({
+    queue: work.queue,
+    state: work.state,
+  });
   return {
-    child,
-    childConversationId: child.childConversationId,
+    childConversationId,
     spawn,
-    /** Ends a child's invocation and sends its result to the parent. */
-    finish: async (end: Parameters<typeof completeAgentInvocation>[0]) => {
-      const invocation = await completeAgentInvocation(end);
-      if (!invocation || !isTerminalAgentInvocation(invocation)) {
-        throw new Error(`${end.invocationId} did not end`);
-      }
-      await enqueueAgentInvocationResult(invocation, {
-        queue: work.queue,
-        state: work.state,
-      });
-      return invocation;
-    },
-    /** Sends a result again, as heartbeat recovery does after a crash. */
-    resend: async (
-      invocation: Parameters<typeof enqueueAgentInvocationResult>[0],
-    ): Promise<void> =>
-      await enqueueAgentInvocationResult(invocation, {
-        queue: work.queue,
-        state: work.state,
-      }),
-    /** Sends the `reply` of a child's agent invocation to the parent. */
-    reply: async (
-      invocation: Awaited<ReturnType<typeof spawn>>,
-      text: string,
-    ): Promise<void> =>
-      await enqueueChildResultToParent({
-        result: { kind: "reply", reply: { text, toolCallId: "reply-1" } },
-        messageKey: "reply-1",
-        queue: work.queue,
-        sender: invocation,
-        state: work.state,
-        turnId: getAgentInvocationTurnId(invocation.invocationId),
+    work,
+    /** Sends one child Turn's result to the parent, as its loop does. */
+    send: async (conversationId: string, update: AgentUpdate) =>
+      await publishChildTurn({
+        actor: invocationInput.actor,
+        conversationId,
+        turnId: "turn_child",
+        update,
       }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
@@ -109,6 +85,7 @@ async function createHarness() {
 
 describe("updateTodos", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
   });
 
@@ -342,73 +319,56 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos when its completed or stopped result arrives", async () => {
+  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
     try {
       const children = {
-        completed: harness.child,
-        replied: await harness.spawn("India"),
-        quiet: await harness.spawn("Juliet"),
+        completed: harness.childConversationId,
         stopped: await harness.spawn("Foxtrot"),
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
       };
+      const reply: AgentUpdate = {
+        status: "done",
+        text: "Reviewed.",
+      };
+      tick();
       await harness.updateTodos({
         add: [
           { title: "Echo open", assignee: "Echo" },
           { title: "Echo started", assignee: "Echo", status: "in_progress" },
           { title: "Echo dropped", assignee: "Echo", status: "dropped" },
-          { title: "India open", assignee: "India" },
-          { title: "Juliet open", assignee: "Juliet" },
           { title: "Foxtrot open", assignee: "Foxtrot" },
           { title: "Golf open", assignee: "Golf" },
           { title: "Hotel open", assignee: "Hotel" },
           { title: "Parent open" },
         ],
       });
-      const statusOf = async (title: string) =>
-        (await listTodos(getSqlExecutor(), parentConversationId)).find(
-          (todo) => todo.title === title,
-        )?.status;
 
-      // A `reply` closes them as it reaches the parent, before the
-      // invocation ends, so the parent Turn that reads it sees the change.
-      await harness.reply(children.replied, "Reviewed.");
-      await expect(statusOf("India open")).resolves.toBe("done");
-      // A retry of the same reply leaves To-dos assigned after it open.
-      await harness.updateTodos({
-        add: [{ title: "India next", assignee: "India" }],
-      });
-      await harness.reply(children.replied, "Reviewed.");
-      await expect(statusOf("India next")).resolves.toBe("open");
-      await harness.finish({
-        invocationId: children.replied.invocationId,
-        result: "",
-        status: "completed",
-      });
-      // A Turn that ends with `noReply` sends no result, so nothing closes.
-      await harness.finish({
-        invocationId: children.quiet.invocationId,
-        result: "",
-        status: "completed",
-      });
-      const completed = await harness.finish({
-        invocationId: children.completed.invocationId,
-        result: "Done.",
-        status: "completed",
-      });
-      // A retry of the same result leaves To-dos assigned after it open.
-      await harness.updateTodos({
-        add: [{ title: "Echo next", assignee: "Echo" }],
-      });
-      await harness.resend(completed);
-      for (const status of ["stopped", "failed", "blocked"] as const) {
-        await harness.finish({
-          errorMessage: `Child ${status}.`,
-          invocationId: children[status].invocationId,
-          status,
+      tick();
+      await harness.send(children.completed, reply);
+      for (const kind of ["stopped", "failed", "blocked"] as const) {
+        await harness.send(children[kind], {
+          status: kind,
+          text: `Child ${kind}.`,
         });
       }
+      // A retry of the same result leaves To-dos assigned after it open.
+      tick();
+      await harness.updateTodos({
+        add: [
+          { title: "Echo next", assignee: "Echo" },
+          { title: "Foxtrot next", assignee: "Foxtrot" },
+        ],
+      });
+      tick();
+      await harness.send(children.completed, reply);
+      await harness.send(children.stopped, {
+        status: "stopped",
+        text: "Child stopped.",
+      });
 
       const parentTodos = await listTodos(
         getSqlExecutor(),
@@ -424,14 +384,12 @@ describe("updateTodos", () => {
         ["Echo open", "done", "Echo"],
         ["Echo started", "done", "Echo"],
         ["Echo dropped", "dropped", undefined],
-        ["India open", "done", "India"],
-        ["Juliet open", "open", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
-        ["India next", "open", undefined],
         ["Echo next", "open", undefined],
+        ["Foxtrot next", "open", undefined],
       ]);
     } finally {
       await harness.close();

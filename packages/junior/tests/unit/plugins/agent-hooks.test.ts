@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
@@ -36,7 +37,6 @@ import {
   applyPluginFormatMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
-  getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
   getPluginProfileReports,
@@ -45,6 +45,7 @@ import {
   getPluginTools,
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
+import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
@@ -278,8 +279,8 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects system prompt contributions from configured plugins", async () => {
-    const previous = setPlugins([
+  it("collects system prompt contributions in plugin name order", async () => {
+    const plugins = [
       defineJuniorPlugin({
         manifest: {
           name: "z-demo",
@@ -288,8 +289,15 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt(ctx) {
-            expect(ctx.platform).toBe("local");
-            expect(ctx.db).toEqual(expect.any(Object));
+            expect(Object.keys(ctx).sort()).toEqual([
+              "log",
+              "platform",
+              "plugin",
+            ]);
+            expect(ctx).toMatchObject({
+              plugin: { name: "z-demo" },
+              platform: "local",
+            });
             return [{ text: "Z contribution" }];
           },
         },
@@ -306,21 +314,17 @@ describe("agent plugin hooks", () => {
           },
         },
       }),
+    ];
+    await expect(
+      getPluginSystemPromptContributions(plugins, "local"),
+    ).resolves.toEqual([
+      { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
+      { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
     ]);
-    try {
-      await expect(
-        getPluginSystemPromptContributions("local"),
-      ).resolves.toEqual([
-        { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
-        { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
   });
 
-  it("omits malformed system prompt messages", async () => {
-    const previous = setPlugins([
+  it("names the plugin whose system prompt messages are malformed", async () => {
+    const plugins = [
       defineJuniorPlugin({
         manifest: {
           name: "agent-demo",
@@ -333,14 +337,12 @@ describe("agent plugin hooks", () => {
           },
         },
       }),
-    ]);
-    try {
-      await expect(
-        getPluginSystemPromptContributions("local"),
-      ).resolves.toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+    ];
+    await expect(
+      getPluginSystemPromptContributions(plugins, "local"),
+    ).rejects.toThrow(
+      'Plugin "agent-demo" systemPrompt hook failed for local: invalid guidance',
+    );
   });
 
   it("collects user prompt messages from configured plugins", async () => {
@@ -1183,6 +1185,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async (_event: Event) => {});
       const routes = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1242,6 +1245,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async () => {});
       const [route] = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1311,6 +1315,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async () => {});
       const [route] = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1348,6 +1353,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),
@@ -1383,6 +1389,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),
@@ -1423,6 +1430,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),
@@ -2134,11 +2142,11 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
-  it("exposes Slack context and Actor for an Agent invocation", () => {
+  it("exposes Slack context and Actor for a Parent message", () => {
     const ctx = capturePluginContext({
       turnTools: rootTurnTools,
       conversationId: "agent-invocation:invocation-1",
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
       actor: TEST_ACTOR,
       destination: SLACK_DESTINATION,
       location: {
@@ -2151,7 +2159,7 @@ describe("getPluginTools channel resolution", () => {
       workspace: {} as any,
     });
 
-    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.source).toEqual({ kind: "parent_message" });
     expect(ctx.actor).toEqual(TEST_ACTOR);
     expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
   });

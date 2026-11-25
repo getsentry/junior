@@ -29,9 +29,11 @@ import {
 export interface InboxSnoozeTriggerMatch {
   eventType: string;
   identifier: string;
+  inboxItemId: string;
   match: EventMatch | null;
   outcome: "wake" | "resolve";
   snoozeId: string;
+  userId: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,6 +46,7 @@ const SNOOZE_RETENTION_LIMIT = 1000;
 export const SNOOZE_TIMER_EVENT_TYPE = "timer.fired";
 
 const linkRoot = alias(juniorConversations, "snooze_link_root");
+const ownerRoot = alias(juniorConversations, "snooze_owner_root");
 const itemLink = alias(juniorInboxItemConversations, "snooze_item_link");
 
 const queries = new QueryBuilder();
@@ -61,13 +64,31 @@ function rowRootsOfItem(itemId: SQL | string) {
 
 /**
  * SQL: the Inbox item is in the Inbox row of this root Conversation: the
- * item links that Conversation or one of its threads.
+ * item links that Conversation or one of its threads, or one of them owns
+ * it. A To-do's item links nothing, so its owner puts it in the row.
  */
 export function inboxItemInRow(rootConversationId: string): SQL {
-  return inArray(
-    sql`${rootConversationId}`,
-    rowRootsOfItem(sql`${juniorInboxItems.id}`),
-  );
+  return or(
+    inArray(
+      sql`${rootConversationId}`,
+      rowRootsOfItem(sql`${juniorInboxItems.id}`),
+    ),
+    and(
+      eq(juniorInboxItems.ownerKind, "conversation"),
+      inArray(
+        juniorInboxItems.ownerId,
+        queries
+          .select({ id: ownerRoot.conversationId })
+          .from(ownerRoot)
+          .where(
+            or(
+              eq(ownerRoot.conversationId, rootConversationId),
+              eq(ownerRoot.rootConversationId, rootConversationId),
+            ),
+          ),
+      ),
+    ),
+  )!;
 }
 
 /** SQL: this User snoozed the Inbox item, and it has not woken. */
@@ -223,9 +244,11 @@ export async function listFiringInboxSnoozeTriggers(
     .select({
       eventType: juniorInboxSnoozeTriggers.eventType,
       identifier: juniorInboxSnoozeTriggers.identifier,
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
       match: juniorInboxSnoozeTriggers.match,
       outcome: juniorInboxSnoozeTriggers.outcome,
       snoozeId: juniorInboxSnoozeTriggers.snoozeId,
+      userId: juniorInboxSnoozes.userId,
     })
     .from(juniorInboxSnoozeTriggers)
     .innerJoin(
@@ -242,10 +265,16 @@ export async function listFiringInboxSnoozeTriggers(
     );
 }
 
+/** A snooze that a trigger ended: the item and the User who snoozed it. */
+export interface SettledInboxSnooze {
+  inboxItemId: string;
+  userId: string;
+}
+
 /**
  * End snoozes that a trigger fired. Only a `snoozed` row changes, so the
- * first trigger to fire wins. A woken snooze records why it woke. Return
- * the items of the snoozes that changed.
+ * first trigger to fire wins, and only its caller gets the snooze back. A
+ * woken snooze records why it woke. Return the snoozes that changed.
  */
 export async function settleInboxSnoozes(
   db: Pick<JuniorDatabase, "update">,
@@ -253,9 +282,9 @@ export async function settleInboxSnoozes(
     | { state: "cancelled" }
     | { reason: InboxSnoozeWakeReason; state: "woken" }
   ),
-): Promise<string[]> {
+): Promise<SettledInboxSnooze[]> {
   if (input.snoozeIds.length === 0) return [];
-  const rows = await db
+  return await db
     .update(juniorInboxSnoozes)
     .set(
       input.state === "woken"
@@ -268,8 +297,10 @@ export async function settleInboxSnoozes(
         eq(juniorInboxSnoozes.state, "snoozed"),
       ),
     )
-    .returning({ inboxItemId: juniorInboxSnoozes.inboxItemId });
-  return rows.map((row) => row.inboxItemId);
+    .returning({
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
+      userId: juniorInboxSnoozes.userId,
+    });
 }
 
 /**

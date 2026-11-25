@@ -5,8 +5,7 @@ import { NOW } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("pages the Automations list as it scrolls and expands a row in place", async ({
     page,
     dashboard,
@@ -119,6 +118,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(details).toHaveCount(0);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
 
+    // The open page also reads the Automation's versions.
+    const versionsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        "/api/automations/scheduled-1/versions",
+    );
     // A pointer that rests on a row loads its page, so the open reuses it.
     await rows.first().hover();
     await expect
@@ -132,6 +137,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "Weekly project summary" }),
     ).toBeVisible();
     expect(summaryReads).toHaveLength(2);
+    await versionsRead;
   });
 
   test("To do lists an alert that the Inbox has not loaded yet", async ({

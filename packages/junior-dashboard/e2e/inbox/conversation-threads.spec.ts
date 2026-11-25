@@ -1,10 +1,10 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { waitForOutlineRead } from "../harness";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ROOT_ID = "internal:dashboard-qa";
   const THREAD_ID = "junior:internal:dashboard-qa:thread";
   const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
@@ -29,7 +29,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     // An archived Thread drops out of the list.
     await expect(
@@ -114,6 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       archived: boolean;
       url: string;
     }> = [];
+    const held: Request[] = [];
     let release: (() => void) | undefined;
     const released = new Promise<void>((resolve) => {
       release = resolve;
@@ -128,10 +129,18 @@ test.describe("new UI", { tag: "@new" }, () => {
         archived: body.archived,
         url: route.request().url(),
       });
+      held.push(route.request());
       await released;
       await route.continue();
     });
-    return { calls, release: () => release?.() };
+    return {
+      calls,
+      /** Let calls through and wait for the response of each call so far. */
+      release: async () => {
+        release?.();
+        await Promise.all(held.map((request) => request.response()));
+      },
+    };
   }
 
   test("archives a Thread from its page", async ({ page, dashboard }) => {
@@ -139,7 +148,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await holdArchives(page);
     const threadUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`;
     const threadArchiveUrl = `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`;
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -173,7 +182,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       })
       .getByRole("button", { name: "Archive" })
       .click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await expect
       .poll(() => archiveCalls)
       .toEqual([
@@ -203,7 +214,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await expect(threadRow).toHaveCount(0);
     await expect(nestedRow).toHaveCount(0);
-    releaseArchive();
+    await releaseArchive();
     await expect(rootRow).toBeVisible();
 
     // An archived Thread stays readable, and Restore brings its row back.
@@ -222,6 +233,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         { applyToChildren: true, archived: true, url: threadArchiveUrl },
         { applyToChildren: true, archived: false, url: threadArchiveUrl },
       ]);
+    await releaseArchive();
   });
 
   test("archives a nested Thread without its parent", async ({
@@ -229,7 +241,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     const archive = await holdArchives(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -251,11 +263,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("button", { name: "Archive" })
       .click();
     await expect.poll(() => archive.calls.length).toBe(1);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     // The nested row hides at once. Its parent Thread stays.
     await expect(nestedRow).toHaveCount(0);
     await expect(threadRow).toBeVisible();
-    archive.release();
+    await archive.release();
 
     // Undo puts the nested row back under its parent before the restore
     // settles, so it does not wait on a feed refetch.
@@ -270,13 +284,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       name.includes("Check pinned row order"),
     );
     expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
-    restore.release();
+    await restore.release();
   });
 
   test("archives a Thread from its list row", async ({ page, dashboard }) => {
     const archive = await holdArchives(page);
     await page.setViewportSize({ height: 900, width: 1440 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -308,8 +322,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(threadRow).toHaveCount(0);
     await expect(nestedRow).toHaveCount(0);
     // The list stays open.
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
-    archive.release();
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
+    await archive.release();
   });
 
   test("hides the composer on a Task page", async ({ page, dashboard }) => {
@@ -370,10 +386,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await archivedCard.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-thread-cards", { view: "mobile" });
     await page.setViewportSize({ height: 900, width: 1440 });
+    // Each visit reads the outline of its Conversation.
+    const outlineRead = waitForOutlineRead(page, THREAD_ID);
     await threadCard.click();
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
+    await outlineRead;
   });
 
   test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
@@ -444,5 +463,41 @@ test.describe("new UI", { tag: "@new" }, () => {
       header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
+  });
+
+  test("a running row that needs input shows both", async ({
+    page,
+    dashboard,
+  }) => {
+    // An open action item reads `needs_input` while a Turn runs.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: feed.conversations.map(
+              (row: { conversationId: string }) =>
+                row.conversationId === ROOT_ID
+                  ? { ...row, status: "needs_input", turnActive: true }
+                  : row,
+            ),
+          },
+        });
+      },
+    );
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+
+    const row = page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /Dashboard QA edge cases/ }),
+      });
+    await expect(row.getByText("Needs input")).toBeVisible();
+    await expect(row.getByRole("status", { name: "Working" })).toBeVisible();
   });
 });

@@ -144,6 +144,7 @@ export async function expectSqlBudget<T>(
 type PlanNode = {
   "Node Type": string;
   "Total Cost": number;
+  "Plan Rows": number;
   "Relation Name"?: string;
   "Index Cond"?: string;
   "Recheck Cond"?: string;
@@ -211,9 +212,13 @@ async function explainPlans(
 
 // Tables that grow with use, so a full read of one gets slower over time.
 const BIG_TABLES = [
+  "junior_automations",
   "junior_code_changes",
-  "junior_conversation_briefs",
   "junior_conversation_metrics",
+  "junior_inbox_items",
+  "junior_memory_embeddings",
+  "junior_memory_memories",
+  "junior_todos",
 ];
 
 /**
@@ -274,6 +279,17 @@ export async function expectNoFullScan<T>(
   }
   if (failures.length > 0) throw new Error(failures.join("\n"));
   return result;
+}
+
+/**
+ * Run `call` and return every plan node of each statement that it sent, in
+ * statement order. Use it to assert one planner estimate, such as the rows
+ * that Postgres expects from a node.
+ */
+export async function explainNodes(call: () => unknown): Promise<PlanNode[][]> {
+  const { statements } = await measureSql(call);
+  const plans = await explainPlans(statements);
+  return plans.map(({ plan }) => [...planNodes(plan)]);
 }
 
 /**

@@ -129,6 +129,10 @@ export type TranscriptViewMessage = {
   /** Resource identifier of the first Event, such as a Conversation id. */
   eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
+  /** What the first Event says happened, when it is an agent update. */
+  eventStatus?: string;
+  /** Watch that delivered the first Event. */
+  eventWatchId?: string;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Every Event when several arrived together in one message. */
@@ -173,7 +177,6 @@ export type Conversation = {
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"] | undefined;
   links?: ConversationFeedItem["links"] | undefined;
-  annotations?: ConversationSummaryReport["annotations"] | undefined;
   sidebarAnnotations?:
     | ConversationSummaryReport["sidebarAnnotations"]
     | undefined;
@@ -215,11 +218,15 @@ export type Conversation = {
   parentConversationId?: string | undefined;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[] | undefined;
+  /** Threads that the feed left out of `threads`. Roots only. */
+  omittedThreadCount?: number | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
   /** The latest Turn failed and no newer Turn started. Server-owned. */
   latestTurnFailed?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The Space of the root, or null for a one-off. Feed rows and details. */
+  space?: ConversationSummaryReport["space"] | undefined;
   /** The viewer's newest answer here. The viewer's own feed rows only. */
   viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };

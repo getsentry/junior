@@ -7,12 +7,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
 import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters/store";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -98,6 +96,13 @@ function route(
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
+    // The ready webhook refreshes its cached pull request.
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+      async update() {},
+    },
     annotations: {
       forConversation() {
         return {
@@ -109,11 +114,7 @@ function route(
         };
       },
     },
-    codeChanges: {
-      async associateConversations() {},
-      async recordActivity() {},
-      async record() {},
-    },
+    codeChanges: fixture.codeIndex.codeChanges,
     db: fixture.db(),
     events: { hasMatch: async () => false, async publish() {} },
     log: {
@@ -142,19 +143,13 @@ function route(
 
 async function seedJuniorPullRequest(fixture: GitHubFixture): Promise<void> {
   const at = new Date("2026-07-01T12:00:00.000Z");
-  await fixture
-    .db()
-    .insert(juniorGitHubPullRequests)
-    .values({
-      conversationIds: [CONVERSATION_ID],
-      number: 946,
-      openedAt: at,
-      pullRequestId: "1001",
-      repositoryFullName: "getsentry/junior",
-      repositoryId: "2001",
-      state: "open",
-      updatedAt: at,
-    });
+  await recordJuniorPullRequest(fixture, {
+    conversationIds: [CONVERSATION_ID],
+    number: 946,
+    pullRequestId: "1001",
+    repositoryId: "2001",
+    updatedAt: at,
+  });
   await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
     conversationId: CONVERSATION_ID,
     createdAt: at,
@@ -191,6 +186,7 @@ describe("review request when a draft is ready", () => {
       githubPlugin().hooks!.tools!()["createPullRequest"],
       {
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationId: CONVERSATION_ID,
         db: fixture.db(),
         destination: { platform: "local", conversationId: CONVERSATION_ID },
@@ -248,8 +244,14 @@ describe("review request when a draft is ready", () => {
     );
   }
 
-  /** Serve the ready webhook's GitHub calls and record each review request. */
-  function serveReviewRequests(status = 201): unknown[] {
+  /**
+   * Serve the ready webhook's GitHub calls and record each review request.
+   * `reviews` are the reviews that people submitted on the draft.
+   */
+  function serveReviewRequests(
+    status = 201,
+    reviews: { login: string; state: string }[] = [],
+  ): unknown[] {
     const requests: unknown[] = [];
     mswServer.use(
       http.post(
@@ -263,7 +265,7 @@ describe("review request when a draft is ready", () => {
       http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
         HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
       ),
-      // The next-action check reads an open pull request with no reviews.
+      // The next-action check and the review request read the same state.
       http.post("https://api.github.com/graphql", () =>
         HttpResponse.json({
           data: {
@@ -276,7 +278,12 @@ describe("review request when a draft is ready", () => {
                 mergeStateStatus: "BLOCKED",
                 reviewRequests: { nodes: [] },
                 reviews: {
-                  nodes: [],
+                  nodes: reviews.map((review) => ({
+                    author: { __typename: "User", login: review.login },
+                    commit: { oid: "head-1" },
+                    state: review.state,
+                    submittedAt: "2026-07-01T13:00:00Z",
+                  })),
                   pageInfo: { hasPreviousPage: false, startCursor: null },
                 },
                 state: "OPEN",
@@ -326,6 +333,42 @@ describe("review request when a draft is ready", () => {
       }
     },
   );
+
+  it.each([
+    {
+      expected: [],
+      name: "does not ask the requester who approved the draft",
+      reviewers: undefined,
+      reviews: [{ login: "requester", state: "APPROVED" }],
+    },
+    {
+      expected: [{ reviewers: ["hubot"] }],
+      name: "asks only the named reviewers who did not review the draft",
+      reviewers: ["octocat", "hubot"],
+      reviews: [{ login: "octocat", state: "COMMENTED" }],
+    },
+    {
+      expected: [{ reviewers: ["Requester"] }],
+      name: "asks the requester whose review was dismissed",
+      reviewers: undefined,
+      reviews: [
+        { login: "Requester", state: "COMMENTED" },
+        { login: "Requester", state: "DISMISSED" },
+      ],
+    },
+  ])("$name", async ({ expected, reviewers, reviews }) => {
+    const fixture = await createGitHubFixture();
+    const requests = serveReviewRequests(201, reviews);
+    try {
+      const state = memoryState();
+      await createDraft(fixture, state, reviewers);
+
+      await route(fixture, { state }).handler(readyForReview());
+      expect(requests).toEqual(expected);
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("keeps the named reviewers when a draft create call is replayed", async () => {
     const fixture = await createGitHubFixture();

@@ -44,8 +44,10 @@ import {
   isOldAutomationsPath,
   paneRowForPath,
   paneRowLabel,
+  paneRowMark,
   paneRowRoot,
   type PaneRow,
+  type PaneRowMark,
 } from "./paneRows";
 import { NAV_PAGES } from "../../navPages";
 
@@ -77,6 +79,8 @@ type PaneNavValue = {
   workspaceActive: boolean;
   /** The row that owns the page now, if any. */
   currentRow?: PaneRow;
+  /** How `currentRow` marks the page. */
+  currentMark?: PaneRowMark;
   /** The row the reader was on last, for the way back from other pages. */
   lastRow: PaneRow;
   /** The last path and search that each row showed, so a row reopens there. */
@@ -202,6 +206,7 @@ export function PaneNavProvider(props: {
   }, [open, setOpen, toggleZen, zenActive, zenAvailable]);
   const value = useMemo(
     () => ({
+      currentMark: row ? paneRowMark(location.pathname) : undefined,
       currentRow: row,
       lastRow,
       navItems: props.navItems,
@@ -222,6 +227,7 @@ export function PaneNavProvider(props: {
     }),
     [
       lastRow,
+      location.pathname,
       open,
       props.navItems,
       props.onSearch,
@@ -265,18 +271,21 @@ export function usePaneBack(): { label: string; to: string } {
 }
 
 /**
- * Where a row's link goes, and whether it owns the page that shows. From
- * another destination, a row reopens where the reader left it. A row that
- * owns the page goes back to its top level, and inside the Inbox each view
- * opens its list.
+ * Where a row's link goes, and how it marks the page that shows, if it owns
+ * it. From another destination, a row reopens where the reader left it. A
+ * row that owns the page goes back to its top level, and inside the Inbox
+ * each view opens its list.
  */
-export function usePaneRowLink(row: PaneRow): { current: boolean; to: string } {
+export function usePaneRowLink(row: PaneRow): {
+  mark?: PaneRowMark;
+  to: string;
+} {
   const pane = usePaneNav();
   const root = paneRowRoot(row, pane.navItems);
   const current = pane.currentRow === row;
   const sameInbox = isInboxView(row) && isInboxView(pane.currentRow);
   return {
-    current,
+    mark: current ? pane.currentMark : undefined,
     to: current || sameInbox ? root : (pane.rowPaths[row] ?? root),
   };
 }

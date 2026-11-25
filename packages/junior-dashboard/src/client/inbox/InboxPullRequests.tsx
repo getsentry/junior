@@ -1,13 +1,24 @@
-import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
+import type {
+  CodeChangeStack,
+  CodeChangeSummaryReport,
+} from "@sentry/junior/api/schema";
 import { ArrowUpRight } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { Link } from "react-router";
 
 import { useActorOpenCodeChanges, useDashboardCoreData } from "../api";
-import { ChangeSize } from "../components/ChangeSize";
+import { ListedChangeSize } from "../components/ChangeSize";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
+import { conversationPath } from "../conversations/conversationRoutes";
+import {
+  type ListedObject,
+  useListedObjects,
+} from "../display-text/DisplayText";
+import { automationPath } from "../format";
+import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
-import { inboxCardClass } from "./inboxRowStyles";
+import { INBOX_STACK_CLASS, inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
 import type { InboxBundle } from "./inboxItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -16,9 +27,11 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 export type PullRequestChangeRow = {
   change: CodeChangeSummaryReport;
   items: InboxBundle[];
+  /** The live card, for the draft state and the size. */
+  listed: ListedObject;
 };
 
-/** One group of the Pull requests view. */
+/** One group of Code · Mine. */
 export type PullRequestSection = {
   changes: PullRequestChangeRow[];
   /** The pile starts collapsed until the viewer opens it. */
@@ -48,16 +61,19 @@ const byActivity = (a: PullRequestChangeRow, b: PullRequestChangeRow) =>
  * theirs. Waiting on others: every other open change, waiting on a
  * reviewer, CI or Junior, newest activity first, and the other asks, so
  * nothing gets lost. Drafts: the other draft changes with their asks,
- * newest activity first, collapsed. Empty piles drop out.
+ * newest activity first, collapsed. Empty piles drop out. The live card
+ * says which change is a draft, so a draft moves to Drafts once it comes.
  */
 export function pullRequestSections(
   changes: readonly CodeChangeSummaryReport[],
   itemRows: readonly InboxBundle[],
+  listedOf: (url: string | undefined) => ListedObject,
 ): PullRequestSection[] {
   const rows = changes
     .filter((change) => change.state === "open")
     .map((change): PullRequestChangeRow => ({
       change,
+      listed: listedOf(change.url),
       items: change.url
         ? itemRows.filter(
             (row) =>
@@ -69,14 +85,15 @@ export function pullRequestSections(
   const attached = new Set(rows.flatMap((row) => row.items));
   const loose = itemRows.filter((row) => !attached.has(row));
   // An ask that waits on the viewer puts its change in Waiting on you, also
-  // a draft, so the pile matches its count (`waitingPullRequestCount`)
-  // before the viewer's changes load.
+  // a draft.
   const waiting = rows
     .filter((row) => row.items.some((item) => item.needsYou))
     .sort((a, b) => waitedSince(a) - waitedSince(b));
   const rest = rows.filter((row) => !waiting.includes(row));
-  const drafts = rest.filter((row) => row.change.draft).sort(byActivity);
-  const others = rest.filter((row) => !row.change.draft).sort(byActivity);
+  const drafts = rest.filter((row) => listedDraft(row.listed)).sort(byActivity);
+  const others = rest
+    .filter((row) => !listedDraft(row.listed))
+    .sort(byActivity);
   return [
     {
       changes: waiting,
@@ -100,30 +117,55 @@ export function pullRequestSections(
   ].filter((section) => section.changes.length + section.items.length > 0);
 }
 
+/** One entry of a Mine group: a change, or the changes of one source. */
+type PullRequestEntry =
+  | { kind: "change"; row: PullRequestChangeRow }
+  | {
+      kind: "stack";
+      key: string;
+      rows: PullRequestChangeRow[];
+      stack: CodeChangeStack;
+    };
+
+const stackKey = (stack: CodeChangeStack) => `${stack.kind}:${stack.id}`;
+
 /**
- * Count the entries under Waiting on you: one per pull request with an ask
- * that waits on the viewer, and one per such ask that names no pull request.
- * It needs only the asks, so the badge counts before the viewer's changes
- * load. Two asks for one pull request that is not the viewer's open change
- * show as two rows there, but count once.
+ * Fold the changes of one Conversation or Automation into one stack, at the
+ * place of its first change, so the group keeps its order. A source with one
+ * change stays a plain row.
  */
-export function waitingPullRequestCount(
-  itemRows: readonly InboxBundle[],
-): number {
-  return new Set(
-    itemRows
-      .filter((row) => row.needsYou)
-      .map((row) =>
-        row.newest.subject?.url ? sameUrl(row.newest.subject.url) : row.key,
-      ),
-  ).size;
+export function stackedChanges(
+  rows: readonly PullRequestChangeRow[],
+): PullRequestEntry[] {
+  const bySource = new Map<string, PullRequestChangeRow[]>();
+  for (const row of rows) {
+    const { stack } = row.change;
+    if (!stack) continue;
+    bySource.set(stackKey(stack), [
+      ...(bySource.get(stackKey(stack)) ?? []),
+      row,
+    ]);
+  }
+  const placed = new Set<string>();
+  return rows.flatMap((row): PullRequestEntry[] => {
+    const { stack } = row.change;
+    const siblings = stack ? bySource.get(stackKey(stack)) : undefined;
+    if (!stack || !siblings || siblings.length < 2) {
+      return [{ kind: "change", row }];
+    }
+    const key = stackKey(stack);
+    if (placed.has(key)) return [];
+    placed.add(key);
+    return [{ key, kind: "stack", rows: siblings, stack }];
+  });
 }
 
 /**
- * Read the Pull requests view: every open code change of the viewer, from
- * their person Code overview, grouped with the pull request asks. The pages
- * of both load one after another only while the view is open, so each ask
- * finds its change wherever the list is scrolled.
+ * Read Code · Mine: every open code change of the viewer, from their person
+ * Code overview, grouped with the pull request asks, and the first page of
+ * that overview for their numbers. The pages of both load one after another
+ * only while Mine is open, so each ask finds its change wherever the list
+ * is scrolled.
  */
 export function usePullRequestSections(
   itemRows: readonly InboxBundle[],
@@ -148,11 +190,16 @@ export function usePullRequestSections(
   // Signed out, or before the overview loads, the asks show on their own.
   const pages = code.data?.pages ?? [];
   const changes = pages.flatMap((page) => page.changes);
+  const listedOf = useListedObjects(
+    changes.flatMap((change) => (change.state === "open" ? change.url : [])),
+  );
   const nowMs = pages[0] ? Date.parse(pages[0].generatedAt) : Date.now();
   return {
+    error: code.isError && !pages[0],
     loading: enabled && Boolean(email) && code.isPending,
     nowMs,
-    sections: pullRequestSections(changes, itemRows),
+    report: pages[0],
+    sections: pullRequestSections(changes, itemRows, listedOf),
   };
 }
 
@@ -213,13 +260,16 @@ export function PullRequestChange(props: {
           </div>
           {/* A narrow row gives the title the width, so the size goes under
               it, in line with the title. */}
-          <ChangeSize
+          <ListedChangeSize
             className="pl-6 text-xs text-dashboard-text-muted sm:hidden"
-            size={change.size}
+            listed={props.row.listed}
           />
         </div>
         <div className="flex shrink-0 items-center gap-4 text-xs text-dashboard-text-muted">
-          <ChangeSize className="hidden sm:inline" size={change.size} />
+          <ListedChangeSize
+            className="hidden sm:inline-block"
+            listed={props.row.listed}
+          />
           <span className="hidden sm:inline">
             {change.repository}{" "}
             <span className="tabular-nums">#{change.number}</span>
@@ -234,6 +284,48 @@ export function PullRequestChange(props: {
           {props.children}
         </ul>
       ) : null}
+    </li>
+  );
+}
+
+/**
+ * The changes of one Conversation or Automation in a Mine group, under a
+ * head row that opens their source, as an Inbox stack does.
+ */
+export function PullRequestStack(props: {
+  children: ReactNode;
+  count: number;
+  stack: CodeChangeStack;
+}) {
+  const { stack } = props;
+  const title = stack.title ?? "Untitled";
+  return (
+    <li
+      aria-label={title}
+      className={INBOX_STACK_CLASS}
+      data-dock-key={`stack:${stackKey(stack)}`}
+    >
+      <div className="flex min-h-7 min-w-0 items-center gap-2 pr-1 pl-2.5">
+        <Link
+          className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          to={
+            stack.kind === "automation"
+              ? automationPath(stack.id)
+              : conversationPath(stack.id)
+          }
+        >
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+            {title}
+          </span>
+        </Link>
+        <span className="px-1 text-xs text-dashboard-text-muted tabular-nums">
+          {props.count}
+          <span className="sr-only"> pull requests</span>
+        </span>
+      </div>
+      <ul className="m-0 grid gap-1.5 p-0" data-dock-list="">
+        {props.children}
+      </ul>
     </li>
   );
 }

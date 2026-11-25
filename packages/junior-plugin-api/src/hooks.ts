@@ -43,7 +43,7 @@ import type {
 import type { InboxItemAnsweredHookContext } from "./inbox-items";
 import type {
   PromptMessage,
-  SystemPromptContext,
+  SystemPromptBuildContext,
   UserPromptContext,
   UserPromptContribution,
 } from "./prompt";
@@ -107,12 +107,15 @@ export interface PluginHooks {
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
   /**
-   * Return static guidance for the system prompt. Return the same text for one
-   * deployment and platform, so the system prompt stays cacheable. Put text
-   * that changes per request in `userPrompt`. See `policies/system-prompt.md`.
+   * Return static guidance for the system prompts of one platform. Junior
+   * runs this hook once at build for each platform, uses its output in the
+   * system prompt of every Prompt mode on that platform, and freezes it for
+   * the deployment. So every Turn gets the same system prompt, and the model
+   * provider can cache it. The hook may do I/O, but that I/O happens only at
+   * build. Put text that changes per request in `userPrompt`.
    */
   systemPrompt?(
-    ctx: SystemPromptContext,
+    ctx: SystemPromptBuildContext,
   ): Promise<PromptMessage[]> | PromptMessage[];
   /**
    * Return per-request context for a new prompt, such as recalled memories.

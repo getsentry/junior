@@ -4,15 +4,13 @@ import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 
 /** True when the Conversation is a root that delivers to a Location. */
 export function canPauseConversationDelivery(
-  conversation: Pick<Conversation, "kind" | "location">,
+  conversation: Pick<Conversation, "parentConversationId" | "location">,
 ): boolean {
-  return (
-    isTopLevelKind(conversation.kind) && conversation.location !== undefined
-  );
+  return isTopLevel(conversation) && conversation.location !== undefined;
 }
 
 const rootConversation = (conversationId: string) =>
@@ -42,11 +40,14 @@ export async function pauseConversationDelivery(
   return rows.length > 0;
 }
 
-/** Deliver a root's Event Turn replies to its Location again. */
+/**
+ * Deliver a root's Event Turn replies to its Location again. Returns false
+ * when Delivery was not paused or the root does not exist.
+ */
 export async function resumeConversationDelivery(
   conversationId: string,
-): Promise<void> {
-  await getSqlExecutor()
+): Promise<boolean> {
+  const rows = await getSqlExecutor()
     .db()
     .update(juniorConversations)
     .set({ deliveryPausedAt: null, detailVersion: nextDetailVersion })
@@ -55,7 +56,9 @@ export async function resumeConversationDelivery(
         rootConversation(conversationId),
         isNotNull(juniorConversations.deliveryPausedAt),
       ),
-    );
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  return rows.length > 0;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
   ADD_REVIEW_REACTION,
@@ -24,8 +25,14 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
+  pullRequestHeadFacts,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
+import {
+  type PullRequestRef,
+  pullRequestVariables,
+} from "../pull-request-graphql.js";
+import type { GitHubRead } from "../pull-request-review-again.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 
 /** Environment variable names for the GitHub App installation. */
@@ -90,6 +97,38 @@ export async function loadPullRequest(
   );
 }
 
+/**
+ * Return a reader of repository full names by repository id, with one
+ * metadata-only token for every repository of the installation. The reader
+ * returns undefined when GitHub does not find the repository.
+ */
+export async function loadRepositoryFullNames(
+  env: GitHubInstallationEnv,
+): Promise<(repositoryId: string) => Promise<string | undefined>> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { metadata: "read" },
+  });
+  return async (repositoryId) => {
+    try {
+      return z
+        .object({ full_name: z.string().min(1) })
+        .parse(
+          await githubRequest(
+            "https://api.github.com",
+            `/repositories/${encodeURIComponent(repositoryId)}`,
+            { token: token.token },
+          ),
+        ).full_name;
+    } catch (error) {
+      if (error instanceof GitHubRequestError && error.status === 404) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+}
+
 /** GitHub cannot reach a repository: it is gone, or the installation lost it. */
 export class GitHubRepositoryUnreachableError extends Error {
   constructor(repositoryId: number) {
@@ -141,7 +180,7 @@ export async function loadPullRequestLifecycles(
     repository.full_name,
     "pull request lifecycle",
   );
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...pullRequestLifecycles(input.numbers.length),
       variables: {
@@ -152,7 +191,6 @@ export async function loadPullRequestLifecycles(
         ),
       },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -178,7 +216,7 @@ export async function searchOpenPullRequestMergeability(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...OPEN_PULL_REQUEST_MERGEABILITY,
       variables: {
@@ -186,7 +224,27 @@ export async function searchOpenPullRequestMergeability(
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
     },
-    method: "POST",
+    token: token.token,
+  });
+}
+
+/**
+ * Read the merge state and check counts of pull requests by repository and
+ * number, in one aliased query, with a read-only token.
+ */
+export async function loadPullRequestHeadFacts(
+  env: GitHubInstallationEnv,
+  refs: PullRequestRef[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: {
+      ...pullRequestHeadFacts(refs.length),
+      variables: pullRequestVariables(refs),
+    },
     token: token.token,
   });
 }
@@ -205,12 +263,11 @@ export async function loadPullRequestConflictHistory(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...PULL_REQUEST_CONFLICT_HISTORY,
       variables: { name, number: pullRequest.number, owner },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -238,6 +295,34 @@ export async function requestPullRequestReviewers(
       token: token.token,
     },
   );
+}
+
+/**
+ * Return a read-only GitHub reader for one repository, for the review-again
+ * check: GraphQL for the pull request, and REST for the branch rules.
+ */
+export async function loadReviewAgainReader(
+  env: GitHubInstallationEnv,
+  repositoryFullName: string,
+): Promise<GitHubRead> {
+  const { name } = splitRepository(repositoryFullName, "review again");
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: {
+      checks: "read",
+      contents: "read",
+      metadata: "read",
+      pull_requests: "read",
+    },
+    repositories: [name],
+  });
+  return async (request) =>
+    await githubRequest("https://api.github.com", request.path, {
+      ...(request.body === undefined
+        ? { responses: env.responses }
+        : { body: request.body, method: "POST" }),
+      token: token.token,
+    });
 }
 
 /** Add the "reviewing" reaction to one pull request comment or review body. */
@@ -376,7 +461,6 @@ const reviewsSchema = z.object({
   nodes: nodesSchema(
     z.object({
       author: actorSchema,
-      commit: z.object({ oid: z.string().min(1) }).nullable(),
       state: z.string(),
       submittedAt: timestampSchema.nullable(),
     }),
@@ -391,12 +475,6 @@ const nextActionSchema = z.object({
     repository: z.object({
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
-        commits: z.object({
-          nodes: nodesSchema(
-            z.object({ commit: z.object({ committedDate: timestampSchema }) }),
-          ),
-        }),
-        headRefOid: z.string().min(1),
         isDraft: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
@@ -437,39 +515,30 @@ const reviewsPageSchema = z.object({
 
 /**
  * One thing that a person or an App did on a pull request: `author` wrote a
- * comment or review, `push` is the head commit, and `reviewRequest` asked
- * `login` for a review. `login` is the REST login, so a bot ends in `[bot]`.
+ * comment or review, and `reviewRequest` asked `login` for a review. `login`
+ * is the REST login, so a bot ends in `[bot]`.
  */
 export interface GitHubPullRequestActivity {
   at: Date;
-  kind: "author" | "push" | "reviewRequest";
+  kind: "author" | "reviewRequest";
   login: string;
 }
 
 /** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
-   * The latest comments, reviews, review requests, and head commit, in no
-   * order. GitHub returns the latest 100 comments and review requests.
+   * The latest comments, reviews, and review requests, in no order. GitHub
+   * returns the latest 100 comments and review requests.
    */
   activity: GitHubPullRequestActivity[];
-  /**
-   * At least one approval, and no reviewer still requests changes. Read
-   * only when GitHub says the pull request can merge cleanly.
-   */
-  approved: boolean;
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
   /**
-   * The commit of the requester's latest change request, when that is their
-   * latest review. Read only when the pull request is open and not a draft.
+   * The requester's latest review requests changes. Read only when the pull
+   * request is open and not a draft.
    */
-  changesRequestedCommit?: string;
-  /** When the requester submitted that change request. */
-  changesRequestedAt?: Date;
+  changesRequested: boolean;
   draft: boolean;
-  /** The commit at the head of the pull request. */
-  headSha: string;
   /**
    * GitHub's merge state, such as `clean` or `blocked`. `clean` means that
    * the required reviews and every check and status passed, and there are
@@ -478,6 +547,24 @@ export interface GitHubPullRequestMergeState {
   mergeableState?: string;
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
+  /**
+   * GitHub still requests a review from a person or a team. A team that
+   * the App cannot read has no login, so `requestedReviewers` misses it.
+   */
+  reviewPending: boolean;
+  /**
+   * Logins of the people whose latest submitted review was not dismissed,
+   * including a comment-only review. Read only when the pull request is open
+   * and not a draft.
+   */
+  reviewedBy: string[];
+  /**
+   * `approved` with at least one approval and no reviewer who still
+   * requests changes. `changesRequested` while a reviewer still requests
+   * changes. Undefined with neither. Read only when GitHub says the pull
+   * request can merge cleanly and auto-merge is off.
+   */
+  reviewOutcome?: "approved" | "changesRequested";
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -518,9 +605,8 @@ export async function loadPullRequestMergeState(
     document: typeof PULL_REQUEST_NEXT_ACTION,
     extra?: { before: string },
   ) =>
-    await githubRequest("https://api.github.com", "/graphql", {
+    await githubGraphqlRequest({
       body: { ...document, variables: { ...variables, ...extra } },
-      method: "POST",
       token: token.token,
     });
   const readPull = async () =>
@@ -545,14 +631,6 @@ export async function loadPullRequestMergeState(
   }
 
   const activity: GitHubPullRequestActivity[] = [];
-  const head = pull.commits.nodes.at(-1);
-  if (head) {
-    activity.push({
-      at: new Date(head.commit.committedDate),
-      kind: "push",
-      login: "",
-    });
-  }
   for (const item of pull.timelineItems.nodes) {
     if (item.__typename === "IssueComment" && item.author) {
       activity.push({
@@ -586,10 +664,9 @@ export async function loadPullRequestMergeState(
     : pull.mergeStateStatus.toLowerCase();
   const state: GitHubPullRequestMergeState = {
     activity,
-    approved: false,
     autoMerge: Boolean(pull.autoMergeRequest),
+    changesRequested: false,
     draft: pull.isDraft,
-    headSha: pull.headRefOid,
     ...(mergeableState ? { mergeableState } : undefined),
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
       request.requestedReviewer?.__typename === "User" &&
@@ -597,6 +674,8 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    reviewPending: pull.reviewRequests.nodes.length > 0,
+    reviewedBy: [],
     state:
       pull.state === "MERGED"
         ? "merged"
@@ -619,22 +698,27 @@ export async function loadPullRequestMergeState(
       latest.set(review.author.login.toLowerCase(), review);
     }
   }
+  // A dismissed review counts only when it is the person's latest review.
+  // GitHub keeps their earlier reviews, such as a comment before it.
+  const latestSubmitted = new Map<string, string>();
+  for (const review of reviews) {
+    if (review.author && review.submittedAt && review.state !== "PENDING") {
+      latestSubmitted.set(review.author.login.toLowerCase(), review.state);
+    }
+  }
+  state.reviewedBy = [...latestSubmitted].flatMap(([login, reviewState]) =>
+    reviewState === "DISMISSED" ? [] : [login],
+  );
   const reviewStates = [...latest.values()].map((review) => review.state);
   if (!state.autoMerge && state.mergeableState === "clean") {
-    state.approved =
-      reviewStates.includes("APPROVED") &&
-      !reviewStates.includes("CHANGES_REQUESTED");
+    if (reviewStates.includes("CHANGES_REQUESTED")) {
+      state.reviewOutcome = "changesRequested";
+    } else if (reviewStates.includes("APPROVED")) {
+      state.reviewOutcome = "approved";
+    }
   }
   const login = requesterLogin?.toLowerCase();
   const requesterReview = login ? latest.get(login) : undefined;
-  if (
-    requesterReview?.state === "CHANGES_REQUESTED" &&
-    requesterReview.commit
-  ) {
-    state.changesRequestedCommit = requesterReview.commit.oid;
-    if (requesterReview.submittedAt) {
-      state.changesRequestedAt = new Date(requesterReview.submittedAt);
-    }
-  }
+  state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
   return state;
 }

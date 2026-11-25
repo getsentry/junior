@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e195a34f-e236-4221-881e-ccdcee261e6e",
+  "prevIds": ["63624186-3205-4985-b9c8-8613366e4b04"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_review_items",
+        "added_by_turn_id"
+      ],
+      "writes": [
+        "s|col|public.junior_review_items.added_by_turn_id",
+        "n|col|public.junior_review_items.added_by_turn_id",
+        "e|col|public.junior_review_items.added_by_turn_id"
+      ],
+      "reads": ["n|tbl|public.junior_review_items", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "added_by_turn_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

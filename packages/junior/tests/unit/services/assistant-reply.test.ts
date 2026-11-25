@@ -43,6 +43,35 @@ describe("assistant reply", () => {
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
+  it("keeps thinking tags inside fenced code, also in a list item", () => {
+    const text = [
+      "<thinking>private</thinking>Use the tag:",
+      "",
+      "1. Wrap it:",
+      "   ~~~xml",
+      "   <thinking>example tag</thinking>",
+      "   ~~~",
+    ].join("\n");
+
+    expect(decideReply(assistant(text))).toEqual({
+      kind: "deliver",
+      text: text.replace("<thinking>private</thinking>", ""),
+    });
+  });
+
+  it("keeps thinking text inside a closed fence in a quote", () => {
+    const text = "> ```\n> <thinking>example</thinking>\n> ```";
+    expect(decideReply(assistant(text))).toEqual({ kind: "deliver", text });
+  });
+
+  it("removes thinking after a fence with no closing line", () => {
+    expect(
+      decideReply(
+        assistant("Run this:\n```sh\npnpm test\n<thinking>private</thinking>"),
+      ),
+    ).toEqual({ kind: "deliver", text: "Run this:\n```sh\npnpm test" });
+  });
+
   it("suppresses a legacy marker reply and tool-call messages", () => {
     expect(decideReply(assistant("[[NO_REPLY]]"))).toEqual({
       kind: "suppress",

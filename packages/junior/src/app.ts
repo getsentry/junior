@@ -9,6 +9,7 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -80,14 +81,15 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
+  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
   consumeConversationQueueMessage,
-  conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationQueueMessage,
@@ -98,49 +100,37 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
-  pluginTaskQueueConsumer,
-  registerVercelPluginTaskDevConsumer,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
+  type PluginTaskSendOptions,
 } from "@/chat/plugins/task-queue";
 import {
   processPluginTask,
   type SendPluginTask,
 } from "@/chat/plugins/task-runner";
-import {
-  cacheWarmupQueueConsumer,
-  createVercelCacheWarmupCallback,
-  registerVercelCacheWarmupDevConsumer,
-} from "@/chat/cache-warming/queue";
-import {
-  createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
-  workspaceSnapshotJobQueueConsumer,
-} from "@/chat/sandbox/snapshot/job-callback";
-import {
-  backgroundCompactionQueueConsumer,
-  createVercelBackgroundCompactionCallback,
-  registerVercelBackgroundCompactionDevConsumer,
-} from "@/chat/services/background-compaction-callback";
+import { createVercelCacheWarmupCallback } from "@/chat/cache-warming/queue";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
+import { createVercelBackgroundCompactionCallback } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  createGatewayModelClient,
+  turnStepConsumer,
+} from "@/turn-steps/consumer";
+import { turnTools } from "@/turn-steps/tools";
+import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import { sweepTurns } from "@/core/turn/sweep";
+import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
   type BackgroundCompactionQueue,
 } from "@/chat/services/background-compaction-queue";
 import {
-  getQueueProvider,
-  type QueueConsumer,
-  type QueueWorker,
-} from "@/chat/queue/provider";
-import { closeDb } from "@/chat/db";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -191,14 +181,10 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+import { isMissingVirtualModule } from "./virtual-module";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
-  /**
-   * Name Junior uses for itself, such as its Slack bot username. Defaults to
-   * `JUNIOR_BOT_NAME`, then `junior`.
-   */
-  botName?: string;
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
@@ -267,8 +253,16 @@ export interface JuniorAppOptions extends BotModelConfig {
    * and do not use this queue.
    */
   pluginTaskQueue?: (
-    consume: (message: PluginTaskQueueMessage) => Promise<void>,
-  ) => { send(message: PluginTaskQueueMessage): Promise<void> };
+    consume: (
+      message: PluginTaskQueueMessage,
+      delivery?: { deliveryCount: number },
+    ) => Promise<void>,
+  ) => {
+    send(
+      message: PluginTaskQueueMessage,
+      options?: PluginTaskSendOptions,
+    ): Promise<void>;
+  };
   /**
    * Replace the Vercel Queue transport for background compaction jobs, for
    * example with an in-process queue. `consume` runs one job.
@@ -310,6 +304,7 @@ function resolvePublicBaseURL(
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
+  botName?: string | undefined;
   functionMaxDurationSeconds?: number | undefined;
   createDashboardApp?: CreateDashboardApp | undefined;
   dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -341,6 +336,7 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
+      botName?: string;
       createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -349,6 +345,7 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
     return {
+      botName: mod.botName,
       createDashboardApp: mod.createDashboardApp,
       functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
@@ -357,24 +354,11 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
     };
   } catch (error) {
-    if (!isMissingVirtualConfig(error)) {
+    if (!isMissingVirtualModule(error, "#junior/config")) {
       throw error;
     }
     return undefined;
   }
-}
-
-function isMissingVirtualConfig(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    (code === "ERR_PACKAGE_IMPORT_NOT_DEFINED" ||
-      code === "ERR_MODULE_NOT_FOUND" ||
-      code === "MODULE_NOT_FOUND") &&
-    error.message.includes("#junior/config")
-  );
 }
 
 function hasConfiguredPluginCatalog(
@@ -469,56 +453,14 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
-/** A Hono app from `createApp()` that can also run its queue consumers. */
-export type JuniorApp = Hono & {
-  /**
-   * Pull this app's queue messages in this process until `close()`.
-   *
-   * Only for a queue provider whose consumers pull messages, such as the
-   * local BullMQ queue. The dev server runs it in its own worker process, so
-   * the Nitro process only sends messages. `close()` also closes the database
-   * and state connections of this process.
-   */
-  startQueueWorker(): Promise<QueueWorker>;
-};
-
-async function startQueueWorker(
-  consumers: QueueConsumer[],
-  backgroundWork: Set<Promise<unknown>>,
-): Promise<QueueWorker> {
-  const provider = getQueueProvider();
-  if (!provider.startWorker) {
+/** Create a Hono app with all Junior routes. */
+export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+  // The build puts the bot name in the system prompt, so only the build sets it.
+  if (options && "botName" in options) {
     throw new Error(
-      `The ${provider.messagingSystem} queue provider has no queue worker`,
+      "createApp({ botName }) was removed; set botName in juniorNitro() instead",
     );
   }
-  const worker = await provider.startWorker(consumers);
-  return {
-    // Try every step, so one failure does not leave the other resources open.
-    close: async () => {
-      try {
-        await worker.close();
-      } finally {
-        // A job can end before the work it started with `waitUntil`, such
-        // as title work. Let that work finish before its connections close.
-        while (backgroundWork.size > 0) {
-          // oxlint-disable-next-line no-await-in-loop -- Work that finishes can start more work, so check again until none is left.
-          await Promise.allSettled(backgroundWork);
-        }
-        try {
-          await disconnectStateAdapter();
-        } finally {
-          await closeDb();
-        }
-      }
-    },
-  };
-}
-
-/** Create a Hono app with all Junior routes. */
-export async function createApp(
-  options?: JuniorAppOptions,
-): Promise<JuniorApp> {
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -587,7 +529,7 @@ export async function createApp(
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
-    setBotName(options?.botName);
+    setBotName(virtualConfig?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.
@@ -625,7 +567,9 @@ export async function createApp(
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      // The queue is chosen below, before any route runs.
+      sendPluginTask: (message, options) => sendPluginTask(message, options),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -648,9 +592,15 @@ export async function createApp(
       }),
     ) ??
     getVercelConversationWorkQueue();
-  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const pluginTaskQueue = options?.pluginTaskQueue?.((message, delivery) =>
+    processPluginTask(message, {
+      deliveryCount: delivery?.deliveryCount,
+      events,
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    }),
+  );
   const sendPluginTask: SendPluginTask = pluginTaskQueue
-    ? (message) => pluginTaskQueue.send(message)
+    ? (message, sendOptions) => pluginTaskQueue.send(message, sendOptions)
     : sendVercelPluginTask;
   const backgroundCompactionQueue =
     options?.backgroundCompactionQueue?.((message) =>
@@ -672,9 +622,6 @@ export async function createApp(
     sandbox: { tracePropagation },
     visionContext: { attachmentStorage },
   };
-  // Background work that Conversation work starts. A queue worker waits for
-  // it before it closes its connections.
-  const backgroundWork = new Set<Promise<unknown>>();
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
@@ -684,13 +631,7 @@ export async function createApp(
         queue: conversationWorkQueue,
         sendPluginTask,
         services: runtimeServiceOverrides,
-        waitUntil: (task) => {
-          backgroundWork.add(task);
-          void task
-            .finally(() => backgroundWork.delete(task))
-            .catch(() => undefined);
-          waitUntil(task);
-        },
+        waitUntil,
       });
     return conversationWorkOptions;
   };
@@ -875,21 +816,22 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env["NODE_ENV"] === "development") {
-    registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
-    registerVercelPluginTaskDevConsumer();
-    registerVercelWorkspaceSnapshotJobDevConsumer();
-    registerVercelCacheWarmupDevConsumer();
-    registerVercelBackgroundCompactionDevConsumer();
-  }
-  app.post("/api/internal/agent/continue", (c) => {
+  // Built after resetRuntimeConfig, so the lease and the queue visibility
+  // timeout use this app's functionMaxDurationSeconds.
+  const chatConfig = getChatConfig();
+  const engineCtx = createEngineContext(chatConfig);
+  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
+  app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
     );
     return agentContinuePOST(c.req.raw);
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
-    pluginTaskPOST ??= createVercelPluginTaskCallback();
+    pluginTaskPOST ??= createVercelPluginTaskCallback({
+      events,
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    });
     return pluginTaskPOST(c.req.raw);
   });
   let workspaceSnapshotJobPOST:
@@ -913,13 +855,38 @@ export async function createApp(
     backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
     return backgroundCompactionPOST(c.req.raw);
   });
+  let turnStepPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
+  // Built on the first step message, like the callbacks above. It builds the
+  // Turn prompt layouts, so building it at startup would slow every cold
+  // start, and a failure there would stop every route of the app.
+  app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, async (c) => {
+    turnStepPOST ??= engineCtx.queue.createCallback(
+      await turnStepConsumer(engineCtx, {
+        client: createGatewayModelClient(),
+        bot: chatConfig.bot,
+        tools: turnTools,
+      }),
+    );
+    return turnStepPOST(c.req.raw);
+  });
+  let deliveryPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
+  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
+    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
+    return deliveryPOST(c.req.raw);
+  });
 
   app.get("/api/internal/heartbeat", (c) => {
     return heartbeatGET(c.req.raw, waitUntil, {
       conversationWorkQueue,
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      sendPluginTask,
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+      sweepTurns: () => sweepTurns(engineCtx),
     });
   });
 
@@ -941,17 +908,5 @@ export async function createApp(
     });
   });
 
-  return Object.assign(app, {
-    startQueueWorker: () =>
-      startQueueWorker(
-        [
-          conversationWorkQueueConsumer(getConversationWorkOptions()),
-          pluginTaskQueueConsumer(),
-          workspaceSnapshotJobQueueConsumer(),
-          cacheWarmupQueueConsumer(),
-          backgroundCompactionQueueConsumer(),
-        ],
-        backgroundWork,
-      ),
-  });
+  return app;
 }

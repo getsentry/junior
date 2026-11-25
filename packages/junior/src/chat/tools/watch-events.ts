@@ -13,8 +13,12 @@ import {
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/api/conversations/access";
 import { getConversationStore, getDb } from "@/chat/db";
-import { watchRepeatsChildResults } from "@/chat/conversations/kind-behavior";
-import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
+import { watcherStartedConversation } from "@/chat/conversations/kind-behavior";
+import {
+  AGENT_RESOURCE_TYPE,
+  starterWatchId,
+} from "@/chat/conversations/watch-events";
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import { createWatch } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -85,6 +89,8 @@ const stopWatchingActionSchema = z
   })
   .strict();
 
+// The Watch that a child agent's parent edge makes has no expiry and no
+// stop: it lasts as long as the child.
 const resultDataSchema = z
   .object({
     id: z.string().min(1),
@@ -92,10 +98,12 @@ const resultDataSchema = z
     identifier: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
     match: z.record(z.string(), z.unknown()).optional(),
-    expires_at: z.string().datetime(),
-    stop_watching: stopWatchingActionSchema,
+    expires_at: z.string().datetime().optional(),
+    stop_watching: stopWatchingActionSchema.optional(),
   })
   .strict();
+
+type ResultData = z.output<typeof resultDataSchema>;
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
@@ -106,37 +114,44 @@ function cleanStrings(values: string[]): string[] {
 function ttlMs(input: Input): number {
   if (input.ttl_ms === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
   if (!Number.isFinite(input.ttl_ms) || input.ttl_ms <= 0) {
-    throw new ToolInputError("ttl_ms must be a positive finite number");
+    throw new ToolInputError(
+      "ttl_ms must be a positive number of milliseconds. Leave it out to use the default.",
+    );
   }
   if (input.ttl_ms > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
-    throw new ToolInputError("Watches cannot exceed 30 days");
+    throw new ToolInputError(
+      `Watches cannot exceed 30 days. Set ttl_ms to at most ${RESOURCE_SUBSCRIPTION_MAX_TTL_MS}.`,
+    );
   }
   return input.ttl_ms;
 }
 
 /**
  * A Watch on a Conversation reads its status, so the watcher must be able to
- * read it. "Not found" and "no access" get the same error. A child agent's
- * results already reach its parent, so a Watch on it would deliver each
- * result twice.
+ * read it. "Not found" and "no access" get the same error. A child agent
+ * that the watcher started already has its starter's Watch, so this returns
+ * that Watch, and the caller adds no second one.
  */
-async function requireWatchableConversation(
+async function findStarterWatch(
   watcherConversationId: string,
   conversationId: string,
-): Promise<void> {
+): Promise<ResultData | undefined> {
   if (
     !(await canReadConversation(getDb(), watcherConversationId, conversationId))
   ) {
     throw new ToolInputError(
-      `Conversation is not accessible: ${conversationId}`,
+      `Conversation is not accessible: ${conversationId}. Check identifier, or search Conversations to find one that you can read.`,
     );
   }
   const target = await getConversationStore().get({ conversationId });
-  if (target && watchRepeatsChildResults(target, watcherConversationId)) {
-    throw new ToolInputError(
-      `${conversationId} is a child agent of this Conversation. Its results and messages already arrive here without a Watch.`,
-    );
-  }
+  return target && watcherStartedConversation(target, watcherConversationId)
+    ? {
+        id: starterWatchId(conversationId),
+        subscription_status: "active",
+        identifier: conversationId,
+        events: [AGENT_UPDATE_EVENT_TYPE],
+      }
+    : undefined;
 }
 
 /** Static definition of `watchEvents` for the deployment event catalog. */
@@ -171,7 +186,11 @@ export function createWatchEventsTool(
       if (unavailable) throw new ToolInputError(unavailable);
       const events = cleanStrings(input.events);
       const intent = input.intent.trim();
-      if (!intent) throw new ToolInputError("intent is required");
+      if (!intent) {
+        throw new ToolInputError(
+          "intent is required. Set intent to why this conversation wants these events.",
+        );
+      }
       const match = requireValidEventTrigger(
         catalog,
         {
@@ -188,9 +207,13 @@ export function createWatchEventsTool(
       });
       if (
         input.namespace === CORE_EVENT_NAMESPACE &&
-        input.resource_type === CONVERSATION_RESOURCE_TYPE
+        input.resource_type === AGENT_RESOURCE_TYPE
       ) {
-        await requireWatchableConversation(context.conversationId, identifier);
+        const starterWatch = await findStarterWatch(
+          context.conversationId,
+          identifier,
+        );
+        if (starterWatch) return starterWatch;
       }
       const nowMs = Date.now();
       const subscription = await createWatch({
@@ -204,7 +227,7 @@ export function createWatchEventsTool(
         identifier,
         resourceType: input.resource_type.trim(),
       });
-      const details = {
+      const details: ResultData = {
         id: subscription.id,
         subscription_status: subscription.status,
         identifier: subscription.identifier,
@@ -216,14 +239,12 @@ export function createWatchEventsTool(
         stop_watching: {
           execution_tool: "executeTool" as const,
           execution_example: {
-            tool_name: STOP_WATCHING_TOOL_NAME as "stopWatchingResources",
+            tool_name: STOP_WATCHING_TOOL_NAME,
             arguments: { id: subscription.id },
           },
         },
       };
-      return {
-        ...details,
-      };
+      return details;
     },
   });
 }

@@ -2564,7 +2564,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
             channelId: "C123",
             threadTs: "1700000000.100000",
           },
-          source: { kind: "agent_invocation" },
+          source: { kind: "parent_message" },
           destination: {
             platform: "slack",
             teamId: TEAM_ID,

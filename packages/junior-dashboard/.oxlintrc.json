@@ -64,6 +64,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "junior/no-value-switch": "error",
     "preserve-caught-error": "error",
     "unicorn/no-array-for-each": "error",
     "junior/no-record-type-guard": "error",
@@ -133,7 +134,7 @@
           },
           {
             "group": ["**/conversationSections"],
-            "importNames": ["buildConversationSections"],
+            "importNames": ["buildTimeSections"],
             "message": "Render a conversation list through ConversationSectionList, so every list groups, sorts, and holds its rows the same way."
           },
           {
@@ -148,8 +149,9 @@
     {
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
+        "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
-        "junior/no-value-switch": "error"
+        "junior/no-split-url-query": "error"
       }
     },
     {
@@ -180,16 +182,7 @@
       }
     },
     {
-      "files": [
-        "src/client/navPages.ts",
-        "src/client/classic/**",
-        "src/client/components/ProfileMenu.tsx",
-        "src/client/components/layout/DashboardHeader.tsx",
-        "src/client/components/layout/NavRail.tsx",
-        "src/client/pages/automations/AutomationsPageLayout.tsx",
-        "src/client/pages/code/RepositoryPage.tsx",
-        "src/client/primaryNav.ts"
-      ],
+      "files": ["src/client/navPages.ts"],
       "rules": {
         "nav-pages/listed-page-path": "off"
       }
@@ -214,10 +207,7 @@
       }
     },
     {
-      "files": [
-        "src/client/conversations/ConversationSectionList.tsx",
-        "src/client/shell/conversations/ConversationSectionList.tsx"
-      ],
+      "files": ["src/client/shell/conversations/ConversationSectionList.tsx"],
       "rules": {
         "no-restricted-imports": "off"
       }

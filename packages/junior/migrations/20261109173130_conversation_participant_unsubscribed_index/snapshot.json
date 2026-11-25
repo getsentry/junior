@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "be363a2e-1f8a-40a9-ad69-f730726e0d0f",
+  "prevIds": ["18db4963-3b83-4524-8556-767eb2da7571"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_unsubscribed_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "n|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "e|idx|public.junior_conversation_participants_unsubscribed_idx",
+        "n|rel|public.junior_conversation_participants_unsubscribed_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id",
+        "n|col|public.junior_conversation_participants.root_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "junior_conversation_participants_unsubscribed_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "root_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_participants\".\"unsubscribed_at\" is not null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b13a7187-5d35-4bb0-9b1f-778c72cfb6b1",
+  "prevIds": ["e991f2d9-a56f-4e56-a78a-c2b33f24fff7"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_conversation_briefs"],
+      "writes": [
+        "s|tbl|public.junior_conversation_briefs",
+        "n|tbl|public.junior_conversation_briefs",
+        "e|tbl|public.junior_conversation_briefs",
+        "n|rel|public.junior_conversation_briefs",
+        "n|type|public.junior_conversation_briefs"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_embeddings",
+        "brief_version"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_embeddings.brief_version",
+        "n|col|public.junior_conversation_embeddings.brief_version",
+        "e|col|public.junior_conversation_embeddings.brief_version"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_embeddings", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_conversation_briefs\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"version\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"turn_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"through_seq\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"content\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"search_text\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"model_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"cost_usd\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_embeddings\",\"brief_version\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"cost_micro_usd\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_conversation_briefs\",\"outcome_status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_briefs_conversation_turn_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_briefs_conversation_version_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_briefs_search_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_briefs_created_at_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_conversation_briefs\",\"junior_conversation_briefs_conversation_id_junior_conversations\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_conversation_briefs\",\"junior_conversation_briefs_conversation_id_version_pk\"]"
+    }
+  ]
+}

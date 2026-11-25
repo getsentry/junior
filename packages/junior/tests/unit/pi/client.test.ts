@@ -185,9 +185,7 @@ describe("completeText", () => {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": "chat",
         "gen_ai.request.model": "openai/gpt-4o-mini",
-        "gen_ai.output.type": "text",
         "server.address": "ai-gateway.vercel.sh",
-        "server.port": 443,
         "gen_ai.request.reasoning.level": "low",
         "gen_ai.provider.auth_mode": "oidc",
       }),
@@ -243,8 +241,6 @@ describe("completeText", () => {
     });
     expect(attributes["app.conversation.privacy"]).toBe("private");
     expect(attributes["server.address"]).toBe("ai-gateway.vercel.sh");
-    expect(attributes["server.port"]).toBe(443);
-    expect(attributes["gen_ai.output.type"]).toBe("text");
     expect(attributes["gen_ai.input.message_count"]).toBe(1);
     expect(attributes["gen_ai.input.content_chars"]).toBe(16);
     expect(attributes["gen_ai.system_instructions"]).toBeUndefined();

@@ -40,9 +40,9 @@ current.
 
 ## Exceptions
 
-- `design/` has one intent doc per major system: its goals, entry points,
-  the rules users rely on, and its gaps. It follows the `create-design-docs`
-  skill, and `maintain-design-docs` keeps it true.
+- `design/` has one intent doc per major system: its goals, the rules
+  users rely on, and its gaps. It follows the `create-design-docs`
+  skill, and `automate-design-doc-updates` keeps it true.
 - Public product docs live in `packages/docs` and follow the `public-docs`
   skill.
 - Skills follow the `skill-writer` skill.

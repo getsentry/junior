@@ -73,6 +73,22 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
+// An outcome's `current_conversation` is the Automation's destination. When
+// the Automation delivers somewhere other than this Conversation, say so in
+// code, so action review reads the real target of its messages.
+function describeDelivery(input: {
+  destination?: string | null;
+  outcomes?: TaskOutcomeInput[];
+}): string {
+  const postsToDestination = input.outcomes?.some(
+    (outcome) => outcome.destination === "current_conversation",
+  );
+  const elsewhere =
+    input.destination && input.destination !== "current_conversation";
+  if (!elsewhere || !postsToDestination) return "";
+  return `Its send_message outcomes with destination current_conversation post to ${input.destination}, the automation's destination, not to this conversation.`;
+}
+
 type NewAutomation = {
   creator: ReturnType<typeof requireToolCreator>;
   credentialMode: "creator" | "system";
@@ -209,6 +225,7 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
+    describeProposal: describeDelivery,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -346,7 +363,9 @@ export function createAutomationTool(
           !sameDestination(candidate.task.destination, destination) ||
           candidate.task.createdBy.slackUserId !== createdBy.slackUserId
         ) {
-          throw new ToolInputError("Automation operation identity is invalid.");
+          throw new ToolInputError(
+            "Automation operation identity is invalid. No change to the call can fix this in this Turn.",
+          );
         }
         return automationToolResult(context.conversationId, candidate, catalog);
       };

@@ -250,6 +250,10 @@ export function transcriptMessagesFromEvents(
           ? { eventIdentifier: data.eventIdentifier }
           : undefined),
         eventObjectType: data.eventObjectType,
+        ...(data.eventStatus ? { eventStatus: data.eventStatus } : undefined),
+        ...(data.eventWatchId
+          ? { eventWatchId: data.eventWatchId }
+          : undefined),
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),

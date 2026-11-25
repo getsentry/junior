@@ -242,13 +242,18 @@ export const memoryCreateTool = definePluginTool({
           error instanceof Error && error.message.trim()
             ? `: ${error.message}`
             : "";
-        throw new PluginToolInputError(`Memory agent review failed${detail}`, {
-          cause: error,
-        });
+        throw new PluginToolInputError(
+          `Memory agent review failed${detail}. Continue without storing this memory.`,
+          {
+            cause: error,
+          },
+        );
       }
     })();
     if (review.decision === "reject") {
-      throw new PluginToolInputError(`Memory was not stored: ${review.reason}`);
+      throw new PluginToolInputError(
+        `Memory was not stored. Change the memory to fix this problem, or do not store it: ${review.reason}`,
+      );
     }
     const memoryInput = createInput(
       context,

@@ -11,8 +11,18 @@ import {
 } from "react";
 import { useLocation } from "react-router";
 
-import { isInboxView, paneRowForPath } from "../components/layout/paneRows";
-import { useConversationOrigin } from "./conversationOrigin";
+import {
+  isCodePath,
+  isConversationOrigin,
+  paneRowForPath,
+  type ConversationOrigin,
+} from "../components/layout/paneRows";
+import { NAV_PAGES } from "../navPages";
+import { isSpacePath } from "../spaces/spaceRoutes";
+import {
+  useConversationOrigin,
+  type ConversationOpener,
+} from "./conversationOrigin";
 import {
   inboxViewOfPath,
   inboxViewPath,
@@ -39,10 +49,12 @@ type InboxListValue = {
     (update: (current: LinkedItems) => LinkedItems) => void,
   ];
   /** The Inbox view that opened the Conversation that shows, if any. */
-  origin: InboxView | undefined;
+  origin: ConversationOrigin | undefined;
+  /** The Space page that opened the Conversation that shows, if any. */
+  originSpacePath: string | undefined;
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
-  /** Places by list, so `/` and `/?view=inbox` share the Inbox's. */
+  /** Places by list, so `/inbox` and `/inbox?view=inbox` share the Inbox's. */
   places: Readonly<Partial<Record<InboxView, ListPlace>>>;
   /** The list that Back returns to: the last one shown. */
   returnPath: string;
@@ -68,15 +80,21 @@ export function InboxListProvider(props: { children: ReactNode }) {
   >({});
   const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
   const [inFlightExpanded, setInFlightExpanded] = useState(false);
-  const [returnPath, setReturnPath] = useState("/");
+  const [returnPath, setReturnPath] = useState(inboxViewPath("inbox"));
   const location = useLocation();
-  // The Inbox view of the page shown last, if it was one. Plugin pages are
-  // not Inbox views, so the row needs no nav items.
-  const [lastView, setLastView] = useState<InboxView>();
-  const origin = useConversationOrigin(location, lastView);
+  // The list of the page shown last, if it was one: an Inbox view, Code, or
+  // a Space page. Plugin pages are none, so the row needs no nav items.
+  const [lastList, setLastList] = useState<ConversationOpener>();
+  const opener = useConversationOrigin(location, lastList);
+  // A Space page is no row of the pane, so only Back returns to it.
+  const originSpacePath =
+    opener !== undefined && isSpacePath(opener) ? opener : undefined;
+  const origin = isConversationOrigin(opener) ? opener : undefined;
   const row = paneRowForPath(location, [], origin);
-  const view = isInboxView(row) ? row : undefined;
-  if (view !== lastView) setLastView(view);
+  const list = isSpacePath(location.pathname)
+    ? location.pathname
+    : (originSpacePath ?? (isConversationOrigin(row) ? row : undefined));
+  if (list !== lastList) setLastList(list);
   const composerShown = useRef(false);
   const showComposer = useCallback(() => {
     const first = !composerShown.current;
@@ -107,6 +125,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
       inFlightExpanded: [inFlightExpanded, setInFlightExpanded] as const,
       linkedItems: [linkedItems, setLinkedItems] as const,
       origin,
+      originSpacePath,
       places,
       returnPath,
       scroll,
@@ -118,6 +137,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
       inFlightExpanded,
       linkedItems,
       origin,
+      originSpacePath,
       places,
       returnPath,
       scroll,
@@ -193,20 +213,24 @@ export function useInboxListState(ready: boolean) {
 }
 
 /**
- * The Inbox list that Back from a Conversation or the composer returns to:
- * the view that opened it, as the pane marks it, where the reader left
- * that list. Without an origin, such as a direct link, it is Conversations.
+ * The list that Back from a Conversation or the composer returns to: the
+ * Inbox view or Code page that opened it, as the pane marks it, where the
+ * reader left that list, or the Space page that opened it. Without an
+ * origin, such as a direct link, it is Conversations.
  */
 export function useInboxReturnPath(): string {
-  const { origin, returnPath } = useInboxListContext();
+  const { origin, originSpacePath, returnPath } = useInboxListContext();
+  if (originSpacePath) return originSpacePath;
+  const codePath = isCodePath(returnPath);
+  if (origin === "code") return codePath ? returnPath : NAV_PAGES.code.to;
   const view = origin ?? "conversations";
-  return inboxViewOfPath(returnPath) === view
+  return !codePath && inboxViewOfPath(returnPath) === view
     ? returnPath
     : inboxViewPath(view);
 }
 
-/** The Inbox view that opened the Conversation that shows, if any. */
-export function useInboxConversationOrigin(): InboxView | undefined {
+/** The list that opened the Conversation that shows, if any. */
+export function useInboxConversationOrigin(): ConversationOrigin | undefined {
   return useInboxListContext().origin;
 }
 

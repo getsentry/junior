@@ -20,7 +20,7 @@ import {
   InboxItemSubjectPreview,
   SubjectMergeConflict,
 } from "./InboxItemSubjectPreview";
-import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
+import { InboxItemTurnMessage, ReplyNoticeText } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton } from "./RowDismissButton";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
@@ -51,8 +51,6 @@ export function InboxRowCard(props: {
   primaryAction?: ReactNode;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
-  /** The row's head shows the subject's size. */
-  sizeShown?: boolean;
   take?: string;
   /** Why the viewer's snooze of the item woke. */
   wake?: InboxSnoozeWake | undefined;
@@ -117,7 +115,9 @@ export function InboxRowCard(props: {
           Conversation, so each ask keeps them. */}
       {props.headTitled ? null : (
         <>
-          <div className="flex min-w-0 items-baseline gap-2">
+          {/* Centered: the pill leads with its icon, so it has no text
+              baseline to share with the title. */}
+          <div className="flex min-w-0 items-center gap-2">
             <Pill
               pill={{
                 count: 1,
@@ -165,7 +165,13 @@ export function InboxRowCard(props: {
         </>
       )}
       <InboxItemObjects conversationId={itemConversationId(item)}>
-        {showBody ? (
+        {showBody && item.replyNotice ? (
+          <ReplyNoticeText
+            item={item}
+            label={inboxItemTitleText(item)}
+            preview={text}
+          />
+        ) : showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
             label={inboxItemTitleText(item)}
@@ -182,7 +188,6 @@ export function InboxRowCard(props: {
             subject={item.subject}
             // An item row's head, or the card above it, names the subject.
             titled={!props.headTitled || !item.subject.title}
-            sizeShown={props.sizeShown}
           />
         ) : null}
       </InboxItemObjects>

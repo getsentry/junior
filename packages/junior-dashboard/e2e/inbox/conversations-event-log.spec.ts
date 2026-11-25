@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
+import { waitForHighlightedCode } from "../highlighted-code";
 import { expect, test } from "../test";
 import { desktop, mobile, screenshot } from "../screenshot";
 import {
@@ -10,8 +11,7 @@ import {
 } from "../harness";
 import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
   const conversationId = "slack:CQA123:1770003600.000200";
@@ -65,6 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       })
       .first();
+    // Opening the tool rows is reading them, so the page saves the read
+    // position.
+    const readSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname.endsWith("/read-position"),
+    );
     await activity
       .locator(':scope > [data-slot="collapsible-trigger"]')
       .click();
@@ -80,14 +87,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
     // Search must still reveal a result that the reader has closed.
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
     await page
       .getByPlaceholder("Search transcript…")
       .fill("payments-v42 deploy notes");
     await expect(toolResult).toBeVisible();
     await page.getByPlaceholder("Search transcript…").fill("");
     await expect(toolResult).toBeHidden();
+    await readSaved;
   });
 
   test("inspects all reporting events and steps through event details", async ({
@@ -95,6 +104,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     const report = await openConversation(page, dashboard.baseURL);
+    // Highlighted code renders after the transcript opens, and the transcript
+    // pins to its bottom again. A switch before that keeps the log pinned to
+    // its bottom, a row below the first event.
+    await waitForHighlightedCode(
+      page.getByLabel("Conversation transcript", { exact: true }),
+    );
     await chooseTranscriptView(page, "Event log");
     const log = page.getByRole("region", { name: "Conversation event log" });
     const entries = log.getByRole("button", { name: /^Event \d+:/ });
@@ -178,6 +193,32 @@ test.describe("new UI", { tag: "@new" }, () => {
     await entry.click();
     await expect(conversationDetails).toBeHidden();
     await screenshot(page, "conversation-event-details");
+
+    // A transcript search does not filter the log, so the step buttons visit
+    // every row that it shows.
+    await close.click();
+    await chooseTranscriptView(page, "Conversation");
+    await page
+      .getByRole("button", { name: "Search transcript", exact: true })
+      .click();
+    await page
+      .getByPlaceholder("Search transcript…")
+      .fill("payments-v42 deploy notes");
+    await chooseTranscriptView(page, "Event log");
+    await expect(entries).toHaveCount(report.events.length);
+    await entries.first().click();
+    const next = panel.getByRole("button", { name: "Next event" });
+    for (const event of report.events.slice(1)) {
+      await next.click();
+      await expect(page).toHaveURL(new RegExp(`[?&]event=${event.seq}(&|$)`));
+    }
+    await expect(next).toBeDisabled();
+    const previous = panel.getByRole("button", { name: "Previous event" });
+    for (const event of report.events.slice(0, -1).reverse()) {
+      await previous.click();
+      await expect(page).toHaveURL(new RegExp(`[?&]event=${event.seq}(&|$)`));
+    }
+    await expect(previous).toBeDisabled();
   });
 
   test("switches event times between UTC and local time and copies raw JSON", async ({
@@ -350,7 +391,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(page).not.toHaveURL(/[?&]event=/);
     // The title in the Event log breadcrumb leads back to the Conversation.
-    await page.getByTitle("Back to conversation").click();
+    await page.getByTitle("Back to conversation", { exact: true }).click();
     await expect(log).toBeHidden();
     await expect(
       page.getByText(
@@ -806,6 +847,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
         body: "The rollout plan has three open decisions.",
         canAct: true,
+        canAnswer: true,
         canTake: false,
         conversationIds: [conversationId],
         createdAt: report.startedAt,
@@ -914,7 +956,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test("opens the event log from the row menu", async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
       .getByRole("link", { name: /Closed issue summary/ });

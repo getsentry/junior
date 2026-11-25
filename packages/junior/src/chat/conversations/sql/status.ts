@@ -1,14 +1,24 @@
-import { and, desc, eq, gt, gte, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  notLike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
+  TODO_INBOX_ITEM_KEY_PREFIX,
   inboxItemNeedsInput,
   inboxItemOwnedByConversation,
 } from "@/chat/inbox-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
-  juniorConversationBriefs,
   juniorConversationEvents,
   juniorConversationReadPositions,
   juniorConversations,
@@ -107,12 +117,7 @@ function conversationStarterUserIdSql(
  * `working`, not waiting. One of these applies:
  *
  * - The latest Turn failed.
- * - The latest Brief outcome is `partial` or `blocked`, and that Brief
- *   covers the latest assistant Message. Turns no longer store Briefs, so a
- *   legacy Brief stops deciding once the Conversation moves on.
- * - The latest assistant Message is an answer that the starter has not
- *   read. It is an answer when the latest Brief is `answered` or does not
- *   cover it. A `done` Brief that covers it needs no read. The starter read
+ * - The starter has not read the latest assistant Message. The starter read
  *   it when Slack accepted it for a root's Location, when the starter
  *   wrote a later Message, or when their dashboard read position reaches it.
  *   With no starter, nobody reads it, so an answer does not wait.
@@ -125,18 +130,10 @@ function conversationWaitsOnStarterSql(
   // is read once, in one row, and the rule reads it by name. `offset 0`
   // keeps Postgres from copying the starter lookup back into each use.
   const starter = sql.identifier("status_starter");
-  const brief = sql.identifier("status_brief");
   const reply = sql.identifier("status_reply");
   const starterUserId = sql`${starter}.user_id`;
-  const briefStatus = sql`${brief}.status`;
-  const briefThroughSeq = sql`${brief}.through_seq`;
   const replySeq = sql`${reply}.seq`;
   const replyInSlack = sql`${reply}.in_slack`;
-  // Reads `junior_conversation_briefs_conversation_version_idx`.
-  const latestBrief = sql`(select ${juniorConversationBriefs.content}->'outcome'->>'status' as status, ${juniorConversationBriefs.throughSeq} as through_seq from ${juniorConversationBriefs} where ${eq(
-    juniorConversationBriefs.conversationId,
-    id,
-  )} order by ${desc(juniorConversationBriefs.version)} limit 1)`;
   // Transcript order, the order of read positions, is `seq`, not time.
   // Reads `junior_conversation_events_message_role_idx` and sorts the
   // Conversation's assistant Messages by `seq`.
@@ -172,10 +169,8 @@ function conversationWaitsOnStarterSql(
     )})`,
   );
   // With no starter, nobody can read the answer, so nothing waits on it.
-  const unreadAnswer = sql`${replySeq} is not null and ${starterUserId} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
-  const waitsOnFacts = sql`(select (${briefStatus} in ('partial', 'blocked') and (${replySeq} is null or ${briefThroughSeq} >= ${replySeq})) or (${unreadAnswer})
+  const waitsOnFacts = sql`(select ${replySeq} is not null and ${starterUserId} is not null and not (${readByStarter})
     from (select ${conversationStarterUserIdSql(conversation)} as user_id offset 0) as ${starter}
-    left join lateral ${latestBrief} as ${brief} on true
     left join lateral ${latestReply} as ${reply} on true)`;
   return sql<boolean>`(${conversation.stoppedAt} is null
     and ${conversationKindSql(conversation)} <> 'task'
@@ -196,15 +191,18 @@ function conversationWaitsOnStarterSql(
  *   (`awaitsAuthorization`), or the work waits on its starter
  *   (`conversationWaitsOnStarterSql`).
  * - `working`: a Turn is queued or running (`conversationIsActiveSql`).
- * - `done`: anything else, such as a `done` Brief, a read answer, a stop,
- *   or an idle Conversation.
+ * - `done`: anything else, such as a read answer, a stop, or an idle
+ *   Conversation.
  */
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
+  // A To-do's item waits only on its assignee, so it shows only to them,
+  // through their tree state and Inbox. It does not change this status.
   const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
     inboxItemOwnedByConversation(conversation.conversationId),
     inboxItemNeedsInput(),
+    notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
   )})`;
   return sql<ConversationReportStatus>`case
     when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'

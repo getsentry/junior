@@ -1,0 +1,344 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "80dc4db3-8037-4fb0-a375-a2b4d217feb5",
+  "prevIds": ["dd0b031f-d92a-4db5-96dd-7f6b77042d4a"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_task_executions"],
+      "writes": [
+        "s|tbl|public.junior_task_executions",
+        "n|tbl|public.junior_task_executions",
+        "e|tbl|public.junior_task_executions",
+        "n|rel|public.junior_task_executions",
+        "n|type|public.junior_task_executions",
+        "n|rel|public.junior_task_executions_kind_namespace_execution_id_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_task_executions",
+        "junior_task_executions_task_time_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_task_executions_task_time_idx",
+        "n|idx|public.junior_task_executions_task_time_idx",
+        "e|idx|public.junior_task_executions_task_time_idx",
+        "n|rel|public.junior_task_executions_task_time_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.kind",
+        "n|col|public.junior_task_executions.namespace",
+        "n|col|public.junior_task_executions.task_id",
+        "n|col|public.junior_task_executions.executed_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_task_executions",
+        "junior_task_executions_time_kind_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_task_executions_time_kind_idx",
+        "n|idx|public.junior_task_executions_time_kind_idx",
+        "e|idx|public.junior_task_executions_time_kind_idx",
+        "n|rel|public.junior_task_executions_time_kind_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.executed_at_ms",
+        "n|col|public.junior_task_executions.kind"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_task_executions",
+        "junior_task_executions_conversation_time_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_task_executions_conversation_time_idx",
+        "n|idx|public.junior_task_executions_conversation_time_idx",
+        "e|idx|public.junior_task_executions_conversation_time_idx",
+        "n|rel|public.junior_task_executions_conversation_time_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.conversation_id",
+        "n|col|public.junior_task_executions.executed_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_task_executions"],
+      "writes": [
+        "s|fk|public.junior_task_executions.junior_task_executions_conversation_id_junior_conversations_con",
+        "n|fk|public.junior_task_executions.junior_task_executions_conversation_id_junior_conversations_con",
+        "e|fk|public.junior_task_executions.junior_task_executions_conversation_id_junior_conversations_con",
+        "n|con|public.junior_task_executions.junior_task_executions_conversation_id_junior_conversations_con"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_task_executions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "execution_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "namespace",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "task_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "executed_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_task_time_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "namespace",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "task_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "executed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_time_kind_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "executed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_conversation_time_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "executed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_conversation_id_junior_conversations_con",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_kind_namespace_execution_id_pk",
+        "columns": ["kind", "namespace", "execution_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

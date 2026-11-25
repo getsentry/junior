@@ -25,7 +25,7 @@ export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   "conversations:read":
     "List and read the conversations that you started or take part in",
   "conversations:manage":
-    "Archive, pin, and mark your conversations read, stop a running Turn, and cancel queued messages",
+    "Archive, pin, rename, and mark your conversations read, stop a running Turn, and cancel queued messages",
   "conversations:write":
     "Start conversations and send messages as you. Each message starts agent work",
   "inbox_items:read": "List and read your inbox items",

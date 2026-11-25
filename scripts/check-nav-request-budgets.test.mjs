@@ -6,13 +6,39 @@ import {
   navRoutes,
 } from "./check-nav-request-budgets.mjs";
 
-test("reads the static routes of a primary nav", () => {
+test("reads the routes of the pages that the primary nav lists", () => {
   assert.deepEqual(
-    navRoutes(`
-      const CODE = { key: "code", label: "Code", to: "/code" };
-      return [{ key: "inbox", label: "Inbox", to: "/" }, CODE];
-    `),
-    ["/code", "/"],
+    navRoutes(
+      `
+        const LEAD_NAV_KEY = "lead";
+        return [navItem(LEAD_NAV_KEY), navItem("inbox"), navItem("system")];
+      `,
+      `const SYSTEM = "/system";
+export const NAV_PAGES = {
+  lead: { access: "account", label: "Lead", to: "/" },
+  inbox: { label: "Inbox", to: inboxViewPath("inbox") },
+  system: {
+    label: "System",
+    to: SYSTEM,
+  },
+  people: { area: SYSTEM, label: "People", to: \`\${SYSTEM}/people\` },
+};`,
+    ),
+    { errors: [], routes: ["/", "/inbox", "/system"] },
+  );
+});
+
+test("reports a nav page whose route it cannot read", () => {
+  assert.deepEqual(
+    navRoutes(
+      `return [navItem("code")];`,
+      `export const NAV_PAGES = {
+  code: { label: "Code", to: codePath() },
+};`,
+    ).errors,
+    [
+      "code: cannot read its route in packages/junior-dashboard/src/client/navPages.ts",
+    ],
   );
 });
 

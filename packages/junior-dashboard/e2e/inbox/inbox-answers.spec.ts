@@ -25,8 +25,7 @@ function toasts(page: Page) {
     .getByRole("dialog");
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   for (const view of [
     { height: 900, name: "desktop", width: 1440 },
     { height: 844, name: "phone", width: 390 },
@@ -45,7 +44,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       });
       await page.setViewportSize(view);
-      await page.goto(`${dashboard.baseURL}/?view=inbox`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
       await answerHold(page);
       // The row leaving is the confirmation. Count at once: a toast that
       // showed with the answer would still show now.
@@ -61,12 +60,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       );
       release();
       expect((await answered).ok()).toBe(true);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const summary = rollout(page).locator('[data-inbox-slot="summary"]');
       await expect(summary).toHaveText("You answered Hold");
       await expect(page.getByText(ask)).toHaveCount(0);
+      // The summaries read the cards of their links.
+      const cardsRead = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === "/api/objects",
+      );
       await page.reload();
       await expect(summary).toHaveText("You answered Hold");
+      await cardsRead;
     });
   }
 
@@ -77,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(/\/api\/inbox-items\/[^/]+\/actions$/, (route) =>
       route.fulfill({ json: { error: "Down." }, status: 503 }),
     );
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     await answerHold(page);
     const failure = toasts(page).filter({
       hasText: "Could not send your answer",

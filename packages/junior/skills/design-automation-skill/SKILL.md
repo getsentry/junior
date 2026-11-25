@@ -15,7 +15,7 @@ Use this order:
 
 1. **Frontmatter description.** Say what one run produces, name both scopes, and write triggers as the work, such as "when a CI check fails and might be flaky". Do not name the caller.
 2. **Purpose.** One or two sentences: what a run produces, and how often a run finds nothing.
-3. **Inputs.** A table with the columns `Input` and `How to resolve it`.
+3. **Inputs.** Only when values change between setups: one line each, with its default.
 4. **Rules.** Hard limits, then a **Side effects** list with each kind of write the skill can make.
 5. **Workflow.** Numbered steps. The first step reads the target's own conventions: agent docs, contributing guide, and CI files.
 6. **Report.** The format, and the one empty-result line.
@@ -24,9 +24,8 @@ Put only a brief for parallel workers or a long template in `references/`.
 
 ## Inputs and scope
 
-- Give each input a row. Resolve it in this order: the value the request names; the value from the item the request points at, such as a failed run, a pull request, or an issue; the current checkout or a configured default. With none of these, stop and name the missing input.
-- Give each row a default, and say that the request can change it.
 - Values that change between setups are inputs: repos, projects, teams, thresholds, people to tag, and paths that need sign-off. Do not write them into the steps. A skill for one named system can keep its fixed values.
+- Do not explain how to find an input in the request, the item it points at, or the checkout. The agent does that.
 - Use two scopes:
   - **One item**: the request points at one thing. Decide about that thing, and look back over a short window, such as 7 days, for the same problem.
   - **Sweep**: all other requests. Check every item in a default window, such as the last 48 hours.
@@ -77,7 +76,7 @@ Do not put these in `SKILL.md` or `references/`:
 | Do not write | Write |
 | --- | --- |
 | `reply`, `noReply`, `reportBlocked`, "Ending a run" | the report, or no report |
-| `spawnAgent`, `messageAgent`, Task, Thread | parallel workers |
+| `startAgent`, `messageAgent`, Task, Thread | parallel workers |
 | `addInboxItem`, Inbox item, review item | ask a person |
 | Automation creator, Automation run, Turn, Destination, outcome | the requester, a run |
 | `createAutomation`, `watchEvents`, `loadSkill`, how the skill is invoked | nothing |

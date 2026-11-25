@@ -17,14 +17,6 @@ Workspace account, so the user connects nothing.
 - Google access goes only through the Google tools, which apply these rules.
   Commands in a Sandbox get no Google credential.
 
-## Entry points
-
-- Slack: ask Junior in a thread or DM, or paste a Docs, Sheets, Slides,
-  Drive, or Calendar link.
-- Dashboard: Admin, Google account, to connect Junior's account; file and
-  event cards in Conversations.
-- CLI: `junior google connect`.
-
 ## Rules
 
 - Junior edits an existing Doc or presentation only when the requester can
@@ -45,13 +37,13 @@ Workspace account, so the user connects nothing.
   no access to it.
 - A presentation that Junior creates goes to the requester as its owner.
   Junior's account stays an editor, so Junior can keep building it.
-- Google Slides embeds an image only from a public URL. To put a Sandbox
-  image in a presentation, Junior publishes it for a short time, and
-  removes it after the edit.
-- Junior reads a file or its comments only for a requester who can open it
-  through their own email, their domain when that domain owns the file, or
-  a link that anyone can open. For a read or an edit, access through a
-  Google group does not count.
+- An image from the Sandbox that Junior puts in a presentation is public
+  only during the edit.
+- Junior reads a file or its comments for a requester if, and only if, they
+  can open it through their own email, their domain when that domain owns
+  the file, or a link that anyone can open. A file shared with everyone in
+  the domain needs no share with Junior's account. For a read or an edit,
+  access through a Google group does not count.
 - Junior tells a requester who cannot open a file nothing about it, not even
   its title or type.
 - Search finds only files that any employee could find in Drive, or that are
@@ -66,5 +58,9 @@ Workspace account, so the user connects nothing.
 - Junior reads a Meet transcript for any requester who is invited to the
   meeting, also when the requester cannot open the transcript Doc. This
   breaks "never reads or changes a file for a person who could not read or
-  change it themselves" and "reads a file or its comments only for a
-  requester who can open it".
+  change it themselves" and "reads a file or its comments for a requester
+  if, and only if, they can open it".
+- Junior refuses a read, and hides a file card, when the requester can open
+  the file only through their domain or a link that anyone can open and the
+  file is not shared with Junior's account by name. This breaks "reads a
+  file or its comments for a requester if, and only if, they can open it".

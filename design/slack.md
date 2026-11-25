@@ -1,8 +1,8 @@
 # Slack
 
 A user talks to Junior in Slack, in a DM or by a mention in a channel.
-Junior answers in the thread of the request, and can read other public
-channels for context.
+Junior answers in the Slack thread of the request, and can read other
+public channels for context.
 
 ## Intent
 
@@ -13,14 +13,6 @@ channels for context.
 - Junior can be a member of a channel that is shared with another
   organization, so that its messages are context for work elsewhere. It
   takes no requests there.
-
-## Entry points
-
-- Slack: a DM, or `@jr` in a channel thread. After Junior replies in a
-  thread, later replies there need no mention.
-- Slack: a channel-message Automation ([Automations](./automations.md)).
-- Slack: a link to a message or thread in another channel, which Junior
-  reads.
 
 ## Rules
 
@@ -34,8 +26,12 @@ channels for context.
 
 ## Gaps
 
-- Work that starts somewhere else can still post in a shared channel, such
+- Work that starts somewhere else can post in a shared channel, such
   as an Automation whose Destination is that channel. Guardian treats every
   Slack channel of the organization as inside it, so it does not stop
   private data there. This breaks "never exposes internal data to people
   outside the organization" ([Guardian](./guardian.md)).
+- In a channel shared with another organization, a click on an Inbox card
+  counts as the person's answer and starts a Turn, and the reply goes to
+  that channel. This breaks "no message starts a Turn" there, and "never
+  exposes internal data to people outside the organization".
