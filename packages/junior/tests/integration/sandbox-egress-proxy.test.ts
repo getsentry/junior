@@ -340,16 +340,6 @@ function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
   ]);
 }
 
-/** The nested check-run search that spent the GraphQL budget on 2026-11-24. */
-const CHECK_RUN_SEARCH_QUERY =
-  "query($q: String!) { search(query: $q, type: ISSUE, first: 10) { nodes { ... on PullRequest { number commits(first: 100) { nodes { commit { checkSuites(first: 10) { nodes { app { slug } checkRuns(first: 20) { nodes { name conclusion } } } } } } } } } } }";
-
-/** The shape of `gh pr view` and `gh pr checks` queries. */
-const GH_PR_VIEW_QUERY =
-  "query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr_number) { number title assignees(first: 100) { nodes { login } } labels(first: 100) { nodes { name } } reviewRequests(first: 100) { nodes { requestedReviewer { ... on User { login } } } } reviews(first: 100) { nodes { state } } comments(last: 1) { nodes { body } } reactionGroups { content users { totalCount } } } } }";
-const GH_PR_CHECKS_QUERY =
-  "query PullRequestStatusChecks($id: ID!, $endCursor: String) { node(id: $id) { ... on PullRequest { statusCheckRollup: commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $endCursor) { nodes { __typename ... on CheckRun { name checkSuite { workflowRun { workflow { name } } } } } } } } } } } } }";
-
 describe("sandbox egress proxy integration", () => {
   let modules: LoadedModules;
   // Vercel is the sandbox provider whose forwarded requests these tests send.
@@ -1141,40 +1131,42 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
-  const COST_DENIED = {
-    error: expect.stringContaining(
-      "it can cost about 110 points, and the Sandbox limit is 20 points a query",
-    ),
-  };
-
-  it.each([
-    ["gh pr view", GH_PR_VIEW_QUERY, 200, { data: {} }, 1],
-    ["gh pr checks", GH_PR_CHECKS_QUERY, 200, { data: {} }, 1],
-    ["a nested check-run search", CHECK_RUN_SEARCH_QUERY, 403, COST_DENIED, 0],
-  ])(
-    "caps the GraphQL cost of %s",
-    async (_name, query, status, body, calls) => {
-      configureGitHubAppEnv();
-      mockGitHubInstallationToken();
-      await registerGitHubPlugin();
-      const credentialToken =
-        modules.session.createSandboxEgressCredentialToken({
-          credentials: { actor: { type: "user", userId: ACTOR_ID } },
-          egressId: EGRESS_ID,
-          ttlMs: 60_000,
-        });
-      const forwardURL = forwardUrlFor(
-        buildVercelNetworkPolicy({ credentialToken }),
-        GITHUB_API_HOST,
+  it("charges a Conversation's Sandbox GraphQL from GitHub's rate limit headers", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      conversationId: "slack:C123:1700000000.000100",
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_API_HOST,
+    );
+    const resetAtSeconds = Math.floor(Date.now() / 1000) + 30 * 60;
+    // The first response sets the baseline and costs 1 point. The second
+    // costs the 2,000 points that `x-ratelimit-used` rose by.
+    const used = [100, 2_100];
+    const upstreamFetch = vi.fn(async () => {
+      const spent = used.shift() ?? 0;
+      return HttpResponse.json(
+        { data: {} },
+        {
+          headers: {
+            "x-ratelimit-remaining": String(12_500 - spent),
+            "x-ratelimit-reset": String(resetAtSeconds),
+            "x-ratelimit-resource": "graphql",
+            "x-ratelimit-used": String(spent),
+          },
+        },
       );
-      const upstreamFetch = vi.fn(async () => HttpResponse.json({ data: {} }));
-
-      const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+    });
+    const send = () =>
+      modules.vercel.proxyVercelSandboxEgressRequest(
         proxiedRequest({
-          body: JSON.stringify({
-            query,
-            variables: { q: "repo:getsentry/junior" },
-          }),
+          body: JSON.stringify({ query: "{ viewer { login } }" }),
           forwardURL,
           method: "POST",
           upstreamHost: GITHUB_API_HOST,
@@ -1186,11 +1178,18 @@ describe("sandbox egress proxy integration", () => {
         },
       );
 
-      expect(response.status).toBe(status);
-      await expect(response.json()).resolves.toEqual(body);
-      expect(upstreamFetch).toHaveBeenCalledTimes(calls);
-    },
-  );
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200);
+    const denied = await send();
+
+    expect(denied.status).toBe(403);
+    await expect(denied.json()).resolves.toEqual({
+      error: expect.stringContaining(
+        "this Conversation has used 2001 of its 2000 Sandbox GraphQL points for this hour",
+      ),
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
 
   it("uploads GitHub user attachments with the requesting user's credential", async () => {
     await registerGitHubPlugin({ additionalUserScopes: ["repo"] });

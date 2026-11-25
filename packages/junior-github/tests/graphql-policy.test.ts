@@ -1,10 +1,11 @@
 import type {
+  PluginCache,
   PluginGraphqlField,
   PluginGraphqlOperation,
   PluginGraphqlRequest,
   PluginGraphqlUnreadableReason,
 } from "@sentry/junior-plugin-api";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
 
 const GRAPHQL_URL = "https://api.github.com/graphql";
@@ -13,15 +14,9 @@ const MUTATIONS_DISABLED = "GraphQL mutations are not enabled";
 function operation(
   type: PluginGraphqlOperation["type"],
   rootFields: string[],
-  input?: {
-    connectionRequests?: number;
-    fields?: PluginGraphqlField[];
-    name?: string;
-  },
+  input?: { fields?: PluginGraphqlField[]; name?: string },
 ): PluginGraphqlOperation {
   return {
-    // Core counts 0 for an operation with no connections.
-    connectionRequests: input?.connectionRequests ?? 0,
     fields:
       input?.fields ?? rootFields.map((name) => ({ arguments: [], name })),
     ...(input?.name ? { name: input.name } : undefined),
@@ -40,41 +35,90 @@ function unreadable(
   return { kind: "unreadable", reason };
 }
 
+function memoryCache(): PluginCache {
+  const values = new Map<string, unknown>();
+  return {
+    async get<T>(key: string) {
+      return values.get(key) as T | undefined;
+    },
+    async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+      return (await load()).value;
+    },
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => { value: T } | undefined,
+    ) {
+      const entry = next(values.get(key) as T | undefined);
+      if (entry) values.set(key, entry.value);
+    },
+    async delete(key: string) {
+      values.delete(key);
+    },
+  };
+}
+
 async function grantForGraphql(input: {
+  cache?: PluginCache;
+  conversationId?: string;
   graphql?: PluginGraphqlRequest;
   method?: string;
   operation?: string;
-  withoutCredential?: true;
 }) {
   return await githubPlugin().hooks?.grantForEgress?.({
+    cache: input.cache ?? memoryCache(),
     db: undefined,
     log: { error() {}, info() {}, warn() {} },
     plugin: { name: "github" },
     request: {
+      ...(input.conversationId
+        ? { conversationId: input.conversationId }
+        : undefined),
       ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method ?? "POST",
       ...(input.operation ? { operation: input.operation } : undefined),
       url: GRAPHQL_URL,
-      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     },
   });
 }
 
-function costedQuery(
-  connectionRequests: number | undefined,
-  fields: PluginGraphqlField[] = [{ arguments: ["first"], name: "search" }],
-): PluginGraphqlRequest {
-  const query = operation(
-    "query",
-    fields.map((field) => field.name),
-    { fields },
-  );
-  if (connectionRequests === undefined) {
-    // Core leaves the count unset when a page size is not an integer.
-    const { connectionRequests: _uncounted, ...uncounted } = query;
-    return single(uncounted);
-  }
-  return single({ ...query, connectionRequests });
+// Send a GraphQL response with GitHub's rate limit headers through the
+// plugin's response hook, as egress does after each upstream request.
+async function respondToGraphql(input: {
+  cache: PluginCache;
+  conversationId?: string;
+  operation?: string;
+  remaining: number;
+  resetAtMs: number;
+  used: number;
+}) {
+  await githubPlugin().hooks?.onEgressResponse?.({
+    cache: input.cache,
+    db: undefined,
+    grant: { access: "read", name: "installation-read", reason: "test" },
+    log: { error() {}, info() {}, warn() {} },
+    permissionDenied() {},
+    plugin: { name: "github" },
+    request: {
+      ...(input.conversationId
+        ? { conversationId: input.conversationId }
+        : undefined),
+      method: "POST",
+      ...(input.operation ? { operation: input.operation } : undefined),
+      url: GRAPHQL_URL,
+    },
+    response: {
+      headers: new Headers({
+        "x-ratelimit-remaining": String(input.remaining),
+        "x-ratelimit-reset": String(input.resetAtMs / 1000),
+        "x-ratelimit-resource": "graphql",
+        "x-ratelimit-used": String(input.used),
+      }),
+      async readText() {
+        return undefined;
+      },
+      status: 200,
+    },
+  });
 }
 
 const HOST_MUTATIONS = [
@@ -102,8 +146,9 @@ const HOST_MUTATIONS = [
 ] as const;
 
 describe("GitHub GraphQL policy", () => {
-  it("reads GraphQL queries with the installation", async () => {
+  it("reads GraphQL GETs and queries with the installation", async () => {
     for (const request of [
+      { method: "GET" },
       { graphql: single(operation("query", ["repository"], { name: "List" })) },
       { graphql: single(operation("query", ["viewer"])) },
     ]) {
@@ -295,77 +340,94 @@ describe("GitHub GraphQL policy", () => {
     ).resolves.toMatchObject({ access: "read" });
   });
 
-  it.each([1, 2049])(
-    "allows a Sandbox query with %i connection requests",
-    async (connectionRequests) => {
+  describe("Sandbox budget", () => {
+    const query = single(operation("query", ["viewer"]));
+    const resetAtMs = Date.parse("2026-11-25T10:40:00Z");
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("denies a Conversation's queries once GitHub has charged its hourly budget", async () => {
+      vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
+      const cache = memoryCache();
+      // The first response in a window sets the baseline. The next one
+      // charges what `x-ratelimit-used` rose by.
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        remaining: 11_500,
+        resetAtMs,
+        used: 1_000,
+      });
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        remaining: 9_502,
+        resetAtMs,
+        used: 2_998,
+      });
+      // A host call spends installation points, not the Conversation's.
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        operation: "github.pull.get",
+        remaining: 9_452,
+        resetAtMs,
+        used: 3_048,
+      });
       await expect(
-        grantForGraphql({ graphql: costedQuery(connectionRequests) }),
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
       ).resolves.toMatchObject({ access: "read" });
-    },
-  );
+      await respondToGraphql({
+        cache,
+        conversationId: "c1",
+        remaining: 9_450,
+        resetAtMs,
+        used: 3_050,
+      });
 
-  it.each([
-    [2050, 21],
-    [11_011, 110],
-  ])(
-    "denies a Sandbox query with %i connection requests",
-    async (connectionRequests, cost) => {
       await expect(
-        grantForGraphql({ graphql: costedQuery(connectionRequests) }),
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
       ).rejects.toThrow(
-        `it can cost about ${cost} points, and the Sandbox limit is 20 points a query`,
+        "this Conversation has used 2001 of its 2000 Sandbox GraphQL points for this hour. The budget resets at 11:00 UTC (in 45 min).",
       );
-    },
-  );
+      await expect(
+        grantForGraphql({ cache, conversationId: "c2", graphql: query }),
+      ).resolves.toMatchObject({ access: "read" });
+      vi.setSystemTime(new Date("2026-11-25T11:00:00Z"));
+      await expect(
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
+      ).resolves.toMatchObject({ access: "read" });
+    });
 
-  it("does not cap host tool queries or requests with their own credential", async () => {
-    const graphql = costedQuery(11_011);
-    await expect(
-      grantForGraphql({
-        graphql,
-        operation: "github.pull.get:getsentry/junior",
-      }),
-    ).resolves.toMatchObject({ access: "read" });
-    await expect(
-      grantForGraphql({ graphql, withoutCredential: true }),
-    ).resolves.toMatchObject({ access: "read" });
-  });
+    it("keeps the host reserve of the installation's budget until it resets", async () => {
+      vi.useFakeTimers({ now: new Date("2026-11-25T10:15:00Z") });
+      const cache = memoryCache();
+      await respondToGraphql({
+        cache,
+        operation: "github.pull.get",
+        remaining: 2_000,
+        resetAtMs,
+        used: 3_000,
+      });
 
-  it("allows a rateLimit dry run of an expensive query", async () => {
-    await expect(
-      grantForGraphql({
-        graphql: costedQuery(11_011, [
-          { arguments: ["first"], name: "search" },
-          {
-            arguments: ["dryRun"],
-            name: "rateLimit",
-            trueArguments: ["dryRun"],
-          },
-        ]),
-      }),
-    ).resolves.toMatchObject({ access: "read" });
-  });
-
-  it("caps an expensive query whose rateLimit dryRun is not true", async () => {
-    await expect(
-      grantForGraphql({
-        graphql: costedQuery(11_011, [
-          { arguments: ["first"], name: "search" },
-          { arguments: ["dryRun"], name: "rateLimit" },
-        ]),
-      }),
-    ).rejects.toThrow("GitHub GraphQL query denied");
-  });
-
-  it("denies a Sandbox GraphQL GET, whose query the host does not read", async () => {
-    await expect(grantForGraphql({ method: "GET" })).rejects.toThrow(
-      "send GraphQL as a POST",
-    );
-  });
-
-  it("denies a query whose cost was not counted", async () => {
-    await expect(
-      grantForGraphql({ graphql: costedQuery(undefined) }),
-    ).rejects.toThrow("its cost cannot be predicted");
+      await expect(
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
+      ).rejects.toThrow(
+        "the App installation has 2000 GraphQL points left this hour, and Sandbox requests leave 2000 for host calls. It resets at 10:40 UTC (in 25 min).",
+      );
+      await expect(
+        grantForGraphql({
+          cache,
+          graphql: query,
+          operation: "github.pull.get",
+        }),
+      ).resolves.toMatchObject({ access: "read" });
+      vi.setSystemTime(resetAtMs);
+      await expect(
+        grantForGraphql({ cache, conversationId: "c1", graphql: query }),
+      ).resolves.toMatchObject({ access: "read" });
+    });
   });
 });

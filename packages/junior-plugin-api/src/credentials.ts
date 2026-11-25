@@ -199,24 +199,10 @@ export interface PluginGraphqlField {
   arguments: string[];
   /** Schema field name. An alias does not replace it. */
   name: string;
-  /**
-   * Names of the arguments whose value is `true`: a literal, or a variable
-   * whose value or default is `true`. Unset when there are none, and on a
-   * field that `@skip` or `@include` can drop.
-   */
-  trueArguments?: string[];
 }
 
 /** The GraphQL operation that one request runs. */
 export interface PluginGraphqlOperation {
-  /**
-   * Most requests that the operation's connections can need: each field with
-   * a `first` or `last` page size counts once for each item that the page
-   * sizes above it can return. A provider can predict a query's cost from
-   * it. Unset when a page size is not an integer literal or an integer
-   * variable.
-   */
-  connectionRequests?: number;
   /**
    * Each distinct field that the operation selects at any depth, also through
    * fragments.
@@ -269,6 +255,11 @@ export interface PluginEgressRequest {
    * grant classification.
    */
   bodyText?: string;
+  /**
+   * Conversation of a Sandbox request, from its signed credential context.
+   * Use it to limit what one Conversation spends, never to grant access.
+   */
+  conversationId?: string;
   /** Set for every Git `git-receive-pack` POST. */
   gitPush?: PluginGitPush;
   /** Set for every POST to a URL path that ends in `/graphql`. */

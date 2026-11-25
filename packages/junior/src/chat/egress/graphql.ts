@@ -18,10 +18,8 @@ import type {
   DocumentNode,
   FragmentDefinitionNode,
   FragmentSpreadNode,
-  FieldNode,
   InlineFragmentNode,
   OperationDefinitionNode,
-  SelectionNode,
   SelectionSetNode,
 } from "graphql";
 
@@ -94,7 +92,7 @@ async function readOperation(
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return "json";
   }
-  const { operationName, query, variables } = entry as Record<string, unknown>;
+  const { operationName, query } = entry as Record<string, unknown>;
   if (typeof query !== "string") {
     return "query";
   }
@@ -134,29 +132,15 @@ async function readOperation(
   if (!operation) {
     return "operation";
   }
-  const values = variableValues(operation, variables);
   const fields = new Map<string, PluginGraphqlField>();
   const rootFields: string[] = [];
   if (
-    !collectFields(
-      operation.selectionSet,
-      fragments,
-      values,
-      { dropped: new Set(), runs: new Set() },
-      fields,
-      true,
-    ) ||
+    !collectFields(operation.selectionSet, fragments, new Set(), fields) ||
     !collectRootFields(operation.selectionSet, fragments, new Set(), rootFields)
   ) {
     return "document";
   }
-  const connectionRequests = countConnectionRequests(
-    operation,
-    fragments,
-    values,
-  );
   return {
-    ...(connectionRequests !== undefined ? { connectionRequests } : undefined),
     fields: [...fields.values()],
     ...(operation.name ? { name: operation.name.value } : undefined),
     rootFields,
@@ -164,96 +148,34 @@ async function readOperation(
   };
 }
 
-/**
- * Add each distinct field at any depth. `runs` is false below a selection that
- * `@skip` or `@include` can drop. Each fragment is read at most once where it
- * runs and once where it can be dropped, so a spread that runs still reports
- * the `true` arguments of a fragment that an earlier spread can drop.
- */
+/** Add each distinct field at any depth. Each fragment is read once. */
 function collectFields(
   selectionSet: SelectionSetNode,
   fragments: Fragments,
-  values: VariableValues,
-  seen: { dropped: Set<string>; runs: Set<string> },
+  seen: Set<string>,
   fields: Map<string, PluginGraphqlField>,
-  runs: boolean,
 ): boolean {
   for (const selection of selectionSet.selections) {
-    const selectionRuns = runs && runsForCertain(selection, values);
     if (selection.kind === "Field") {
       const name = selection.name.value;
-      const args = selection.arguments ?? [];
-      const argNames = args.map((arg) => arg.name.value);
-      // A provider can trust a `true` argument, such as a dry run, only on a
-      // field that runs.
-      const trueArguments = (selectionRuns ? args : [])
-        .filter((arg) =>
-          arg.value.kind === "Variable"
-            ? values.get(arg.value.name.value) === true
-            : arg.value.kind === "BooleanValue" && arg.value.value,
-        )
-        .map((arg) => arg.name.value);
-      // A field that passes `true` differs from one that passes the same
-      // arguments with other values.
-      const key = [name, ...argNames, "", ...trueArguments].join("\0");
+      const args = (selection.arguments ?? []).map((arg) => arg.name.value);
+      const key = [name, ...args].join("\0");
       if (!fields.has(key)) {
-        fields.set(key, {
-          arguments: argNames,
-          name,
-          ...(trueArguments.length > 0 ? { trueArguments } : undefined),
-        });
+        fields.set(key, { arguments: args, name });
       }
       if (
         selection.selectionSet &&
-        !collectFields(
-          selection.selectionSet,
-          fragments,
-          values,
-          seen,
-          fields,
-          selectionRuns,
-        )
+        !collectFields(selection.selectionSet, fragments, seen, fields)
       ) {
         return false;
       }
       continue;
     }
-    const inner = fragmentSelectionSet(
-      selection,
-      fragments,
-      selectionRuns ? seen.runs : seen.dropped,
-    );
+    const inner = fragmentSelectionSet(selection, fragments, seen);
     if (inner === false) {
       return false;
     }
-    if (
-      inner &&
-      !collectFields(inner, fragments, values, seen, fields, selectionRuns)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** Whether `@skip` and `@include` keep the selection for certain. */
-function runsForCertain(
-  selection: SelectionNode,
-  values: VariableValues,
-): boolean {
-  for (const directive of selection.directives ?? []) {
-    const name = directive.name.value;
-    if (name !== "skip" && name !== "include") continue;
-    const condition = directive.arguments?.find(
-      (arg) => arg.name.value === "if",
-    )?.value;
-    const value =
-      condition?.kind === "Variable"
-        ? values.get(condition.name.value)
-        : condition?.kind === "BooleanValue"
-          ? condition.value
-          : undefined;
-    if (value !== (name === "include")) {
+    if (inner && !collectFields(inner, fragments, seen, fields)) {
       return false;
     }
   }
@@ -303,100 +225,4 @@ function fragmentSelectionSet(
   }
   seen.add(name);
   return fragments.get(name)?.selectionSet ?? false;
-}
-
-/**
- * Count the connection requests of an operation: each field with a `first`
- * or `last` page size counts once for each item that the page sizes above it
- * can return. Returns undefined when a page size is not an integer literal or
- * an integer variable.
- *
- * The count is linear in the items above a selection, so each fragment is
- * counted once and reused, and repeated spreads cannot make it slow.
- */
-function countConnectionRequests(
-  operation: OperationDefinitionNode,
-  fragments: Fragments,
-  values: VariableValues,
-): number | undefined {
-  const counted = new Map<string, number | undefined>();
-  const count = (selectionSet: SelectionSetNode): number | undefined => {
-    let total = 0;
-    for (const selection of selectionSet.selections) {
-      let inner: number | undefined;
-      if (selection.kind === "Field") {
-        inner = countField(selection);
-      } else if (selection.kind === "InlineFragment") {
-        inner = count(selection.selectionSet);
-      } else {
-        const name = selection.name.value;
-        if (!counted.has(name)) {
-          // A cycle counts as empty here. GraphQL rejects it before it runs.
-          counted.set(name, 0);
-          const fragment = fragments.get(name);
-          counted.set(name, fragment ? count(fragment.selectionSet) : 0);
-        }
-        inner = counted.get(name);
-      }
-      if (inner === undefined) return undefined;
-      total += inner;
-    }
-    return total;
-  };
-  const countField = (field: FieldNode): number | undefined => {
-    const below = field.selectionSet ? count(field.selectionSet) : 0;
-    if (below === undefined) return undefined;
-    const pageSizes = (field.arguments ?? []).filter(
-      (arg) => arg.name.value === "first" || arg.name.value === "last",
-    );
-    if (pageSizes.length === 0) return below;
-    let pageSize = 0;
-    for (const arg of pageSizes) {
-      const value =
-        arg.value.kind === "IntValue"
-          ? Number.parseInt(arg.value.value, 10)
-          : arg.value.kind === "Variable"
-            ? values.get(arg.value.name.value)
-            : undefined;
-      if (typeof value !== "number" || !Number.isInteger(value)) {
-        return undefined;
-      }
-      pageSize = Math.max(pageSize, value);
-    }
-    // One request for this connection, then the requests below it for each
-    // item of its page.
-    return 1 + pageSize * below;
-  };
-  return count(operation.selectionSet);
-}
-
-type VariableValues = Map<string, unknown>;
-
-/**
- * Variable values of a request. A variable that the request does not set
- * takes the operation's integer or boolean default.
- */
-function variableValues(
-  operation: OperationDefinitionNode,
-  variables: unknown,
-): VariableValues {
-  const given = new Map<string, unknown>(
-    variables && typeof variables === "object" && !Array.isArray(variables)
-      ? Object.entries(variables)
-      : [],
-  );
-  const values: VariableValues = new Map();
-  for (const definition of operation.variableDefinitions ?? []) {
-    const name = definition.variable.name.value;
-    const fallback = definition.defaultValue;
-    const value = given.has(name)
-      ? given.get(name)
-      : fallback?.kind === "IntValue"
-        ? Number.parseInt(fallback.value, 10)
-        : fallback?.kind === "BooleanValue"
-          ? fallback.value
-          : undefined;
-    if (value !== undefined) values.set(name, value);
-  }
-  return values;
 }
