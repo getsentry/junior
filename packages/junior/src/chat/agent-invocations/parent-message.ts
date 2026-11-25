@@ -1,6 +1,6 @@
-import type { Actor } from "@sentry/junior-plugin-api";
+import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { and, desc, eq, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, like, sql } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -286,6 +286,36 @@ export function isParentMessageAuthor(
     typeof author?.userId === "string" &&
     author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
   );
+}
+
+/**
+ * Read the Actors that the saved parent messages of one child ran as, oldest
+ * first: the Actors of the parent's Turns that gave the child work. A
+ * Message saved before Messages stored their Actor gives none.
+ */
+export async function readParentMessageActors(
+  conversationId: string,
+): Promise<Actor[]> {
+  const payload = juniorConversationEvents.payload;
+  const rows = await getSqlExecutor()
+    .db()
+    .select({ actor: sql<unknown>`${payload}->'meta'->'actor'` })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        like(
+          sql`${payload}->'meta'->'author'->>'userId'`,
+          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
+        ),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+  return rows.flatMap((row) => {
+    const parsed = actorSchema.safeParse(row.actor);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 /**

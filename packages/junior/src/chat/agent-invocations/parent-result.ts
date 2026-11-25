@@ -1,16 +1,12 @@
 import type { Actor } from "@sentry/junior-plugin-api";
-import { readConversationRoot } from "@/chat/conversations/root";
-import { getDb } from "@/chat/db";
+import { sameActorIdentity } from "@/chat/conversations/provenance";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import {
-  findActorIdentityId,
-  SYSTEM_IDENTITY_ID,
-} from "@/chat/identities/actor";
 import { listWatches } from "@/chat/events/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { readChildConversationSender } from "./child-input";
 import { listChildMessages } from "./child-message";
 import { hasWaitingParentWork } from "./list";
+import { readParentMessageActors } from "./parent-message";
 import { childAgentStillWorks } from "./store";
 
 /**
@@ -38,11 +34,11 @@ export type DeliverToParent = (args: {
  * parent, whose Turn for it runs as that Actor. A Turn that a parent message
  * started keeps the Actor of the parent's Turn. A Turn that an Event
  * started, such as a child result, keeps its Actor only when it is the
- * system or the person who asked for this child, since that Actor came from
- * the parent. Any other Turn, such as a person's Turn in a Thread, the work
- * of a child agent that such a Turn started, or a saved Turn with no Source,
- * reports as the Event system Actor, so the parent never gets the access of
- * a person who did not give it work.
+ * system or the Actor of a parent message to this child, since that Actor
+ * came from the parent. Any other Turn, such as a person's Turn in a Thread,
+ * the work of a child agent that such a Turn started, or a saved Turn with
+ * no Source, reports as the Event system Actor, so the parent never gets the
+ * access of a person who did not give it work.
  */
 export async function parentResultActor(args: {
   actor: Actor;
@@ -51,13 +47,9 @@ export async function parentResultActor(args: {
 }): Promise<Actor> {
   if (args.source === "parent_message") return args.actor;
   if (args.source !== "event") return EVENT_SYSTEM_ACTOR;
-  const identityId = await findActorIdentityId(getDb(), args.actor);
-  if (identityId === SYSTEM_IDENTITY_ID) return args.actor;
-  const root = await readConversationRoot(args.conversationId);
-  // A child from before requesters were stored reads the root Actor.
-  const requesterIdentityId =
-    root?.requesterIdentityId ?? root?.actorIdentityId;
-  return identityId !== undefined && identityId === requesterIdentityId
+  if (args.actor.platform === "system") return args.actor;
+  const parentActors = await readParentMessageActors(args.conversationId);
+  return parentActors.some((actor) => sameActorIdentity(actor, args.actor))
     ? args.actor
     : EVENT_SYSTEM_ACTOR;
 }

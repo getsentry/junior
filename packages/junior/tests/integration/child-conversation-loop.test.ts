@@ -442,6 +442,9 @@ describe("child Turns on the Conversation loop", () => {
             ? slackInvocationInput.actor
             : webTestActor;
         const helper = await createHelper(harness, childId, { actor });
+        // The helper's first Turn saves its task with the Actor it runs as.
+        harness.onRun((run) => finishRun(run, { finalText: "Started." }));
+        await harness.drain(helper.childConversationId);
         await expect(
           resolveWorkOwner({
             actor: EVENT_SYSTEM_ACTOR,

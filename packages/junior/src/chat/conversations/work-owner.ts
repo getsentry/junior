@@ -5,25 +5,33 @@ import type {
   User,
 } from "@sentry/junior-plugin-api";
 import { readRootAutomationRun } from "@/chat/automations/conversation-run";
+import { readParentMessageActors } from "@/chat/agent-invocations/parent-message";
 import { readConversationRoot } from "@/chat/conversations/root";
+import { getDb } from "@/chat/db";
+import { findActorIdentityId } from "@/chat/identities/actor";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { readIdentityById } from "@/chat/plugins/viewer";
 
 /**
- * Read the person whose work a system Turn does: the person who asked for
- * the Conversation, else the root Actor when it is a person. A root, and a
- * child from before requesters were stored, read the root Actor. A child
- * that the system asked for does its root's work. The read by id returns
- * only user Identities, so the system Identity gives nothing.
+ * Read the person whose work a system Turn does: the first person whose Turn
+ * gave this child work, else the root Actor when it is a person. A child that
+ * only the system gave work does its root's work. The read by id returns only
+ * user Identities, so the system Identity gives nothing.
  */
 async function readRequesterIdentity(
   conversationId: string,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  const root = await readConversationRoot(conversationId);
-  const requester = root?.requesterIdentityId
-    ? await readIdentityById(root.requesterIdentityId)
+  const requester = (await readParentMessageActors(conversationId)).find(
+    (actor) => actor.platform !== "system",
+  );
+  const requesterIdentityId = requester
+    ? await findActorIdentityId(getDb(), requester)
     : undefined;
-  if (requester) return requester;
+  const identity = requesterIdentityId
+    ? await readIdentityById(requesterIdentityId)
+    : undefined;
+  if (identity) return identity;
+  const root = await readConversationRoot(conversationId);
   return root?.actorIdentityId
     ? await readIdentityById(root.actorIdentityId)
     : undefined;
