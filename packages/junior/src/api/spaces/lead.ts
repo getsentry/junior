@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getSqlExecutor } from "@/chat/db";
-import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
+import { isAgentResourceType } from "@/chat/conversations/watch-events";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { listWatches } from "@/chat/events/store";
 import { getSpaceLead, readSpaceLead } from "@/chat/lead/conversation";
@@ -47,7 +47,7 @@ export function createSpaceLeadRoutes(): Hono<JuniorApiEnv> {
             .filter(
               (watch) =>
                 watch.namespace === CORE_EVENT_NAMESPACE &&
-                watch.resourceType === CONVERSATION_RESOURCE_TYPE,
+                isAgentResourceType(watch.resourceType),
             )
             .map((watch) => watch.identifier),
         ),

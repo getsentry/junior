@@ -57,18 +57,6 @@ export type TurnBehavior = {
    */
   gated: boolean;
   /**
-   * `parent`: a failed Turn, also one that ends without an answer, sends its
-   * failure to the parent agent. `none`: the failure stays in the
-   * Conversation and in telemetry.
-   */
-  failureNotice: "none" | "parent";
-  /**
-   * `parent`: a Turn that ends with final text, or with `noReply` that also
-   * ends the work of its Conversation, sends the parent agent a completed
-   * result. The final text is the reply. `none`: the Turn sends nothing.
-   */
-  endResult: "none" | "parent";
-  /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
    */
@@ -89,6 +77,12 @@ export type TurnBehavior = {
     inbox: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
+    /**
+     * The Turn changes a Space for its person, such as the Space's settings.
+     * Only a person's request changes a Space, so only a person's Turn has
+     * it.
+     */
+    spaces: boolean;
     /**
      * The Turn has `reply`. Only a gated Turn has it. The reply goes to the
      * run's Destination, then its Slack thread.
@@ -119,8 +113,6 @@ const ROOT: TurnBehavior = {
   idleNeedsPendingWork: false,
   waitsForSignIn: true,
   gated: false,
-  failureNotice: "none",
-  endResult: "none",
   sessionTasks: true,
   conversationMetadata: true,
   relatedConversations: true,
@@ -129,6 +121,7 @@ const ROOT: TurnBehavior = {
     inbox: true,
     subscriptions: true,
     userCustomization: true,
+    spaces: true,
     reply: false,
     reportBlocked: "none",
     noReply: true,
@@ -140,17 +133,16 @@ const ROOT: TurnBehavior = {
 const ROOT_RUNTIME_TURN: TurnBehavior = {
   ...ROOT,
   relatedConversations: false,
+  tools: { ...ROOT.tools, spaces: false },
 };
 
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
-// the wrong Actor. It reports to the parent like every Turn of a child.
+// the wrong Actor.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",
   sender: "person",
-  failureNotice: "parent",
-  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
@@ -158,16 +150,13 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation and is its reply to
-// the parent. The child does work for its parent, so its parent learns when
-// it fails or ends its work with `noReply`.
+// the parent.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: false,
-  failureNotice: "parent",
-  endResult: "parent",
   sessionTasks: false,
   // Only its parent reads a Task, so a Task has no summary.
   conversationMetadata: false,
@@ -177,6 +166,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     inbox: false,
     subscriptions: false,
     userCustomization: false,
+    spaces: false,
     reply: false,
     reportBlocked: "parent",
     noReply: true,
@@ -199,6 +189,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
+  spaces: PERSON_IN_THREAD.tools.spaces,
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -210,13 +201,12 @@ const AUTOMATION_RUN: TurnBehavior = {
   idleNeedsPendingWork: true,
   waitsForSignIn: true,
   gated: true,
-  failureNotice: "none",
-  endResult: "none",
   sessionTasks: true,
   conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
+    spaces: false,
     reply: true,
     reportBlocked: "automation",
   },
@@ -230,6 +220,14 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   promptMode: "automation",
   sender: "person",
   relatedConversations: false,
+};
+
+// An Automation Conversation lists the tools of the run and of a person who
+// replies, so its tool list stays the same. The run's own Turns keep the
+// Space tool disabled.
+const AUTOMATION_TOOLS: TurnBehavior["tools"] = {
+  ...AUTOMATION_RUN.tools,
+  spaces: PERSON_IN_AUTOMATION.tools.spaces,
 };
 
 // A Lead finds, starts, and steers its person's other Conversations, and
@@ -251,6 +249,7 @@ const LEAD_TOOLS = [
   "stopWatchingResources",
   "systemTime",
   "updateUserCustomization",
+  "setSpaceConfiguration",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -263,6 +262,7 @@ const LEAD_DIRECT_TOOLS = [
   "searchEventTypes",
   "listWatches",
   "stopWatchingResources",
+  "setSpaceConfiguration",
 ] as const satisfies readonly (typeof LEAD_TOOLS)[number][];
 
 const LEAD: TurnBehavior = {
@@ -308,7 +308,7 @@ export function turnBehavior(args: {
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   switch (mode) {
     case "automation":
-      return AUTOMATION_RUN.tools;
+      return AUTOMATION_TOOLS;
     case "child_agent":
       return CHILD_AGENT_TURN.tools;
     case "thread":
@@ -350,10 +350,10 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a Watch on this Conversation would repeat what already
- * reaches the watcher: a child agent's results and messages go to its parent.
+ * Return whether the watcher started this Conversation, so it already has
+ * the Watch that its parent edge makes and a second one would repeat it.
  */
-export function watchRepeatsChildResults(
+export function watcherStartedConversation(
   target: { parentConversationId?: string },
   watcherConversationId: string,
 ): boolean {

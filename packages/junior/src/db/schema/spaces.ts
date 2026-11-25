@@ -56,3 +56,31 @@ export const juniorSpaceMembers = pgTable(
     index("junior_space_members_user_idx").on(table.userId),
   ],
 );
+
+/**
+ * One configuration value of a Space, such as a default repository. It
+ * applies to every Conversation in the Space, before the Slack channel's
+ * value and the install default.
+ */
+export const juniorSpaceConfigurations = pgTable(
+  "junior_space_configurations",
+  {
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => juniorSpaces.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    // JSON text, like `junior_location_configurations.value`.
+    value: text("value").notNull(),
+    updatedAt: timestamptz("updated_at").notNull(),
+    updatedByUserId: text("updated_by_user_id").references(
+      () => juniorUsers.id,
+      { onDelete: "set null" },
+    ),
+  },
+  (table) => [
+    primaryKey({
+      name: "junior_space_configurations_space_key_pk",
+      columns: [table.spaceId, table.key],
+    }),
+  ],
+);

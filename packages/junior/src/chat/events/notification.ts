@@ -441,6 +441,11 @@ export function createEventInboundMessage(input: {
   };
 }
 
+/** Key of the note that a Watch adds for an Event it received quietly. */
+export function quietEventNoteKey(watchId: string, eventKey: string): string {
+  return `quiet_event:${watchId}:${eventKey}`;
+}
+
 /**
  * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
  * automated-turn limit does not apply. The next Turn sees the note as
@@ -455,7 +460,7 @@ export async function addQuietEventNote(args: {
   await addConversationNote({
     conversationId: subscription.conversationId,
     createdAtMs: event.occurredAtMs,
-    key: `quiet_event:${subscription.id}:${event.eventKey}`,
+    key: quietEventNoteKey(subscription.id, event.eventKey),
     text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
   });
 }

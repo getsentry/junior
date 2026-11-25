@@ -1,7 +1,7 @@
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
-import { conversationWatch } from "@/chat/conversations/watch-events";
+import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { startLeadConversation } from "@/chat/lead/start-conversation";
 import { SHORT_TITLE_MAX_LENGTH } from "@/chat/services/short-title";
@@ -101,7 +101,7 @@ export function createStartConversationTool(
       return {
         conversation_id: conversationId,
         ...(url ? { url } : undefined),
-        subscribable: conversationWatch({ conversationId, title: input.title }),
+        subscribable: agentWatch({ conversationId, title: input.title }),
       };
     },
   });
