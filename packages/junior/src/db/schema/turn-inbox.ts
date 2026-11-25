@@ -1,4 +1,3 @@
-import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -11,31 +10,32 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
-import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
 
 /** The trace of the source request that sent an input. */
 export type TurnInputTraceContext = { sentryTrace: string; baggage?: string };
 
+/** The transcript Message of an input, written to history with the input. */
+export type TurnInputMessage = {
+  messageId: string;
+  text: string;
+  authorIdentityId?: string;
+  meta?: Record<string, unknown>;
+};
+
 /**
- * Inputs for a Conversation. The scheduler sets `turn_id` when the row
- * arrives. A row is read when the Conversation's history has an event with
- * the `idempotency_key` `inbox:<row id>`.
+ * Inputs that no Turn has taken yet. The scheduler sets `turn_id` when the
+ * row arrives. The commit that reads a row, or the end of its Turn, writes
+ * the row to the Conversation history and deletes it.
  */
 export const juniorTurnInbox = pgTable(
   "junior_turn_inbox",
   {
     id: uuid("id").primaryKey(),
     conversationId: text("conversation_id").notNull(),
-    actorIdentityId: text("actor_identity_id")
-      .notNull()
-      .references(() => juniorIdentities.id),
-    source: jsonb("source").$type<Source>().notNull(),
-    // Where the answer to the input goes, set by the code that sent it. Null
-    // when the Conversation history is the only answer, as for the dashboard.
-    destination: jsonb("destination").$type<Destination>(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    message: jsonb("message").$type<TurnInputMessage>().notNull(),
     // The same key on every delivery of the input. The Source gives it, for
     // example the Slack message id or the `idempotencyKey` a web client sends.
     idempotencyKey: text("idempotency_key").notNull(),

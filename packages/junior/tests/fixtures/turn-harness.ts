@@ -177,6 +177,7 @@ export async function createTurnHarness({
       actorIdentityId,
       payload,
       idempotencyKey,
+      message: { messageId: idempotencyKey, text: input.text },
       sentAt: new Date(),
       source: input.source ?? slackSource,
       destination:
@@ -187,7 +188,7 @@ export async function createTurnHarness({
       .select({ id: juniorTurnInbox.id })
       .from(juniorTurnInbox)
       .where(eq(juniorTurnInbox.idempotencyKey, idempotencyKey));
-    return { turnId, inputId: row!.id };
+    return { turnId: turnId!, inputId: row!.id };
   }
 
   async function runStep() {

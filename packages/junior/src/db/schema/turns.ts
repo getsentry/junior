@@ -1,9 +1,11 @@
+import type { Destination } from "@sentry/junior-plugin-api";
 import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   uniqueIndex,
@@ -39,6 +41,11 @@ export const juniorTurns = pgTable(
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
+    // Every input of a Turn comes from this Source kind.
+    sourceKind: text("source_kind").notNull(),
+    // Where the Turn's answer goes, from the input that created it. Null when
+    // the Conversation history is the only answer, as for the dashboard.
+    destination: jsonb("destination").$type<Destination>(),
     state: text("state").$type<TurnState>().notNull(),
     // Lower runs first. The scheduler sets it; core only sorts by it.
     priority: integer("priority").notNull(),

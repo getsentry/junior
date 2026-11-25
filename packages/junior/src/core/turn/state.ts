@@ -54,6 +54,7 @@
 // `scheduleInput` decides where an input goes. A writer that needs both takes them in this
 // order, so writers cannot deadlock.
 import { randomUUID } from "node:crypto";
+import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import {
   and,
   asc,
@@ -79,15 +80,11 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
-import {
-  findUnreadInputs,
-  inputEventKey,
-  inputSourceKind,
-} from "@/core/turn/inbox";
+import { findUnreadInputs, inputEventKey, takeInputs } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
-import { juniorTurnInbox, juniorTurns } from "@/db/schema";
+import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
 
 /** A Turn's id and state. */
@@ -137,6 +134,8 @@ export async function createTurn(
   args: {
     conversationId: string;
     actorIdentityId: string;
+    sourceKind: string;
+    destination: Destination | null;
     priority: number;
   },
 ): Promise<Turn> {
@@ -162,6 +161,7 @@ export type TurnFailure = {
 export type TurnRecord = Turn & {
   conversationId: string;
   actorIdentityId: string;
+  sourceKind: string;
   failureCode: ConversationTurnFailureCode | null;
   failureReason: ConversationTurnFailureReason | null;
   failureEventId: string | null;
@@ -179,6 +179,7 @@ export async function findTurn(
       state: juniorTurns.state,
       conversationId: juniorTurns.conversationId,
       actorIdentityId: juniorTurns.actorIdentityId,
+      sourceKind: juniorTurns.sourceKind,
       failureCode: juniorTurns.failureCode,
       failureReason: juniorTurns.failureReason,
       failureEventId: juniorTurns.failureEventId,
@@ -186,6 +187,22 @@ export async function findTurn(
     .from(juniorTurns)
     .where(eq(juniorTurns.id, turnId));
   return turn;
+}
+
+/**
+ * Finds where a Turn's answer goes. Null when the Turn answers only in the
+ * Conversation history, or when the Turn does not exist.
+ */
+export async function findTurnDestination(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<Destination | null> {
+  const [turn] = await executor
+    .db()
+    .select({ destination: juniorTurns.destination })
+    .from(juniorTurns)
+    .where(eq(juniorTurns.id, turnId));
+  return turn?.destination ? destinationSchema.parse(turn.destination) : null;
 }
 
 // Run order of a Conversation's open Turns: the running Turn first, then
@@ -237,20 +254,17 @@ export async function findOpenTurns(
   { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
 ): Promise<OpenTurn[]> {
-  // Grouping by Source kind gives one row per Turn, because migration 0171
-  // keeps the inputs of a Turn on one Source kind.
   const rows = await executor
     .db()
     .select({
       turnId: juniorTurns.id,
       state: juniorTurns.state,
       actorIdentityId: juniorTurns.actorIdentityId,
-      sourceKind: inputSourceKind,
+      sourceKind: juniorTurns.sourceKind,
       stepSeq: juniorTurns.stepSeq,
       attempts: juniorTurns.attempts,
     })
     .from(juniorTurns)
-    .innerJoin(juniorTurnInbox, eq(juniorTurnInbox.turnId, juniorTurns.id))
     .where(
       and(
         eq(juniorTurns.conversationId, conversationId),
@@ -263,7 +277,6 @@ export async function findOpenTurns(
         ),
       ),
     )
-    .groupBy(juniorTurns.id, inputSourceKind)
     .orderBy(...runOrder);
   return rows.map(({ stepSeq, attempts, ...turn }) => ({
     ...turn,
@@ -310,23 +323,31 @@ async function isSuperseded(
 
 /**
  * Makes way for a Turn that supersedes this one. Call it under the
- * Conversation lock. A queued Turn has no step in flight, so it ends now. A
- * running Turn moves behind the new Turn, and `commitStep` ends it when its
- * step commits, so the step's work is kept.
+ * Conversation lock. A queued Turn has no step in flight, so it ends now and
+ * drops its inputs. A running Turn moves behind the new Turn, and
+ * `commitStep` ends it when its step commits, so the step's work is kept.
  */
 export async function supersedeTurn(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
 ): Promise<void> {
   const db = executor.db();
-  await db
+  const ended = await db
     .update(juniorTurns)
     .set({
       ...SUPERSEDED_END,
       leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")));
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")))
+    .returning({ conversationId: juniorTurns.conversationId });
+  const [queued] = ended;
+  if (queued) {
+    await takeInputs({ executor }, queued.conversationId, {
+      turnIds: [turnId],
+      skippedReason: "superseded",
+    });
+  }
   await db
     .update(juniorTurns)
     .set({ priority: TURN_PRIORITY.normal, updatedAt: sql`now()` })
@@ -488,13 +509,14 @@ function promptEventKey(
 }
 
 /**
- * Commits a step in one transaction: it appends the prompt's new messages in
- * layout order, which hold the inputs that the step read, then the step's
- * messages keyed by Turn and step, to the Conversation history, adds an
- * outbox row for each new reply and releases the lease. A Turn that
- * continues goes back to queued for its next step, which needs a new claim.
- * A Turn that the step completed ends, unless it still has unread inputs:
- * then it continues, so the next step reads them.
+ * Commits a step in one transaction: it takes the inputs that the step read
+ * out of the inbox, appends the prompt's new messages in layout order, which
+ * hold those inputs, then the step's messages keyed by Turn and step, to the
+ * Conversation history, adds an outbox row for each new reply and releases
+ * the lease. A Turn that continues goes back to queued for its next step,
+ * which needs a new claim. A Turn that the step completed ends, unless it
+ * still has unread inputs: then it continues, so the next step reads them. A
+ * superseded Turn ends and drops its unread inputs.
  * Returns what the Turn does next. Undefined when the lease is lost or the
  * step is already committed, and then nothing is written.
  */
@@ -540,6 +562,11 @@ export async function commitStep(
       if (rows.length === 0) {
         return undefined;
       }
+      await takeInputs({ executor }, turn.conversationId, {
+        inputIds: prompt.flatMap((entry) =>
+          entry.source === "input" ? [entry.inputId] : [],
+        ),
+      });
       await createSqlConversationEventStore(executor).append(
         turn.conversationId,
         [
@@ -573,6 +600,12 @@ export async function commitStep(
           })),
         ],
       );
+      if (outcome === "superseded") {
+        await takeInputs({ executor }, turn.conversationId, {
+          turnIds: [turn.turnId],
+          skippedReason: "superseded",
+        });
+      }
       await recordReplies({ executor }, turn);
       return outcome;
     }),
@@ -601,14 +634,13 @@ async function commitOutcome(
       return "completed";
     }
   }
-  // A superseded Turn's unread inputs stay on it and are dropped.
   return (await isSuperseded({ executor }, turnId)) ? "superseded" : "continue";
 }
 
 /**
  * Ends a running Turn as failed, with the reason and the failure details.
  * False when the lease is lost. The engine calls it through `endFailedTurn`,
- * which also moves the Turn's late inputs.
+ * which also moves the Turn's late inputs and drops the rest.
  */
 export async function failTurn(
   { executor }: Pick<EngineContext, "executor">,
@@ -638,8 +670,8 @@ export async function failTurn(
 /**
  * Queues a running Turn again after its invocation failed, so the queue's
  * retry can claim the step at once. The failed attempt still counts. A Turn
- * that another Turn supersedes ends instead, like at a commit. False when the
- * lease is lost.
+ * that another Turn supersedes ends instead and drops its inputs, like at a
+ * commit. False when the lease is lost.
  */
 export async function releaseTurn(
   { executor }: Pick<EngineContext, "executor">,
@@ -652,24 +684,34 @@ export async function releaseTurn(
         leaseExpiresAt: null,
         updatedAt: sql`now()`,
       };
+      const superseded = await isSuperseded({ executor }, lease.turnId);
       const rows = await executor
         .db()
         .update(juniorTurns)
         .set(
-          (await isSuperseded({ executor }, lease.turnId))
+          superseded
             ? { ...released, ...SUPERSEDED_END }
             : { ...released, state: "queued" },
         )
         .where(leaseFence(lease))
         .returning({ id: juniorTurns.id });
-      return rows.length > 0;
+      if (rows.length === 0) {
+        return false;
+      }
+      if (superseded) {
+        await takeInputs({ executor }, lease.conversationId, {
+          turnIds: [lease.turnId],
+          skippedReason: "superseded",
+        });
+      }
+      return true;
     }),
   );
 }
 
 /**
- * Stops a Conversation's work: cancels every queued and running Turn of it,
- * in one commit. It needs no lease. It moves each Turn's `lease_epoch`, so
+ * Stops a Conversation's work: cancels every queued and running Turn of it
+ * and drops their unread inputs, in one commit. It needs no lease. It moves each Turn's `lease_epoch`, so
  * the invocation that runs a step cannot commit it. It holds the Conversation
  * lock, so an input that `scheduleInput` places after the stop goes to a new
  * Turn. After the commit it publishes one cancelled Turn: that message claims
@@ -681,8 +723,8 @@ export async function stopTurns(
   conversationId: string,
 ): Promise<string[]> {
   const stopped = await executor.transaction(() =>
-    withConversationEventLock(executor, conversationId, () =>
-      executor
+    withConversationEventLock(executor, conversationId, async () => {
+      const cancelled = await executor
         .db()
         .update(juniorTurns)
         .set({
@@ -699,8 +741,13 @@ export async function stopTurns(
             inArray(juniorTurns.state, ["queued", "running"]),
           ),
         )
-        .returning({ id: juniorTurns.id }),
-    ),
+        .returning({ id: juniorTurns.id });
+      await takeInputs({ executor }, conversationId, {
+        turnIds: cancelled.map(({ id }) => id),
+        skippedReason: "stopped",
+      });
+      return cancelled;
+    }),
   );
   // Delivery runs per Conversation, so one message sends every stopped
   // Turn's replies.

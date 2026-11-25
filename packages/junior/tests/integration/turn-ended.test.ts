@@ -11,6 +11,7 @@ import {
 import type { EngineContext } from "@/core/engine-context";
 import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
@@ -62,6 +63,27 @@ async function readInputs(
     .from(juniorTurnInbox)
     .where(eq(juniorTurnInbox.conversationId, conversationId))
     .orderBy(juniorTurnInbox.createdAt);
+}
+
+/** The skipped reasons of the transcript Messages of dropped inputs. */
+async function readDroppedMessages(
+  { executor }: Pick<EngineContext, "executor">,
+  conversationId: string,
+) {
+  const events =
+    await createSqlConversationEventStore(executor).loadCurrentHistory(
+      conversationId,
+    );
+  return events.flatMap(({ data }) =>
+    data.type === "message"
+      ? [
+          {
+            messageId: data.messageId,
+            skippedReason: data.meta?.["skippedReason"],
+          },
+        ]
+      : [],
+  );
 }
 
 /** The Turn of the Conversation that took the inputs of a Turn. */
@@ -181,13 +203,14 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     const next = await readOtherTurn(engine.engineCtx, CONVERSATION_ID, turnId);
     expect(next).toMatchObject({ state: "queued" });
-    const inputs = [
-      { id: claimedId, turnId, idempotencyKey: `slack-event:${claimedId}` },
-      { id: lateId, turnId: next!.id, idempotencyKey: `slack-event:${lateId}` },
-    ];
     await expect(
       readInputs(engine.engineCtx, CONVERSATION_ID),
-    ).resolves.toEqual(inputs);
+    ).resolves.toEqual([
+      { id: lateId, turnId: next!.id, idempotencyKey: `slack-event:${lateId}` },
+    ]);
+    await expect(
+      readDroppedMessages(engine.engineCtx, CONVERSATION_ID),
+    ).resolves.toEqual([{ messageId: claimedId, skippedReason: "failed" }]);
     expect(engine.sentStepMessages(next!.id)).toBe(1);
 
     // The new Turn's attempt claims the moved input, so its failure drops it.
@@ -196,7 +219,13 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
 
     await expect(
       readInputs(engine.engineCtx, CONVERSATION_ID),
-    ).resolves.toEqual(inputs);
+    ).resolves.toEqual([]);
+    await expect(
+      readDroppedMessages(engine.engineCtx, CONVERSATION_ID),
+    ).resolves.toEqual([
+      { messageId: claimedId, skippedReason: "failed" },
+      { messageId: lateId, skippedReason: "failed" },
+    ]);
     await expect(
       fixture.sql.db().select({ id: juniorTurns.id }).from(juniorTurns),
     ).resolves.toHaveLength(2);
@@ -268,8 +297,11 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
     await expect(
       readOtherTurn(engine.engineCtx, CONVERSATION_ID, turnId),
     ).resolves.toBeUndefined();
-    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
-      expect.objectContaining({ inputId, attemptedAt: expect.any(Date) }),
-    ]);
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual(
+      [],
+    );
+    await expect(
+      readDroppedMessages(engine.engineCtx, CONVERSATION_ID),
+    ).resolves.toEqual([{ messageId: inputId, skippedReason: "failed" }]);
   });
 });

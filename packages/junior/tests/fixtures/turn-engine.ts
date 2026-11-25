@@ -110,6 +110,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     id: turnId,
     conversationId: CONVERSATION_ID,
     actorIdentityId: "identity:actor",
+    sourceKind: "slack",
     state: "queued",
     priority: 0,
   });
@@ -143,6 +144,14 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     destination: Destination | null = null,
   ) {
     const inputId = randomUUID();
+    if (destination) {
+      // A Turn keeps the Destination of the input that created it.
+      await fixture.sql
+        .db()
+        .update(juniorTurns)
+        .set({ destination })
+        .where(eq(juniorTurns.id, turnId));
+    }
     await fixture.sql
       .db()
       .insert(juniorTurnInbox)
@@ -150,15 +159,8 @@ export async function startTurnEngine(): Promise<TurnEngine> {
         id: inputId,
         conversationId: CONVERSATION_ID,
         turnId,
-        actorIdentityId: "identity:actor",
-        source: {
-          kind: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          visibility: "public",
-        },
-        destination,
         payload: { text },
+        message: { messageId: inputId, text },
         idempotencyKey: `slack-event:${inputId}`,
         sentAt: new Date(),
       });

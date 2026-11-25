@@ -2,9 +2,11 @@ import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
-import { markInputsAttempted } from "@/core/turn/inbox";
+import { findUnreadInputs, markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   endFailedTurn,
@@ -109,7 +111,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const [turns, inputs] = await Promise.all([
       observer.sql
         .db()
-        .select({ id: juniorTurns.id })
+        .select({ state: juniorTurns.state })
         .from(juniorTurns)
         .where(eq(juniorTurns.id, turnId)),
       observer.sql
@@ -118,7 +120,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         .from(juniorTurnInbox)
         .where(eq(juniorTurnInbox.turnId, turnId)),
     ]);
-    return turns.length === 1 && inputs.length > 0;
+    // A publish follows the input that went to the Turn, or a stop, which
+    // takes the inputs out of the inbox.
+    return (
+      turns.length === 1 &&
+      (inputs.length > 0 || turns[0]!.state === "cancelled")
+    );
   }
 
   function input(idempotencyKey: string): Parameters<typeof scheduleInput>[1] {
@@ -127,6 +134,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       actorIdentityId: "identity:actor",
       payload: { text: `Message ${idempotencyKey}` },
       idempotencyKey,
+      message: { messageId: idempotencyKey, text: `Message ${idempotencyKey}` },
       sentAt: new Date("2026-11-21T08:00:00.000Z"),
       source: LOCAL_SOURCE,
       destination: null,
@@ -134,8 +142,17 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     };
   }
 
+  // Schedules an input that the test expects in a Turn.
+  async function place(args: Parameters<typeof scheduleInput>[1]) {
+    const result = await scheduleInput(engineCtx, args);
+    if (result.turnId === undefined) {
+      throw new Error(`Input ${args.idempotencyKey} went to no Turn`);
+    }
+    return result;
+  }
+
   function schedule(idempotencyKey: string) {
-    return scheduleInput(engineCtx, input(idempotencyKey));
+    return place(input(idempotencyKey));
   }
 
   async function claim(turnId: string) {
@@ -168,7 +185,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   }
 
   function interruptFrom(actorIdentityId: string, idempotencyKey: string) {
-    return scheduleInput(engineCtx, {
+    return place({
       ...input(idempotencyKey),
       actorIdentityId,
     });
@@ -183,6 +200,18 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       })
       .from(juniorTurnInbox)
       .orderBy(juniorTurnInbox.createdAt);
+  }
+
+  // The transcript Messages of the inputs that left the inbox.
+  async function readMessages() {
+    const events = await createSqlConversationEventStore(
+      fixture.sql,
+    ).loadCurrentHistory(CONVERSATION_ID);
+    return events.flatMap(({ data }) =>
+      data.type === "message"
+        ? [{ messageId: data.messageId, meta: data.meta }]
+        : [],
+    );
   }
 
   it("starts a Turn with the first input and publishes it after the commit", async () => {
@@ -203,9 +232,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(
       fixture.sql
         .db()
-        .select({ source: juniorTurnInbox.source })
-        .from(juniorTurnInbox),
-    ).resolves.toEqual([{ source: LOCAL_SOURCE }]);
+        .select({ sourceKind: juniorTurns.sourceKind })
+        .from(juniorTurns),
+    ).resolves.toEqual([{ sourceKind: "local" }]);
     expect(publishes).toEqual([{ turnId: scheduled.turnId, committed: true }]);
   });
 
@@ -240,12 +269,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await claim(first.turnId);
     publishes = [];
 
-    const deferred = await scheduleInput(engineCtx, {
+    const deferred = await place({
       ...input("event-2"),
       delivery: "defer",
     });
     await expect(
-      scheduleInput(engineCtx, { ...input("event-3"), delivery: "defer" }),
+      place({ ...input("event-3"), delivery: "defer" }),
     ).resolves.toEqual({ turnId: deferred.turnId, created: false });
 
     expect(deferred).toEqual({ turnId: expect.any(String), created: true });
@@ -255,12 +284,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("queues an input from another Actor or Source in its own Turn, so A1 B1 A2 makes A2 wait", async () => {
     const a1 = await schedule("event-1");
-    const b1 = await scheduleInput(engineCtx, {
+    const b1 = await place({
       ...input("event-2"),
       actorIdentityId: "identity:other",
     });
     const a2 = await schedule("event-3");
-    const web = await scheduleInput(engineCtx, {
+    const web = await place({
       ...input("event-4"),
       source: WEB_SOURCE,
     });
@@ -271,7 +300,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("claims only the next Turn, and publishes the next one when a Turn ends", async () => {
     const first = await schedule("event-1");
-    const second = await scheduleInput(engineCtx, {
+    const second = await place({
       ...input("event-2"),
       actorIdentityId: "identity:other",
     });
@@ -297,7 +326,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const running = await claim(alice.turnId);
     publishes = [];
 
-    const deferred = await scheduleInput(engineCtx, {
+    const deferred = await place({
       ...input("event-2"),
       actorIdentityId: "identity:other",
       delivery: "defer",
@@ -317,6 +346,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readEnd(deferred.turnId)).resolves.toMatchObject({
       state: "queued",
     });
+    await expect(readMessages()).resolves.toEqual([
+      {
+        messageId: "event-1",
+        meta: { replied: false, skippedReason: "superseded" },
+      },
+    ]);
     await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
       turnId: bob.turnId,
     });
@@ -334,6 +369,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       endReason: "superseded",
     });
     expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
+    await expect(readMessages()).resolves.toEqual([
+      {
+        messageId: "event-1",
+        meta: { replied: false, skippedReason: "superseded" },
+      },
+    ]);
     await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
       turnId: bob.turnId,
     });
@@ -350,6 +391,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       state: "cancelled",
       endReason: "superseded",
     });
+    await expect(readMessages()).resolves.toEqual([
+      {
+        messageId: "event-1",
+        meta: { replied: false, skippedReason: "superseded" },
+      },
+    ]);
   });
 
   it("sends later inputs past a superseded Turn", async () => {
@@ -403,21 +450,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(claimed).toMatchObject({ turnId: turn.turnId });
   });
 
-  it("refuses an input row whose Source differs from its Turn's other inputs", async () => {
-    const local = await schedule("event-1");
-    await scheduleInput(engineCtx, { ...input("event-2"), source: WEB_SOURCE });
-
-    await expect(
-      fixture.sql
-        .db()
-        .update(juniorTurnInbox)
-        .set({ turnId: local.turnId })
-        .where(eq(juniorTurnInbox.idempotencyKey, "event-2")),
-    ).rejects.toMatchObject({
-      cause: { constraint: "junior_turn_inbox_one_source" },
-    });
-  });
-
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
     const first = await schedule("event-1");
     const duplicate = { turnId: first.turnId, created: false };
@@ -431,11 +463,53 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await stopTurns(engineCtx, CONVERSATION_ID);
     // The stop's own message.
     expect(publishes).toHaveLength(3);
-    await expect(schedule("event-1")).resolves.toEqual(duplicate);
+    // The stop took the input out of the inbox, so the history has it.
+    await expect(scheduleInput(engineCtx, input("event-1"))).resolves.toEqual({
+      turnId: undefined,
+      created: false,
+    });
 
     expect(publishes).toHaveLength(3);
     await expect(readTurns()).resolves.toHaveLength(1);
-    await expect(readInputs()).resolves.toHaveLength(1);
+    await expect(readInputs()).resolves.toEqual([]);
+    await expect(readMessages()).resolves.toEqual([
+      {
+        messageId: "event-1",
+        meta: { replied: false, skippedReason: "stopped" },
+      },
+    ]);
+  });
+
+  it("writes nothing for an input that a step already read", async () => {
+    const first = await schedule("event-1");
+    const running = await claim(first.turnId);
+    const [unread] = await findUnreadInputs(engineCtx, first.turnId);
+    await expect(
+      commitStep(engineCtx, running, { outcome: "completed", messages: [] }, [
+        {
+          source: "input",
+          inputId: unread!.inputId,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Message event-1" }],
+            timestamp: 1_718_123_455_000,
+          },
+          provenance: instructionProvenanceFor(undefined),
+        },
+      ]),
+    ).resolves.toBe("completed");
+
+    await expect(scheduleInput(engineCtx, input("event-1"))).resolves.toEqual({
+      turnId: undefined,
+      created: false,
+    });
+
+    expect(publishes).toHaveLength(1);
+    await expect(readTurns()).resolves.toHaveLength(1);
+    await expect(readInputs()).resolves.toEqual([]);
+    await expect(readMessages()).resolves.toEqual([
+      { messageId: "event-1", meta: undefined },
+    ]);
   });
 
   it("keeps the Turn and its input when the publish fails, and the retry publishes it", async () => {
@@ -497,7 +571,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const failed = await schedule("event-1");
     const claimed = await claim(failed.turnId);
     await schedule("event-2");
-    const open = await scheduleInput(engineCtx, {
+    const open = await place({
       ...input("event-3"),
       delivery: "defer",
     });
@@ -530,7 +604,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("publishes a cancelled Turn, and reconcileTurn leaves its inputs on it", async () => {
+  it("publishes a cancelled Turn, whose input leaves the inbox as a skipped Message", async () => {
     const cancelled = await schedule("event-1");
 
     await stopTurns(engineCtx, CONVERSATION_ID);
@@ -541,15 +615,19 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       { turnId: cancelled.turnId, committed: true },
     ]);
     await expect(readTurns()).resolves.toHaveLength(1);
-    await expect(readInputs()).resolves.toEqual([
-      { turnId: cancelled.turnId, idempotencyKey: "event-1" },
+    await expect(readInputs()).resolves.toEqual([]);
+    await expect(readMessages()).resolves.toEqual([
+      {
+        messageId: "event-1",
+        meta: { replied: false, skippedReason: "stopped" },
+      },
     ]);
   });
 
   it("stops the running Turn and the Turn queued behind it, so no Turn starts", async () => {
     const running = await schedule("event-1");
     await claim(running.turnId);
-    const queued = await scheduleInput(engineCtx, {
+    const queued = await place({
       ...input("event-2"),
       actorIdentityId: "identity:other",
       delivery: "defer",

@@ -7,8 +7,8 @@
 //
 // After any change to a Turn, `reconcileTurn` brings delivery and the queue
 // in line with the Turn's stored state. It lives here because a failed Turn
-// hands on its late inputs through `assignTurn`, and only this file writes
-// input rows. Every part of it is safe to repeat, so it needs no marker: every
+// hands on its late inputs through `assignTurn`, and only this file adds and
+// moves input rows. Every part of it is safe to repeat, so it needs no marker: every
 // path in `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
@@ -18,6 +18,8 @@ import type { EngineContext } from "@/core/engine-context";
 import {
   findInputTurn,
   findUnreadInputs,
+  isInputInHistory,
+  takeInputs,
   type TurnInput,
 } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
@@ -27,6 +29,7 @@ import {
   findOpenTurn,
   findOpenTurns,
   findTurn,
+  findTurnDestination,
   type OpenTurn,
   supersedeTurn,
   type Turn,
@@ -36,16 +39,27 @@ import {
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
 
-/** The Turn that an input went to, and whether the input created it. */
-type ScheduleResult = { turnId: string; created: boolean };
+/**
+ * The Turn that an input went to, and whether the input created it. A
+ * duplicate of an input that already left the inbox goes to no Turn.
+ */
+type ScheduleResult =
+  | { turnId: string; created: boolean }
+  | { turnId: undefined; created: false };
 
 type Placement = ScheduleResult & { publish: boolean };
 
-// Not exported: scheduleInput is the only writer, so every input row is
-// written under the Conversation lock.
+// Not exported: scheduleInput is the only caller, so every input row is
+// added under the Conversation lock.
 async function addInput(
   { executor }: Pick<EngineContext, "executor">,
-  input: TurnInput & { turnId: string },
+  // The Turn holds the Actor, Source and Destination of its inputs.
+  {
+    actorIdentityId: _actorIdentityId,
+    source: _source,
+    destination: _destination,
+    ...input
+  }: TurnInput & { turnId: string },
 ): Promise<void> {
   await executor
     .db()
@@ -107,6 +121,9 @@ async function placeInput(
       publish: existing.state === "queued",
     };
   }
+  if (await isInputInHistory({ executor }, input)) {
+    return { turnId: undefined, created: false, publish: false };
+  }
   const openTurns = await findOpenTurns({ executor }, input.conversationId);
   const choice = assignTurn(
     { ...input, sourceKind: input.source.kind, delivery },
@@ -125,6 +142,8 @@ async function placeInput(
     {
       conversationId: input.conversationId,
       actorIdentityId: input.actorIdentityId,
+      sourceKind: input.source.kind,
+      destination: input.destination,
       priority: choice.create.priority,
     },
   );
@@ -155,10 +174,11 @@ export async function scheduleInput(
     input.conversationId,
     () => placeInput({ executor }, input),
   );
-  if (placement.publish) {
-    await publishTurnStep({ queue }, placement.turnId);
+  const { publish, ...result } = placement;
+  if (publish && result.turnId) {
+    await publishTurnStep({ queue }, result.turnId);
   }
-  return { turnId: placement.turnId, created: placement.created };
+  return result;
 }
 
 // Not exported, like addInput: only endFailedTurn moves inputs, under the
@@ -188,12 +208,12 @@ async function moveLeftovers(
   const leftovers = (await findUnreadInputs({ executor }, ended.turnId)).filter(
     (input) => input.attemptedAt === null,
   );
-  const [first] = leftovers;
-  if (!first) {
+  const failed = await findTurn({ executor }, ended.turnId);
+  if (leftovers.length === 0 || !failed) {
     return;
   }
   const choice = assignTurn(
-    { ...first, delivery: "defer" },
+    { ...failed, delivery: "defer" },
     await findOpenTurns({ executor }, ended.conversationId),
   );
   const target =
@@ -203,7 +223,9 @@ async function moveLeftovers(
           { executor },
           {
             conversationId: ended.conversationId,
-            actorIdentityId: first.actorIdentityId,
+            actorIdentityId: failed.actorIdentityId,
+            sourceKind: failed.sourceKind,
+            destination: await findTurnDestination({ executor }, failed.turnId),
             priority: choice.create.priority,
           },
         );
@@ -216,8 +238,9 @@ async function moveLeftovers(
 
 /**
  * Ends a running Turn as failed and, in the same commit, moves its inputs
- * that arrived after its last claim to the next Turn. A crash after the
- * commit loses no input: the next Turn is queued, so the sweep finds it.
+ * that arrived after its last claim to the next Turn and drops the rest. A
+ * crash after the commit loses no input: the next Turn is queued, so the
+ * sweep finds it.
  * False when the lease is lost, and then nothing changes.
  */
 export async function endFailedTurn(
@@ -232,6 +255,10 @@ export async function endFailedTurn(
         return false;
       }
       await moveLeftovers({ executor }, lease);
+      await takeInputs({ executor }, lease.conversationId, {
+        turnIds: [lease.turnId],
+        skippedReason: "failed",
+      });
       return true;
     }),
   );

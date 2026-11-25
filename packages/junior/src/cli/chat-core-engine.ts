@@ -152,12 +152,14 @@ export async function runCoreEnginePrompt(args: {
       text: args.message,
       actor: LOCAL_ACTOR,
     };
+    const messageId = randomUUID();
     const { turnId } = await scheduleInput(engineCtx, {
       conversationId: args.conversationId,
       // The local CLI has no per-person id, so it uses the system Identity.
       actorIdentityId: SYSTEM_IDENTITY_ID,
       payload,
-      idempotencyKey: `local-cli:${randomUUID()}`,
+      message: { messageId, text: args.message },
+      idempotencyKey: `local-cli:${messageId}`,
       sentAt: new Date(),
       source: {
         kind: "local",
@@ -168,6 +170,9 @@ export async function runCoreEnginePrompt(args: {
       destination: null,
       delivery: "defer",
     });
+    if (!turnId) {
+      throw new Error("A new CLI message went to no Turn");
+    }
     const turn = await waitForTurnEnd(engineCtx, turnId);
     if (turn.state !== "completed") {
       return {

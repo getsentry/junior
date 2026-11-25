@@ -119,7 +119,7 @@ describe("advanceTurn after a failed model request", () => {
       Array.from({ length: MAX_ATTEMPTS }, modelOverloaded),
     );
     pinRetryJitter(0);
-    const { turnId, inputId } = await harness.send({
+    const { turnId } = await harness.send({
       text: "How many Turns?",
     });
 
@@ -141,8 +141,16 @@ describe("advanceTurn after a failed model request", () => {
       attempts: MAX_ATTEMPTS,
     });
     await expect(harness.history()).resolves.toEqual([]);
-    await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual([
-      expect.objectContaining({ inputId }),
+    await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual(
+      [],
+    );
+    await expect(harness.events()).resolves.toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "message",
+          meta: { replied: false, skippedReason: "failed" },
+        }),
+      }),
     ]);
     expect(pendingSteps(turnId)).toBe(0);
   });
@@ -181,10 +189,10 @@ describe("advanceTurn after a failed model request", () => {
     expect(stepDelays(turnId)).toEqual([90]);
   });
 
-  it("leaves the input unread when the model step fails", async () => {
+  it("drops the input when the model step fails, and no Turn answers it", async () => {
     // Injected fault: the model provider rejects the request.
     await setModelReplies([modelRejected()]);
-    const { turnId, inputId } = await harness.send({
+    const { turnId } = await harness.send({
       text: "How many Turns?",
     });
 
@@ -194,8 +202,16 @@ describe("advanceTurn after a failed model request", () => {
       state: "failed",
     });
     await expect(harness.history()).resolves.toEqual([]);
-    await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual([
-      expect.objectContaining({ inputId }),
+    await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual(
+      [],
+    );
+    await expect(harness.events()).resolves.toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "message",
+          meta: { replied: false, skippedReason: "failed" },
+        }),
+      }),
     ]);
   });
 });

@@ -70,6 +70,7 @@ describe("Turn state", () => {
       id: turnId,
       conversationId: CONVERSATION_ID,
       actorIdentityId: "identity:actor",
+      sourceKind: "slack",
       state: "queued",
       priority: 0,
     });
@@ -114,15 +115,8 @@ describe("Turn state", () => {
         id: inputId,
         conversationId: CONVERSATION_ID,
         turnId,
-        actorIdentityId: "identity:actor",
-        source: {
-          kind: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          visibility: "public",
-        },
-        destination: null,
         payload: { text },
+        message: { messageId: inputId, text },
         idempotencyKey: `slack-event:${inputId}`,
         sentAt: new Date(1_718_123_455_000),
       });
@@ -370,7 +364,7 @@ describe("Turn state", () => {
     });
   });
 
-  it("appends the inputs before the step's messages, and writes each input once", async () => {
+  it("takes the inputs out of the inbox before the step's messages, and writes each input once", async () => {
     const inputId = await addTestInput("How many Turns?");
     const input: PromptMessage = {
       source: "input",
@@ -398,17 +392,25 @@ describe("Turn state", () => {
       fixture.sql,
     ).loadCurrentHistory(CONVERSATION_ID);
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `input:slack-event:${inputId}`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
       `step:${turnId}:0:1`,
       `step:${turnId}:1:0`,
     ]);
-    expect(events[0]!.data).toMatchObject({
+    expect(events[0]!.data).toEqual({
+      type: "message",
+      role: "user",
+      messageId: inputId,
+      text: "How many Turns?",
+    });
+    expect(events[1]!.data).toMatchObject({
       type: "user_message",
       provenance: { authority: "instruction", actor: ACTOR },
     });
     await expect(loadHistory()).resolves.toEqual({
       types: [
+        "message",
         "user_message",
         "assistant_message",
         "tool_result",

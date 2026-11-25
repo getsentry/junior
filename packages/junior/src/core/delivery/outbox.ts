@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, lt, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { EngineContext } from "@/core/engine-context";
-import { findTurnDestination } from "@/core/turn/inbox";
+import { findTurnDestination } from "@/core/turn/state";
 import { findTurnReplies } from "@/core/turn/replies";
 import { juniorTurnOutbox } from "@/db/schema";
 

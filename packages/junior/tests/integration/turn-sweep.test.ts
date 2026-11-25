@@ -177,6 +177,8 @@ describe("Turn sweep", () => {
     const { turnId: waitingId } = await createTurn(harness.engineCtx, {
       conversationId: harness.conversationId,
       actorIdentityId: running.actorIdentityId,
+      sourceKind: running.sourceKind,
+      destination: null,
       priority: TURN_PRIORITY.normal,
     });
     await age(waitingId, 10);

@@ -1,0 +1,160 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2c9b5c27-bfeb-4102-b10a-7bc5f1a63a71",
+  "prevIds": ["ea6ceff2-dd47-41a2-a324-6ccf73ce5535"],
+  "footprints": [
+    {
+      "statementType": "drop_fk",
+      "statementTarget": ["table", "public", "junior_turn_inbox"],
+      "writes": [
+        "s|fk|public.junior_turn_inbox.junior_turn_inbox_actor_identity_id_junior_identities_id_fkey",
+        "n|fk|public.junior_turn_inbox.junior_turn_inbox_actor_identity_id_junior_identities_id_fkey",
+        "e|fk|public.junior_turn_inbox.junior_turn_inbox_actor_identity_id_junior_identities_id_fkey",
+        "n|con|public.junior_turn_inbox.junior_turn_inbox_actor_identity_id_junior_identities_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_turn_inbox",
+        "n|sch|public",
+        "e|col|public.junior_turn_inbox.actor_identity_id"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_turn_inbox", "message"],
+      "writes": [
+        "s|col|public.junior_turn_inbox.message",
+        "n|col|public.junior_turn_inbox.message",
+        "e|col|public.junior_turn_inbox.message"
+      ],
+      "reads": ["n|tbl|public.junior_turn_inbox", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_turns", "source_kind"],
+      "writes": [
+        "s|col|public.junior_turns.source_kind",
+        "n|col|public.junior_turns.source_kind",
+        "e|col|public.junior_turns.source_kind"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_turns", "destination"],
+      "writes": [
+        "s|col|public.junior_turns.destination",
+        "n|col|public.junior_turns.destination",
+        "e|col|public.junior_turns.destination"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_turn_inbox",
+        "actor_identity_id"
+      ],
+      "writes": [
+        "s|col|public.junior_turn_inbox.actor_identity_id",
+        "n|col|public.junior_turn_inbox.actor_identity_id",
+        "e|col|public.junior_turn_inbox.actor_identity_id"
+      ],
+      "reads": ["n|tbl|public.junior_turn_inbox", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_turn_inbox", "source"],
+      "writes": [
+        "s|col|public.junior_turn_inbox.source",
+        "n|col|public.junior_turn_inbox.source",
+        "e|col|public.junior_turn_inbox.source"
+      ],
+      "reads": ["n|tbl|public.junior_turn_inbox", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_turn_inbox",
+        "destination"
+      ],
+      "writes": [
+        "s|col|public.junior_turn_inbox.destination",
+        "n|col|public.junior_turn_inbox.destination",
+        "e|col|public.junior_turn_inbox.destination"
+      ],
+      "reads": ["n|tbl|public.junior_turn_inbox", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turn_inbox",
+        "name": "message",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turns",
+        "name": "source_kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turns",
+        "name": "destination",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_turn_inbox\",\"actor_identity_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_turn_inbox\",\"source\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_turn_inbox\",\"destination\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_turn_inbox\",\"junior_turn_inbox_actor_identity_id_junior_identities_id_fkey\"]"
+    }
+  ]
+}

@@ -245,7 +245,7 @@ describe("advanceTurn", () => {
     },
   );
 
-  it("reads an unread input into the history before the reply", async () => {
+  it("takes an unread input out of the inbox into the history before the reply", async () => {
     const reply = createAssistantMessage({ type: "text", text: "Three." });
     await setModelReplies([reply]);
     const { turnId, inputId } = await harness.send({
@@ -263,10 +263,16 @@ describe("advanceTurn", () => {
     ]);
     const events = await harness.events();
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      expect.stringMatching(/^input:slack-event:/),
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
     ]);
     expect(events[0]!.data).toMatchObject({
+      type: "message",
+      role: "user",
+      text: "How many Turns?",
+    });
+    expect(events[1]!.data).toMatchObject({
       type: "user_message",
       provenance: { authority: "instruction", actor: ACTOR },
     });
@@ -514,12 +520,14 @@ describe("advanceTurn with a test step", () => {
     ]);
     const events = await loadEvents();
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `input:slack-event:${inputId}`,
       `prompt:${turnId}:0:0`,
       `inbox:${inputId}`,
       `prompt:${turnId}:0:2`,
       `step:${turnId}:0:0`,
     ]);
     expect(events.map((event) => event.data)).toEqual([
+      expect.objectContaining({ type: "message", text: "How many Turns?" }),
       expect.objectContaining({ provenance: { authority: "context" } }),
       expect.objectContaining({
         provenance: { authority: "instruction", actor: ACTOR },
@@ -529,11 +537,12 @@ describe("advanceTurn with a test step", () => {
     ]);
     // Both fragment messages get the one time of the step, and the input
     // keeps its send time.
-    const [before, input, after] = events;
+    const [transcript, before, input, after] = events;
     expect(before?.createdAtMs).toBeGreaterThanOrEqual(stepStart);
     expect(before?.createdAtMs).toBeLessThanOrEqual(stepEnd);
     expect(after?.createdAtMs).toBe(before?.createdAtMs);
     expect(input?.createdAtMs).toBe(unread?.sentAt.getTime());
+    expect(transcript?.createdAtMs).toBe(unread?.sentAt.getTime());
   });
 
   it("writes a step's fragment messages once when its message is delivered again", async () => {
