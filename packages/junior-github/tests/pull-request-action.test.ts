@@ -957,6 +957,51 @@ describe("next action item", () => {
     }
   });
 
+  it("asks in limbo when the checks pass by the time a webhook during the sync checks again", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requiredChecks: ["test"],
+      reviews: [],
+      state: "open",
+    };
+    // The first read of the checks finds them pending. Later reads find
+    // them passing.
+    let checkReads = 0;
+    Object.defineProperty(github, "checks", {
+      get: () =>
+        checkReads++ === 0
+          ? []
+          : [{ conclusion: "SUCCESS", name: "test", status: "COMPLETED" }],
+    });
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      let release!: () => void;
+      github.holdNextPullRead = new Promise((resolve) => {
+        release = resolve;
+      });
+      const first = webhook.handler(pullRequestAction("review_requested"));
+      const queued = webhook.handler(pullRequestAction("review_requested"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      release();
+      await Promise.all([first, queued]);
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("does not ask a requester again who removed their own review request", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];

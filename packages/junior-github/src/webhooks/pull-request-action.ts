@@ -745,20 +745,20 @@ async function syncOne(
       inLimbo(state, activity, requesterLogin) &&
       (args.askAfterRequesterActed || activity.actedAt === undefined)
     ) {
-      askedRequester = true;
       // A pull request in limbo waits for the required checks, as a review
-      // ask again does. A later check suite webhook syncs again.
+      // ask again does. A later check suite webhook syncs again, and so
+      // does a check of this sync again, so only a sent ask counts.
       const [owner = "", name = ""] = target.repositoryFullName.split("/");
       const checksPass = await readGitHubRequiredChecksPass(
         await loadReviewAgainReader(args.env, target.repositoryFullName),
         { name, number: target.number, owner },
       );
-      // The next read sees the request and shows its item.
-      if (
-        checksPass &&
-        (await requestReviewAgain(args, target, requesterLogin))
-      ) {
-        return await check(previous);
+      if (checksPass) {
+        askedRequester = true;
+        // The next read sees the request and shows its item.
+        if (await requestReviewAgain(args, target, requesterLogin)) {
+          return await check(previous);
+        }
       }
     }
     // Act only on a change. So repeat events add no second item, and an
