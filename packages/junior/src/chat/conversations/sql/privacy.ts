@@ -59,10 +59,9 @@ async function readRoot(
 /**
  * Resolve a conversation's privacy authority from its persisted root.
  *
- * Missing or structurally invalid root metadata fails closed. A visibility
- * change locks the root's Destination row first (`setConversationVisibility`),
- * so a share lock on it gives callers that keep the transaction open a stable
- * decision. Locking the root row instead would deadlock two child writes that
+ * Missing or structurally invalid root metadata fails closed. The share
+ * lock from `lockRootDestination` gives callers that keep the transaction
+ * open a stable decision. Locking the root row instead would deadlock two child writes that
  * both update the root later in their transactions.
  */
 export async function resolveRootVisibility(
@@ -73,15 +72,7 @@ export async function resolveRootVisibility(
   if (!root) {
     return { rootConversationId: conversationId, visibility: null };
   }
-  if (!root.destinationId) {
-    return { rootConversationId: root.rootConversationId, visibility: null };
-  }
-  await executor
-    .db()
-    .select({ id: juniorDestinations.id })
-    .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, root.destinationId))
-    .for("share");
+  await lockRootDestination(executor, root.destinationId, "share");
   const [locked] = await executor
     .db()
     .select({ visibility: juniorConversations.visibility })
@@ -124,15 +115,7 @@ export async function setConversationVisibility(
       ),
     );
   if (!root) return false;
-  // `resolveRootVisibility` holds a share lock on this row while a new
-  // child copies the root's value, so no child keeps the old one.
-  if (root.destinationId) {
-    await db
-      .select({ id: juniorDestinations.id })
-      .from(juniorDestinations)
-      .where(eq(juniorDestinations.id, root.destinationId))
-      .for("update");
-  }
+  await lockRootDestination(executor, root.destinationId, "update");
   await db
     .update(juniorConversations)
     .set({ visibility, detailVersion: nextDetailVersion })
@@ -149,8 +132,13 @@ export async function fillMissingTreeVisibility(
   rootConversationId: string,
   visibility: ConversationPrivacy,
 ): Promise<void> {
-  await executor
-    .db()
+  const db = executor.db();
+  const [root] = await db
+    .select({ destinationId: juniorConversations.destinationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, rootConversationId));
+  await lockRootDestination(executor, root?.destinationId ?? null, "update");
+  await db
     .update(juniorConversations)
     .set({ visibility, detailVersion: nextDetailVersion })
     .where(
@@ -159,4 +147,24 @@ export async function fillMissingTreeVisibility(
         isNull(juniorConversations.visibility),
       ),
     );
+}
+
+/**
+ * Lock the root's Destination row. A new child copies its root's
+ * visibility under the share lock, and every write to a tree's visibility
+ * takes the update lock, so no child copies a value that a concurrent
+ * write replaces. A root with no Destination has no row to lock.
+ */
+async function lockRootDestination(
+  executor: Pick<JuniorSqlDatabase, "db">,
+  destinationId: string | null,
+  strength: "share" | "update",
+): Promise<void> {
+  if (!destinationId) return;
+  await executor
+    .db()
+    .select({ id: juniorDestinations.id })
+    .from(juniorDestinations)
+    .where(eq(juniorDestinations.id, destinationId))
+    .for(strength);
 }
