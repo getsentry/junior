@@ -554,10 +554,31 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       reviewers: ["BYK"],
     });
 
-    // GitHub already asks them, or they already reviewed: no new request.
+    // A comment or an approval ends GitHub's request, but the draft still
+    // waits on them, so GitHub asks them again.
+    for (const state of ["COMMENTED", "APPROVED"]) {
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+        .mockResolvedValueOnce(
+          reviewer({ requested: [], reviews: [{ state }] }),
+        )
+        .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+      await expect(
+        tool.execute?.(
+          { ...request, request_review: true },
+          { toolCallId: `ask-requester-after-${state}` },
+        ),
+      ).resolves.toMatchObject({ review_requested: true });
+      expect(fetch.mock.calls.at(-1)?.[0]).toMatchObject({
+        operation: "github.pull.request_reviewers",
+      });
+    }
+
+    // GitHub already asks them, or the review-again flow owns their change
+    // request: no new request.
     for (const state of [
       { requested: ["byk"], reviews: [] },
-      { requested: [], reviews: [{ state: "COMMENTED" }] },
+      { requested: [], reviews: [{ state: "CHANGES_REQUESTED" }] },
     ]) {
       fetch
         .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
