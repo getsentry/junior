@@ -21,7 +21,7 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";

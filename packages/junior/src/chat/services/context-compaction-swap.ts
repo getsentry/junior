@@ -43,7 +43,6 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -56,6 +55,7 @@ import {
   type ActiveContextCompactionArgs,
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
+import { appendCompactionSnapshot } from "@/chat/services/compaction-snapshot";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
@@ -395,7 +395,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendTodosSnapshot(
+        await appendCompactionSnapshot(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),

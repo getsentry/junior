@@ -1,10 +1,20 @@
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
-import { deleteTodos } from "@/chat/todos/store";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
+import { CORE_FEATURE_CONVERSATION_CONTENT } from "@/chat/core-features/runtime";
 import {
   juniorConversationEvents,
   juniorConversationEmbeddings,
@@ -36,6 +46,17 @@ const juniorAgentInvocations = pgTable("junior_agent_invocations", {
 const juniorConversationBriefs = pgTable("junior_conversation_briefs", {
   conversationId: text("conversation_id").notNull(),
 });
+
+/**
+ * Content that core features keep for Conversations. Purge deletes it with
+ * the transcript, and a tree that holds some still has work to purge.
+ */
+export type ConversationContent = {
+  /** SQL: the Conversation with this id holds content. */
+  existsSql(conversationId: SQL): SQL;
+  /** Delete the content of these Conversations in the purge transaction. */
+  delete(executor: JuniorSqlDatabase, conversationIds: string[]): Promise<void>;
+};
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
@@ -152,10 +173,7 @@ export async function selectExpiredRoots(
           and inbox_items.status = 'open'
           and inbox_items.automation_id is null
       )
-      or exists (
-        select 1 from junior_todos todos
-        where todos.conversation_id = tree.conversation_id
-      )
+      or ${CORE_FEATURE_CONVERSATION_CONTENT.existsSql(sql`tree.conversation_id`)}
       or exists (
         select 1 from junior_turns turns
         where turns.conversation_id = tree.conversation_id
@@ -232,8 +250,8 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. To-dos, Turns, and Turn inputs and
- * deliveries go with the transcript.
+ * conversations keep only safe metadata. The content of core features,
+ * Turns, and Turn inputs and deliveries go with the transcript.
  * Non-public content also loses its summary, Conversation embedding, legacy
  * Briefs, and the Inbox items that it added. The metadata rows themselves
  * survive.
@@ -373,8 +391,7 @@ export async function purgeConversationTree(
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
-          // To-dos hold titles and notes from the transcript.
-          await deleteTodos(executor, ids);
+          await CORE_FEATURE_CONVERSATION_CONTENT.delete(executor, ids);
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic

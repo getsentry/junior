@@ -9,7 +9,7 @@ import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools"
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   invocationInput,
