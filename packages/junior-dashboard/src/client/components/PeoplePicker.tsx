@@ -14,7 +14,11 @@ import { useDebouncedValue } from "../debouncedValue";
 import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
 import { ActorAvatar } from "./ActorAvatar";
-import { movePickerActive, pickerName, pickerOptions } from "./peoplePicker";
+import {
+  movePickerActive,
+  pickerName,
+  pickerOptions,
+} from "./peoplePickerOptions";
 import { Button } from "./ui/button";
 import { FieldError } from "./ui/field";
 import { Input } from "./ui/input";

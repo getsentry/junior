@@ -8,7 +8,7 @@ import {
   movePickerActive,
   pickerName,
   pickerOptions,
-} from "../src/client/components/peoplePicker";
+} from "../src/client/components/peoplePickerOptions";
 
 const user = (
   userId: string,
