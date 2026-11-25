@@ -10,8 +10,10 @@ import { InboxItemActions } from "../src/client/inbox/InboxItemActions";
 import { readMockInboxItems } from "../src/mock-reporting/inbox-items";
 
 const items = readMockInboxItems(Date.now(), {});
+// A notice that links nothing, so its card shows only its actions.
+const { related: _related, request: _request, ...first } = items[0]!;
 const item: InboxItemPayload = {
-  ...items[0]!,
+  ...first,
   canTake: true,
   kind: "notice",
 };
