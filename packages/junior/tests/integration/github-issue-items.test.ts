@@ -259,8 +259,8 @@ describe("the Inbox item of an issue that Junior created", () => {
             const body = (await request.json()) as { assignees: string[] };
             if (gone) {
               return HttpResponse.json(
-                { message: "Not Found" },
-                { status: 404 },
+                { message: "This issue was deleted" },
+                { status: 410 },
               );
             }
             if (body.assignees.some((login) => refuse.has(login))) {

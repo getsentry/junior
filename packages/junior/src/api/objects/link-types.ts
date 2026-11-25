@@ -64,13 +64,30 @@ function compareSpecificity(left: number[], right: number[]): number {
 }
 
 // Two filters of equal specificity can claim the same URL only when they
-// have the same scheme and host, and their paths can match one path.
+// have the same scheme and host, their paths can match one path, and their
+// targets can match one target URL.
 function filtersOverlap(
   left: ObjectLinkFilter,
   right: ObjectLinkFilter,
 ): boolean {
   if ((left.scheme ?? "https") !== (right.scheme ?? "https")) return false;
   if (left.host !== right.host) return false;
+  if (!pathsOverlap(left, right)) return false;
+  // A URL can carry two different parameters, so only targets on the same
+  // parameter can rule out an overlap.
+  if (left.target?.param !== right.target?.param) return true;
+  const rightTargets = right.target?.filters ?? [];
+  return (
+    left.target === undefined ||
+    left.target.filters.some((leftTarget) =>
+      rightTargets.some((rightTarget) =>
+        filtersOverlap(leftTarget, rightTarget),
+      ),
+    )
+  );
+}
+
+function pathsOverlap(left: ObjectLinkFilter, right: ObjectLinkFilter) {
   if (left.pathPattern !== undefined && right.pathPattern !== undefined) {
     const leftParts = left.pathPattern.split("/");
     const rightParts = right.pathPattern.split("/");
