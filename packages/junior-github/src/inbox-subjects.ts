@@ -20,15 +20,15 @@ export const GITHUB_INBOX_SUBJECTS = {
 
 /**
  * Name the ask on a Junior pull request from its live card. Once it is
- * approved, can merge with no conflict, and is no draft, the ask is the
- * merge for every viewer, also a reviewer whose review GitHub still
+ * approved, GitHub reports that it can merge, and it is no draft, the ask
+ * is the merge for every viewer, also a reviewer whose review GitHub still
  * requests. Before that, it is the review. A conflict has its own item.
  */
 export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
   const facts = object.facts;
   if (facts?.type !== "code_change") return undefined;
   return facts.review === "approved" &&
-    facts.mergeable !== false &&
+    facts.mergeable === true &&
     object.status !== "draft"
     ? "Ready to merge"
     : "Review requested";

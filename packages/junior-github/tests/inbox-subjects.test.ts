@@ -25,8 +25,18 @@ describe("pull request ask", () => {
     // Ana asked for the pull request, and GitHub still requests her review
     // after Bo approves it. Her ask is the merge.
     expect(
-      pullRequestAsk(card({ review: "approved", reviewers: ["Ana", "Bo"] })),
+      pullRequestAsk(
+        card({ mergeable: true, review: "approved", reviewers: ["Ana", "Bo"] }),
+      ),
     ).toBe("Ready to merge");
+    // Until GitHub reports that it can merge, such as right after a push,
+    // an approved pull request is no merge ask.
+    expect(
+      pullRequestAsk(card({ mergeable: "pending", review: "approved" })),
+    ).toBe("Review requested");
+    expect(pullRequestAsk(card({ review: "approved" }))).toBe(
+      "Review requested",
+    );
     // A conflict has its own item, so a pull request that cannot merge is
     // no merge ask.
     expect(pullRequestAsk(card({ mergeable: false, review: "approved" }))).toBe(
@@ -35,7 +45,10 @@ describe("pull request ask", () => {
     expect(pullRequestAsk(card({}))).toBe("Review requested");
     // GitHub does not merge a draft, even an approved one.
     expect(
-      pullRequestAsk({ ...card({ review: "approved" }), status: "draft" }),
+      pullRequestAsk({
+        ...card({ mergeable: true, review: "approved" }),
+        status: "draft",
+      }),
     ).toBe("Review requested");
   });
 });
