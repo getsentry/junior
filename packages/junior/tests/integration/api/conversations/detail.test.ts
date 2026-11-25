@@ -1,8 +1,17 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
-import { afterEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
+import {
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  pullRequest,
+  stubGitHubApp,
+} from "../../../fixtures/github-objects";
+import { mswServer } from "../../../msw/server";
 import { githubPlugin } from "@sentry/junior-github";
 import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
@@ -440,9 +449,30 @@ describe("conversation detail API", () => {
     });
   });
 
-  it("names the description images of a saved pull request by Junior image paths", async () => {
+  it("reads each annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+    stubGitHubApp();
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/35`, () =>
+        HttpResponse.json(
+          pullRequest(35, {
+            body: `Before and after:\n\n![after](${attachment})`,
+            merged: true,
+            state: "closed",
+            title: "Show screenshots on cards",
+          }),
+        ),
+      ),
+      // What GitHub shows signed out.
+      http.get(
+        `${GITHUB_REPO}/pull/35`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    const conversationId = "local:test:preview-images";
+    await linkGitHubMember();
+    const conversationId = "local:test:live-annotations";
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
       conversationId,
@@ -451,8 +481,7 @@ describe("conversation detail API", () => {
       title: "Pull request with screenshots",
       visibility: "public",
     });
-    const attachment =
-      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    // Junior saved the pull request when it opened it.
     await createPluginAnnotations({
       conversationId,
       db: getDb(),
@@ -460,23 +489,70 @@ describe("conversation detail API", () => {
     }).upsert({
       kind: "object",
       objectType: "code_change",
-      key: "getsentry/secret#7",
-      label: "getsentry/secret#7",
-      title: "Show screenshots on cards",
-      url: "https://github.com/getsentry/secret/pull/7",
-      facts: { type: "code_change", previewImageUrls: [attachment] },
+      key: "getsentry/junior#35",
+      label: "getsentry/junior#35",
+      title: "Draft title",
+      status: "open",
+      url: `${GITHUB_REPO}/pull/35`,
     });
 
-    const detail = await readConversationDetail(conversationId);
-    const [image] = detail?.annotations?.[0]?.previewImages ?? [];
-    const id = image?.src.match(/^\/api\/images\/([^?]+)\?w=320$/)?.[1];
-    expect(image?.srcSet).toBe(`${image?.src} 1x, /api/images/${id}?w=640 2x`);
-    // The browser gets a signed id, never the address of the image.
-    expect(JSON.stringify(image)).not.toContain("user-attachments");
-    expect(id && decodeImageId(id)).toEqual({
-      ref: encodeObjectImageRef({ key: "getsentry/secret#7", url: attachment }),
-      source: "github",
-    });
+    try {
+      const member = await readConversationDetail(conversationId, {
+        viewer: await signedInViewer("alice@example.com"),
+      });
+      expect(member?.annotations).toEqual([
+        expect.objectContaining({
+          key: "getsentry/junior#35",
+          kind: "object",
+          plugin: "github",
+          status: "merged",
+          title: "Show screenshots on cards",
+        }),
+      ]);
+      expect(member?.sidebarAnnotations).toEqual([
+        expect.objectContaining({
+          status: "merged",
+          title: "Show screenshots on cards",
+        }),
+      ]);
+      // The live card names its description images by Junior image paths.
+      const [image] = member?.annotations?.[0]?.previewImages ?? [];
+      const id = image?.src.match(/^\/api\/images\/([^?]+)\?w=320$/)?.[1];
+      expect(image?.srcSet).toBe(
+        `${image?.src} 1x, /api/images/${id}?w=640 2x`,
+      );
+      // The browser gets a signed id, never the address of the image.
+      expect(JSON.stringify(image)).not.toContain("user-attachments");
+      expect(id && decodeImageId(id)).toEqual({
+        ref: encodeObjectImageRef({
+          key: "getsentry/junior#35",
+          url: attachment,
+        }),
+        source: "github",
+      });
+
+      // A reader without access to the repository sees the label and link.
+      const outsider = await readConversationDetail(conversationId, {
+        viewer: await signedInViewer("bob@example.com"),
+      });
+      expect(outsider?.annotations).toEqual([
+        {
+          createdAt: expect.any(String),
+          key: "getsentry/junior#35",
+          kind: "resource_link",
+          label: "getsentry/junior#35",
+          objectType: "code_change",
+          plugin: "github",
+          updatedAt: expect.any(String),
+          url: `${GITHUB_REPO}/pull/35`,
+        },
+      ]);
+      expect(JSON.stringify(outsider?.sidebarAnnotations)).not.toMatch(
+        /Draft title|Show screenshots|merged|open/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("resolves mentioned Slack users with current names and photos", async () => {

@@ -27,8 +27,8 @@ import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
-import { useSavedObject } from "./savedObjects";
-import { formatRelativeTime, formatTime } from "../time";
+import { useObjectPreviews } from "./objectPreviews";
+import { formatTime } from "../time";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
 // web page is its title. An event or a release ends with when it happened,
@@ -74,13 +74,12 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 }
 
 /**
- * Show the full card of the latest saved annotation, or a `live` card that
- * the API resolved for a link: images, facts, and details. A link preview
- * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
- * A live card can attach its object to the Conversation. A saved card tells
- * when Junior fetched its facts. With `fill`, the card fills the height of
- * its container and its body scrolls. `children` end the body, such as the
- * recent activity of a person.
+ * Show the full card of an annotation's object, or a `live` card that the
+ * API resolved for a link: images, facts, and details. A link preview shows
+ * it; a reply shows `ObjectRow`. Opening a source is always explicit. A
+ * live card can attach its object to the Conversation. With `fill`, the
+ * card fills the height of its container and its body scrolls. `children`
+ * end the body, such as the recent activity of a person.
  */
 export function ObjectCard({
   card,
@@ -95,9 +94,7 @@ export function ObjectCard({
   fill?: boolean | undefined;
   live?: boolean | undefined;
 }) {
-  const saved = useSavedObject(card);
-  const images = saved.previewImages;
-  const fetchedAt = live ? undefined : saved.updatedAt;
+  const images = useObjectPreviews(card);
   const attachable = live && card.objectType !== "person";
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
@@ -283,7 +280,7 @@ export function ObjectCard({
         )}
         {children}
       </div>
-      {(card.url || fetchedAt || attachable) && (
+      {(card.url || attachable) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
           {card.url && (
             <OutboundLink
@@ -292,15 +289,6 @@ export function ObjectCard({
             >
               Open {type.toLowerCase()}
             </OutboundLink>
-          )}
-          {fetchedAt && (
-            <time
-              className="text-dashboard-text-muted"
-              dateTime={fetchedAt}
-              title={formatTime(fetchedAt)}
-            >
-              Last fetched {formatRelativeTime(fetchedAt)}
-            </time>
           )}
           {attachable && <ObjectAttachAction card={card} />}
         </div>

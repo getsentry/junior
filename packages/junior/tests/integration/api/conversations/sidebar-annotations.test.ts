@@ -1,12 +1,27 @@
 import { readConversationDetail } from "@/api/conversations/detail";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { describe, expect, test } from "vitest";
+import { http, HttpResponse } from "msw";
+import { githubPlugin } from "@sentry/junior-github";
+import type { User } from "@sentry/junior-plugin-api";
+import { describe, expect, test, vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { juniorConversationParticipants } from "@/db/schema";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import {
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  pullRequest,
+  stubGitHubApp,
+} from "../../../fixtures/github-objects";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { signedInViewer } from "../../../fixtures/user";
+import { mswServer } from "../../../msw/server";
 
 describe("conversation list sidebar annotations", () => {
   test("shows resource links as chips on viewable feed conversations", async () => {
@@ -199,6 +214,98 @@ describe("conversation list sidebar annotations", () => {
       await expect(ids("sentry/relay")).resolves.toEqual([]);
     } finally {
       await fixture.close();
+    }
+  });
+
+  test("shows each row's objects as the viewer can read them now, with its child agents' objects", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/36`, () =>
+        HttpResponse.json(
+          pullRequest(36, {
+            merged: true,
+            state: "closed",
+            title: "Retry flaky uploads",
+          }),
+        ),
+      ),
+      // What GitHub shows signed out.
+      http.get(
+        `${GITHUB_REPO}/pull/36`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const rootId = "slack:C123:live-chips";
+    const childId = "agent:live-chips-child";
+    try {
+      await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+      await linkGitHubMember();
+      const alice = await signedInViewer("alice@example.com");
+      const bob = await signedInViewer("bob@example.com");
+      const store = getConversationStore();
+      await store.recordActivity({
+        conversationId: rootId,
+        destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+        nowMs: Date.now(),
+        source: "slack",
+        title: "Fix the uploads",
+        visibility: "public",
+      });
+      await getDb()
+        .insert(juniorConversationParticipants)
+        .values(
+          [alice, bob].map((viewer) => ({
+            lastMessageAt: new Date(),
+            rootConversationId: rootId,
+            userId: viewer.id,
+          })),
+        );
+      // A child agent opened the pull request.
+      await store.createChild({
+        childConversationId: childId,
+        kind: "task",
+        parentConversationId: rootId,
+      });
+      await createPluginAnnotations({
+        conversationId: childId,
+        db: getDb(),
+        plugin: "github",
+      }).upsert({
+        kind: "object",
+        objectType: "code_change",
+        key: "getsentry/junior#36",
+        label: "getsentry/junior#36",
+        title: "Draft: retry uploads",
+        status: "open",
+        url: `${GITHUB_REPO}/pull/36`,
+      });
+
+      const chips = async (viewer: User) =>
+        (await readConversationFeedFromSql({ viewer })).conversations.find(
+          (row) => row.conversationId === rootId,
+        )?.sidebarAnnotations;
+      await expect(chips(alice)).resolves.toEqual([
+        {
+          key: "getsentry/junior#36",
+          label: "junior",
+          objectType: "code_change",
+          status: "merged",
+          title: "Retry flaky uploads",
+          url: `${GITHUB_REPO}/pull/36`,
+        },
+      ]);
+      // A reader who cannot see the repository gets only the label.
+      await expect(chips(bob)).resolves.toEqual([
+        {
+          key: "getsentry/junior#36",
+          label: "junior",
+          objectType: "code_change",
+          url: `${GITHUB_REPO}/pull/36`,
+        },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      await closeDb();
     }
   });
 });

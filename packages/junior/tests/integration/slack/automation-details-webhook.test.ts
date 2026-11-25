@@ -1,5 +1,8 @@
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { githubPlugin } from "@sentry/junior-github";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
@@ -19,7 +22,16 @@ import {
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
 } from "../../fixtures/conversation-work";
+import {
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  pullRequest,
+  stubGitHubApp,
+} from "../../fixtures/github-objects";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { linkSlackUser } from "../../fixtures/slack-user";
+import { mswServer } from "../../msw/server";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 
@@ -287,6 +299,88 @@ describe("Slack Work Object details", () => {
       expect(
         await requestDetails(invalidId, "U123", "T123", "annotation"),
       ).toMatchObject({ error: { status: "not_found" } });
+    }
+  });
+
+  it("reads an annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/37`, () =>
+        HttpResponse.json(
+          pullRequest(37, {
+            merged: true,
+            state: "closed",
+            title: "Show live card details",
+          }),
+        ),
+      ),
+      // What GitHub shows signed out.
+      http.get(
+        `${GITHUB_REPO}/pull/37`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    // Alice sees the repository on GitHub. Bob has no GitHub account.
+    await linkGitHubMember();
+    await linkSlackUser("bob@example.com", "UBOB");
+    const card = {
+      kind: "object" as const,
+      plugin: "github",
+      key: "getsentry/junior#37",
+      label: "getsentry/junior#37",
+      title: "Draft: live card details",
+      objectType: "code_change" as const,
+      status: "open",
+      url: `${GITHUB_REPO}/pull/37`,
+    };
+    const details = async (slackUserId: string) => {
+      const conversationId = `slack:D${slackUserId}:pull-request`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        actor: { platform: "slack", teamId: "T123", slackUserId },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: `D${slackUserId}`,
+        },
+        visibility: "private",
+      });
+      const { plugin: _plugin, ...annotation } = card;
+      await createPluginAnnotations({
+        conversationId,
+        plugin: "github",
+        db: getDb(),
+      }).upsert(annotation);
+      const id = renderSlackObjectCard(card, conversationId).entity!
+        .external_ref.id;
+      return await requestDetails(id, slackUserId, "T123", "annotation");
+    };
+
+    try {
+      expect(await details("UALICE")).toMatchObject({
+        metadata: {
+          entity_payload: {
+            attributes: { title: { text: "Show live card details" } },
+            custom_fields: expect.arrayContaining([
+              expect.objectContaining({ key: "status", value: "merged" }),
+            ]),
+          },
+        },
+      });
+      const outsider = await details("UBOB");
+      expect(outsider).toMatchObject({
+        metadata: {
+          entity_payload: {
+            attributes: { title: { text: "getsentry/junior#37" } },
+          },
+        },
+      });
+      expect(JSON.stringify(outsider)).not.toMatch(
+        /Draft: live card details|Show live card details|"open"|"merged"/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

@@ -305,6 +305,8 @@ export async function resolveObjectLinks(
         linkType.cacheCards === false
           ? await resolve()
           : await cache.getOrLoad(key, async () => ({
+              // A failed read shows the last good card.
+              staleIfError: true,
               value: await resolve(),
               ttlMs: OBJECT_LINK_TTL_MS,
             }));
