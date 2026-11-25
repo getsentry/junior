@@ -776,6 +776,12 @@ describe("Google link cards", () => {
       const url = new URL("https://accounts.google.com/AccountChooser");
       url.searchParams.set("continue", DOC_URL);
 
+      // Calendar leaves the link to the type that claims its target.
+      expect(
+        linkType("calendar_event").filters.some((filter) =>
+          objectLinkFilterMatches(filter, url),
+        ),
+      ).toBe(false);
       expect(linkType("calendar_event").label?.(url)).toBeUndefined();
       await expect(
         resolveAs("alice@example.com", google, "calendar_event", url.href),

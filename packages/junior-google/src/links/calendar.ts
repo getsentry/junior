@@ -189,14 +189,23 @@ async function resolveGoogleCalendarLink(
   };
 }
 
+const CALENDAR_EVENT_FILTERS = [
+  { host: "calendar.google.com", path: "/calendar/event" },
+  { host: "www.google.com", path: "/calendar/event" },
+  { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
+  { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
+];
+
 /** Google Calendar event links that resolve to Calendar event cards. */
 export const googleCalendarLinks: PluginObjectLinkDefinition = {
   filters: [
-    { host: "calendar.google.com", path: "/calendar/event" },
-    { host: "www.google.com", path: "/calendar/event" },
-    { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
-    { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
-    { host: "accounts.google.com", path: "/AccountChooser" },
+    ...CALENDAR_EVENT_FILTERS,
+    // AccountChooser opens many Google links, so claim only Calendar ones.
+    {
+      host: "accounts.google.com",
+      path: "/AccountChooser",
+      target: { param: "continue", filters: CALENDAR_EVENT_FILTERS },
+    },
   ],
   canView: canViewGoogleCalendarLink,
   label: (url) => (calendarLink(url) ? "Calendar event" : undefined),
