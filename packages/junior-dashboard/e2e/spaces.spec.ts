@@ -358,6 +358,9 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
   page,
 }) => {
   await page.goto(`${dashboard.baseURL}${PRICING}`);
+  // A member talks to the Lead of a private Space without being one of
+  // its Participants first.
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await page.getByRole("button", { name: "Space menu" }).click();
   await page.getByRole("menuitem", { name: "Leave Space" }).click();
   await expect(page).toHaveURL(/\/inbox$/);
