@@ -1,7 +1,9 @@
 import type { SpaceReport } from "@sentry/junior/api/schema";
+import { lazy, Suspense, useState } from "react";
 
 import { ActorAvatar } from "../../../components/ActorAvatar";
 import { DetailsPanel } from "../../../components/DetailsPanel";
+import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { conversationPath } from "../../../conversations/conversationRoutes";
 import { newestFirst } from "../../../conversations/conversationSections";
@@ -25,9 +27,17 @@ import {
 import { cn } from "../../../styles";
 import { formatCompactAge } from "../../../time";
 
+// Settings open only after a click, so their code and their request load
+// with the first open instead of with every Space page.
+const SpaceSettings = lazy(() =>
+  import("../../../spaces/SpaceSettings").then((module) => ({
+    default: module.SpaceSettings,
+  })),
+);
+
 /**
- * The Space beside its Lead: what the Space is for, its Conversations, and
- * its members. On a phone it is a bottom sheet.
+ * The Space beside its Lead: what the Space is for, its Conversations, its
+ * members, and its settings. On a phone it is a bottom sheet.
  */
 export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   const space = useSpaceData(props.spaceId).data;
@@ -52,7 +62,7 @@ export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   );
 }
 
-/** A Space's description, its Conversations, and its members. */
+/** A Space's description, its Conversations, its members, and its settings. */
 export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
@@ -64,6 +74,7 @@ export function SpaceOverview(props: { space: SpaceReport }) {
       ) : null}
       <SpaceConversations spaceId={space.id} />
       <SpaceMembers space={space} />
+      <SpaceSettingsCard space={space} />
     </>
   );
 }
@@ -165,6 +176,33 @@ function SpaceMembers(props: { space: SpaceReport }) {
       ) : (
         <Skeleton className="h-4 w-28" />
       )}
+    </DetailsCard>
+  );
+}
+
+function SpaceSettingsCard(props: { space: SpaceReport }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <DetailsCard
+      action={
+        <Button
+          aria-expanded={open}
+          className="rounded-md px-1.5 py-0.5 text-xs"
+          onClick={() => setOpen((value) => !value)}
+          size="bare"
+          variant="ghost"
+        >
+          {open ? "Hide" : "Show"}
+        </Button>
+      }
+      label="Settings"
+      title="Settings"
+    >
+      {open ? (
+        <Suspense fallback={<Skeleton className="h-4 w-1/2" />}>
+          <SpaceSettings space={props.space} />
+        </Suspense>
+      ) : null}
     </DetailsCard>
   );
 }

@@ -19,6 +19,7 @@ const rootTurn = {
     inbox: true,
     subscriptions: true,
     userCustomization: true,
+    spaces: true,
     reply: false,
     reportBlocked: "none",
     noReply: true,
@@ -50,6 +51,7 @@ const agentInThreadTurn = {
     inbox: false,
     subscriptions: false,
     userCustomization: false,
+    spaces: false,
     reply: false,
     reportBlocked: "parent",
     noReply: true,
@@ -77,6 +79,7 @@ const automationTurn = {
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,
+    spaces: false,
     reply: true,
     reportBlocked: "automation",
   },
@@ -88,7 +91,11 @@ describe("turnBehavior", () => {
     {
       kind: "root",
       personInput: false,
-      expected: { ...rootTurn, relatedConversations: false },
+      expected: {
+        ...rootTurn,
+        relatedConversations: false,
+        tools: { ...rootTurn.tools, spaces: false },
+      },
     },
     // A person's reply in the run's thread runs like a root Turn.
     {
@@ -121,13 +128,17 @@ describe("turnBehavior", () => {
       inbox: true,
       subscriptions: true,
       userCustomization: true,
+      spaces: true,
     });
   });
 
-  // A person's reply lists the run's tools, so the Automation Conversation's
-  // tool list stays the same.
-  it("lists the run's tools on every Turn of an Automation Conversation", () => {
-    expect(promptModeTurnTools("automation")).toEqual(automationTurn.tools);
+  // An Automation Conversation lists the tools of the run and of a person who
+  // replies, so its tool list stays the same.
+  it("lists the tools of both senders on every Turn of an Automation Conversation", () => {
+    expect(promptModeTurnTools("automation")).toEqual({
+      ...automationTurn.tools,
+      spaces: true,
+    });
   });
 
   it("rejects a person's input on a task", () => {

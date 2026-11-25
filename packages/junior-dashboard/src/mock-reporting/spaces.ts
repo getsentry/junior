@@ -6,6 +6,7 @@ import {
   createSpaceBodySchema,
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,
+  spaceConfigurationSchema,
   spaceListQuerySchema,
   spaceListSchema,
   spaceMemberListSchema,
@@ -13,6 +14,7 @@ import {
   spaceSchema,
   type ConversationDetailReport,
   type ConversationFeed,
+  type SpaceConfigurationReport,
   type SpaceRefReport,
   type SpaceReport,
 } from "@sentry/junior/api/schema";
@@ -25,6 +27,8 @@ import {
 } from "./fixtures";
 import { mockLeadSpaceId } from "./sends";
 
+type SpaceConfigEntry = SpaceConfigurationReport["entries"][number];
+
 type MockMember = {
   avatarUrl: string | null;
   displayName: string;
@@ -35,6 +39,8 @@ type MockSpace = {
   /** Conversations that the Space's archive archived, for its restore. */
   archived: string[];
   archivedAt: string | null;
+  /** Configuration values by key. */
+  configuration: Map<string, Omit<SpaceConfigEntry, "key">>;
   createdAt: string;
   description: string | null;
   id: string;
@@ -71,6 +77,9 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map([
+        ["github.repo", { updatedAt: at(2), value: "getsentry/junior" }],
+      ]),
       createdAt: at(30),
       description:
         "Move invoicing to the new billing provider without double charges.",
@@ -82,6 +91,7 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: at(20),
       description: null,
       id: MOCK_SPACE_IDS.ios,
@@ -92,6 +102,7 @@ function seedSpaces(): MockSpace[] {
     {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: at(10),
       description: "Refresh the onboarding docs for the new setup flow.",
       id: MOCK_SPACE_IDS.docs,
@@ -318,6 +329,14 @@ function setArchived(space: MockSpace, archived: boolean): void {
   space.archived = [];
 }
 
+function configurationResponse(space: MockSpace): Response {
+  return jsonResponse(spaceConfigurationSchema, {
+    entries: [...space.configuration]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => ({ key, ...entry })),
+  });
+}
+
 /** Find the Space of a route, or the API's error for it. */
 function findSpace(param: Record<string, string>): MockSpace | Response {
   const params = spaceParamsSchema.safeParse(param);
@@ -355,6 +374,7 @@ export function createMockSpaceRoutes(): Hono<{
     const space: MockSpace = {
       archived: [],
       archivedAt: null,
+      configuration: new Map(),
       createdAt: new Date().toISOString(),
       description: body.data.description ?? null,
       id: crypto.randomUUID(),
@@ -400,6 +420,10 @@ export function createMockSpaceRoutes(): Hono<{
     if (!body.success) return errorResponse("Invalid request body.", 400);
     setArchived(space, body.data.archived);
     return jsonResponse(spaceSchema, view(space));
+  });
+  app.get("/:spaceId/configuration", (c) => {
+    const space = findSpace({ spaceId: c.req.param("spaceId") });
+    return space instanceof Response ? space : configurationResponse(space);
   });
   return app;
 }
