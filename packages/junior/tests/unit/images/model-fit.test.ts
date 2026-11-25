@@ -58,6 +58,46 @@ describe("fitModelImage", () => {
     });
   });
 
+  it("turns an image upright from its EXIF orientation when it scales it", async () => {
+    // Orientation 6 shows the stored pixels a quarter turn clockwise, so the
+    // red top half of the stored pixels is the right half when upright.
+    const redTop = await sharp({
+      create: { width: 4000, height: 1500, channels: 3, background: "#f00" },
+    })
+      .png()
+      .toBuffer();
+    const data = await sharp({
+      create: { width: 4000, height: 3000, channels: 3, background: "#fff" },
+    })
+      .composite([{ input: redTop, top: 0, left: 0 }])
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+
+    const fitted = await fitModelImage({
+      type: "image",
+      data: data.toString("base64"),
+      mimeType: "image/jpeg",
+    });
+
+    expect(fitted.scaled).toEqual({ from: [3000, 4000], to: [1659, 2212] });
+    const output = sharp(Buffer.from(fitted.image.data, "base64"));
+    expect((await output.metadata()).orientation ?? 1).toBe(1);
+    const { data: pixels, info } = await output
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([1659, 2212]);
+    const pixel = (x: number, y: number) => [
+      ...pixels.subarray(
+        (y * info.width + x) * 3,
+        (y * info.width + x) * 3 + 3,
+      ),
+    ];
+    const middle = Math.floor(info.height / 2);
+    expect(pixel(info.width - 10, middle)[1]).toBeLessThan(50);
+    expect(pixel(10, middle)[1]).toBeGreaterThan(200);
+  });
+
   it("re-encodes image data that is too large as JPEG", async () => {
     const image = await noisePng(1600, 1600);
     expect(image.data.length).toBeGreaterThan(5_000_000);

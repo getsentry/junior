@@ -52,13 +52,22 @@ export async function fitModelImage(
   // sharp loads a native library, so load it only when an image must change.
   const { default: sharp } = await import("sharp");
   const source = Buffer.from(image.data, "base64");
-  const resized = () => sharp(source).resize({ width, height, fit: "fill" });
+  const { hasAlpha, orientation = 1 } = await sharp(source).metadata();
+  // sharp drops metadata, so `rotate()` applies the EXIF orientation to the
+  // pixels. Orientations 5 to 8 turn the image a quarter turn, so the upright
+  // image has the header's width and height swapped.
+  const turned = orientation >= 5;
+  const from: [number, number] = turned
+    ? [size.height, size.width]
+    : [size.width, size.height];
+  const to: [number, number] = turned ? [height, width] : [width, height];
+  const resized = () =>
+    sharp(source).rotate().resize({ width: to[0], height: to[1], fit: "fill" });
   const encoded = encodeLike(image.mimeType, resized());
   let mimeType = encoded.mimeType;
   let data = (await encoded.image.toBuffer()).toString("base64");
   if (data.length > MAX_IMAGE_BASE64_CHARS) {
     // JPEG is smallest for photos. WebP keeps transparency.
-    const { hasAlpha } = await sharp(source).metadata();
     mimeType = hasAlpha ? "image/webp" : "image/jpeg";
     data = (
       await (
@@ -70,9 +79,7 @@ export async function fitModelImage(
   }
   return {
     image: { type: "image", data, mimeType },
-    ...(scale
-      ? { scaled: { from: [size.width, size.height], to: [width, height] } }
-      : undefined),
+    ...(scale ? { scaled: { from, to } } : undefined),
   };
 }
 
