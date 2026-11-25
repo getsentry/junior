@@ -67,8 +67,8 @@ groups and acts on its rows.
   they can still answer it, dismiss it, or wake it.
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
-- Every item has at least one assignee: a User, or Everyone. When no
-  assignee is left, the item dismisses itself.
+- An item with no assignee is up for grabs. Anyone who can see it can take
+  it or answer it.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's active Participants.
 - A Slack thread that its Conversation detached from gets no new item card.
@@ -91,8 +91,8 @@ groups and acts on its rows.
   the work, such as Resume on a merge conflict fix that did not land. It
   starts no Turn.
 - An item is visible to whoever can see its subject's owner. An item from
-  a public Conversation is visible to the whole workspace, and one from a
-  private Conversation cannot go to Everyone.
+  a public Conversation is visible to the whole workspace. Everyone means
+  the people who can see the item's owner.
 - The owner of a plugin item is a Conversation that the plugin names. For
   each of its subject kinds, the plugin maps a subject id to that
   Conversation from its own records, and Junior reads the owner through
@@ -148,9 +148,6 @@ groups and acts on its rows.
 
 ## Gaps
 
-- An item can have no assignees, and then anyone who can see it can answer
-  it. It does not dismiss itself. This breaks "every item has at least one
-  assignee" and "only an assignee answers a private item".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
@@ -165,7 +162,7 @@ groups and acts on its rows.
 - A "To do for you" item has no Slack card. In Slack, the person learns of
   the To-do only from the reply. This breaks "its assignees see it in the
   Inbox and in its linked Slack threads".
-- Core adds a "To do for you" item only when its To-do changes. A person
+- Junior adds a "To do for you" item only when its To-do changes. A person
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".

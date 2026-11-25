@@ -1,0 +1,1 @@
+ALTER TABLE "junior_spaces" ADD COLUMN "visibility" text DEFAULT 'public' NOT NULL;

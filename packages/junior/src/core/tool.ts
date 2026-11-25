@@ -5,7 +5,6 @@ import type {
   TextContent,
   Tool,
 } from "@earendil-works/pi-ai";
-import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
 /**
  * A tool: the declaration that the model sees, and the code that runs one
@@ -33,19 +32,21 @@ export type ToolDefinition<
   ): Promise<ToolResult<TDetails>>;
 };
 
-/**
- * What a tool gets for one call. The tool does not know where the environment
- * comes from or how long it lives: whoever builds the context owns that.
- */
+/** What a tool gets for one call. */
 export type ToolExecutionContext = {
   /** The model's id for this call. */
   callId: string;
   signal: AbortSignal;
-  /**
-   * The step's environment, when the caller gives one. Every call gets the
-   * same one. Tools that do not run commands or use files ignore it.
-   */
-  environment?: ToolExecutionEnvironment;
+};
+
+/**
+ * The tools of one step, which the host builds for the claimed Turn. Core
+ * calls `close` when the step ends, so the host can let go of what the tools
+ * hold, such as a sandbox handle.
+ */
+export type StepTools = {
+  definitions: ToolDefinition[];
+  close(): void;
 };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */

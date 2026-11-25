@@ -13,7 +13,7 @@ type SqlFixture = {
  * follow-up migration drops the column.
  */
 export const RETIRED_INBOX_ITEM_COLUMNS: readonly string[] = [
-  // `20261125150100_inbox_item_subjects`
+  // `20261125155100_inbox_item_subjects`
   "automation_id",
   "dedupe_key",
   "subject_title",

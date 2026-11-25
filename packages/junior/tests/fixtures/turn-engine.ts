@@ -22,7 +22,7 @@ import {
   type PromptLayout,
 } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
-import { advanceTurn } from "@/core/turn/advance";
+import { advanceTurn, type AdvanceTurnOptions } from "@/core/turn/advance";
 import type { UnreadInput } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
@@ -62,8 +62,11 @@ export const MODEL: ModelSettings = {
  * tools.
  */
 export type Step = Partial<
-  Omit<Parameters<typeof advanceTurn>[2], "maxAttempts">
->;
+  Omit<AdvanceTurnOptions, "maxAttempts" | "tools">
+> & {
+  /** The same tools for every step, or the builder that gives each step's. */
+  tools?: ToolDefinition[] | AdvanceTurnOptions["tools"];
+};
 
 /** The Conversation, its Turn, and the queue of one test. */
 export type TurnEngine = {
@@ -173,7 +176,10 @@ export async function startTurnEngine(): Promise<TurnEngine> {
         client: step.client ?? replyingClient([]),
         prompt: step.prompt ?? promptForEveryTurn(testPrompt()),
         modelSettings: step.modelSettings ?? (() => Promise.resolve(MODEL)),
-        tools: step.tools ?? [],
+        tools:
+          typeof step.tools === "function"
+            ? step.tools
+            : staticTools(step.tools ?? []),
         maxAttempts: MAX_ATTEMPTS,
       },
     );
@@ -283,6 +289,13 @@ export function promptForEveryTurn(
   layout: PromptLayout,
 ): () => Promise<PromptLayout> {
   return () => Promise.resolve(layout);
+}
+
+/** A tools builder that gives every step the same `tools`. */
+export function staticTools(
+  tools: ToolDefinition[],
+): AdvanceTurnOptions["tools"] {
+  return () => Promise.resolve({ definitions: tools, close: () => {} });
 }
 
 /** A step whose model gives the replies in order, with `tools`. */

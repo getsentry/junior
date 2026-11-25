@@ -8,9 +8,8 @@ import type { BotConfig } from "@/chat/config";
 import type { QueueConsumer } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { modelClient, type ModelClient } from "@/core/model/client";
-import { advanceTurn } from "@/core/turn/advance";
+import { advanceTurn, type AdvanceTurnOptions } from "@/core/turn/advance";
 import { createTurnStepConsumer } from "@/core/turn/queue";
-import type { ToolDefinition } from "@/core/tool";
 import {
   buildTurnPromptLayouts,
   turnModelSettings,
@@ -43,7 +42,11 @@ export async function turnStepConsumer(
     client,
     bot,
     tools,
-  }: { client: ModelClient; bot: BotConfig; tools: ToolDefinition[] },
+  }: {
+    client: ModelClient;
+    bot: BotConfig;
+    tools: AdvanceTurnOptions["tools"];
+  },
 ): Promise<QueueConsumer> {
   const prompt = turnPromptLayout(engineCtx, await buildTurnPromptLayouts());
   const modelSettings = turnModelSettings({

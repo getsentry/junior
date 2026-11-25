@@ -15,7 +15,6 @@ import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
 import type { ToolDefinition, ToolResult } from "@/core/tool";
-import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
 /**
  * The model request of a step: the system prompt, the messages with the new
@@ -53,7 +52,6 @@ export type StepInput<T> = {
    */
   skipDanglingToolCalls: boolean;
   signal: AbortSignal;
-  environment?: ToolExecutionEnvironment;
 };
 
 /**
@@ -267,7 +265,6 @@ async function executeToolCall(
     const result = await tool.execute(args, {
       callId: call.id,
       signal: input.signal,
-      environment: input.environment,
     });
     return { status: result.isError ? "failed" : "completed", result };
   } catch (error) {

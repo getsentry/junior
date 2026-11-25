@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { readMigrationDatabaseUrl } from "@/cli/upgrade/database-url";
+import { readDirectDatabaseUrl } from "@/db/direct-url";
 
-describe("readMigrationDatabaseUrl", () => {
+describe("readDirectDatabaseUrl", () => {
   it("uses the direct Neon endpoint for a pooled URL", () => {
     expect(
-      readMigrationDatabaseUrl(
+      readDirectDatabaseUrl(
         "postgresql://user:p%40ss@ep-cool-darkness-123456-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
       ),
     ).toBe(
@@ -19,7 +19,7 @@ describe("readMigrationDatabaseUrl", () => {
       "postgres://junior:junior@localhost:54322/junior",
       "postgresql://junior@/junior?host=/var/run/postgresql",
     ]) {
-      expect(readMigrationDatabaseUrl(databaseUrl)).toBe(databaseUrl);
+      expect(readDirectDatabaseUrl(databaseUrl)).toBe(databaseUrl);
     }
   });
 });

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import {
   SPACE_DESCRIPTION_MAX_CHARS,
   SPACE_NAME_MAX_CHARS,
+  type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
@@ -13,18 +14,37 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Field, FieldError, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "../components/ui/field";
 import { Input } from "../components/ui/input";
+import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 import { Textarea } from "../components/ui/textarea";
 import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError } from "../http";
 import { useCreateSpace } from "./queries";
 import { spacePath } from "./spaceRoutes";
 
-/** Ask for a name and an optional description, then open the new Space. */
+const VISIBILITIES: [SpaceVisibilityReport, string, string][] = [
+  ["public", "Public", "Anyone in the organization can find and read it."],
+  ["private", "Private", "Only members can find and read it."],
+];
+
+/**
+ * Ask for a name, an optional description, and who can read the Space, then
+ * open the new Space.
+ */
 export function CreateSpaceDialog(props: { onClose(): void }) {
   const nameId = useId();
   const descriptionId = useId();
+  const visibilityId = useId();
   const errorId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const sheet = useSheet(props.onClose, nameRef);
@@ -32,10 +52,15 @@ export function CreateSpaceDialog(props: { onClose(): void }) {
   const create = useCreateSpace();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [visibility, setVisibility] = useState<SpaceVisibilityReport>("public");
   const submit = () => {
     if (!name.trim() || create.isPending) return;
     create.mutate(
-      { description: description.trim() || null, name: name.trim() },
+      {
+        description: description.trim() || null,
+        name: name.trim(),
+        visibility,
+      },
       {
         onSuccess: (space) => {
           sheet.close();
@@ -94,8 +119,32 @@ export function CreateSpaceDialog(props: { onClose(): void }) {
               placeholder="Optional"
               value={description}
             />
-            <FieldError id={errorId}>{error}</FieldError>
           </Field>
+          <FieldSet className="gap-0">
+            <FieldLegend id={visibilityId} variant="label">
+              Visibility
+            </FieldLegend>
+            <RadioGroup<SpaceVisibilityReport>
+              aria-labelledby={visibilityId}
+              className="grid gap-1.5"
+              disabled={create.isPending}
+              onValueChange={setVisibility}
+              value={visibility}
+            >
+              {VISIBILITIES.map(([value, label, help]) => (
+                <FieldLabel key={value}>
+                  <Field orientation="horizontal">
+                    <RadioGroupItem value={value} />
+                    <FieldContent>
+                      <FieldTitle>{label}</FieldTitle>
+                      <FieldDescription>{help}</FieldDescription>
+                    </FieldContent>
+                  </Field>
+                </FieldLabel>
+              ))}
+            </RadioGroup>
+            <FieldError id={errorId}>{error}</FieldError>
+          </FieldSet>
           <DialogFooter>
             <DialogClose
               disabled={create.isPending}
