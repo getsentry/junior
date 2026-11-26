@@ -5,7 +5,12 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
-import { juniorConversationParticipants } from "@/db/schema";
+import { createSpace, joinSpace } from "@/chat/spaces/store";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
@@ -211,5 +216,69 @@ describe("inbox item in a private Conversation", () => {
       [],
     );
     expect((await api(fixture, ben)(`/${added.item.id}`)).id).toBeUndefined();
+  });
+});
+
+describe("inbox item in a private Space", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("is up for grabs for the Space's members, not for a Participant who left it", async () => {
+    const fixture = await createConversationFixture();
+    const privateId = "slack:CSPACE:1.000001";
+    const nowMs = Date.parse("2026-10-01T12:00:00.000Z");
+    await getConversationStore().recordActivity({
+      conversationId: privateId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CSPACE" },
+      nowMs,
+      source: "slack",
+      visibility: "private",
+    });
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    const cy = await user("cy@example.com");
+    // Ana and Ben take part in the Conversation. Its root is in Ana's
+    // private Space, which Cy joined and Ben is not a member of.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values(
+        [ana, ben].map((person) => ({
+          lastMessageAt: new Date(nowMs),
+          rootConversationId: privateId,
+          userId: person.id,
+        })),
+      );
+    const space = await createSpace({
+      creatorUserId: ana.id,
+      description: null,
+      name: "Launch",
+      visibility: "private",
+    });
+    await joinSpace(space.id, cy.id);
+    await getDb()
+      .update(juniorConversations)
+      .set({ spaceId: space.id })
+      .where(eq(juniorConversations.conversationId, privateId));
+    const created = await insertInboxItem(getDb(), {
+      owner: { id: privateId, kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+      body: "It waits on a person.",
+      conversationIds: [privateId],
+      subject: { id: "space-ask", kind: "question" },
+      kind: "notice",
+      nowMs,
+      title: "Launch notes",
+    });
+    if (!created) throw new Error("the item was not added");
+
+    const list = async (viewer: User) =>
+      (await api(fixture, viewer)("?for=viewer&sort=waiting")).items.map(
+        (item: { id: string }) => item.id,
+      );
+    expect(await list(ana)).toEqual([created.id]);
+    expect(await list(cy)).toEqual([created.id]);
+    expect(await list(ben)).toEqual([]);
   });
 });
