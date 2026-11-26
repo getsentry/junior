@@ -6,7 +6,6 @@ import { touchConversationDetail } from "@/chat/conversations/sql/detail-version
 import {
   isLeadConversation,
   readMentionedUserIds,
-  resolveRootConversationId,
 } from "@/chat/conversations/sql/participants";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorDatabase } from "@/db/db";
@@ -92,8 +91,9 @@ import {
  *   undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
- * - A subscription belongs to the root, like a pin. A child id resolves to
- *   its root.
+ * - A subscription belongs to the root, like a pin. Only a root can be
+ *   joined, left, or unsubscribed: a child, such as a Space's Thread under
+ *   its Lead, follows its root's subscription.
  * - Unsubscribe clears the person's pin. Subscribe does not restore an
  *   archive.
  * - A last-subscriber archive and a concurrent mention or pin are ordered by
@@ -107,6 +107,9 @@ import {
  *   `chat/tools/conversation-subscription.ts`, and
  *   `api/mcp/tools/set-conversation-subscription.ts`.
  */
+
+const NOT_ROOT_MESSAGE =
+  "Only a root conversation has a subscription. Change it on the root.";
 
 /**
  * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
@@ -122,31 +125,31 @@ export async function setConversationSubscription(
     conversationId,
     body.subscribed,
   );
-  if (!result) throwApiError(404, "Conversation not found.");
+  if (result === "not_participant") {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (result === "not_root") throwApiError(409, NOT_ROOT_MESSAGE);
   return result;
 }
 
 /**
- * Subscribe a person to a Conversation, or unsubscribe them. Every caller
- * passes the person who asked, so nobody changes another person's
- * subscription. Returns undefined when the person is not a participant.
+ * Subscribe a person to a root Conversation, or unsubscribe them. Every
+ * caller passes the person who asked, so nobody changes another person's
+ * subscription. Refuses a person who is not a participant, and a child,
+ * which follows its root's subscription.
  */
 export async function updateConversationSubscription(
   person: User,
   conversationId: string,
   subscribed: boolean,
-): Promise<ConversationSubscriptionResponse | undefined> {
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    [conversationId],
-    person,
-  );
-  if (!access.get(conversationId)?.isParticipant) return undefined;
+): Promise<ConversationSubscriptionResponse | "not_participant" | "not_root"> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], person)
+  ).get(conversationId);
+  if (!access?.isParticipant) return "not_participant";
+  if (access.rootConversationId !== conversationId) return "not_root";
+  const rootConversationId = conversationId;
   const executor = getSqlExecutor();
-  const rootConversationId = await resolveRootConversationId(
-    executor,
-    conversationId,
-  );
   return await executor.transaction(async () => {
     const db = executor.db();
     // Unsubscribes, pins, archives, and Turns in the root itself all lock the
@@ -162,7 +165,7 @@ export async function updateConversationSubscription(
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
-    if (!root) return undefined;
+    if (!root) return "not_participant";
     const unsubscribedAt = subscribed ? null : new Date();
     // The detail ETag and the feed version read the subscription on each
     // request.
@@ -213,6 +216,9 @@ export async function leaveConversation(
   if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
+  if (rootConversationId !== conversationId) {
+    throwApiError(409, NOT_ROOT_MESSAGE);
+  }
   // Where the Conversation is public, or a Slack channel decides who reads
   // it, Leave only takes it out of the viewer's feed.
   if (!leaveEndsAccess(access)) {
@@ -221,7 +227,9 @@ export async function leaveConversation(
       conversationId,
       false,
     );
-    if (!result) throwApiError(404, "Conversation not found.");
+    if (typeof result === "string") {
+      throwApiError(404, "Conversation not found.");
+    }
     return { archivedAt: result.archivedAt };
   }
   const executor = getSqlExecutor();
@@ -235,25 +243,6 @@ export async function leaveConversation(
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
     if (!root) throwApiError(404, "Conversation not found.");
-    // A private Space with no members has nobody who can read or restore
-    // it, so its last member stays, as `leaveSpace` does.
-    if (await isLeadConversation(db, rootConversationId)) {
-      const members = await db
-        .select({ userId: juniorConversationParticipants.userId })
-        .from(juniorConversationParticipants)
-        .where(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            rootConversationId,
-          ),
-        )
-        .limit(2);
-      // A Leave that raced another Leave by the same person finds only the
-      // other member, and its delete changes nothing.
-      if (members.length === 1 && members[0]!.userId === viewer.id) {
-        throwApiError(409, "The last member can't leave a private Space.");
-      }
-    }
     await db
       .delete(juniorConversationParticipants)
       .where(
