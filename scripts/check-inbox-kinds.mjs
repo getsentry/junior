@@ -11,10 +11,11 @@ import { analyzeTable, parseTable } from "./inbox-kinds/table.mjs";
 /**
  * Inbox kind check. Each `design/inbox-kinds/*.yaml` decision table states
  * the rules of one Inbox kind (`design/inbox-kinds.md`). From each table,
- * this check generates the kind's code and the rule list in its design file,
- * and fails when either differs from the files. It also fails when a row of
- * a table can never be the first match, or when an input can be unknown and
- * no rule names `unknown`.
+ * this check generates the rule list in its design file, and the kind's
+ * code when the table names a code file, and fails when either differs
+ * from the files. It also fails when a row of a table can never be the
+ * first match, when an input can be unknown and no rule names `unknown`,
+ * or when a row names a value that has no phrase.
  *
  * Run `pnpm inbox-kinds:check --update` to write the generated files.
  */
@@ -41,21 +42,30 @@ export async function run({ root, files, args }) {
       problems.push(`${tablePath}: ${error.message}`);
       continue;
     }
-    codeFiles.add(table.code);
     problems.push(
       ...analyzeTable(table).map((problem) => `${tablePath}: ${problem}`),
     );
-    const code = await renderKindCode(table, tablePath);
-    const current = fs.existsSync(path.join(root, table.code))
-      ? read(table.code)
-      : undefined;
-    if (current !== code) {
-      if (update) write(table.code, code);
-      else problems.push(`${table.code}: differs from ${tablePath}. ${FIX}`);
+    if (table.code !== undefined) {
+      codeFiles.add(table.code);
+      const code = await renderKindCode(table, tablePath);
+      const current = fs.existsSync(path.join(root, table.code))
+        ? read(table.code)
+        : undefined;
+      if (current !== code) {
+        if (update) write(table.code, code);
+        else problems.push(`${table.code}: differs from ${tablePath}. ${FIX}`);
+      }
     }
+    let list;
     let doc;
     try {
-      doc = embedRuleList(read(table.doc), tablePath, renderRuleList(table));
+      list = renderRuleList(table);
+    } catch (error) {
+      problems.push(`${tablePath}: ${error.message}`);
+      continue;
+    }
+    try {
+      doc = embedRuleList(read(table.doc), tablePath, list);
     } catch (error) {
       problems.push(`${table.doc}: ${error.message}`);
       continue;

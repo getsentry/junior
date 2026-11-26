@@ -64,32 +64,36 @@ also wake a Conversation or run an Event automation.
 
 <!-- Generated from inbox-kinds/github-pull-request.yaml. -->
 - `pr-ended` When it merged or closed, nobody gets it.
-- `pr-merge` When it is open, not a draft, auto-merge is off, no review is
-  pending, its merge state is clean, and no reviewer requests changes, the
-  requester gets "Ready to merge".
+- `pr-merge` When it is open, it is not a draft, auto-merge is off, no
+  review is pending, GitHub reports that it can merge, and no reviewer
+  requests changes, the requester gets "Ready to merge". When it is open, it
+  is not a draft, auto-merge is off, no review is pending, GitHub still
+  computes its merge state, and either they have "Ready to merge" or Junior
+  does not ask them to review again, their output stays as it is.
 - `pr-merge-reviewer` When it is approved, GitHub reports that it can merge,
-  it is not a draft, and auto-merge is off, a reviewer whose review GitHub
-  still requests gets "Ready to merge".
-- `pr-review-again` When Junior handled every comment of the requester's
-  change request and the required checks pass, the requester gets "Review
-  requested". A requester who approved since is not asked. When the
-  requester comments or reviews after that, Junior acts next, and they no
-  longer get it.
-- `pr-review` When GitHub requests the viewer's review, they get "Review
-  requested". Dismiss removes them from the reviewers on GitHub. For the
-  requester, their reply after their own change request ends it, because
-  Junior acts next.
+  it is not a draft, auto-merge is off, and GitHub still requests their
+  review, a reviewer gets "Ready to merge".
+- `pr-review-again` When Junior handled every comment of their change
+  request, the required checks pass, they did not approve after it, and they
+  did not comment or review after Junior asked, the requester gets "Review
+  requested".
+- `pr-review` When GitHub still requests their review and either they are
+  not the requester, no change request is open, or they did not comment or
+  review last, they get "Review requested". Dismiss removes them from the
+  reviewers on GitHub.
 <!-- End of inbox-kinds/github-pull-request.yaml. -->
 
 **`github:merge_conflict`**. Source: the pull request in the GitHub cache,
 and Junior's conflict fixes.
 
+<!-- Generated from inbox-kinds/github-merge-conflict.yaml. -->
 - `conflict-ended` When the pull request merged or closed, nobody gets it.
 - `conflict-gone` When GitHub reports no conflict, nobody gets it.
 - `conflict-dismissed` When the requester dismissed it after the latest
   Resume, nobody gets it.
 - `conflict-stuck` When the head commit is the same a day after Junior's
   fix, the requester gets "Resume". Resume starts a fix at once.
+<!-- End of inbox-kinds/github-merge-conflict.yaml. -->
 
 ## Gaps
 

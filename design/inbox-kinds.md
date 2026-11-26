@@ -59,45 +59,55 @@ answers, and changes an item.
 
 **`question`** (an agent asks). Source: the question.
 
+<!-- Generated from inbox-kinds/question.yaml. -->
 - `question-closed` When a person answered or dismissed it, nobody gets it.
-- `question-ask` Its assignees get the question, with its form.
+- `question-ask` An assignee gets the question, with its form.
+<!-- End of inbox-kinds/question.yaml. -->
 
 **`notice`** (an agent tells). Source: the notice.
 
+<!-- Generated from inbox-kinds/notice.yaml. -->
 - `notice-closed` When a person dismissed it, nobody gets it.
-- `notice-show` Its assignees get the notice, with its step.
+- `notice-show` An assignee gets a notice with its step.
+<!-- End of inbox-kinds/notice.yaml. -->
 
 **`todo`**. Source: the To-do and the Conversation's access.
 
+<!-- Generated from inbox-kinds/todo.yaml. -->
 - `todo-closed` When the To-do is done or dropped, or a person does not own
   it, nobody gets it.
 - `todo-access` When the assignee cannot see the Conversation's private
   content, nobody gets it.
-- `todo-ask` The assignee gets "To do for you". Done marks the To-do done,
-  and Dismiss drops it.
+- `todo-ask` The assignee gets "To do for you". Done marks the To-do done.
+  Dismiss drops it.
+<!-- End of inbox-kinds/todo.yaml. -->
 
 **`reply`**. Source: the latest reply and the starter's read position.
 
+<!-- Generated from inbox-kinds/reply.yaml. -->
 - `reply-slack` When the Conversation has a Slack thread, nobody gets it.
 - `reply-read` When the starter read the latest reply, nobody gets it.
 - `reply-notice` The starter gets a notice with the latest reply.
+<!-- End of inbox-kinds/reply.yaml. -->
 
 **`automation`**. Source: the Automation, its last run, and the enabled
 triggers.
 
-- `alert-dismissed` When a person dismissed an alert of the Automation
-  after it last recovered, nobody gets one. A pause is no recovery.
+<!-- Generated from inbox-kinds/automation.yaml. -->
+- `alert-dismissed` When a person dismissed an alert of the Automation after
+  it last recovered (a pause is no recovery), nobody gets it.
 - `alert-blocked` When the Automation is blocked, the creator gets a notice
   to fix the problem and resume it.
 - `alert-trigger` When its trigger is not available, the creator gets a
   notice that names the problem.
 - `alert-run-failed` When its last run failed or blocked, the creator gets
   an ask with the steps that fit, such as Run again and Pause.
+<!-- End of inbox-kinds/automation.yaml. -->
 
 ## Gaps
 
-- `kind-table`: only `github:pull_request` is a table. The rules of the
-  other kinds are prose, and people write their code.
+- `kind-table`: Junior generates only the code of `github:pull_request`
+  from its table. People write the code of the other kinds.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.

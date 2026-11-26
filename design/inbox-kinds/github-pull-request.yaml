@@ -4,16 +4,60 @@ hit: first
 doc: design/github.md
 code: packages/junior-github/src/webhooks/pull-request-kind.generated.ts
 inputs:
-  state: [open, merged, closed]
-  draft: bool
-  auto_merge: bool
-  review_pending: bool
-  merge_state: [clean, conflict, blocked, unknown]
-  review_outcome: [approved, changes_requested, none]
-  viewer.requester: bool
-  viewer.requested: bool
+  state:
+    values: [open, merged, closed]
+    phrases:
+      open: it is open
+      merged: it merged
+      closed: it closed
+  draft:
+    values: bool
+    phrases:
+      true: it is a draft
+      false: it is not a draft
+  auto_merge:
+    values: bool
+    phrases:
+      true: auto-merge is on
+      false: auto-merge is off
+  review_pending:
+    values: bool
+    phrases:
+      true: a review is pending
+      false: no review is pending
+  merge_state:
+    values: [clean, conflict, blocked, unknown]
+    phrases:
+      clean: GitHub reports that it can merge
+      conflict: it has a merge conflict
+      blocked: GitHub blocks the merge
+      unknown: GitHub still computes its merge state
+  review_outcome:
+    values: [approved, changes_requested, none]
+    phrases:
+      approved: it is approved
+      changes_requested:
+        is: a reviewer requests changes
+        not: no reviewer requests changes
+      none: no review decides it
+  viewer.requester:
+    values: bool
+    phrases:
+      true: { is: they are the requester, who: the requester }
+      false: { is: they are not the requester, who: a reviewer }
+  viewer.requested:
+    values: bool
+    phrases:
+      true: GitHub still requests their review
+      false: GitHub does not request their review
   viewer.asked_again:
     values: bool
+    phrases:
+      true: >-
+        Junior handled every comment of their change request, the required
+        checks pass, they did not approve after it, and they did not comment
+        or review after Junior asked
+      false: Junior does not ask them to review again
     text: >-
       Junior handled every comment of the viewer's change request, the
       required checks pass, and Junior asks for their review again in this
@@ -21,31 +65,41 @@ inputs:
       while the viewer's latest review still requests changes, so a viewer
       who approved since is not asked, and it drops the ask once the viewer
       comments or reviews after it.
-  viewer.requests_changes: bool
-  viewer.replied: bool
-  viewer.shown: [nothing, merge, review]
+  viewer.requests_changes:
+    values: bool
+    phrases:
+      true: a change request is open
+      false: no change request is open
+  viewer.replied:
+    values: bool
+    phrases:
+      true: they commented or reviewed last
+      false: they did not comment or review last
+  viewer.shown:
+    values: [nothing, merge, review]
+    phrases:
+      nothing: they have no output
+      merge: they have "Ready to merge"
+      review: they have "Review requested"
+commands:
+  remove-reviewer: removes them from the reviewers on GitHub
 rules:
   - id: pr-ended
-    text: When it merged or closed, nobody gets it.
     rows:
       - when: { state: merged }
         output: { close: done }
       - when: { state: closed }
         output: { close: dismissed }
   - id: pr-merge
-    text: >-
-      When it is open, not a draft, auto-merge is off, no review is pending,
-      its merge state is clean, and no reviewer requests changes, the
-      requester gets "Ready to merge".
     rows:
       - when:
-          viewer.requester: true
           state: open
           draft: false
           auto_merge: false
           review_pending: false
           merge_state: clean
           review_outcome: not(changes_requested)
+          viewer.requester: true
         output: { ask: { label: Ready to merge } }
       - when:
           state: open
@@ -64,36 +118,22 @@ rules:
           viewer.asked_again: false
         output: keep
   - id: pr-merge-reviewer
-    text: >-
-      When it is approved, GitHub reports that it can merge, and it is not a
-      draft, a reviewer whose review GitHub still requests gets "Ready to
-      merge".
     rows:
       - when:
-          viewer.requester: false
-          viewer.requested: true
+          review_outcome: approved
+          merge_state: clean
           draft: false
           auto_merge: false
-          merge_state: clean
-          review_outcome: approved
+          viewer.requested: true
+          viewer.requester: false
         output: { ask: { label: Ready to merge } }
   - id: pr-review-again
-    text: >-
-      When Junior handled every comment of the requester's change request and
-      the required checks pass, the requester gets "Review requested". A
-      requester who approved since is not asked. When the requester comments
-      or reviews after that, Junior acts next, and they no longer get it.
     rows:
       - when:
-          viewer.requester: true
           viewer.asked_again: true
+          viewer.requester: true
         output: { ask: { label: Review requested } }
   - id: pr-review
-    text: >-
-      When GitHub requests the viewer's review, they get "Review requested".
-      Dismiss removes them from the reviewers on GitHub. For the requester,
-      their reply after their own change request ends it, because Junior acts
-      next.
     rows:
       - when: { viewer.requested: true, viewer.requester: false }
         output: { ask: { label: Review requested, dismiss: remove-reviewer } }

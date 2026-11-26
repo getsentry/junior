@@ -1,0 +1,55 @@
+kind: github:merge_conflict
+source: github.merge_conflict
+hit: first
+doc: design/github.md
+inputs:
+  state:
+    values: [open, merged, closed]
+    phrases:
+      open: the pull request is open
+      merged: the pull request merged
+      closed: the pull request closed
+  conflict:
+    values: bool
+    phrases:
+      true: GitHub reports a conflict
+      false: GitHub reports no conflict
+  dismissed:
+    values: bool
+    phrases:
+      true: the requester dismissed it after the latest Resume
+      false: the requester did not dismiss it after the latest Resume
+  stuck:
+    values: bool
+    phrases:
+      true: the head commit is the same a day after Junior's fix
+      false: the head commit changed, or a day did not pass since Junior's fix
+  viewer.requester:
+    values: bool
+    phrases:
+      true: { is: they are the requester, who: the requester }
+      false: they are not the requester
+commands:
+  start-fix: starts a fix at once
+rules:
+  - id: conflict-ended
+    rows:
+      - when: { state: merged }
+        output: { close: done }
+      - when: { state: closed }
+        output: { close: dismissed }
+  - id: conflict-gone
+    rows:
+      - when: { conflict: false }
+        output: { close: done }
+  - id: conflict-dismissed
+    rows:
+      - when: { dismissed: true }
+        output: { close: dismissed }
+  - id: conflict-stuck
+    rows:
+      - when: { stuck: true, viewer.requester: true }
+        output:
+          ask:
+            label: Resume
+            choices: [{ label: Resume, command: start-fix }]

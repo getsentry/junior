@@ -1,4 +1,5 @@
 import { format } from "oxfmt";
+import { ruleText } from "./text.mjs";
 
 /** The width that the design files wrap their rule lists at. */
 const DOC_WIDTH = 76;
@@ -36,11 +37,18 @@ function wrap(words, width, indent) {
   return lines;
 }
 
-/** Render the rule list of a table, as the design file shows it. */
+/**
+ * Render the rule list of a table, as the design file shows it. Throw when
+ * a cell or a command has no phrase.
+ */
 export function renderRuleList(table) {
   return table.rules
     .flatMap((rule) =>
-      wrap(["-", `\`${rule.id}\``, ...rule.text.split(/\s+/)], DOC_WIDTH, "  "),
+      wrap(
+        ["-", `\`${rule.id}\``, ...ruleText(table, rule).split(/\s+/)],
+        DOC_WIDTH,
+        "  ",
+      ),
     )
     .join("\n");
 }

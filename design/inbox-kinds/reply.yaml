@@ -1,0 +1,33 @@
+kind: reply
+source: reply
+hit: first
+doc: design/inbox-kinds.md
+inputs:
+  slack_thread:
+    values: bool
+    phrases:
+      true: the Conversation has a Slack thread
+      false: the Conversation has no Slack thread
+  read:
+    values: bool
+    phrases:
+      true: the starter read the latest reply
+      false: the starter did not read the latest reply
+  viewer.starter:
+    values: bool
+    phrases:
+      true: { is: they are the starter, who: the starter }
+      false: they are not the starter
+rules:
+  - id: reply-slack
+    rows:
+      - when: { slack_thread: true }
+        output: { close: dismissed }
+  - id: reply-read
+    rows:
+      - when: { read: true }
+        output: { close: done }
+  - id: reply-notice
+    rows:
+      - when: { viewer.starter: true }
+        output: { notice: { step: with the latest reply } }

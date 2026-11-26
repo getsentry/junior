@@ -4,8 +4,9 @@ import * as z from "zod";
 /**
  * Inbox kind decision tables (`design/inbox-kinds/*.yaml`).
  *
- * A table lists the inputs of a kind with their domains, and its rules in
- * order. Each rule has an ID, its text, and one or more rows. A row matches
+ * A table lists the inputs of a kind with their domains and the phrase of
+ * each value, and its rules in order. Each rule has an ID and one or more
+ * rows, and its text comes from the phrases of its cells. A row matches
  * when each of its cells matches, and the first row that matches gives its
  * output (the FIRST hit policy of DMN). The key is `output`, not `then`, so
  * no parsed row is a thenable. Each cell is a unary test from DMN's
@@ -25,20 +26,41 @@ const value = z.string().regex(VALUE);
 const command = z.string().regex(COMMAND);
 const cell = z.union([z.boolean(), z.string()]);
 const domainSchema = z.union([z.literal("bool"), z.array(value).min(2)]);
+// The phrase of a value is a clause, such as "it is open". `not` is the
+// clause for `not(v)`, and `who` names the viewer that has the value, such
+// as "the requester".
+const phraseSchema = z.union([
+  z.string().min(1),
+  z
+    .strictObject({
+      is: z.string().min(1).optional(),
+      not: z.string().min(1).optional(),
+      who: z.string().min(1).optional(),
+    })
+    .refine((phrase) => Object.keys(phrase).length > 0, "It needs a phrase."),
+]);
 
 const outputSchema = z.union([
   z.literal("keep"),
   z.strictObject({ close: z.enum(["done", "dismissed"]) }),
   z.strictObject({ notice: z.strictObject({ step: z.string().min(1) }) }),
   z.strictObject({
-    ask: z.strictObject({
-      label: z.string().min(1),
-      choices: z
-        .array(z.strictObject({ label: z.string().min(1), command }))
-        .min(1)
-        .optional(),
-      dismiss: command.optional(),
-    }),
+    // `label` is the text of the ask. `content` says what a person gets
+    // when the text comes from the subject, such as a question.
+    ask: z
+      .strictObject({
+        label: z.string().min(1).optional(),
+        content: z.string().min(1).optional(),
+        choices: z
+          .array(z.strictObject({ label: z.string().min(1), command }))
+          .min(1)
+          .optional(),
+        dismiss: command.optional(),
+      })
+      .refine(
+        (ask) => (ask.label === undefined) !== (ask.content === undefined),
+        "An ask needs a `label` or a `content`.",
+      ),
   }),
 ]);
 
@@ -47,21 +69,27 @@ const tableSchema = z.strictObject({
   source: z.string().min(1),
   hit: z.literal("first"),
   doc: z.string().regex(/^design\/[a-z0-9-]+\.md$/),
-  code: z.string().regex(/^packages\/[^/]+\/src\/.+\.generated\.ts$/),
+  // Only a kind whose code Junior generates names its code file.
+  code: z
+    .string()
+    .regex(/^packages\/[^/]+\/src\/.+\.generated\.ts$/)
+    .optional(),
   inputs: z.record(
     z.string().regex(NAME),
-    z.union([
-      domainSchema,
-      // An input whose meaning its name and domain do not show, such as a
+    z.strictObject({
+      values: domainSchema,
+      phrases: z.record(z.string(), phraseSchema),
+      // An input whose meaning its phrases do not show in full, such as a
       // fact that the source derives, says it in `text`.
-      z.strictObject({ values: domainSchema, text: z.string().min(1) }),
-    ]),
+      text: z.string().min(1).optional(),
+    }),
   ),
+  // The phrase of each command, such as "removes them from the reviewers".
+  commands: z.record(command, z.string().min(1)).default({}),
   rules: z
     .array(
       z.strictObject({
         id: z.string().regex(RULE_ID),
-        text: z.string().min(1),
         rows: z
           .array(
             z.strictObject({
@@ -76,16 +104,26 @@ const tableSchema = z.strictObject({
 });
 
 /**
+ * Split a unary test cell that is not `-` into the values that it names,
+ * and whether `not(...)` negates them.
+ */
+export function cellTerms(raw) {
+  const text = String(raw).trim();
+  const negated = /^not\((.*)\)$/.exec(text);
+  const values = (negated ? negated[1] : text)
+    .split(",")
+    .map((part) => part.trim());
+  return { negated: negated !== null, values };
+}
+
+/**
  * Parse one unary test cell against its input domain. Return the set of
  * values that it matches, or throw when it is not valid.
  */
 export function parseCell(raw, domain) {
   const text = String(raw).trim();
   if (text === "-") return new Set(domain);
-  const negated = /^not\((.*)\)$/.exec(text);
-  const values = (negated ? negated[1] : text)
-    .split(",")
-    .map((part) => part.trim());
+  const { negated, values } = cellTerms(text);
   for (const item of values) {
     if (!domain.includes(item)) {
       throw new Error(
@@ -109,15 +147,21 @@ export function parseTable(text) {
   // YAML 1.2 core schema, so `no`, `on`, and `off` stay strings.
   const table = tableSchema.parse(parse(text, { version: "1.2" }));
   const inputs = Object.entries(table.inputs).map(([name, spec]) => {
-    // An array has a `values` method, so test for the plain domain first.
-    const described = spec !== "bool" && !Array.isArray(spec);
-    const domain = described ? spec.values : spec;
+    const domain = spec.values === "bool" ? ["true", "false"] : spec.values;
+    for (const item of Object.keys(spec.phrases)) {
+      if (!domain.includes(item)) {
+        throw new Error(
+          `\`${name}\` has a phrase for \`${item}\`, which is not one of ${domain.join(", ")}.`,
+        );
+      }
+    }
     const input = {
       name,
-      bool: domain === "bool",
-      domain: domain === "bool" ? ["true", "false"] : domain,
+      bool: spec.values === "bool",
+      domain,
+      phrases: spec.phrases,
     };
-    if (described) input.text = spec.text;
+    if (spec.text !== undefined) input.text = spec.text;
     return input;
   });
   for (const input of inputs) {
@@ -150,7 +194,15 @@ export function parseTable(text) {
           });
         }
       });
-      rows.push({ id: rule.id, index, cells, output: row.output });
+      // `when` keeps the order of the cells in the table, which is the
+      // order that the rule text names them in.
+      rows.push({
+        id: rule.id,
+        index,
+        cells,
+        when: row.when,
+        output: row.output,
+      });
     }
   }
   return { ...table, inputs, rows };

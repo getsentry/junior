@@ -1,0 +1,49 @@
+kind: todo
+source: todo
+hit: first
+doc: design/inbox-kinds.md
+inputs:
+  state:
+    values: [open, in_progress, done, dropped]
+    phrases:
+      open: the To-do is open
+      in_progress: the To-do is in progress
+      done: the To-do is done
+      dropped: the To-do is dropped
+  person_owner:
+    values: bool
+    phrases:
+      true: a person owns it
+      false: a person does not own it
+  viewer.sees_private:
+    values: bool
+    phrases:
+      true: the assignee can see the Conversation's private content
+      false: the assignee cannot see the Conversation's private content
+  viewer.assignee:
+    values: bool
+    phrases:
+      true: { is: they are the assignee, who: the assignee }
+      false: they are not the assignee
+commands:
+  mark-done: marks the To-do done
+  drop: drops it
+rules:
+  - id: todo-closed
+    rows:
+      - when: { state: "done, dropped" }
+        output: { close: done }
+      - when: { person_owner: false }
+        output: { close: dismissed }
+  - id: todo-access
+    rows:
+      - when: { viewer.sees_private: false }
+        output: { close: dismissed }
+  - id: todo-ask
+    rows:
+      - when: { viewer.assignee: true }
+        output:
+          ask:
+            label: To do for you
+            choices: [{ label: Done, command: mark-done }]
+            dismiss: drop
