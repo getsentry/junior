@@ -195,7 +195,6 @@
     "packages/junior/src/chat/plugins/hooks/context.ts": 1,
     "packages/junior/src/chat/plugins/hooks/tools.ts": 1,
     "packages/junior/src/chat/prompt.ts": 2,
-    "packages/junior/src/chat/services/conversation-title.ts": 1,
     "packages/junior/src/chat/slack/automated-turn-limit-notice.ts": 1,
     "packages/junior/src/chat/slack/continue-in-slack.ts": 1,
     "packages/junior/src/chat/task-execution/attempt-selection.ts": 1,

@@ -73,10 +73,7 @@ import {
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import {
-  recordFinishedTurnForAutomatedLimit,
-  resetAutomatedTurnLimit,
-} from "@/chat/services/automated-turn-limit";
+import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
 import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
@@ -768,26 +765,18 @@ export function createConversationTurnWorker(
                   surface,
                 });
               }
-              if (fromParent) {
-                // A parent agent's task resets the limit, as a person's
-                // Message does.
-                await resetAutomatedTurnLimit({
-                  conversationId: context.conversationId,
-                });
-              } else {
-                const automatedTurnLimit =
-                  await recordFinishedTurnForAutomatedLimit({
-                    conversationId: context.conversationId,
-                    maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                    source,
-                  });
-                await stopAtAutomatedTurnLimit({
+              const automatedTurnLimit =
+                await recordFinishedTurnForAutomatedLimit({
                   conversationId: context.conversationId,
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
-                  update: automatedTurnLimit,
                 });
-              }
+              await stopAtAutomatedTurnLimit({
+                conversationId: context.conversationId,
+                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                source,
+                update: automatedTurnLimit,
+              });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
               const delivered = assistantMessageDelivered

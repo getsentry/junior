@@ -65,7 +65,8 @@ export type TurnBehavior = {
   sessionTasks: boolean;
   /**
    * A completed Turn updates the Conversation summary that search reads.
-   * With `sessionTasks`, the session tasks include this update.
+   * With `sessionTasks`, the session tasks run this update. It skips a Turn
+   * from an Event, an Automation, or a plugin dispatch.
    */
   conversationMetadata: boolean;
   /**
@@ -197,7 +198,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
-// answer.
+// answer. Their input is not a person's request, so they update no summary.
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
@@ -206,7 +207,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   waitsForSignIn: true,
   gated: true,
   sessionTasks: true,
-  conversationMetadata: true,
+  conversationMetadata: false,
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
@@ -337,8 +338,8 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
 }
 
 /**
- * Return whether Turns update the Conversation metadata of this kind. Only
- * its parent reads a Task, so a Task has no summary.
+ * Return whether a Conversation of this kind has Conversation metadata: a
+ * title and a summary. Only its parent reads a Task, so a Task has none.
  */
 export function hasConversationMetadata(kind: ConversationKind): boolean {
   return kind !== "task";
