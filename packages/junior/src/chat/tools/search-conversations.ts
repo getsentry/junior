@@ -6,6 +6,7 @@ import {
   type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
+import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -17,12 +18,6 @@ const SUMMARY_MAX_LENGTH = 1_000;
 const CONVERSATION_IDS_MAX = 25;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
-
-/**
- * What the agent of the Conversation does now. The words match the
- * Conversation execution status.
- */
-const CONVERSATION_STATUSES = ["pending", "running", "paused", "idle"] as const;
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
@@ -50,9 +45,9 @@ const conversationMatchSchema = z
         "Root of a child agent. To message about its work, pass this to messageAgent.",
       ),
     status: z
-      .enum(CONVERSATION_STATUSES)
+      .enum(AGENT_STATUSES)
       .describe(
-        "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
+        "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message. failed: its work stopped on a failure, and a message starts new work.",
       ),
     title: z.string().optional(),
     summary: z
@@ -111,8 +106,7 @@ async function conversationMatch(
     ...(match.rootConversationId !== match.conversationId
       ? { root_conversation_id: match.rootConversationId }
       : undefined),
-    // A Conversation whose Turn failed waits for new input.
-    status: match.status === "failed" ? "idle" : match.status,
+    status: match.status,
     ...(match.title ? { title: match.title } : undefined),
     ...(match.summary
       ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }

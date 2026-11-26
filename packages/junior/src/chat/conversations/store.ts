@@ -4,6 +4,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentStatus } from "@/chat/conversations/agent-status";
 
 export type ConversationSource =
   | "api"
@@ -31,12 +32,8 @@ export type ChildConversationKind = Extract<
   "thread" | "task"
 >;
 
-export type ConversationStatus =
-  | "paused"
-  | "failed"
-  | "idle"
-  | "pending"
-  | "running";
+/** Conversation execution status. */
+export type ConversationStatus = Exclude<AgentStatus, "stopped">;
 
 /** Cumulative duration and usage that one Run reported. */
 export interface ConversationRunMetrics {

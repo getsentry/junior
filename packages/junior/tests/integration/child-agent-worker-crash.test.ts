@@ -7,6 +7,7 @@ import {
   getAgentReplyMessageId,
   getParentMessageId,
 } from "@/chat/child-agents/ids";
+import { listChildAgents } from "@/chat/child-agents/list";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
@@ -259,6 +260,10 @@ describe("child agent worker crash", () => {
         await expect(
           conversationStore.get({ conversationId: childConversationId }),
         ).resolves.toMatchObject({ execution: { status: "failed" } });
+        // No Turn ended, so the failed work alone makes the child fail.
+        const [listed] = await listChildAgents(parentConversationId);
+        expect(listed).toMatchObject({ status: "failed" });
+        expect(listed).not.toHaveProperty("lastResult");
       } finally {
         await fixture.close();
       }

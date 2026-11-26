@@ -10,16 +10,11 @@ import {
 import {
   botConfig,
   getChatConfig,
-  resetRuntimeConfig,
-  restoreRuntimeConfig as restoreChatRuntimeConfig,
-  setBotModelConfig,
-  setBotName,
-  setRuntimeLimits,
-  snapshotRuntimeConfig,
+  installChatConfig,
   type BotModelConfig,
   type RuntimeLimits,
-  setSlackReactionConfig,
 } from "@/chat/config";
+import { loadConfig, type ConfigInput } from "@/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -283,23 +278,6 @@ export interface JuniorAppOptions extends BotModelConfig {
   waitUntil?: WaitUntilFn;
 }
 
-/** Resolve the public deployment URL used by ACP and MCP browser authorization. */
-function resolvePublicBaseURL(
-  dashboard: JuniorDashboardOptions | undefined,
-): string | undefined {
-  const configured =
-    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
-  if (configured) return configured;
-
-  const vercelURL =
-    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
-    process.env["VERCEL_URL"]?.trim();
-  if (!vercelURL) return undefined;
-  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
-    ? vercelURL
-    : `https://${vercelURL}`;
-}
-
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
@@ -358,6 +336,39 @@ async function resolveVirtualConfig(): Promise<
     }
     return undefined;
   }
+}
+
+/** Config values that createApp options and the build set over env. */
+function appConfigInput(
+  options: JuniorAppOptions | undefined,
+  virtualConfig: JuniorVirtualConfig | undefined,
+): ConfigInput {
+  const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
+  return {
+    bot: {
+      modelId: options?.modelId,
+      decisionModelId: options?.decisionModelId,
+      embeddingModelId: options?.embeddingModelId,
+      fastModelId: options?.fastModelId,
+      rerankingModelId: options?.rerankingModelId,
+      guardianModelId: options?.guardianModelId,
+      imageGenerationModelId: options?.imageGenerationModelId,
+      transcriptionModelId: options?.transcriptionModelId,
+      visionModelId: options?.visionModelId,
+      webSearchModelId: options?.webSearchModelId,
+      refusalFallbackModelId: options?.refusalFallbackModelId,
+      userName: virtualConfig?.botName,
+    },
+    deployment: {
+      configuredBaseUrl: dashboard?.baseURL?.trim() || undefined,
+    },
+    functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
+    limits: options?.limits,
+    slack: {
+      completedReactionEmoji: options?.slack?.completedReactionEmoji,
+      processingReactionEmoji: options?.slack?.processingReactionEmoji,
+    },
+  };
 }
 
 function hasConfiguredPluginCatalog(
@@ -477,7 +488,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousRuntimeConfig = snapshotRuntimeConfig();
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
@@ -491,12 +501,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let previousTrustConfig: TrustConfig | undefined;
+  let restoreChatConfig: (() => void) | undefined;
   const restoreRuntimeConfig = (): void => {
     if (previousTrustConfig) setTrustConfig(previousTrustConfig);
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
-    restoreChatRuntimeConfig(previousRuntimeConfig);
+    restoreChatConfig?.();
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
@@ -524,13 +535,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
-    // Start from the defaults so this app cannot inherit an earlier app's
-    // models, limits, or Slack settings.
-    resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
-    setBotModelConfig(options ?? {});
-    setBotName(virtualConfig?.botName);
-    setRuntimeLimits(options?.limits);
-    setSlackReactionConfig(options?.slack ?? {});
+    // Resolve the whole config from env and this app's options, so this app
+    // cannot inherit an earlier app's models, limits, or Slack settings.
+    const previousChatConfig = installChatConfig(
+      loadConfig({
+        env: process.env,
+        options: appConfigInput(options, virtualConfig),
+      }),
+    );
+    restoreChatConfig = () => installChatConfig(previousChatConfig);
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = resolveAllowedDomains(options?.allowedDomains);
@@ -652,7 +665,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           ? {
               browserAuth: {
                 agentName: botConfig.userName,
-                baseURL: resolvePublicBaseURL(dashboard),
+                baseURL: getChatConfig().deployment.baseUrl,
               },
             }
           : undefined),
@@ -678,7 +691,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     handler: (request, user) =>
       handleMcpConsentPage({
         agentName: botConfig.userName,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         request,
         state: getMcpState(),
         user,
@@ -749,7 +762,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         attachmentStorage,
         queue: conversationWorkQueue,
         state: getMcpState(),
@@ -816,7 +829,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  // Built after resetRuntimeConfig, so the lease and the queue visibility
+  // Built after createApp installs the config, so the lease and the queue visibility
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);

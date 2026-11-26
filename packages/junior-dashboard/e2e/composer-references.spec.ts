@@ -11,6 +11,8 @@ const THREAD_ID = "junior:internal:dashboard-qa:thread";
 const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
 const CHECKOUT_ID = "slack:CQA123:1770003600.000200";
 const PULL_REQUEST = "https://github.com/getsentry/junior/pull/3842";
+const DOC_URL =
+  "https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit";
 
 async function openThread(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`);
@@ -249,6 +251,9 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
+  // A pasted link of any type is linked too, when it names an object.
+  await composer.pressSequentially("and ");
+  await pasteText(page, DOC_URL);
   // The thread ends at seq 5 when it opens. The sent message comes after it.
   const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
@@ -256,10 +261,59 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect
     .poll(() => sent)
     .toEqual([
-      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
+      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release> and ${DOC_URL}`,
     ]);
-  await expect.poll(() => linked).toEqual([PULL_REQUEST]);
+  await expect.poll(() => linked.sort()).toEqual([DOC_URL, PULL_REQUEST]);
   await readSaved;
+});
+
+test("the first Message of a new Conversation links its links", async ({
+  page,
+  dashboard,
+}) => {
+  const { linked } = recordWrites(page);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  const composer = page.getByLabel("Start a conversation");
+  await composer.click();
+  await composer.pressSequentially("Review ");
+  await pasteText(page, DOC_URL);
+  await composer.press("Enter");
+
+  await expect(page).toHaveURL(/\/conversations\/(?!new)/);
+  await expect.poll(() => linked).toEqual([DOC_URL]);
+  await expect(
+    page
+      .getByTestId("conversation-transcript")
+      .getByRole("link", { name: /Release 4\.2 checklist/ }),
+  ).toBeVisible();
+});
+
+test("a Retry links the links of a send that failed", async ({
+  page,
+  dashboard,
+}) => {
+  const { linked } = recordWrites(page);
+  let failed = false;
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (failed) {
+      await route.fallback();
+      return;
+    }
+    failed = true;
+    await route.fulfill({ json: { error: "temporary failure" }, status: 500 });
+  });
+  const composer = await openThread(page, dashboard.baseURL);
+  await composer.pressSequentially("Review ");
+  await pasteText(page, DOC_URL);
+  await composer.press("Enter");
+
+  const retry = page
+    .getByLabel("Pending messages")
+    .getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+  expect(linked).toEqual([]);
+  await retry.click();
+  await expect.poll(() => linked).toEqual([DOC_URL]);
 });
 
 test("# inserts a pull request only once its card says whether it is a draft", async ({

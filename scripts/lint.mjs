@@ -37,6 +37,7 @@ const OTHER_STEPS = [
   { dir: "packages/junior", script: "tool-key-casing:check" },
   { dir: "packages/junior", script: "tool-error-classification:check" },
   { dir: ".", script: "oxlint-rules:check" },
+  { dir: ".", script: "verify-junior:check" },
 ];
 
 function commandOf({ dir, script, command }) {

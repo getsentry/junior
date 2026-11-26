@@ -319,8 +319,8 @@ importers:
         specifier: ^0.3.21
         version: 0.3.21
       sentry:
-        specifier: 0.47.0
-        version: 0.47.0
+        specifier: 0.51.0
+        version: 0.51.0
       simple-git-hooks:
         specifier: ^2.13.1
         version: 2.13.1
@@ -9822,13 +9822,13 @@ packages:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
 
-  sentry@0.47.0:
-    resolution: {integrity: sha512-BDhgsAJYm99Xbx+YTREec7lME0FN8Z66YzrQ+eEWDqwigcLqs90cEx5nrhVlneL9bbDCVyt5O/7Z3RqKpHNh2A==}
+  sentry@0.50.0:
+    resolution: {integrity: sha512-2BCdoK4xO3mN4c0QTXaMtJBJ9rjL5v1VawaV7Wd605hVWVrpZTipLbjGHEFavS8IliI0W68TGi8CuScbHALPjA==}
     engines: {node: '>=20.0'}
     hasBin: true
 
-  sentry@0.50.0:
-    resolution: {integrity: sha512-2BCdoK4xO3mN4c0QTXaMtJBJ9rjL5v1VawaV7Wd605hVWVrpZTipLbjGHEFavS8IliI0W68TGi8CuScbHALPjA==}
+  sentry@0.51.0:
+    resolution: {integrity: sha512-yN0YWR+16DgMpBcJgTQmdEXl+/fn++m19TV7ONBUwWIHsy5BsMLH7bjwa3N5dBSPOqfsjV8lq67cPMjxISNPYg==}
     engines: {node: '>=20.0'}
     hasBin: true
 
@@ -21151,9 +21151,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  sentry@0.47.0: {}
-
   sentry@0.50.0: {}
+
+  sentry@0.51.0: {}
 
   serve-static@2.2.1:
     dependencies:

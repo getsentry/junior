@@ -19,7 +19,7 @@ import {
   normalizeIdentityEmail,
 } from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { readSignInSecret } from "@/chat/secrets";
 import { isAllowedDomain } from "@/chat/identities/trust";
@@ -124,7 +124,9 @@ export function resolveSignInAuthConfig(
   const authPath = `/${trimSlashes(options.authPath?.trim() || DEFAULT_AUTH_PATH, true)}`;
   const baseURL = trimSlashes(
     withHttps(
-      options.baseURL?.trim() || resolveBaseUrl() || "http://localhost:3000",
+      options.baseURL?.trim() ||
+        getChatConfig().deployment.baseUrl ||
+        "http://localhost:3000",
     ),
     false,
   );
