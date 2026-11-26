@@ -14,7 +14,7 @@ import {
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
-import type { StepTools, ToolDefinition, ToolResult } from "@/core/tool";
+import type { ToolBatchHooks, ToolDefinition, ToolResult } from "@/core/tool";
 
 /**
  * The model request of a step: the system prompt, the messages with the new
@@ -37,7 +37,7 @@ export type StepInput<T> = {
    */
   request: () => Promise<StepRequest<T>>;
   tools: ToolDefinition[];
-  beforeCalls?: StepTools["beforeCalls"];
+  hooks?: ToolBatchHooks;
   client: ModelClient;
   /** The Conversation id, which keeps its model requests in one session. */
   session: string;
@@ -173,26 +173,36 @@ async function runToolCalls(
   pending: PendingToolCalls,
   input: StepInput<unknown>,
 ): Promise<StepResult> {
-  const checked = pending.calls.map((call) =>
-    checkToolCall(call, pending.truncated, input),
+  const hooks = input.hooks ?? {};
+  const checked = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One hook call per call of one model message, as the batch runs.
+    pending.calls.map(async (call) => {
+      const check = checkToolCall(call, pending.truncated, input);
+      if ("run" in check || !hooks.beforeCall) {
+        return check;
+      }
+      const result = await hooks.beforeCall(check.call, input.signal);
+      return result ? replaced(check, result) : check;
+    }),
   );
   const ready = checked.flatMap((check) =>
-    "run" in check ? [] : [{ ...check.call, arguments: check.args }],
+    "run" in check ? [] : [check.call],
   );
-  // The host sees the whole batch at once, so it can decide calls together.
-  const replacements =
-    input.beforeCalls && ready.length > 0
-      ? await input.beforeCalls(ready, input.signal)
+  const batchResults =
+    hooks.beforeBatch && ready.length > 0
+      ? await hooks.beforeBatch(ready, input.signal)
       : new Map<string, ToolResult>();
-  // A Turn stopped during the host's decision must start no tool.
+  // A Turn stopped during a before hook must start no tool.
   if (input.signal.aborted) {
     throw input.signal.reason;
   }
+  const allowed = checked.map((check) => {
+    const result = batchResults.get(check.call.id);
+    return result && !("run" in check) ? replaced(check, result) : check;
+  });
   const results = await Promise.all(
     // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
-    checked.map((check) =>
-      runToolCall(check, replacements.get(check.call.id), input),
-    ),
+    allowed.map((check) => runToolCall(check, hooks, input)),
   );
   // An aborted tool returns an error result. Those results must not reach the
   // history, so the step throws as it does for an aborted model request.
@@ -223,13 +233,22 @@ type ToolCallRun = { status: ToolCallStatus; result: ToolResult };
 type ToolCallOutcome = { call: ToolCall; result: ToolResult };
 
 /** A call that is ready to run, or the result that it gets without running. */
-type CheckedToolCall =
-  | { call: ToolCall; tool: ToolDefinition; args: JsonObject }
-  | { call: ToolCall; run: ToolCallRun };
+type CheckedToolCall = ReadyToolCall | { call: ToolCall; run: ToolCallRun };
+
+/** A call that passed core's checks. `call.arguments` are the validated ones. */
+type ReadyToolCall = { call: ToolCall; tool: ToolDefinition; args: JsonObject };
+
+/** A call that a before hook stopped: it does not run, and gets `result`. */
+function replaced(
+  { call }: ReadyToolCall,
+  result: ToolResult,
+): CheckedToolCall {
+  return { call, run: { status: "replaced", result } };
+}
 
 function runToolCall(
   check: CheckedToolCall,
-  replacement: ToolResult | undefined,
+  { afterCall }: ToolBatchHooks,
   input: StepInput<unknown>,
 ): Promise<ToolCallOutcome> {
   const { call } = check;
@@ -243,11 +262,14 @@ function runToolCall(
     },
     async (span) => {
       const { status, result } =
-        "run" in check
-          ? check.run
-          : await executeToolCall(check, replacement, input);
+        "run" in check ? check.run : await executeToolCall(check, input);
       span.setAttribute("app.tool_call.outcome", status);
-      return { call, result };
+      return {
+        call,
+        result: afterCall
+          ? await afterCall(call, result, input.signal)
+          : result,
+      };
     },
   );
 }
@@ -293,17 +315,13 @@ function checkToolCall(
       errorRun("invalid_arguments", "Tool arguments must be a JSON object"),
     );
   }
-  return { call, tool, args };
+  return { call: { ...call, arguments: args }, tool, args };
 }
 
 async function executeToolCall(
-  { call, tool, args }: Extract<CheckedToolCall, { tool: ToolDefinition }>,
-  replacement: ToolResult | undefined,
+  { call, tool, args }: ReadyToolCall,
   input: StepInput<unknown>,
 ): Promise<ToolCallRun> {
-  if (replacement) {
-    return { status: "replaced", result: replacement };
-  }
   // A throw from the tool is a result the model can react to.
   try {
     const result = await tool.execute(args, {

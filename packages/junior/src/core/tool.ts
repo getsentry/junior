@@ -47,17 +47,45 @@ export type ToolExecutionContext = {
  */
 export type StepTools = {
   definitions: ToolDefinition[];
+  hooks?: ToolBatchHooks;
+  close(): void;
+};
+
+/**
+ * Fixed points in a tool batch where the host adds its own behavior. Core
+ * runs them in this order: `beforeCall` for each call that passed core's
+ * checks, then `beforeBatch` once, then each call that is still allowed, then
+ * `afterCall` for every result. Calls carry their validated arguments. A
+ * throw from a hook fails the step, unlike a throw from a tool. Results go
+ * into the history in the model's call order. The tools of a step are built
+ * for that step, so the host can keep what a hook learns about a call by its
+ * call id, for `execute` or `afterCall` to use.
+ */
+export type ToolBatchHooks = {
+  /** Per call. A result means the call does not run, and the model sees it. */
+  beforeCall?(
+    call: ToolCall,
+    signal: AbortSignal,
+  ): Promise<ToolResult | undefined>;
   /**
-   * Runs once per tool batch, before any of its calls runs, with every call
-   * that would run. It sees the whole batch, so it can decide calls together,
-   * such as an action review. A call with a result in the map, by call id,
-   * does not run, and the model sees that result. A throw fails the step.
+   * Once, with every call that is still allowed, in the model's order, before
+   * any call runs. A call with a result in the map, by call id, does not run,
+   * and the model sees that result.
    */
-  beforeCalls?(
+  beforeBatch?(
     calls: ToolCall[],
     signal: AbortSignal,
   ): Promise<Map<string, ToolResult>>;
-  close(): void;
+  /**
+   * Per result, including results from core's checks, from a before hook,
+   * and from a tool that failed. The returned result is the one the model
+   * sees.
+   */
+  afterCall?(
+    call: ToolCall,
+    result: ToolResult,
+    signal: AbortSignal,
+  ): Promise<ToolResult>;
 };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */

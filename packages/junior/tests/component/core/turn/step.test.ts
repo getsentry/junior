@@ -411,52 +411,109 @@ describe("runStep", () => {
     await expect(toolStep).rejects.toBe(stopped);
   });
 
-  it("gives beforeCalls every call that would run, once, before any of them runs", async () => {
-    const executed: string[] = [];
+  it("runs the tool hooks in order: beforeCall, beforeBatch, the calls, afterCall", async () => {
+    const order: string[] = [];
     const record = (name: string): ToolDefinition =>
       tool(name, {
         replay: "safe",
         execute: () => {
-          executed.push(name);
+          order.push(`run ${name}`);
           return Promise.resolve({ content: [{ type: "text", text: name }] });
         },
       });
-    const batches: Array<{ ids: string[]; executedBefore: number }> = [];
-    const denied = {
-      content: [{ type: "text" as const, text: "Rejected." }],
+    const stop = (text: string) => ({
+      content: [{ type: "text" as const, text }],
       isError: true,
-    };
+    });
 
     const { result } = await runStep(
       stepInput({
-        history: [user, replyWithCalls("lookup", "send", "missing")],
-        tools: [record("lookup"), record("send")],
-        beforeCalls: (calls) => {
-          batches.push({
-            ids: calls.map((call) => call.id),
-            executedBefore: executed.length,
-          });
-          return Promise.resolve(new Map([["call-send", denied]]));
+        history: [
+          user,
+          replyWithCalls("blocked", "lookup", "send", "missing", "denied"),
+        ],
+        tools: [
+          record("blocked"),
+          record("lookup"),
+          record("send"),
+          record("denied"),
+        ],
+        hooks: {
+          beforeCall: (call) => {
+            order.push(`beforeCall ${call.name}`);
+            return Promise.resolve(
+              call.name === "blocked" ? stop("Blocked.") : undefined,
+            );
+          },
+          beforeBatch: (calls) => {
+            order.push(
+              `beforeBatch ${calls.map((call) => call.name).join(",")}`,
+            );
+            return Promise.resolve(new Map([["call-denied", stop("Denied.")]]));
+          },
+          afterCall: (call, callResult) => {
+            order.push(`afterCall ${call.name}`);
+            return Promise.resolve(
+              call.name === "lookup"
+                ? { content: [{ type: "text", text: "lookup, checked" }] }
+                : callResult,
+            );
+          },
         },
       }),
     );
 
-    // A call with no tool fails before the batch reaches the host.
-    expect(batches).toEqual([
-      { ids: ["call-lookup", "call-send"], executedBefore: 0 },
+    // A call with no tool fails core's checks, so only afterCall sees it.
+    expect(order.slice(0, 5).sort()).toEqual(
+      [
+        "beforeCall blocked",
+        "beforeCall denied",
+        "beforeCall lookup",
+        "beforeCall send",
+        "beforeBatch lookup,send,denied",
+      ].sort(),
+    );
+    expect(order[4]).toBe("beforeBatch lookup,send,denied");
+    // Each call's afterCall follows its own run, so calls can interleave.
+    expect(order.slice(5).sort()).toEqual([
+      "afterCall blocked",
+      "afterCall denied",
+      "afterCall lookup",
+      "afterCall missing",
+      "afterCall send",
+      "run lookup",
+      "run send",
     ]);
-    expect(executed).toEqual(["lookup"]);
+    for (const name of ["lookup", "send"]) {
+      expect(order.indexOf(`run ${name}`)).toBeLessThan(
+        order.indexOf(`afterCall ${name}`),
+      );
+    }
     expect(result).toMatchObject({
       outcome: "continue",
       messages: [
-        { toolCallId: "call-lookup", isError: false },
-        { toolCallId: "call-send", content: denied.content, isError: true },
+        {
+          toolCallId: "call-blocked",
+          isError: true,
+          content: [{ text: "Blocked." }],
+        },
+        {
+          toolCallId: "call-lookup",
+          isError: false,
+          content: [{ text: "lookup, checked" }],
+        },
+        { toolCallId: "call-send", isError: false },
         { toolCallId: "call-missing", isError: true },
+        {
+          toolCallId: "call-denied",
+          isError: true,
+          content: [{ text: "Denied." }],
+        },
       ],
     });
   });
 
-  it("fails the step and runs no call when beforeCalls throws", async () => {
+  it("fails the step when a tool hook throws, and runs no call when a before hook throws", async () => {
     const executed: string[] = [];
     const send = tool("send", {
       replay: "never",
@@ -465,20 +522,29 @@ describe("runStep", () => {
         return Promise.resolve({ content: [] });
       },
     });
-
-    await expect(
+    const failing = new Error("Hook failed");
+    const steps = [
+      { beforeCall: () => Promise.reject(failing) },
+      { beforeBatch: () => Promise.reject(failing) },
+      { afterCall: () => Promise.reject(failing) },
+    ].map((hooks) =>
       runStep(
         stepInput({
           history: [user, replyWithCalls("send")],
           tools: [send],
-          beforeCalls: () => Promise.reject(new Error("Review unavailable")),
+          hooks,
         }),
       ),
-    ).rejects.toThrow("Review unavailable");
-    expect(executed).toEqual([]);
+    );
+
+    for (const step of steps) {
+      await expect(step).rejects.toBe(failing);
+    }
+    // Only the afterCall step ran the call.
+    expect(executed).toEqual(["send"]);
   });
 
-  it("starts no tool when the Turn stops during beforeCalls", async () => {
+  it("starts no tool when the Turn stops during a before hook", async () => {
     const executed: string[] = [];
     const controller = new AbortController();
     const stopped = new Error("stopped");
@@ -496,9 +562,11 @@ describe("runStep", () => {
           history: [user, replyWithCalls("send")],
           tools: [send],
           signal: controller.signal,
-          beforeCalls: () => {
-            controller.abort(stopped);
-            return Promise.resolve(new Map());
+          hooks: {
+            beforeBatch: () => {
+              controller.abort(stopped);
+              return Promise.resolve(new Map());
+            },
           },
         }),
       ),
