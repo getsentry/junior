@@ -3,12 +3,12 @@ import {
   subscribableResourceSchema,
   type PluginEmbedder,
 } from "@sentry/junior-plugin-api";
-import { listAgentRelatives, type ParentAgent } from "@/chat/child-agents/list";
+import { listAgentRelatives } from "@/chat/child-agents/list";
 import {
   searchConversations,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
-import type { ConversationStatus } from "@/chat/conversations/store";
+import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
 import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -21,13 +21,12 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   agentNameSchema,
   CHILD_AGENT_KINDS,
-  CHILD_AGENT_RESULTS,
   type ChildAgent,
 } from "@/chat/child-agents/types";
+import { CHILD_AGENT_RESULTS } from "@/chat/child-agents/results";
 import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
 
 const TASK_MAX_LENGTH = 1_000;
-const ERROR_MAX_LENGTH = 500;
 const SUMMARY_MAX_LENGTH = 1_000;
 const QUERY_LIMIT = 10;
 
@@ -40,45 +39,6 @@ const AGENT_RELATIONS = [
   "other",
 ] as const;
 type AgentRelation = (typeof AGENT_RELATIONS)[number];
-
-/**
- * What an agent does now. The words match the Conversation execution
- * status, plus `stopped` after stopAgent.
- */
-const LISTED_AGENT_STATUSES = [
-  "pending",
-  "running",
-  "paused",
-  "idle",
-  "stopped",
-] as const;
-
-type ListedAgentStatus = (typeof LISTED_AGENT_STATUSES)[number];
-
-function childAgentStatus(agent: ChildAgent): ListedAgentStatus {
-  switch (agent.status) {
-    case "pending":
-    case "running":
-    case "paused":
-    case "stopped":
-      return agent.status;
-    case "blocked":
-    case "completed":
-    case "failed":
-      return "idle";
-  }
-}
-
-// A Conversation whose Turn failed waits for new input.
-function conversationAgentStatus(
-  status: ConversationStatus,
-): ListedAgentStatus {
-  return status === "failed" ? "idle" : status;
-}
-
-function parentAgentStatus(agent: ParentAgent): ListedAgentStatus {
-  return conversationAgentStatus(agent.status);
-}
 
 // The model learns how much was cut and where the rest is.
 function truncate(text: string, maxLength: number): string {
@@ -116,9 +76,9 @@ const listedAgentFields = z
       .optional()
       .describe("What was asked and what happened, as of its last Turn"),
     status: z
-      .enum(LISTED_AGENT_STATUSES)
+      .enum(AGENT_STATUSES)
       .describe(
-        "What the agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. stopped: stopAgent stopped it.",
+        "What the agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. failed: its work stopped on a failure, and a message starts new work. stopped: stopAgent stopped it.",
       ),
     last_result: z
       .enum(CHILD_AGENT_RESULTS)
@@ -141,10 +101,6 @@ const listedAgentFields = z
       .literal(true)
       .optional()
       .describe("The conversation is archived."),
-    error: z
-      .string()
-      .optional()
-      .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
     subscribable: subscribableResourceSchema
       .optional()
@@ -168,16 +124,13 @@ function listedChildAgent(
     conversation_id: agent.childConversationId,
     ...(agent.agentName ? { name: agent.agentName } : undefined),
     kind: agent.kind,
-    status: childAgentStatus(agent),
+    status: agent.status,
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
-    task: truncate(agent.task, TASK_MAX_LENGTH),
+    task: truncate(agent.title ?? "", TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
     ...(url ? { url } : undefined),
     ...(agent.archivedAtMs !== undefined
       ? { archived: true as const }
-      : undefined),
-    ...(agent.errorMessage
-      ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
     ...(relation === "sibling"
@@ -197,7 +150,7 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
   return {
     relation: "other",
     conversation_id: match.conversationId,
-    status: conversationAgentStatus(match.status),
+    status: match.status,
     ...(match.title ? { title: match.title } : undefined),
     ...(url ? { url } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
@@ -338,7 +291,7 @@ async function listTeam(
           {
             relation: "parent" as const,
             conversation_id: parent.conversationId,
-            status: parentAgentStatus(parent),
+            status: parent.status,
             updated_at: new Date(parent.updatedAtMs).toISOString(),
             ...details,
           },

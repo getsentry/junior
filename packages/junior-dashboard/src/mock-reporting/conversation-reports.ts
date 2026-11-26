@@ -133,12 +133,10 @@ export function readMockChildAgentsReport(
         ? { cumulativeUsage: row.cumulativeUsage }
         : undefined),
       kind: "thread" as const,
-      status: row.latestTurnFailed
+      lastResult: row.latestTurnFailed
         ? ("failed" as const)
-        : row.turnActive
-          ? ("running" as const)
-          : ("completed" as const),
-      task: row.displayTitle,
+        : ("done" as const),
+      status: row.turnActive ? ("running" as const) : ("idle" as const),
       title: row.displayTitle,
       treeState: mockTreeState(row),
       updatedAt: row.lastMessageAt ?? row.lastProgressAt,
