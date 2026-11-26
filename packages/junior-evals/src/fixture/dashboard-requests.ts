@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
+  conversationDetailReportSchema,
   leadSchema,
   spaceSchema,
 } from "@/api/schema";
@@ -129,6 +130,47 @@ export async function postWebMessage(
   );
 }
 
+/** Create a public Space as `viewerEmail`, as the Spaces page does. */
+export async function createSpace(
+  api: Hono<JuniorApiEnv>,
+  viewerEmail: string,
+  name: string,
+): Promise<{ id: string }> {
+  const created = await api.request(
+    "/api/spaces",
+    jsonRequest(viewerEmail, { name }),
+  );
+  if (created.status !== 201) {
+    throw new Error(
+      `Space create returned ${created.status}: ${await created.text()}`,
+    );
+  }
+  return spaceSchema.parse(await created.json());
+}
+
+/**
+ * Read the Space of a Conversation as `viewerEmail` sees it on its page, or
+ * null when it is in no Space.
+ */
+export async function readConversationSpace(
+  api: Hono<JuniorApiEnv>,
+  viewerEmail: string,
+  conversationId: string,
+): Promise<{ id: string; name: string } | null> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Conversation returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  return (
+    conversationDetailReportSchema.parse(await response.json()).space ?? null
+  );
+}
+
 /**
  * Create a Space as `viewerEmail` and make its Lead, as the Space page does
  * when a member opens it.
@@ -137,16 +179,7 @@ export async function readLeadConversationId(
   api: Hono<JuniorApiEnv>,
   viewerEmail: string,
 ): Promise<string> {
-  const created = await api.request(
-    "/api/spaces",
-    jsonRequest(viewerEmail, { name: "Eval work" }),
-  );
-  if (created.status !== 201) {
-    throw new Error(
-      `Space create returned ${created.status}: ${await created.text()}`,
-    );
-  }
-  const space = spaceSchema.parse(await created.json());
+  const space = await createSpace(api, viewerEmail, "Eval work");
   const response = await api.request(
     `/api/spaces/${encodeURIComponent(space.id)}/lead`,
     { headers: { [VIEWER_HEADER]: viewerEmail } },

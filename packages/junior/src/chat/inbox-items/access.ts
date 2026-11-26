@@ -33,7 +33,6 @@ import {
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
-  juniorSpaceMembers,
   juniorSpaces,
 } from "@/db/schema";
 import {
@@ -211,16 +210,11 @@ function ownerConversationOpenTo(
           eq(todoOwner.conversationId, ownerConversationId),
           or(
             and(isNull(ownerSpace.id), openWithoutSpace),
-            exists(
-              getDb()
-                .select({ one: sql`1` })
-                .from(juniorSpaceMembers)
-                .where(
-                  and(
-                    eq(juniorSpaceMembers.spaceId, ownerSpace.id),
-                    eq(juniorSpaceMembers.userId, userId),
-                  ),
-                ),
+            // A private Space's members are the Participants of its Lead,
+            // the root of every Conversation in it.
+            and(
+              isNotNull(ownerSpace.id),
+              participantOf(userId, todoRoot.conversationId),
             ),
           ),
         ),
@@ -270,6 +264,15 @@ export function inboxItemNeedsInput(): SQL {
     eq(juniorInboxItems.status, "open"),
     eq(juniorInboxItems.kind, "action"),
   )!;
+}
+
+/**
+ * SQL: the Inbox item sets the status of the Conversation that owns it. A
+ * To-do's item waits only on its assignee, so it shows only to them, through
+ * their tree state and Inbox. It does not change that status.
+ */
+export function inboxItemSetsConversationStatus(): SQL {
+  return ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo);
 }
 
 /**
@@ -618,7 +621,7 @@ export async function requireInboxItemLinks(args: {
 /**
  * Check who an agent assigns a private item to. It cannot go to Everyone
  * yet: the old visibility check stays for the release before this one
- * (migration `20261126011025_inbox_item_owners`), and a later release lets
+ * (migration `20261126034025_inbox_item_owners`), and a later release lets
  * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
  * Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that

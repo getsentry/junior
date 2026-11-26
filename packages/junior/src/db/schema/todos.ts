@@ -44,7 +44,7 @@ export function todoFuzzyTitle(table: { title: AnyPgColumn }): SQL {
  * it, or core closed it on that child's result. Both are null when the
  * list's own agent made the latest change. Both User keys block deleting the User, as
  * Conversation participants do: setting them null would turn a person's
- * To-do into the agent's and hide an unseen change from `<todo-delta>`.
+ * To-do into the agent's and hide an unseen change from the To-do delta.
  */
 export const juniorTodos = pgTable(
   "junior_todos",

@@ -9,7 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type * as z from "zod";
 import type { objectPreviewImageSchema } from "@/api/schema/object-preview-image";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { imagePath } from "./ids";
 
 // Cards show at most a before and after pair in each of two rows. Each path

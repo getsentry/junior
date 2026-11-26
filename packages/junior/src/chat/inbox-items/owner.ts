@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   INBOX_SUBJECT_KINDS,
   pluginSubjectKind,

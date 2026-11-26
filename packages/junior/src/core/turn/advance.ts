@@ -11,10 +11,9 @@
 // the Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
 // sends the delivery message and the next step message that the stored
 // state calls for.
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException, logWarn } from "@/chat/logging";
-import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
+import { loadAgentHistory } from "@/core/history/read";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import {
   ModelRequestError,
@@ -148,14 +147,11 @@ async function runClaimedStep(
     "client" | "prompt" | "modelSettings" | "tools" | "maxAttempts"
   >,
 ): Promise<void> {
-  const events = await createSqlConversationEventStore(
-    executor,
-  ).loadCurrentHistory(claim.conversationId);
+  const history = await loadAgentHistory({ executor }, claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,
     "gen_ai.conversation.id": claim.conversationId,
   });
-  const history = projectConversationEvents(events).messages;
   const stepTools = await tools(
     claim,
     await findTurnInputs({ executor }, claim.turnId),
@@ -175,6 +171,7 @@ async function runClaimedStep(
         model: await modelSettings(claim),
       }),
       tools: stepTools.definitions,
+      hooks: stepTools.hooks,
       client,
       session: claim.conversationId,
       // A later claim of the same step means an earlier attempt did not

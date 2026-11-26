@@ -2,7 +2,7 @@
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
-import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import { ingestEvent } from "@/chat/events/ingest";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";

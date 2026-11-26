@@ -701,6 +701,9 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { recordTurnStart } from "../../fixtures/turn-start";
 
+// The mocked core blocks. No core registration adds system prompt guidance.
+const CORE_SYSTEM_PROMPT = "System prompt";
+
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
     throw new Error(`Expected final response, got ${outcome.status}`);
@@ -917,8 +920,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("executeTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
     expect(agentInitialSystemPrompts).toEqual([
-      "System prompt",
-      "System prompt",
+      CORE_SYSTEM_PROMPT,
+      CORE_SYSTEM_PROMPT,
     ]);
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
@@ -966,7 +969,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("searchTools");
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
+    expect(agentInitialSystemPrompts).toEqual([CORE_SYSTEM_PROMPT]);
     expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
@@ -1043,7 +1046,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       intent: "Ping the demo service.",
       conversationId: "agent:guardian-deny",
       run: {
-        agentInvocationId: "agent-invocation:guardian-deny",
         instruction: { provenance: agentInstructionProvenance },
       },
     },
@@ -1054,7 +1056,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       conversationId: "agent:guardian-deny-result",
       run: {
         actor: { platform: "system", name: "event" } as const,
-        agentInvocationId: "agent-invocation:guardian-deny-result",
         credentialContext: {
           actor: { platform: "system", name: "event" } as const,
         },

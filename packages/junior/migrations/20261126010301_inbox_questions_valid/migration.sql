@@ -1,3 +1,0 @@
--- Nothing to do. The old `junior_inbox_items_kind_check` stays for the
--- release before this one, and it is already valid
--- (20261126011025_inbox_item_owners).

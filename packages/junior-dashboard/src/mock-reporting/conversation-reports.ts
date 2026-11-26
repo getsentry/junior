@@ -1,6 +1,7 @@
 import {
   conversationDetailQuerySchema,
   conversationFeedQuerySchema,
+  type ConversationChildAgentsReport,
   type ConversationFeed,
   type ConversationFeedItem,
 } from "@sentry/junior/api/schema";
@@ -9,6 +10,7 @@ import { filterMockConversationsByRepository } from "./code-repository";
 import { mockConversationFeedPage } from "./feed-page";
 import {
   NOW_MS,
+  readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationFeed,
   readMockConversationPendingMessages,
@@ -16,8 +18,10 @@ import {
 } from "./fixtures";
 import { withMockViewerAnswers } from "./inbox-items";
 import { withMockReadPosition } from "./read-positions";
+import { mockLeadSpaceId } from "./sends";
 import {
   filterMockConversationsBySpace,
+  mockTreeState,
   withMockSpace,
   withMockSpaces,
 } from "./spaces";
@@ -104,4 +108,40 @@ export function readMockConversationDetailReport(
     ? readMockConversationPendingMessages(conversationId)
     : undefined;
   return { detail, mailbox };
+}
+
+/**
+ * Build the child agents that `GET /conversations/:conversationId/agents`
+ * answers. A Lead's children are its Space's Conversations, as the API makes
+ * them. Undefined means not found.
+ */
+export function readMockChildAgentsReport(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const spaceId = mockLeadSpaceId(conversationId);
+  if (!spaceId) return readMockConversationChildAgents(conversationId);
+  const rows = filterMockConversationsBySpace(
+    readMockConversationFeed(undefined, "active"),
+    spaceId,
+  ).conversations;
+  return {
+    agents: rows.map((row) => ({
+      archivedAt: row.archivedAt ?? null,
+      conversationId: row.conversationId,
+      cumulativeDurationMs: row.cumulativeDurationMs,
+      ...(row.cumulativeUsage
+        ? { cumulativeUsage: row.cumulativeUsage }
+        : undefined),
+      kind: "thread" as const,
+      lastResult: row.latestTurnFailed
+        ? ("failed" as const)
+        : ("done" as const),
+      status: row.turnActive ? ("running" as const) : ("idle" as const),
+      title: row.displayTitle,
+      treeState: mockTreeState(row),
+      updatedAt: row.lastMessageAt ?? row.lastProgressAt,
+      watching: row.watching ?? false,
+    })),
+    conversationId,
+  };
 }

@@ -1,6 +1,6 @@
 /** Shared schemas, views, and write handling of the Workspace tools. */
 import * as z from "zod";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { workspaceRepoCheckoutPath } from "./checkout-path";
 import { WorkspaceValidationError } from "./store";

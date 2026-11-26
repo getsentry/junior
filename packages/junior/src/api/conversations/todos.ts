@@ -80,7 +80,7 @@ export async function requireConversationTodos(
 /**
  * Set the status of one To-do for a person. The To-dos are shared, so only
  * a Participant can change them, the same as the title. The agent sees the
- * change in a `<todo-delta>` on its next Turn.
+ * change in a To-do delta on its next Turn.
  */
 export async function setConversationTodoStatus(
   viewer: User,

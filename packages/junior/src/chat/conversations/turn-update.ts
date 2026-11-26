@@ -4,7 +4,10 @@
  * gets from a child agent: the reply, the `noReply` note, or what blocks
  * it. Every Turn stores these events, whatever surface ran it.
  */
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import type {
+  AgentUpdate,
+  AgentUpdateStatus,
+} from "@/chat/child-agents/agent-update";
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import { readTurnAnswer } from "@/chat/turn-answer";
 import type {
@@ -80,30 +83,34 @@ async function readAnswerText(
 }
 
 /**
- * Return the agent update of a Turn that ended without a failure. A
+ * The agent update status of a Turn that ended without a failure. A
  * cancelled Turn reports nothing: new input or a stop replaced it, and each
  * of them reports.
  */
+export const TURN_OUTCOME_STATUSES = {
+  blocked: "blocked",
+  cancelled: undefined,
+  no_reply: "done",
+  success: "done",
+} as const satisfies Record<
+  EndedTurn["outcome"],
+  Extract<AgentUpdateStatus, "blocked" | "done"> | undefined
+>;
+
+/** Return the agent update of a Turn that ended without a failure. */
 export async function readTurnUpdate(
   events: ConversationEventStore,
   turn: EndedTurn,
 ): Promise<AgentUpdate | undefined> {
-  switch (turn.outcome) {
-    case "success":
-      return { status: "done", text: await readReplyText(events, turn) };
-    case "no_reply":
-      return {
-        status: "done",
-        text: turn.answerText ?? (await readAnswerText(events, turn)),
-      };
-    case "blocked":
-      return {
-        status: "blocked",
-        text: turn.answerText ?? (await readAnswerText(events, turn)),
-      };
-    case "cancelled":
-      return undefined;
-  }
+  const status = TURN_OUTCOME_STATUSES[turn.outcome];
+  if (!status) return undefined;
+  return {
+    status,
+    text:
+      turn.outcome === "success"
+        ? await readReplyText(events, turn)
+        : (turn.answerText ?? (await readAnswerText(events, turn))),
+  };
 }
 
 /**

@@ -18,10 +18,10 @@ import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
-import { deleteTodos } from "@/chat/todos/store";
 import { inboxItemAddedByAnyAutomation } from "@/chat/inbox-items/access";
 import { itemQuestion } from "@/chat/inbox-items/question-content";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
+import { purgePluginConversationContent } from "@/chat/plugins/purge-conversations";
 import {
   juniorConversationEvents,
   juniorConversationEmbeddings,
@@ -37,15 +37,6 @@ import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { withConversationMutationLock } from "./store";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
-
-// No runtime code reads or writes Agent invocations, but the table stays in
-// the database for one release, with its rows and their foreign keys to
-// Conversations. Purge still deletes the rows of a purged tree.
-// TODO(dcramer): Delete with the migration that drops the table.
-const juniorAgentInvocations = pgTable("junior_agent_invocations", {
-  parentConversationId: text("parent_conversation_id").notNull(),
-  childConversationId: text("child_conversation_id").notNull(),
-});
 
 // No runtime code reads legacy Briefs, but the table stays in the database
 // for one release. A Brief holds Conversation content, so purge still
@@ -154,11 +145,6 @@ export async function selectExpiredRoots(
       where events.conversation_id = tree.conversation_id
     )
       or exists (
-        select 1 from junior_agent_invocations invocations
-        where invocations.parent_conversation_id = tree.conversation_id
-           or invocations.child_conversation_id = tree.conversation_id
-      )
-      or exists (
         select 1 from junior_agent_bindings bindings
         where bindings.parent_conversation_id = tree.conversation_id
            or bindings.child_conversation_id = tree.conversation_id
@@ -168,10 +154,6 @@ export async function selectExpiredRoots(
         where ${inboxItemOwnerConversationId()} = tree.conversation_id
           and ${juniorInboxItems.status} = 'open'
           and not ${inboxItemAddedByAnyAutomation()}
-      )
-      or exists (
-        select 1 from junior_todos todos
-        where todos.conversation_id = tree.conversation_id
       )
       or exists (
         select 1 from junior_turns turns
@@ -248,8 +230,9 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. To-dos, Turns, and Turn inputs and
- * deliveries go with the transcript.
+ * conversations keep only safe metadata. Turns, Turn inputs and
+ * deliveries, and the data that plugins keep for these conversations go
+ * with the transcript.
  * Non-public content also loses its summary, Conversation embedding, legacy
  * Briefs, and the Inbox items that it added. The metadata rows themselves
  * survive.
@@ -367,15 +350,6 @@ export async function purgeConversationTree(
             .where(inArray(juniorTurns.conversationId, ids));
           await executor
             .db()
-            .delete(juniorAgentInvocations)
-            .where(
-              or(
-                inArray(juniorAgentInvocations.parentConversationId, ids),
-                inArray(juniorAgentInvocations.childConversationId, ids),
-              ),
-            );
-          await executor
-            .db()
             .delete(juniorAgentBindings)
             .where(
               or(
@@ -389,8 +363,7 @@ export async function purgeConversationTree(
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
-          // To-dos hold titles and notes from the transcript.
-          await deleteTodos(executor, ids);
+          await purgePluginConversationContent(executor.db(), ids);
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic

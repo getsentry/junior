@@ -97,6 +97,17 @@ export interface PromptHistory {
   contexts: PromptHistoryContext[];
 }
 
+/**
+ * One message of the model history that a new prompt replays, oldest first,
+ * without its content. `context` is a Turn context and `summary` is a
+ * compaction summary; `contributions` holds the text of this plugin's
+ * contributions in it, as the plugin wrote it.
+ */
+export type PromptHistoryMessage =
+  | { type: "input" }
+  | { type: "context" | "summary"; contributions: string[] }
+  | { type: "tool_result"; tool_name: string; is_error: boolean };
+
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
@@ -120,6 +131,12 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
    * that the model still has. Undefined when the prompt has no Conversation.
    */
   loadHistory?(): Promise<PromptHistory>;
+  /**
+   * Read the messages of the model history that this prompt replays, such as
+   * to find what this plugin's contributions and tools already showed.
+   * Undefined when the host has no history for the prompt.
+   */
+  historyMessages?(): PromptHistoryMessage[];
   actor?: Actor | undefined;
   source: Source;
   state: PluginState;

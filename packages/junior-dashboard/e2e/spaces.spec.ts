@@ -5,7 +5,6 @@ import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
 const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
-const MOBILE_APP_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22";
 // A private Space that the viewer and Avery are in.
 const PRICING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a24";
 // A child of the mock dashboard QA Conversation.
@@ -52,23 +51,26 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(
     spaces.getByRole("link", { name: "Billing migration" }),
   ).toHaveAttribute("aria-current", "page");
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   await expect(
     details.getByText(
       "Move invoicing to the new billing provider without double charges.",
     ),
   ).toBeVisible();
+  // Both of its Threads are done, so they show once Done opens.
+  const threads = details.getByRole("region", { exact: true, name: "Threads" });
+  await threads.getByRole("button", { name: "Done · 2" }).click();
   await expect(
-    details
-      .getByRole("region", { exact: true, name: "Conversations" })
-      .getByRole("link", { name: /Plan the billing migration/ }),
+    threads.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
   await expect(
     details.getByRole("region", { name: "Members" }).getByText("Avery Chen"),
   ).toBeVisible();
   await screenshot(page, "space-page", { view: "desktop" });
 
-  // A Conversation row opens it, and Back returns to the Space.
+  // A Thread row opens it, and Back returns to the Space.
   await details
     .getByRole("link", { name: /Plan the billing migration/ })
     .click();
@@ -164,7 +166,7 @@ test("each pane row shows what its Space's Conversations need", async ({
     ).toBeVisible();
     // A failure outranks work that still runs.
     await expect(
-      row("Mobile app").getByRole("img", { name: "A Conversation failed" }),
+      row("Mobile app").getByRole("img", { name: "A Thread failed" }),
     ).toBeVisible();
     await expect(
       row("Pricing launch").getByRole("status", { name: "Working" }),
@@ -193,7 +195,9 @@ test("a Space's page shows its settings when they are opened", async ({
 }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   const settings = details.getByRole("region", { name: "Settings" });
   // Settings load only when opened.
   await expect(settings.getByText("github.repo")).toHaveCount(0);
@@ -209,7 +213,7 @@ test("a Space's page shows its settings when they are opened", async ({
 
   await page.goto(`${dashboard.baseURL}${DOCS}`);
   const docsSettings = page
-    .getByRole("complementary", { name: "Space details" })
+    .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { name: "Settings" });
   await docsSettings.getByRole("button", { name: "Show" }).click();
   await expect(
@@ -217,27 +221,30 @@ test("a Space's page shows its settings when they are opened", async ({
   ).toBeVisible();
 });
 
-test("another Space's page does not show the last Space's Conversations", async ({
+test("another Space's page does not show the last Space's Threads", async ({
   dashboard,
   page,
 }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   const billingRow = details.getByRole("link", {
     name: /Plan the billing migration/,
   });
+  await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(billingRow).toBeVisible();
 
-  // Hold the next Space's list, so the page shows it loading.
+  // Hold the next Lead's Threads, so the page shows them loading.
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
   await page.route(
     (url) =>
-      url.pathname === "/api/conversations" &&
-      url.searchParams.get("spaceId") === MOBILE_APP_ID,
+      url.pathname.startsWith("/api/conversations/") &&
+      url.pathname.endsWith("/agents"),
     async (route) => {
       await held;
       await route.fallback();
@@ -250,6 +257,8 @@ test("another Space's page does not show the last Space's Conversations", async 
   await expect(details.getByText("Riley Park")).toBeVisible();
   await expect(billingRow).toHaveCount(0);
   release();
+  // Its one Thread is done, so it shows once Done opens.
+  await details.getByRole("button", { name: "Done · 1" }).click();
   await expect(
     details.getByRole("link", { name: /SDK changelog summary 8/ }),
   ).toBeVisible();
@@ -344,7 +353,7 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
   ).toBeVisible();
   await expect(
     page
-      .getByRole("complementary", { name: "Space details" })
+      .getByRole("complementary", { name: "Conversation details" })
       .getByText("Keep checkout fast and error-free."),
   ).toBeVisible();
   // Its new Lead introduces itself.
@@ -518,7 +527,7 @@ test("a member adds people to a private Space with the people picker", async ({
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   const members = page
-    .getByRole("complementary", { name: "Space details" })
+    .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { name: "Members" });
   await members.getByRole("button", { name: "Add" }).click();
   const search = members.getByRole("combobox", { name: "Add members" });

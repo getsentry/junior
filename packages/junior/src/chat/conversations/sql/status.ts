@@ -1,11 +1,22 @@
-import { and, desc, eq, gt, gte, ne, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
+import type { EndedTurn } from "@/chat/conversations/turn-update";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
   inboxItemNeedsInput,
   inboxItemOwnedByConversation,
+  inboxItemSetsConversationStatus,
 } from "@/chat/inbox-items/access";
-import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -90,6 +101,24 @@ export function conversationTurnFailedSql(
     order by ${desc(juniorConversationEvents.seq)}
     limit 1
   ), false))`;
+}
+
+/**
+ * SQL: how the Conversation's newest finished Turn that was not stopped
+ * ended: the `turn_completed` outcome, or `failed` for `turn_failed`. A
+ * stop is not a result, so a cancelled Turn is skipped. Null when no Turn
+ * finished. Unlike `conversationTurnFailedSql`, a later Turn does not clear
+ * a failure until it finishes.
+ */
+export function conversationLastTurnOutcomeSql(
+  conversation: Pick<ConversationStatusColumns, "conversationId">,
+): SQL<EndedTurn["outcome"] | "failed" | null> {
+  return sql<
+    EndedTurn["outcome"] | "failed" | null
+  >`(select case when ${juniorConversationEvents.type} = 'turn_failed' then 'failed' else ${juniorConversationEvents.payload}->>'outcome' end from ${juniorConversationEvents} where ${and(
+    eq(juniorConversationEvents.conversationId, conversation.conversationId),
+    inArray(juniorConversationEvents.type, ["turn_completed", "turn_failed"]),
+  )} and coalesce(${juniorConversationEvents.payload}->>'outcome', '') <> 'cancelled' order by ${juniorConversationEvents.seq} desc limit 1)`;
 }
 
 // When #3050 merged; its deploy came later, so no reply before this was
@@ -203,12 +232,10 @@ function conversationWaitsOnStarterSql(
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
-  // A To-do's item waits only on its assignee, so it shows only to them,
-  // through their tree state and Inbox. It does not change this status.
   const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
     inboxItemOwnedByConversation(conversation.conversationId),
     inboxItemNeedsInput(),
-    ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+    inboxItemSetsConversationStatus(),
   )})`;
   return sql<ConversationReportStatus>`case
     when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'

@@ -5,11 +5,8 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import {
-  FUNCTION_TIMEOUT_BUFFER_SECONDS,
-  botConfig,
-  getChatConfig,
-} from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
 import {
   commitAcceptedReply,
   loadConversationProjection,

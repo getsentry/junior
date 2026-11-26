@@ -36,7 +36,11 @@ export const juniorSpaces = pgTable(
   ],
 );
 
-/** One member of a Space. Members see the Space in their sidebar. */
+/**
+ * The members of a Space before they became the Participants of its Lead.
+ * Nothing reads or writes it. Drop it once a release that does not use it
+ * is live.
+ */
 export const juniorSpaceMembers = pgTable(
   "junior_space_members",
   {

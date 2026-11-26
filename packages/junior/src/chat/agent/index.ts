@@ -135,6 +135,7 @@ import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
   isPersonInput,
+  isTopLevelWork,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -306,6 +307,8 @@ export async function executeAgentRun(
               ? "automation"
               : (conversation?.kind ?? "thread"),
             hasParent: Boolean(conversation?.parentConversationId),
+            // Only a root can run before its row exists.
+            topLevelWork: conversation ? isTopLevelWork(conversation) : true,
           },
           conversationPrivacy,
           runLogContext,
@@ -339,7 +342,11 @@ function reportFailedRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  storedConversation: { kind: ConversationKind; hasParent: boolean },
+  storedConversation: {
+    kind: ConversationKind;
+    hasParent: boolean;
+    topLevelWork: boolean;
+  },
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: AgentRequestStreamFn | undefined,
@@ -708,6 +715,7 @@ async function executeAgentRunInPrivacyContext(
       context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingTurnMessages: currentTurnMessages,
+      priorPiMessages,
       promptSaved,
       resumedFromSessionRecord,
       turnId,
@@ -759,6 +767,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       behavior,
+      topLevelWork: storedConversation.topLevelWork,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,

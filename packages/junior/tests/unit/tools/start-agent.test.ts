@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
-} from "@/chat/agent-invocations/errors";
+} from "@/chat/child-agents/errors";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
@@ -99,7 +99,7 @@ describe("startAgent", () => {
 
   it("maps parent fan-out limit errors to tool input errors", async () => {
     const tool = createStartAgentTool(
-      vi.fn().mockRejectedValue(new AgentInvocationLimitError(8)),
+      vi.fn().mockRejectedValue(new ChildAgentLimitError(8)),
       { owner: "none" },
     );
 

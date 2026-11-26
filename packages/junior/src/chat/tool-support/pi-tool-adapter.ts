@@ -36,7 +36,7 @@ import { buildSandboxInput } from "@/chat/tool-support/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tool-support/tool-error-handler";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
-import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { PluginHookRunner } from "@/chat/plugins/hooks/runner";
 import {
   renderToolResultNudge,
   type ToolResultNudge,

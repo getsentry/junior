@@ -97,6 +97,9 @@ import {
 /** The web person whose dashboard messages the fixture sends. */
 export const WEB_VIEWER_EMAIL = "alice@example.com";
 
+/** Another dashboard person, who owns work that the web person is not in. */
+export const OTHER_WEB_VIEWER_EMAIL = "bea@example.com";
+
 /** Build the web Actor of one dashboard person, as the dashboard API does. */
 export async function webViewerActor(email: string): Promise<WebActor> {
   const viewer = await resolveViewerUser(email);

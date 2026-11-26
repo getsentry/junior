@@ -161,7 +161,7 @@ describe("user search API", () => {
   it("ranks exact, then prefix, then substring matches, and returns only picker fields", async () => {
     const viewer = await userSearch("ana@example.com");
     const space = await createSpace({
-      creatorUserId: viewer.viewer.id,
+      creator: viewer.viewer,
       description: null,
       name: "Launch",
       visibility: "private",
@@ -237,7 +237,7 @@ describe("user search API", () => {
   it("returns ten Users unless asked for fewer, up to a hard cap", async () => {
     const viewer = await userSearch("ana@example.com");
     const space = await createSpace({
-      creatorUserId: viewer.viewer.id,
+      creator: viewer.viewer,
       description: null,
       name: "Launch",
       visibility: "public",
@@ -279,7 +279,7 @@ describe("user search API", () => {
     const owner = await userSearch("ana@example.com");
     const outsider = await userSearch("ben@example.com");
     const space = await createSpace({
-      creatorUserId: owner.viewer.id,
+      creator: owner.viewer,
       description: null,
       name: "Secret",
       visibility: "private",

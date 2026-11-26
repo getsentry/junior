@@ -2,7 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias, union, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   juniorCodeChanges,
   juniorInboxItems,

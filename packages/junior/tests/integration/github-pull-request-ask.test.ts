@@ -12,7 +12,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -21,9 +21,9 @@ import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
@@ -34,7 +34,7 @@ const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
 // GitHub's id of the pull request, which names its Inbox item.
 const PULL_ID = "1592000";
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 

@@ -9,10 +9,11 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import {
-  isAgentInvocationResultMessage,
+  isChildResultMessage,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
+import { isReceivedAgentMessage, isSentAgentMessage } from "./agentMessage";
 import type { TranscriptViewMessage } from "../types";
 import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -33,17 +34,16 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Thread cards, Task lines, and started Conversation cards stay in the
-  // main view.
+  // Thread cards and Task lines stay in the main view.
   if (entry.kind === "subagent") return false;
-  if (entry.kind === "tool" && entry.part.startedConversationId) return false;
-  // An agent invocation result left only for its recalled memories is
+  // A child result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
-    return isAgentInvocationResultMessage(entry.message);
+    return isChildResultMessage(entry.message);
   }
-  return true;
+  // A message to another agent stays in view, like a message from one.
+  return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
 }
 
 /**
@@ -51,7 +51,7 @@ export function isCollapsibleActivityEntry(
  * Event messages that started its Turn, and each Event message whose Turn
  * ended without a reply. Event messages wait for the next reply; a message
  * from a person clears them. Watch Events are left out: the routine rule
- * decides those.
+ * decides those. Messages from other agents are left out too.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -62,7 +62,10 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
-      if (isWatchEventMessage(message)) continue;
+      // A message from another agent stays in view, like a message to one.
+      if (isWatchEventMessage(message) || isReceivedAgentMessage(message)) {
+        continue;
+      }
       if (message.noReply) {
         keys.add(entry.key);
         continue;
@@ -126,7 +129,7 @@ export function routineEventEntryKeys(
       lastEvent = undefined;
     } else if (message.role === "user" && message.eventType === undefined) {
       // A person's message is what the next reply answers. Other Turn
-      // inputs, such as an agent invocation result, keep the Event.
+      // inputs, such as a child result, keep the Event.
       lastEvent = undefined;
     }
   }
