@@ -198,7 +198,7 @@ reply notice. Slack notifies people there.
    | ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
    | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                                                                                     |
    | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                                                                                      |
-   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
+   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to the public base URL (`JUNIOR_BASE_URL`, else the Vercel URL) when it is `https:`. Notifications stay off with an `http:` URL. |
 
 3. Redeploy. Each person opens **Settings** and selects **Turn on for this
    device**. After a person starts a dashboard Conversation, the dashboard

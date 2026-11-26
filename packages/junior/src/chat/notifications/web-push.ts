@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import { mapBounded } from "@/chat/fan-out";
 import { listClearedInboxItemPushes } from "@/chat/inbox-items/deliveries";
 import webPush, { WebPushError } from "web-push";
@@ -38,7 +39,7 @@ const PUSH_TTL_SECONDS = 12 * 60 * 60;
 const PUSH_TIMEOUT_MS = 10_000;
 
 function subjectFromBaseUrl(): string | undefined {
-  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim();
+  const { baseUrl } = getChatConfig().deployment;
   if (!baseUrl) return undefined;
   return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
     ? baseUrl

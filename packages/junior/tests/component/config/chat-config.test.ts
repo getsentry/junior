@@ -273,6 +273,31 @@ describe("chat config", () => {
     ).toThrow("JUNIOR_QUEUE_API_URL must be an http or https URL");
   });
 
+  it("resolves the base URL from the host option, then JUNIOR_BASE_URL, then Vercel", () => {
+    const vercelEnv = {
+      ...BASE_ENV,
+      VERCEL_PROJECT_PRODUCTION_URL: " junior.example.com ",
+      VERCEL_URL: "junior-abc123.vercel.app",
+    };
+    const baseUrl = (env: Record<string, string>, options?: ConfigInput) =>
+      loadConfig({ env, options }).deployment.baseUrl;
+
+    expect(baseUrl(BASE_ENV)).toBeUndefined();
+    expect(
+      baseUrl({ ...BASE_ENV, VERCEL_URL: "junior-abc123.vercel.app" }),
+    ).toBe("https://junior-abc123.vercel.app");
+    expect(baseUrl(vercelEnv)).toBe("https://junior.example.com");
+    expect(
+      baseUrl({ ...vercelEnv, JUNIOR_BASE_URL: " http://localhost:3000/ " }),
+    ).toBe("http://localhost:3000/");
+    expect(
+      baseUrl(
+        { ...vercelEnv, JUNIOR_BASE_URL: "http://localhost:3000" },
+        { deployment: { configuredBaseUrl: "https://dashboard.example.com" } },
+      ),
+    ).toBe("https://dashboard.example.com");
+  });
+
   it("enables conversation work by default", () => {
     const config = loadConfig({ env: BASE_ENV });
     expect(config.conversationWorkEnabled).toBe(true);

@@ -144,12 +144,10 @@
       // These reads still have to move into src/config.ts. Remove a file
       // from this list when its reads move.
       "files": [
-        "packages/junior/src/api/service-accounts/routes.ts",
         "packages/junior/src/app.ts",
         "packages/junior/src/chat/agent/tools.ts",
         "packages/junior/src/chat/cache-warming/savings.ts",
         "packages/junior/src/chat/config.ts",
-        "packages/junior/src/chat/dashboard-link.ts",
         "packages/junior/src/chat/identities/timezone.ts",
         "packages/junior/src/chat/local/credential-sync.ts",
         "packages/junior/src/chat/logging.ts",
@@ -164,7 +162,6 @@
         "packages/junior/src/chat/plugins/command-env.ts",
         "packages/junior/src/chat/plugins/manifest.ts",
         "packages/junior/src/chat/queue/topics.ts",
-        "packages/junior/src/chat/queue/vercel.ts",
         "packages/junior/src/chat/runtime/dev-agent-trace.ts",
         "packages/junior/src/chat/sandbox/docker/api.ts",
         "packages/junior/src/chat/sandbox/docker/settings.ts",
@@ -181,7 +178,6 @@
         "packages/junior/src/chat/skills.ts",
         "packages/junior/src/chat/workspaces/tools/switch.ts",
         "packages/junior/src/dashboard-routes.ts",
-        "packages/junior/src/deployment.ts",
         "packages/junior/src/handlers/oauth-callback.ts",
         "packages/junior/src/handlers/sandbox-egress-signals.ts",
         "packages/junior/src/plugins.ts"
