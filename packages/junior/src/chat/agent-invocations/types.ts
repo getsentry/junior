@@ -5,6 +5,7 @@ import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
 import type { AgentUpdateStatus } from "./agent-update";
 import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
+import type { ConversationKind } from "@/chat/conversations/store";
 
 const exactStringSchema = z
   .string()
@@ -55,6 +56,8 @@ export type ChildAgentSender = {
   agentName?: string;
   childConversationId: string;
   parentConversationId: string;
+  /** Kind of the parent Conversation, when storage gave it. */
+  parentKind?: ConversationKind;
   title?: string;
 };
 type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
