@@ -147,6 +147,12 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     | Promise<ToolApprovalResolution | undefined>
     | ToolApprovalResolution
     | undefined;
+  /**
+   * Name the Guardian grant that applies to this exact call, or nothing.
+   * Core binds a plugin tool's check to the Turn's stored facts
+   * (`grants` in `design/guardian.md`).
+   */
+  guardianGrant?(input: unknown): Promise<string | undefined>;
 }
 
 /** Name-indexed heterogeneous tool definitions accepted by the agent runtime. */

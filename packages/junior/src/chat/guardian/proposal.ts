@@ -34,6 +34,11 @@ export interface ToolActionReviewDecision {
   decision: ToolActionDecision;
   reason: string;
   riskLevel: RiskLevel;
+  /**
+   * The grant that turned the rule's block into an allow
+   * (`grant-recorded`). Diagnostic only.
+   */
+  grant?: string;
   /** Named policy rule that set the decision, or `none`. Diagnostic only. */
   rule?: string;
   userAuthorization: UserAuthorization;

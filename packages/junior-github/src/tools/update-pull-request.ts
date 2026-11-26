@@ -12,6 +12,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  type ToolGuardianGrantContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -252,6 +253,48 @@ async function requestRequesterReview(
   return true;
 }
 
+/** The Guardian grant for upkeep of a pull request that Junior opened. */
+const OWN_PR_UPKEEP_GRANT = "own-pr-upkeep";
+
+/**
+ * Grant `own-pr-upkeep` when the call changes only the title or the body of
+ * a pull request that the bot opened for this work: a code change in
+ * Junior's code records that is linked to this Conversation, an ancestor, or
+ * a descendant. Only the GitHub plugin records a code change, and only for
+ * a pull request that the bot authored, so a pull request that a person
+ * opened, or that only an annotation names, never matches (`grant-facts`).
+ */
+async function ownPullRequestUpkeepGrant(
+  input: unknown,
+  ctx: ToolGuardianGrantContext,
+): Promise<string | undefined> {
+  // The tool call itself reports malformed input, so the check finds no
+  // grant for it.
+  const parsed = inputSchema.safeParse(input);
+  if (!parsed.success) return undefined;
+  const update = parsed.data;
+  if (
+    update.base !== undefined ||
+    update.state !== undefined ||
+    update.draft !== undefined ||
+    update.request_review !== undefined
+  ) {
+    return undefined;
+  }
+  let repo: string;
+  try {
+    repo = parseRepo(update.repo).ref;
+  } catch (error) {
+    if (error instanceof PluginToolInputError) return undefined;
+    throw error;
+  }
+  const [change] = await ctx.codeChanges.list({
+    conversationIds: await ctx.conversationIds(),
+    repository: { name: repo, numbers: [update.pull_request] },
+  });
+  return change ? OWN_PR_UPKEEP_GRANT : undefined;
+}
+
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(
   /** Set when the description check experiment is on. */
@@ -266,6 +309,7 @@ export function createGitHubUpdatePullRequestTool(
     },
     description:
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+    guardianGrant: ownPullRequestUpkeepGrant,
     inputSchema,
     outputSchema,
     async execute(

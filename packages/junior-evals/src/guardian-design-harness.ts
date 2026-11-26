@@ -73,6 +73,15 @@ export interface GuardianDesignFacts {
   /** Resources that the same instruction created, such as a pull request. */
   createdByInstruction?: string[];
   /**
+   * Exact actions that a tool's grant check found a grant for, from stored
+   * facts (`grants`).
+   */
+  grants?: Array<{
+    grant: string;
+    input: Record<string, unknown>;
+    tool: string;
+  }>;
+  /**
    * Who can read the destination of the action (`facts-from-junior`):
    * people of the organization only, or anyone.
    */
@@ -143,9 +152,9 @@ const ARMS: Record<string, GuardianArm> = {
 
 /**
  * Turn the facts of a case into the authority record that core gives. A
- * confirmed action gets the hash that core records with the person's answer.
- * A case names only the tool and the input that the person confirmed, so
- * the action gets a hash for each credential subject of the request.
+ * confirmed or granted action gets the hash that core records for it. A
+ * case names only the tool and the input, so the action gets a hash for
+ * each credential subject of the request.
  */
 function designAuthority(request: GuardianDesignRequest): AuthorityRecord {
   const facts = request.facts ?? {};
@@ -154,15 +163,22 @@ function designAuthority(request: GuardianDesignRequest): AuthorityRecord {
       (proposal) => proposal.context.credential?.subject?.userId,
     ),
   );
+  const hashes = (action: { input: Record<string, unknown>; tool: string }) =>
+    [...subjects].map((credentialSubject) =>
+      actionHash({ ...action, credentialSubject }),
+    );
   return {
     lines: (facts.personLines ?? []).map(({ text, via }) => ({ text, via })),
     confirmations: (facts.confirmed ?? []).flatMap((confirmed, index) =>
-      [...subjects].map((credentialSubject) => ({
-        actionHash: actionHash({ ...confirmed, credentialSubject }),
+      hashes(confirmed).map((hash) => ({
+        actionHash: hash,
         answerId: `inbox_answer_${index + 1}`,
       })),
     ),
     created: (facts.createdByInstruction ?? []).map((ref) => ({ ref })),
+    grants: (facts.grants ?? []).flatMap(({ grant, ...action }) =>
+      hashes(action).map((hash) => ({ actionHash: hash, grant })),
+    ),
     ...(facts.destinationReaders
       ? { destinationReaders: facts.destinationReaders }
       : undefined),
@@ -267,6 +283,11 @@ export type DesignRuleId =
   | "must-name"
   | "unrequested-asks"
   | "conventional-steps"
+  | "grants"
+  | "grant-facts"
+  | "grant-narrows"
+  | "grant-limits"
+  | "grant-recorded"
   | "fresh-decision"
   | "code-mode"
   | "no-exposure"

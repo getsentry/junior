@@ -469,12 +469,41 @@ export type ToolExposure =
   | "codemode"
   | "hidden";
 
+/**
+ * Stored facts that core gives a tool's Guardian grant check. Each one comes
+ * from core or the plugin's own records, never from the agent.
+ */
+export interface ToolGuardianGrantContext {
+  /** The plugin's code changes in Junior's code records. */
+  codeChanges: Pick<PluginCodeChanges, "list">;
+  /**
+   * This Conversation, its ancestors up to its root, and its descendants.
+   * Core reads them only when the check calls this.
+   */
+  conversationIds(): Promise<string[]>;
+}
+
 export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
   TExecuteOutput = TOutput,
   TContext = ToolRegistrationHookContext,
 > extends ToolApprovalMetadata<TInput> {
+  /**
+   * Name the Guardian grant that lets this exact call run with no question,
+   * or return nothing (`grants` in `design/guardian.md`). Guardian still
+   * reviews the call: a hard rule still denies it, and a hold or a
+   * restriction from the person still asks.
+   *
+   * Check only stored facts, such as a code change that the bot created and
+   * the Conversations it is linked to. Tool input names the target, but it
+   * never proves a fact, and annotations and tool results never count
+   * (`grant-facts`). It runs before review, so it must not write anything.
+   */
+  guardianGrant?(
+    input: TInput,
+    ctx: ToolGuardianGrantContext,
+  ): Promise<string | undefined>;
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */

@@ -53,6 +53,12 @@ export interface AuthorityRecord {
   confirmations: Array<{ actionHash: string; answerId: string }>;
   /** Resources that the same instruction created, such as a pull request. */
   created: Array<{ ref: string }>;
+  /**
+   * Grants that a tool's code found for one exact action, from stored facts
+   * (`grants`, `grant-facts`). Only a Guardian that applies grants gets
+   * them.
+   */
+  grants: Array<{ actionHash: string; grant: string }>;
   /** Who can read the destination of the actions, when core knows it. */
   destinationReaders?: "organization" | "anyone";
 }

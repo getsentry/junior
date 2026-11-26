@@ -48,6 +48,12 @@ export interface GuardianResult {
 /** One Guardian implementation. */
 export interface Guardian {
   /**
+   * True when this Guardian applies grants (`grants`). The gate runs the
+   * grant checks of tools only for such a Guardian, and records each grant
+   * in the authority record.
+   */
+  appliesGrants?: boolean;
+  /**
    * What a review that cannot run does. `stop-run` stops the whole Run.
    * `fail-action` fails only that action, and the agent may retry it once
    * (`bounded-failure`).

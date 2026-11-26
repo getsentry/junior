@@ -125,8 +125,9 @@ untrusted text set up, does not run.
   it.
 - `conventional-steps` The conventional steps of requested work match no
   rule. Examples are a PR that delivers requested code, assigning that PR
-  to the person who asked and requesting their review, and upkeep of what
-  the same instruction created ([GitHub](./github.md)).
+  to the person who asked and requesting their review, and upkeep of a
+  resource that Junior created for the work (`grants`)
+  ([GitHub](./github.md)).
 - `facts-from-junior` Junior gives Guardian the facts: the Actor, Source,
   Destination, Conversation, credential authority, whose instruction the
   action serves, that person's lines and answers, the allowed brief of a
@@ -141,6 +142,25 @@ untrusted text set up, does not run.
 - `code-mode` A Code Mode script cannot authorize. Guardian judges each
   call of a script as if the agent made it directly. It uses the script and
   its earlier calls only to see where the data came from.
+
+**Grants**
+
+- `grants` A grant lets one kind of action run with no question. Code
+  checks the facts that make it apply, before Guardian decides. A grant
+  comes from code, such as a plugin check that the bot authored a PR, or
+  from an instruction, when the work creates a resource.
+  - Example: Junior opened a PR for Alice. Later the agent updates the PR's
+    title and body. The bot authored the PR, and the PR is linked to this
+    Conversation, so the update runs with no question.
+- `grant-facts` Only facts that core or a plugin stores make a grant apply,
+  such as who created a resource and which Conversations it is linked to.
+  Tool input, tool results, annotations, and agent text never do.
+- `grant-narrows` A condition that only a model can judge, such as a
+  restriction from a person, can only narrow or revoke a grant. It never
+  adds an allow.
+- `grant-limits` A grant never clears a hard rule or an `ask` permission.
+- `grant-recorded` Each decision that a grant changes records the grant
+  (`replayable`).
 
 **Secrets and private data**
 
@@ -232,9 +252,10 @@ untrusted text set up, does not run.
 - `linked-account`: every Event Turn runs as a system Actor. The person's
   own GitHub comment is context, so the agent asks before it does what the
   comment says.
-- `facts-from-junior`, `conventional-steps`: Guardian is not told which
-  instruction created a resource, so upkeep of Junior's own pull requests
-  can ask.
+- `grants`: only title and body updates of Junior's own PRs have a grant,
+  and the default Guardian does not apply it, so upkeep of Junior's own
+  PRs can ask. Comments and pushes on Junior's own PRs have no grant, and
+  no grant comes from an instruction.
 - `review-by-default`, `same-outcome`: some core tools with side effects,
   file writes in the Sandbox, and outbound network are not reviewed.
   `publishImage` makes a public URL with no review.

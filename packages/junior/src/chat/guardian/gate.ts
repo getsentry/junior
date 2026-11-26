@@ -19,7 +19,11 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
-import { canonicalJson, reviewWithAuthority } from "@/chat/guardian/authority";
+import {
+  canonicalJson,
+  proposalActionHash,
+  reviewWithAuthority,
+} from "@/chat/guardian/authority";
 import type { Guardian } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
@@ -484,6 +488,12 @@ export const MAX_TOOL_ACTION_BATCH = 10;
 /** Most actions of one batch that the gate prepares or records at the same time. */
 const MAX_CONCURRENT_PREPARATIONS = 4;
 
+/** One action that needs review, with the grant that its tool found. */
+interface PreparedAction {
+  grant?: string;
+  proposal: ToolActionProposal;
+}
+
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
@@ -546,15 +556,21 @@ export function createToolActionReview(options: {
     const rejections = [...priorRejections];
     const prepared = await mapBounded(
       actions,
-      async (action): Promise<ToolActionProposal | ReviewStep> => {
+      async (action): Promise<PreparedAction | ReviewStep> => {
         try {
-          return (
-            (await prepareToolActionReview(
-              action,
-              options.context,
-              rejections,
-            )) ?? { kind: "skipped" }
+          const proposal = await prepareToolActionReview(
+            action,
+            options.context,
+            rejections,
           );
+          if (!proposal) {
+            return { kind: "skipped" };
+          }
+          // Code checks the grant before Guardian decides (`grants`).
+          const grant = options.guardian.appliesGrants
+            ? await action.tool.guardianGrant?.(action.input)
+            : undefined;
+          return { proposal, ...(grant ? { grant } : undefined) };
         } catch (error) {
           if (signal?.aborted) {
             throw error;
@@ -564,14 +580,29 @@ export function createToolActionReview(options: {
       },
       MAX_CONCURRENT_PREPARATIONS,
     );
-    const proposals = prepared.filter(
-      (entry): entry is ToolActionProposal => !("kind" in entry),
+    const reviewed = prepared.filter(
+      (entry): entry is PreparedAction => !("kind" in entry),
+    );
+    const grants = reviewed.flatMap(({ grant, proposal }) =>
+      grant ? [{ actionHash: proposalActionHash(proposal), grant }] : [],
     );
     const result =
-      proposals.length > 0
+      reviewed.length > 0
         ? await reviewWithAuthority(
             options.guardian,
-            { actions: proposals },
+            {
+              actions: reviewed.map(({ proposal }) => proposal),
+              ...(grants.length > 0
+                ? {
+                    authority: {
+                      confirmations: [],
+                      created: [],
+                      grants,
+                      lines: [],
+                    },
+                  }
+                : undefined),
+            },
             { signal },
           )
         : { actions: [], inboxItems: 0 };
@@ -602,7 +633,7 @@ export function createToolActionReview(options: {
         try {
           await options.onDecision({
             toolCallId: actions[index]!.toolCallId,
-            toolName: entry.tool.name,
+            toolName: entry.proposal.tool.name,
             decision: outcome.decision,
           });
         } catch (error) {
@@ -611,7 +642,7 @@ export function createToolActionReview(options: {
         return {
           kind: "reviewed",
           decision: outcome.decision,
-          proposal: entry,
+          proposal: entry.proposal,
         };
       },
       MAX_CONCURRENT_PREPARATIONS,

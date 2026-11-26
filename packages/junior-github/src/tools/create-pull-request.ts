@@ -2,6 +2,7 @@ import pLimit from "p-limit";
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
+  type CodeChangeInput,
   objectFactsSchema,
   type ObjectAnnotation,
   definePluginTool,
@@ -290,10 +291,65 @@ function createGitHubPullRequestRequest(
   return { path: `${repoPath(repo)}/pulls`, body: payload };
 }
 
+/** The fields of a new pull request that Junior's code records keep. */
+const createdCodeChangeSchema = z.object({
+  base: z.object({
+    repo: z.object({ full_name: z.string().min(1), id: z.number() }),
+  }),
+  created_at: z.iso.datetime({ offset: true }),
+  id: z.number(),
+  number: z.number(),
+  title: z.string().min(1),
+  updated_at: z.iso.datetime({ offset: true }),
+  // The installation writes as the bot. Only a pull request that the bot
+  // authored becomes a code change.
+  user: z.object({ type: z.literal("Bot") }),
+});
+
+/** The code change of a pull request that GitHub created, or nothing. */
+function createdCodeChange(response: unknown): CodeChangeInput | undefined {
+  const parsed = createdCodeChangeSchema.safeParse(response);
+  if (!parsed.success) return undefined;
+  const pullRequest = parsed.data;
+  return {
+    number: pullRequest.number,
+    openedAt: new Date(pullRequest.created_at),
+    providerId: String(pullRequest.id),
+    repository: {
+      name: pullRequest.base.repo.full_name,
+      providerId: String(pullRequest.base.repo.id),
+    },
+    state: "open",
+    title: pullRequest.title,
+    updatedAt: new Date(pullRequest.updated_at),
+  };
+}
+
+/**
+ * Record a new pull request in Junior's code records, linked to this
+ * Conversation. A later call of the same Run can come before the `opened`
+ * webhook, and a Guardian grant reads this record (`grants`). The webhook
+ * records the same change again, and the newer update wins.
+ */
+async function recordCreatedCodeChange(
+  ctx: ToolRegistrationHookContext,
+  codeChange: CodeChangeInput,
+  conversationId: string,
+): Promise<void> {
+  await ctx.codeChanges.record(codeChange);
+  // `record` skips a change that a newer webhook already wrote, so the link
+  // is its own write.
+  await ctx.codeChanges.associateConversations({
+    conversationIds: [conversationId],
+    providerId: codeChange.providerId,
+  });
+}
+
 async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
   request: { body: unknown; path: string },
 ): Promise<{
+  codeChange?: CodeChangeInput;
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
 }> {
@@ -331,7 +387,9 @@ async function createGitHubPullRequest(
     );
   }
   const stackTarget = stackTargetSchema.safeParse(parsed);
+  const codeChange = createdCodeChange(parsed);
   return {
+    ...(codeChange ? { codeChange } : undefined),
     result: {
       ...githubObjectFacts("code_change", parsed),
       number: pullRequest.number,
@@ -734,13 +792,12 @@ export function createGitHubPullRequestTool(
             pendingState,
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
+          let codeChange: CodeChangeInput | undefined;
           let result: GitHubPullRequestResult;
           let stackTarget: GitHubStackTarget | undefined;
           try {
-            ({ result, stackTarget } = await createGitHubPullRequest(
-              ctx,
-              request,
-            ));
+            ({ codeChange, result, stackTarget } =
+              await createGitHubPullRequest(ctx, request));
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -777,6 +834,10 @@ export function createGitHubPullRequestTool(
               "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
               { cause: error },
             );
+          }
+          // Before the opener, so its requester credit finds the change.
+          if (codeChange) {
+            await recordCreatedCodeChange(ctx, codeChange, conversationId);
           }
           await recordOpener(ctx, parsedInput, completedState, {
             conversationId,

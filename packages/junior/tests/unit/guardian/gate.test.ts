@@ -10,7 +10,8 @@ import {
   type ToolActionReview,
   type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
-import type { Guardian } from "@/chat/guardian/guardian";
+import { proposalActionHash } from "@/chat/guardian/authority";
+import type { Guardian, GuardianRequest } from "@/chat/guardian/guardian";
 import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
@@ -563,6 +564,69 @@ describe("tool action review", () => {
       ),
     ).resolves.toBeUndefined();
     expect(onDecision).not.toHaveBeenCalled();
+  });
+
+  it("runs a tool's grant check only for a Guardian that applies grants", async () => {
+    const guardianGrant = vi.fn(async () => "own-pr-upkeep");
+    const tool = definition({ approvalMode: "review", guardianGrant });
+    const input = { reportId: "weekly" };
+    const reviewWith = async (appliesGrants: boolean) => {
+      const requests: GuardianRequest[] = [];
+      const actionReview = createToolActionReview({
+        context: {
+          actor: { platform: "local", userId: "local-user" },
+          conversationId: "local:approval-test",
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
+          userIntent: () => "Generate the report.",
+        },
+        guardian: {
+          appliesGrants,
+          onUnavailable: "fail-action",
+          review: async (request) => {
+            requests.push(request);
+            return {
+              actions: [
+                {
+                  decidedBy: "guardian",
+                  decision: {
+                    decision: "allow",
+                    reason: "Requested.",
+                    riskLevel: "low",
+                    userAuthorization: "high",
+                  },
+                  outcome: "allow",
+                },
+              ],
+              inboxItems: 0,
+            };
+          },
+        },
+        onDecision: vi.fn(async () => undefined),
+        onFatal: vi.fn(),
+      });
+      await reviewToolAction(
+        "tool-call",
+        "generateReport",
+        tool,
+        input,
+        actionReview,
+      );
+      return requests[0]!;
+    };
+
+    const ignored = await reviewWith(false);
+    expect(guardianGrant).not.toHaveBeenCalled();
+    expect(ignored.authority).toBeUndefined();
+
+    const applied = await reviewWith(true);
+    expect(guardianGrant).toHaveBeenCalledWith(input);
+    expect(applied.authority?.grants).toEqual([
+      {
+        actionHash: proposalActionHash(applied.actions[0]!),
+        grant: "own-pr-upkeep",
+      },
+    ]);
   });
 
   it("fails closed when the Guardian decision cannot be recorded", async () => {

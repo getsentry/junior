@@ -216,6 +216,11 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
+- **Grant**: lets one kind of action run with no Guardian question, such as
+  `own-pr-upkeep` for a title or body update of a PR that Junior opened. A
+  tool's `guardianGrant` check finds it from stored facts before Guardian
+  decides. Not a credential grant, which lets an outbound request use a
+  credential.
 - **Annotation**: saved facts or a link on one Conversation, for an object
   that it created or changed. A read saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the

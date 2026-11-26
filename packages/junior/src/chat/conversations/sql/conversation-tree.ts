@@ -98,6 +98,29 @@ export function conversationDescendants(
 }
 
 /**
+ * List one Conversation, its ancestors up to its root, and its descendants:
+ * the Conversations whose work it serves or hands down. Its siblings are not
+ * in the list.
+ */
+export async function readAncestorAndDescendantIds(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<string[]> {
+  const [row] = await db
+    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  if (!row?.rootConversationId) return [conversationId];
+  const tree = await readConversationTrees(db, [row.rootConversationId]);
+  const relatives = [
+    ...conversationAncestors(tree, conversationId),
+    ...conversationDescendants(tree, conversationId),
+  ];
+  return [conversationId, ...relatives.map((node) => node.conversationId)];
+}
+
+/**
  * Set or clear the shared archive and count the rows written. This is the
  * only write of `archived_at`. `conversations` names the rows by id or by a
  * condition. `guard` is a condition that each row must still meet when it is

@@ -345,6 +345,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       // hides a key that contains `auth`.
       setSpanAttributes({
         "app.guardian.decision": review.decision.decision,
+        ...(review.decision.grant
+          ? { "app.guardian.grant": review.decision.grant }
+          : undefined),
         "app.guardian.risk_level": review.decision.riskLevel,
         ...(review.decision.rule
           ? { "app.guardian.rule": review.decision.rule }

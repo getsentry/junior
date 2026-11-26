@@ -1833,6 +1833,57 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("records a new pull request for this Conversation, so its upkeep has a grant before the webhook", async () => {
+    const conversationId = "slack:C123:1712345.0771";
+    const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
+      conversationId,
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            base: {
+              ref: "main",
+              repo: { full_name: "getsentry/junior", id: 4242 },
+            },
+            head: { ref: "feat/typed-pr" },
+            created_at: "2026-02-01T10:00:00Z",
+            html_url: "https://github.com/getsentry/junior/pull/7701",
+            id: 77001,
+            number: 7701,
+            title: "Typed PR",
+            updated_at: "2026-02-01T10:00:00Z",
+            user: { login: "junior[bot]", type: "Bot" },
+          }),
+          { status: 201 },
+        ),
+    });
+    const plugin = githubPlugin({
+      pullRequestEvents: { subscribeAfterCreate: false },
+    });
+    const tools = plugin.hooks?.tools?.();
+
+    await bindPluginTool(tools?.["createPullRequest"], ctx as any)?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feat/typed-pr",
+        base: "main",
+        body: "PR body",
+      },
+      { toolCallId: "call-create-recorded-pull-request" },
+    );
+
+    await expect(
+      tools?.["updatePullRequest"]?.guardianGrant?.(
+        { repo: "getsentry/junior", pull_request: 7701, body: "New body" },
+        {
+          codeChanges: dbFixture.codeIndex.codeChanges,
+          conversationIds: async () => [conversationId],
+        },
+      ),
+    ).resolves.toBe("own-pr-upkeep");
+  });
+
   it("subscribes configured events after creating a pull request", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     // Like core, the result lists only the events that start a Turn.

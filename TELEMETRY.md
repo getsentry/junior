@@ -133,7 +133,9 @@ attributes. Nested logs and spans inherit them.
 - A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
   `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
   and `app.guardian.user_consent` (the user authorization level). Sentry's
-  data scrubber hides a key that contains `auth`.
+  data scrubber hides a key that contains `auth`. When a grant turned the
+  rule's block into an allow, it also has `app.guardian.grant` (the grant
+  id, such as `own-pr-upkeep`).
 - `guardian.action_review` has `app.guardian.proposal.chars` (the proposal
   JSON that the size limit counts) and, when a review's model call aborts,
   `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one
