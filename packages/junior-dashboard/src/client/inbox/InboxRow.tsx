@@ -547,7 +547,7 @@ function InboxRowBody(
   const inlineActions = Boolean(props.itemTitle) && openItems.length === 1;
   // A reply notice's card has nothing to answer, so its link to the reply is
   // its main action.
-  const replyNotice = inlineActions && openItems[0]?.replyNotice;
+  const replyNotice = inlineActions && openItems[0]?.subject.kind === "reply";
   const asksShown =
     props.expanded && (openItems.length > 0 || !props.actionsBelow);
   // The head controls what it opens. `regionId` always wraps the row bar:

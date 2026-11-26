@@ -90,17 +90,17 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. Children inherit the Participants
+- **Participant**: a User who started a root Conversation, sent a Slack
+  Message in it or its children, joined it, or was invited to it. Children inherit the Participants
   of their root, so in a Space they are the Lead's. A Participant is active until they
   Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
 - **Invite**: a person subscribes someone to a Conversation's feed, with
-  the people picker of its Participants. In a public Conversation, a
-  dashboard or Slack Message that mentions them also does it, and access
-  stays the same, because anyone can already read it and join by posting.
+  the people picker of its Participants or by email. A mention does not
+  Invite. In a public Conversation, access stays the same, because anyone
+  can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
   access. A private Space and a Slack-backed private Conversation refuse it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
@@ -228,9 +228,13 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Inbox item**: work for a person, shown in the **Inbox**. Not an
   Item or a Review item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
-  what the item belongs to, `{ kind, id }`: the Conversation that added it,
-  or an Automation. The owner sets the item's visibility, tenant, and Inbox
-  stack. **Automation alert**: an Inbox item that an Automation owns. Core
+  what the item belongs to, `{ kind, id }`: a Conversation or an Automation.
+  The subject names it, so the item stores no owner. The Destination of the
+  owner sets the item's visibility, and the owner sets its Inbox stack. A
+  plugin's owner table maps each subject id of the plugin to its
+  Conversation. **Subject**: what the item is about, `{ kind, id }`, such as a
+  pull request. The kind says what the item asks, such as
+  `github:pull_request_review`. **Automation alert**: an Inbox item that an Automation owns. Core
   adds it for the creator when the Automation needs them, and closes it
   when the Automation recovers.
 - **Attention**: what Junior takes from a person with a reply, a question, a

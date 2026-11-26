@@ -57,6 +57,27 @@ const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
+/**
+ * The subject of a seed. `kind` defaults to the core kind of the seed, and
+ * `id` to the seed's own id. A pull request names what GitHub says about it
+ * now: `title`, and `titleParts` as the GitHub plugin splits the title. The
+ * mock API shows them on the subject's card, as the API reads the card
+ * live.
+ */
+export type MockSubject = Pick<
+  InboxItemPayload["subject"],
+  "id" | "label" | "objectType" | "resource" | "url"
+> & {
+  kind?: string;
+  title?: string;
+  titleParts?: {
+    breaking?: boolean;
+    scope?: string;
+    text: string;
+    type?: string;
+  };
+};
+
 export type MockItemSeed = Pick<
   InboxItemPayload,
   | "addedByTurnId"
@@ -66,7 +87,6 @@ export type MockItemSeed = Pick<
   | "mentions"
   | "request"
   | "status"
-  | "subject"
   | "title"
   | "wake"
 > &
@@ -89,6 +109,7 @@ export type MockItemSeed = Pick<
     plugin?: string;
     /** The item is also for a teammate, so Dismiss hides it for the viewer. */
     shared?: boolean;
+    subject?: MockSubject;
   };
 
 /** Every mock Inbox item, with its times relative to `nowMs`. */
@@ -133,9 +154,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
         question: "Roll out payments-v42 to every region?",
-        // The cited evidence supports the suggested answer. The related
+        // The related links support the suggested answer. The related
         // items on the same release disagree with it.
-        evidence: [
+        related: [
           {
             label: "Canary error rate",
             note: "Flat for 30 minutes.",
@@ -145,6 +166,13 @@ export function seeds(nowMs: number): MockItemSeed[] {
             label: "Canary p95 latency",
             note: "Did not move in us-east-1.",
             url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
+          },
+          // The question also links its own Conversation, so the card
+          // shows it once.
+          {
+            conversationId: "slack:CQA123:1770000000.000100",
+            label: "Checkout latency triage",
+            note: "Where p95 is tracked.",
           },
         ],
         fields: [
@@ -255,6 +283,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Ready to merge",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
@@ -285,6 +316,8 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
+        kind: "github:merge_conflict",
+        label: "Merge conflict",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "fix(slack): Retry Slack uploads on rate limits",
@@ -306,6 +339,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
@@ -366,11 +402,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        // As the GitHub plugin names it, with its number.
-        title: "ref(gocd)!: Retry a canary stage once on a lost agent (#418)",
-        // As the GitHub plugin parses the title.
+        title: "ref(gocd)!: Retry a canary stage once on a lost agent",
         titleParts: {
           breaking: true,
           scope: "gocd",
@@ -504,9 +541,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "feat(dashboard): Tabs in the dashboard sidebar (#3052)",
+        title: "feat(dashboard): Tabs in the dashboard sidebar",
         titleParts: {
           scope: "dashboard",
           text: "Tabs in the dashboard sidebar",
@@ -529,15 +569,17 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(3 * DAY),
       id: "qa-merged-3037",
       kind: "notice",
-      plugin: "github",
-      status: "open",
-      subject: {
-        id: "https://github.com/getsentry/junior/pull/3037",
-        objectType: "code_change",
-        resource: PULL_REQUEST_RESOURCE,
-        title: "Fix the stable list order",
-        url: "https://github.com/getsentry/junior/pull/3037",
+      // An agent's notice that cites the pull request, not a GitHub ask, so
+      // it stays out of the pull request views.
+      request: {
+        related: [
+          {
+            label: "Fix the stable list order",
+            url: "https://github.com/getsentry/junior/pull/3037",
+          },
+        ],
       },
+      status: "open",
       title: "Merged · #3037",
     },
     {

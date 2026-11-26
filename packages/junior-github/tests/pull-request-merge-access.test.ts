@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubFixture } from "./github-db";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   checkSuiteCompleted,
   mockGitHub,
   reviewSubmitted,
@@ -67,7 +67,7 @@ describe("merge ask access", () => {
         {
           conversationId: "slack:C123:1712345.0001",
           input: {
-            dedupeKey: DEDUPE_KEY,
+            subject: SUBJECT,
             reason: "The review request ended.",
             status: "done",
           },
@@ -116,7 +116,7 @@ describe("merge ask access", () => {
         {
           conversationId: "slack:C123:1712345.0001",
           input: {
-            dedupeKey: DEDUPE_KEY,
+            subject: SUBJECT,
             reason: "Only a person with write access can merge it.",
             status: "dismissed",
           },

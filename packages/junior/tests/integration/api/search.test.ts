@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { githubPlugin } from "@sentry/junior-github";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { searchReportSchema } from "@/api/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -12,6 +14,7 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
+import { recordCodeChange } from "@/chat/code/store";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { reembedMemories } from "@/chat/memory/reembed";
 import { memoryDb } from "@/chat/memory/store";
@@ -92,20 +95,26 @@ async function inboxItem(args: {
   visibility?: "private" | "public";
 }) {
   const visibility = args.visibility ?? "private";
+  // The item is as private as the channel of the Conversation that asked.
+  const channelId = visibility === "public" ? "CASKPUB" : "CASKPRIV";
+  const conversationId = `slack:${channelId}:1.000001`;
+  await getConversationStore().recordActivity({
+    conversationId,
+    destination: { platform: "slack", teamId: TEAM_ID, channelId },
+    nowMs: args.nowMs,
+    source: "slack",
+    visibility,
+  });
   const item = await insertInboxItem(getDb(), {
     assignedToEveryone: false,
     assigneeUserIds: args.assigneeUserIds ?? [],
     body: args.body ?? "",
     conversationIds: [],
-    dedupeKey: args.title,
+    subject: { id: args.title, kind: "question" },
     kind: "notice",
     nowMs: args.nowMs,
-    owner: { id: "slack:C123:owner", kind: "conversation" },
-    ...(visibility === "public"
-      ? { tenant: { provider: "slack", providerTenantId: TEAM_ID } }
-      : undefined),
+    owner: { id: conversationId, kind: "conversation" },
     title: args.title,
-    visibility,
   });
   if (!item) throw new Error(`Inbox item ${args.title} was not stored`);
   return item;
@@ -613,5 +622,69 @@ describe("search API", () => {
       todos: [],
     });
     expect((await search("deploy", "inboxItems,plans")).status).toBe(400);
+  });
+
+  it("finds a pull request's item by the pull request title, which the item does not store", async () => {
+    // The GitHub plugin registers the `pull_request` kind, whose objects are
+    // code changes.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const viewer = await person(VIEWER);
+    const change = (providerId: string, number: number, title: string) =>
+      recordCodeChange(getDb(), "github", {
+        conversationIds: [],
+        number,
+        openedAt: new Date(1_000),
+        providerId,
+        repository: { name: "getsentry/junior", providerId: "repository-1" },
+        state: "open",
+        title,
+        updatedAt: new Date(1_000),
+      });
+    await change("1001", 946, "Make deploys resumable");
+    await change("1002", 947, "Rotate the signing key");
+    const pullRequestItem = async (id: string, number: number) => {
+      // The opener's row names the Conversation that owns the item.
+      await getDb().execute(
+        sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${number}, 'identity:opener', 'slack:C123:owner', ${id}, now(), now())`,
+      );
+      return insertInboxItem(getDb(), {
+        assignedToEveryone: false,
+        assigneeUserIds: [viewer.id],
+        body: `GitHub asks you to review #${number}.`,
+        conversationIds: [],
+        kind: "notice",
+        nowMs: number,
+        owner: { id: "slack:C123:owner", kind: "conversation" },
+        subject: { id, kind: "github:pull_request" },
+        title: `Review requested · #${number}`,
+      });
+    };
+    const resumable = await pullRequestItem("1001", 946);
+    await pullRequestItem("1002", 947);
+    const search = signedIn(viewer);
+
+    // One statement reads the item matches and the code change matches.
+    const found = await report(
+      expectNoFullScan(() =>
+        expectSqlBudget(() => search("resumab", "inboxItems"), {
+          statements: 1,
+          serialRounds: 1,
+        }),
+      ),
+    );
+    expect(found).toEqual({
+      inboxItems: [
+        {
+          id: resumable!.id,
+          status: "open",
+          title: "Review requested · #946",
+        },
+      ],
+    });
+    // The item's own text still matches.
+    expect((await report(search("review", "inboxItems"))).inboxItems).toEqual([
+      expect.objectContaining({ title: "Review requested · #947" }),
+      expect.objectContaining({ title: "Review requested · #946" }),
+    ]);
   });
 });

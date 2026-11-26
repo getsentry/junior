@@ -267,7 +267,7 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
     });
     // The ask leaves the list. The Inbox opens the next row.
     await expect(
-      page.getByRole("listitem").filter({ hasText: ask.subject.title }),
+      page.getByRole("listitem").filter({ hasText: ask.subject.object.title }),
     ).toHaveCount(0);
   });
 
@@ -502,7 +502,9 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
     });
     // The row leaves the list. The Inbox opens the next row.
     await expect(
-      page.getByRole("listitem").filter({ hasText: prReview.subject.title }),
+      page
+        .getByRole("listitem")
+        .filter({ hasText: prReview.subject.object.title }),
     ).toHaveCount(0);
   });
 

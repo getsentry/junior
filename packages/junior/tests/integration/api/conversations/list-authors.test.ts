@@ -136,7 +136,9 @@ describe("conversation list authors", () => {
           idempotencyKey: "turn:turn-dashboard-msg-1:started",
         },
       ]);
-      expect(await readParticipantUserIds()).toContain(participantUserId);
+      // A web Message adds nobody, even when it starts a Turn: a person
+      // joins on the web explicitly.
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
 
       const feed = await readConversationFeedFromSql({
         viewer: {
@@ -145,9 +147,7 @@ describe("conversation list authors", () => {
         },
         limit: 10,
       });
-      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
-        "slack:C1:dashboard-author",
-      ]);
+      expect(feed.conversations).toEqual([]);
     } finally {
       await fixture.close();
     }

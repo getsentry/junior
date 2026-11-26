@@ -22,6 +22,7 @@ export default defineConfig({
       postgresSkipMigrations: [
         "20260824190830_native_code_backfill",
         "20261123224011_pull_request_lifecycle_backfill",
+        "20261124230103_pull_request_requester_ids_backfill",
       ],
     },
   },

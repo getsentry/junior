@@ -12,7 +12,8 @@ import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { juniorAutomationRuns, juniorAutomations } from "@/db/schema";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
@@ -235,6 +236,34 @@ describe("pull request attribution", () => {
         destination,
         nowMs: 1_000,
         source: "scheduler",
+      });
+      // The run writer links the run to its Conversation before the run's
+      // agent acts.
+      const creator = await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1",
+        providerTenantId: "T123",
+      });
+      await getDb()
+        .insert(juniorAutomations)
+        .values({
+          channelId: "C1",
+          createdAtMs: 1_000,
+          creatorIdentityId: creator.id,
+          creatorSlackUserId: "U1",
+          id: "sched_1",
+          instruction: "Build the thing.",
+          kind: "scheduled",
+          record: {} as never,
+          status: "active",
+          teamId: "T123",
+        });
+      await getDb().insert(juniorAutomationRuns).values({
+        automationId: "sched_1",
+        conversationId,
+        id: "run_1",
+        status: "running",
       });
       const watchTurn = systemRun(conversationId, "automation-watch-turn");
       const child = await spawn(watchTurn, "call-spawn", "builder");
