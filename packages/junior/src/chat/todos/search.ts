@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { rootVisibleToViewer } from "@/api/conversations/membership";
 import { getDb } from "@/chat/db";
@@ -55,12 +55,14 @@ export async function searchTodosForViewer(
     .innerJoin(
       juniorConversations,
       and(
-        eq(juniorConversations.conversationId, conversation.rootConversationId),
         eq(
-          juniorConversations.rootConversationId,
+          juniorConversations.conversationId,
+          conversation.topLevelConversationId,
+        ),
+        eq(
+          juniorConversations.topLevelConversationId,
           juniorConversations.conversationId,
         ),
-        isNull(juniorConversations.parentConversationId),
       ),
     )
     .where(
@@ -71,7 +73,7 @@ export async function searchTodosForViewer(
         ),
         or(
           isNotNull(conversation.parentConversationId),
-          eq(conversation.rootConversationId, conversation.conversationId),
+          eq(conversation.topLevelConversationId, conversation.conversationId),
         ),
         rootVisibleToViewer(viewer.id),
       ),

@@ -157,6 +157,7 @@ describe("conversation stats API", () => {
         conversationId: "advisor:child",
         parentConversationId: "slack:C1:recent",
         rootConversationId: "slack:C1:recent",
+        topLevelConversationId: "slack:C1:recent",
         createdAt: childAt,
         lastActivityAt: childAt,
         updatedAt: childAt,
@@ -166,6 +167,7 @@ describe("conversation stats API", () => {
       await fixture.sql.db().insert(juniorConversations).values({
         conversationId: "slack:C1:stopped",
         rootConversationId: "slack:C1:stopped",
+        topLevelConversationId: "slack:C1:stopped",
         createdAt: childAt,
         lastActivityAt: childAt,
         updatedAt: childAt,
@@ -567,24 +569,26 @@ describe("conversation stats API", () => {
     try {
       await migrateSchema(fixture.sql);
       const now = new Date("2026-06-15T11:00:00.000Z");
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values(
-          Array.from({ length: 5_001 }, (_, index) =>
-            buildJuniorSqlConversation({
-              conversationId: `internal:stats-cap:${index}`,
-              source: "internal",
-              destination: null,
-              actor: null,
-              createdAt: now,
-              durationMs: 2,
-              lastActivityAt: now,
-              usage: { totalTokens: 3 },
-              updatedAt: now,
-            }),
-          ),
-        );
+      const rows = Array.from({ length: 5_001 }, (_, index) =>
+        buildJuniorSqlConversation({
+          conversationId: `internal:stats-cap:${index}`,
+          source: "internal",
+          destination: null,
+          actor: null,
+          createdAt: now,
+          durationMs: 2,
+          lastActivityAt: now,
+          usage: { totalTokens: 3 },
+          updatedAt: now,
+        }),
+      );
+      // One insert of every row would pass Postgres's limit of 65,535
+      // parameters.
+      await Promise.all(
+        [rows.slice(0, 2_501), rows.slice(2_501)].map((part) =>
+          fixture.sql.db().insert(juniorConversations).values(part),
+        ),
+      );
 
       const response = await createJuniorApi().request(
         "http://localhost/api/conversations/stats",

@@ -18,6 +18,7 @@ import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
+import { spaceLeadIds } from "@/chat/spaces/tree-space";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -147,7 +148,7 @@ function conversationCodeRepositoryFilter(
 ): SQL | undefined {
   return and(
     sql<boolean>`${juniorConversations.conversationId} IN (
-      SELECT coalesce(linked.root_conversation_id, linked.conversation_id)
+      SELECT coalesce(linked.top_level_conversation_id, linked.conversation_id)
       FROM ${juniorConversations} AS linked
       WHERE linked.conversation_id IN (
         SELECT unnest(${juniorCodeChanges.conversationIds})
@@ -160,7 +161,7 @@ function conversationCodeRepositoryFilter(
 }
 
 /**
- * Keep the roots of one Space with the status that the viewer may find. A
+ * Keep the Lead's children in one Space with the status that the viewer may find. A
  * private Space shows its roots only to its members.
  */
 function conversationSpaceFilter(
@@ -169,7 +170,7 @@ function conversationSpaceFilter(
   viewerUserId: string | undefined,
 ): SQL | undefined {
   return and(
-    eq(juniorConversations.spaceId, spaceId),
+    inArray(juniorConversations.parentConversationId, spaceLeadIds(spaceId)),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "active"
@@ -322,7 +323,7 @@ function annotationMatch(
       .where(
         and(
           eq(
-            searchAnnotated.rootConversationId,
+            searchAnnotated.topLevelConversationId,
             juniorConversations.conversationId,
           ),
           includePrivate
@@ -423,7 +424,7 @@ export function conversationFeedVersionQuery(
     .where(
       or(
         eq(feedTree.conversationId, conversationId),
-        eq(feedTree.rootConversationId, conversationId),
+        eq(feedTree.topLevelConversationId, conversationId),
       ),
     );
   const annotations = db
@@ -438,7 +439,7 @@ export function conversationFeedVersionQuery(
         juniorConversationAnnotations.conversationId,
       ),
     )
-    .where(eq(feedAnnotated.rootConversationId, conversationId));
+    .where(eq(feedAnnotated.topLevelConversationId, conversationId));
   // Postgres runs the lookups below after the LIMIT, so once for each row
   // on the page.
   const page = db

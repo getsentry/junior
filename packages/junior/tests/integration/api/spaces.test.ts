@@ -33,11 +33,7 @@ import { getSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
-import {
-  juniorConversationParticipants,
-  juniorConversations,
-} from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { juniorConversationParticipants } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -716,14 +712,6 @@ describe("Spaces API", () => {
     expect(
       await resolveConversationConfiguration({ conversationId: thread }),
     ).toMatchObject({ "github.repo": "getsentry/junior" });
-    // An older root with no root id resolves its Space's values too.
-    await getDb()
-      .update(juniorConversations)
-      .set({ rootConversationId: null })
-      .where(eq(juniorConversations.conversationId, inSpace));
-    expect(
-      await resolveConversationConfiguration({ conversationId: inSpace }),
-    ).toMatchObject({ "github.repo": "getsentry/junior" });
 
     expect(
       await setting("spaces-config-ana@example.com", inSpace, {
@@ -844,11 +832,6 @@ describe("Spaces API", () => {
     });
     const outside = await startConversation(ana, "short-outside");
     const thread = await startThread(first, "local:spaces-archive-thread");
-    // A root from before `root_conversation_id` was set is archived too.
-    await getDb()
-      .update(juniorConversations)
-      .set({ rootConversationId: null })
-      .where(eq(juniorConversations.conversationId, second));
 
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
     expect(await spaceFeed(ana, space.id)).toEqual([]);

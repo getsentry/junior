@@ -369,7 +369,10 @@ export async function pushConversationInboxItemsNow(
             eq(juniorInboxItems.status, "open"),
             or(
               eq(juniorConversations.conversationId, rootConversationId),
-              eq(juniorConversations.rootConversationId, rootConversationId),
+              eq(
+                juniorConversations.topLevelConversationId,
+                rootConversationId,
+              ),
             ),
           ),
         );

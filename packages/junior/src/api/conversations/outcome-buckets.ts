@@ -1,13 +1,5 @@
-import {
-  and,
-  eq,
-  gte,
-  isNull,
-  lte,
-  or,
-  sql,
-  type SQLWrapper,
-} from "drizzle-orm";
+import { and, eq, gte, lte, or, sql, type SQLWrapper } from "drizzle-orm";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorConversations } from "@/db/schema";
@@ -28,7 +20,7 @@ const tree = alias(juniorConversations, "outcome_tree");
 const unnestedConversationId = sql<string>`unnest(${changes.conversationIds})`;
 // Roots normally reference themselves. A root without the reference is its
 // own root.
-const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.conversationId})`;
+const linkedRoot = sql<string>`coalesce(${linked.topLevelConversationId}, ${linked.conversationId})`;
 
 /** A root Conversation active in the window, with its whole tree. */
 export interface WindowRoot {
@@ -97,7 +89,7 @@ export async function readWindowRoots(
   const roots = juniorConversations;
   // A root without the reference is still part of its own tree.
   const unreferencedRootCost = sql`CASE
-    WHEN ${roots.rootConversationId} IS DISTINCT FROM ${roots.conversationId}
+    WHEN ${roots.topLevelConversationId} IS DISTINCT FROM ${roots.conversationId}
       THEN COALESCE(${conversationUsageCostExpr(roots.usage)}, 0)
     ELSE 0
   END`;
@@ -112,10 +104,10 @@ export async function readWindowRoots(
       )::double precision`,
     })
     .from(roots)
-    .leftJoin(tree, eq(tree.rootConversationId, roots.conversationId))
+    .leftJoin(tree, eq(tree.topLevelConversationId, roots.conversationId))
     .where(
       and(
-        isNull(roots.parentConversationId),
+        topLevelConversation(roots),
         gte(roots.lastActivityAt, options.start),
         lte(roots.lastActivityAt, options.end),
       ),
@@ -133,7 +125,10 @@ function treeCostUsd(db: JuniorDatabase, rootId: SQLWrapper) {
     })
     .from(tree)
     .where(
-      or(eq(tree.rootConversationId, rootId), eq(tree.conversationId, rootId)),
+      or(
+        eq(tree.topLevelConversationId, rootId),
+        eq(tree.conversationId, rootId),
+      ),
     );
   return sql<number>`(${cost})::double precision`;
 }

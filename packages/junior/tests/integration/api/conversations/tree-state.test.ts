@@ -591,9 +591,10 @@ describe("conversation tree state", () => {
       latestTurnFailed: true,
       treeState: "needs_you",
     });
+    // The failure starts a Turn of the Lead, which Bob sees as working.
     await expect(asBob()).resolves.toEqual({
       latestTurnFailed: true,
-      treeState: "done",
+      treeState: "working",
     });
 
     const [row] = await getDb()
@@ -607,8 +608,10 @@ describe("conversation tree state", () => {
       lastSeenAt: row!.lastActivityAt.toISOString(),
     });
     // An archived Conversation counts for nothing, and the one-off, which
-    // failed too, counts for no Space.
-    await expect(asViewer()).resolves.toEqual(idle);
-    await expect(asBob()).resolves.toEqual(idle);
+    // failed too, counts for no Space. The Lead's Turn for the failure
+    // still waits to run.
+    const leadWorking = { latestTurnFailed: false, treeState: "working" };
+    await expect(asViewer()).resolves.toEqual(leadWorking);
+    await expect(asBob()).resolves.toEqual(leadWorking);
   });
 });

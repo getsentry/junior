@@ -55,7 +55,7 @@ export function treeHasAnnotationKey(
     inner join ${juniorConversations} as ${sql.identifier(ANNOTATED_ALIAS)}
       on ${annotated.conversationId} = ${juniorConversationAnnotations.conversationId}
     where ${and(
-      eq(annotated.rootConversationId, rootConversationId),
+      eq(annotated.topLevelConversationId, rootConversationId),
       annotationKeyMatches(key),
     )}
   )`;

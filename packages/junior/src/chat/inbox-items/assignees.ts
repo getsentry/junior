@@ -99,7 +99,7 @@ async function participantUserIds(
       juniorConversations,
       eq(
         juniorConversationParticipants.rootConversationId,
-        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+        sql`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`,
       ),
     )
     .where(

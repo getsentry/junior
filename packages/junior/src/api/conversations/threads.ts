@@ -1,4 +1,13 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+} from "drizzle-orm";
 import { isThread } from "@/chat/conversations/kind-behavior";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -53,10 +62,15 @@ export async function readFeedThreadRecords(
   const rows = await selectConversationRecords(db)
     .where(
       and(
-        inArray(juniorConversations.rootConversationId, rootIds),
-        // A child Thread: a `thread` with a parent.
+        inArray(juniorConversations.topLevelConversationId, rootIds),
+        // A child Thread: a `thread` with a parent, other than a Lead's
+        // child, which is top-level Space work.
         eq(juniorConversations.kind, "thread"),
         isNotNull(juniorConversations.parentConversationId),
+        ne(
+          juniorConversations.conversationId,
+          juniorConversations.topLevelConversationId,
+        ),
         isNull(juniorConversations.archivedAt),
       ),
     )
@@ -106,7 +120,7 @@ export function nestFeedThreads(
       rootIds,
     );
     if (!parentId) continue;
-    const rootId = row.conversation.rootConversationId;
+    const rootId = row.conversation.topLevelConversationId;
     if (rootId) placedByRoot.set(rootId, (placedByRoot.get(rootId) ?? 0) + 1);
     // Thread usage covers only the Thread. Roots show tree totals.
     const summary = conversationSummaryFromStoredConversation({

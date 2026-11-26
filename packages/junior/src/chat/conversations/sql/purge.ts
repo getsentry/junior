@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { topLevelConversation } from "./listed";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -193,7 +194,7 @@ export async function selectExpiredRoots(
     .from(juniorConversations)
     .where(
       and(
-        isNull(juniorConversations.parentConversationId),
+        topLevelConversation(),
         sql`${effectiveLastActivityAt} < ${cutoff}`,
         hasTreeWork,
       ),

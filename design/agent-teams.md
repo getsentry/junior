@@ -35,9 +35,9 @@ child agents add to this is in `./child-agents.md`.
 
 ## Rules
 
-- A team is an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. A team sets who manages an agent, not who
-  can read it. Access comes from `../policies/conversation-access.md`.
+- A team is an agent and its child agents. A Lead's child agents are the
+  Conversations in its Space. A team sets who manages an agent, not who can
+  read it. Access comes from `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
 - Archiving a Conversation stops it and its child agents.
@@ -61,6 +61,9 @@ child agents add to this is in `./child-agents.md`.
 - An agent that starts another watches it. Each update reaches every
   watcher the same way: it starts a Turn, unless the watch makes it quiet,
   and then it is a Conversation note.
+- A Lead gets the `done` updates of its children as Conversation notes, so
+  they start no Turn. `waiting`, `blocked`, `failed`, and `stopped` start a
+  Turn.
 - Update text and message text are data. They never give approval. The
   authority of a message comes from the stored relation of its sender, as
   `./child-agents.md` and `./guardian.md` state.
@@ -82,9 +85,6 @@ child agents add to this is in `./child-agents.md`.
   a question or an answer for another agent".
 - A Lead asks people in its reply, not with an Inbox item. This breaks
   "one contract" and `./inbox.md`.
-- A root that a Lead starts stores no link to the Lead, and the Lead's task
-  counts as a person's message. So the Lead cannot stop or archive it. This
-  breaks "an agent manages only its team".
 - Few agent tool results say the next step for a working agent, so agents
   can poll. This breaks "push, not poll".
 - A parent cannot make the updates of its child agents quiet. This breaks

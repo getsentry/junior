@@ -46,6 +46,7 @@ import {
   juniorSpaces,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
@@ -175,12 +176,12 @@ export async function searchConversations(
   // A child requester searches with the access of its root, and its own
   // tree is never a result.
   const [requester] = await db
-    .select({ rootId: conversations.rootConversationId })
+    .select({ rootId: conversations.topLevelConversationId })
     .from(conversations)
     .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
-  const ownTree = eq(conversations.rootConversationId, requesterRootId);
+  const ownTree = eq(conversations.topLevelConversationId, requesterRootId);
   const participates = (userId: string) =>
     exists(
       db
@@ -203,13 +204,16 @@ export async function searchConversations(
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
       ? or(
-          eq(conversations.conversationId, conversations.rootConversationId),
+          eq(
+            conversations.conversationId,
+            conversations.topLevelConversationId,
+          ),
           team ? ownTree : undefined,
         )
       : undefined,
     team
       ? ne(conversations.conversationId, requesterConversationId)
-      : ne(conversations.rootConversationId, requesterRootId),
+      : ne(conversations.topLevelConversationId, requesterRootId),
     or(
       isPublicConversation(conversations),
       // Conversations share a Destination only when they share an audience.
@@ -224,14 +228,14 @@ export async function searchConversations(
       // A private Space's roots have their own Destinations, so only this
       // match reaches them.
       eq(
-        roots.spaceId,
+        rootSpaceIdSql(roots),
         db
           .select({ id: juniorSpaces.id })
           .from(requesterRoot)
           .innerJoin(
             juniorSpaces,
             and(
-              eq(juniorSpaces.id, requesterRoot.spaceId),
+              eq(juniorSpaces.id, rootSpaceIdSql(requesterRoot)),
               eq(juniorSpaces.visibility, "private"),
             ),
           )
@@ -327,7 +331,7 @@ export async function searchConversations(
     .from(conversations)
     .innerJoin(
       roots,
-      eq(roots.conversationId, conversations.rootConversationId),
+      eq(roots.conversationId, conversations.topLevelConversationId),
     )
     .innerJoin(
       juniorDestinations,

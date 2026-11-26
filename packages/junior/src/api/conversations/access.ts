@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { childrenAreTopLevel } from "@/chat/conversations/kind-behavior";
 import {
   canExposeConversationPayload,
   type ConversationPrivacy,
@@ -17,6 +18,8 @@ import { conversationIdsWithParticipantUser } from "./membership";
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
 const rootSpace = alias(juniorSpaces, "access_root_space");
+// A Lead's child is its own root, and the Lead holds its Space.
+const rootLead = alias(juniorConversations, "access_root_lead");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
@@ -125,10 +128,11 @@ export async function readConversationAccessRows(
     .select({
       conversationId: juniorConversations.conversationId,
       parentConversationId: juniorConversations.parentConversationId,
-      storedRootConversationId: juniorConversations.rootConversationId,
+      storedRootConversationId: juniorConversations.topLevelConversationId,
       rootConversationId: rootConversation.conversationId,
       rootParentConversationId: rootConversation.parentConversationId,
-      rootRootConversationId: rootConversation.rootConversationId,
+      rootParentKind: rootLead.kind,
+      rootRootConversationId: rootConversation.topLevelConversationId,
       destinationId: rootDestination.id,
       visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
@@ -141,14 +145,24 @@ export async function readConversationAccessRows(
       rootConversation,
       eq(
         rootConversation.conversationId,
-        juniorConversations.rootConversationId,
+        juniorConversations.topLevelConversationId,
       ),
     )
     .leftJoin(
       rootDestination,
       eq(rootDestination.id, rootConversation.destinationId),
     )
-    .leftJoin(rootSpace, eq(rootSpace.id, rootConversation.spaceId))
+    .leftJoin(
+      rootLead,
+      eq(rootLead.conversationId, rootConversation.parentConversationId),
+    )
+    .leftJoin(
+      rootSpace,
+      eq(
+        rootSpace.id,
+        sql`coalesce(${rootConversation.spaceId}, ${rootLead.spaceId})`,
+      ),
+    )
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 }
 
@@ -169,7 +183,8 @@ export function conversationAccessFromRows(
         row.rootConversationId !== null &&
         row.rootConversationId === row.storedRootConversationId &&
         row.rootRootConversationId === row.rootConversationId &&
-        row.rootParentConversationId === null &&
+        (row.rootParentConversationId === null ||
+          childrenAreTopLevel(row.rootParentKind)) &&
         (row.parentConversationId !== null ||
           row.storedRootConversationId === row.conversationId);
       const validRootConversationId = hasValidRoot

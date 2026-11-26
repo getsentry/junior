@@ -35,6 +35,7 @@ describe("conversation list API usage rollup", () => {
           conversationId: "advisor:child",
           parentConversationId: "slack:C1:root",
           rootConversationId: "slack:C1:root",
+          topLevelConversationId: "slack:C1:root",
           createdAt: childAt,
           lastActivityAt: childAt,
           updatedAt: childAt,
@@ -49,6 +50,7 @@ describe("conversation list API usage rollup", () => {
           conversationId: "advisor:stray-child",
           parentConversationId: "slack:C1:root",
           rootConversationId: "advisor:stray-child",
+          topLevelConversationId: "advisor:stray-child",
           createdAt: childAt,
           lastActivityAt: childAt,
           updatedAt: childAt,
@@ -122,6 +124,7 @@ describe("conversation list API usage rollup", () => {
         conversationId: "advisor:later-child",
         parentConversationId: "advisor:child",
         rootConversationId: "slack:C1:root",
+        topLevelConversationId: "slack:C1:root",
         createdAt: laterChildAt,
         lastActivityAt: laterChildAt,
         updatedAt: laterChildAt,
@@ -251,6 +254,7 @@ describe("conversation list API usage rollup", () => {
         .set({
           durationMs: 100,
           rootConversationId: null,
+          topLevelConversationId: null,
           usage: { inputTokens: 10 },
         })
         .where(eq(juniorConversations.conversationId, "slack:C1:invalid-root"));
@@ -262,6 +266,7 @@ describe("conversation list API usage rollup", () => {
           conversationId: "advisor:invalid-root-child",
           parentConversationId: "slack:C1:invalid-root",
           rootConversationId: "slack:C1:invalid-root",
+          topLevelConversationId: "slack:C1:invalid-root",
           createdAt: childAt,
           lastActivityAt: childAt,
           updatedAt: childAt,

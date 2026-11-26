@@ -111,13 +111,25 @@ export const juniorConversations = pgTable(
     // Set while a fork is a Quick question that nobody kept. Lists and search
     // hide it. Keep as fork clears it.
     quickQuestionAt: timestamptz("quick_question_at"),
-    // Roots reference themselves; descendants reference the root whose actor
-    // and destination own their privacy boundary.
+    // The root of the tree: the Conversation itself when it has no parent,
+    // else its parent's root. A Space's Lead is the root of every
+    // Conversation in its Space.
     rootConversationId: text("root_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // The Space of a root, or null for a one-off. Only a root stores it, so
-    // a child reads the Space of its root and can never disagree with it.
+    // The top-level Conversation: the Conversation itself when it has no
+    // parent or its parent is a Lead, else its parent's. Participants,
+    // pins, the sidebar, and other state of one piece of work key on it, so
+    // a Space's Conversations keep them apart. Its actor and Destination own
+    // the privacy boundary of the work below it. A writer of an older deploy
+    // sets only the root, so the `junior_conversations_fill_top_level`
+    // trigger fills it then.
+    // TODO(dcramer): After every deployed writer sets it, drop that trigger,
+    // rerun the backfill, and add NOT NULL.
+    topLevelConversationId: text("top_level_conversation_id"),
+    // The Space of a Lead. Only a Lead stores it: the other Conversations of
+    // the Space are the Lead's children and read it from the Lead
+    // (`rootSpaceIdSql`), so they can never disagree with it.
     spaceId: text("space_id").references(() => juniorSpaces.id),
     // Who may read the Conversation (policies/conversation-access.md).
     // Public: anyone. Private: only its root's Participants. Every row of a
@@ -186,7 +198,7 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
-    // The Conversation list of one Space, by activity.
+    // Only Leads have a Space now. The Space list reads the Lead's children.
     index("junior_conversations_space_activity_idx")
       .on(table.spaceId, table.lastActivityAt.desc())
       .where(sql`${table.spaceId} is not null`),
@@ -194,11 +206,15 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
-    // Maps a Conversation to its root with an index-only scan, so time-bounded
-    // reads such as People activity do not read every wide row of this table.
-    index("junior_conversations_root_lookup_idx").on(
+    index("junior_conversations_top_level_idx").on(
+      table.topLevelConversationId,
+    ),
+    // Maps a Conversation to its top-level Conversation with an index-only
+    // scan, so time-bounded reads such as People activity do not read every
+    // wide row of this table.
+    index("junior_conversations_top_level_lookup_idx").on(
       table.conversationId,
-      table.rootConversationId,
+      table.topLevelConversationId,
     ),
     // One Lead per Space.
     uniqueIndex("junior_conversations_space_lead_idx")

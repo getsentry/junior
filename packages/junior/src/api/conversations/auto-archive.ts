@@ -111,7 +111,7 @@ function treeIsQuiet(run: ArchiveRun) {
             juniorConversationParticipants.rootConversationId,
           ),
           eq(
-            juniorConversations.rootConversationId,
+            juniorConversations.topLevelConversationId,
             juniorConversationParticipants.rootConversationId,
           ),
         ),
@@ -159,7 +159,7 @@ function treeNeedsNoOne() {
           ),
           and(
             eq(
-              juniorConversations.rootConversationId,
+              juniorConversations.topLevelConversationId,
               juniorConversationParticipants.rootConversationId,
             ),
             isNull(juniorConversations.archivedAt),
