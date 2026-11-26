@@ -177,7 +177,6 @@ interface GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
-  note?: string;
   stack?: GitHubPullRequestStack;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
@@ -189,7 +188,6 @@ interface GitHubPullRequestStructuredResult
 }
 
 const gitHubPullRequestDataSchema = z.object({
-  note: z.string().optional(),
   number: z.number(),
   url: z.string(),
   stack: z
@@ -562,14 +560,6 @@ function gitHubPullRequestToolResult(
   };
 }
 
-/**
- * Next step after the Watch is added. Checks are still pending when the
- * pull request opens, and the Watch delivers their result in a later Turn,
- * so the agent must not hold this Turn open to wait for them.
- */
-const WATCHED_PULL_REQUEST_NOTE =
-  "The Watch in `subscription` starts a new Turn on each of its events, also after this Turn ends. Do not wait, sleep, or poll for checks or reviews: finish the rest of the task and end this Turn.";
-
 async function gitHubPullRequestStructuredResult(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
@@ -624,7 +614,6 @@ async function gitHubPullRequestStructuredResult(
     return {
       objectAnnotations,
       target: "createPullRequest",
-      note: WATCHED_PULL_REQUEST_NOTE,
       ...data,
       ...(stack ? { stack } : undefined),
       subscription,
