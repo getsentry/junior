@@ -1,14 +1,14 @@
 /** Event namespace of the messages between a parent and its child agents. */
-export const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
+export const AGENT_EVENT_NAMESPACE = "junior";
 
-// The result of an Agent invocation, which an earlier release wrote, has an
-// Event type with this prefix and its status, such as
-// `agent_invocation.blocked`. Stored transcripts still have them.
-const AGENT_INVOCATION_RESULT_EVENT_TYPE_PREFIX = "agent_invocation.";
+// A child's result that an earlier release wrote has an Event type with this
+// prefix and its status, such as `agent_invocation.blocked`. Stored
+// transcripts still have them.
+const LEGACY_RESULT_EVENT_TYPE_PREFIX = "agent_invocation.";
 
-/** True when an Event type names an agent invocation result. */
-export function isAgentInvocationResultEventType(eventType: string): boolean {
-  return eventType.startsWith(AGENT_INVOCATION_RESULT_EVENT_TYPE_PREFIX);
+/** True when an Event type names a child result that an earlier release wrote. */
+export function isLegacyResultEventType(eventType: string): boolean {
+  return eventType.startsWith(LEGACY_RESULT_EVENT_TYPE_PREFIX);
 }
 
 /**

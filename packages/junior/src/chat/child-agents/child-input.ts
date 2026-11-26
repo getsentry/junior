@@ -8,11 +8,10 @@ import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
-import { isPersonStopTurnId } from "./ids";
 import { readChildOfStoredParent } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import {
-  AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
   isAgentUpdateEventType,
 } from "./result-event-type";
@@ -32,7 +31,7 @@ function childAgentInputKind(
   eventType: string | undefined,
   watchId: string | undefined,
 ): ChildAgentInput["kind"] | undefined {
-  if (namespace !== AGENT_INVOCATION_EVENT_NAMESPACE || !eventType) {
+  if (namespace !== AGENT_EVENT_NAMESPACE || !eventType) {
     return undefined;
   }
   if (eventType === AGENT_MESSAGE_EVENT_TYPE) {
@@ -59,6 +58,23 @@ export function childAgentInput(
     metadata.event.subscriptionId,
   );
   return kind ? { kind, senderId: metadata.event.identifier } : undefined;
+}
+
+/**
+ * Whether one input is the `stopped` result that the stop of its sender
+ * sends. Only a stop reports `stopped`, so the stored status tells this
+ * result from the reply of a Turn.
+ */
+export function isStopResult(message: {
+  input: { metadata?: Record<string, unknown> | undefined };
+}): boolean {
+  const metadata = message.input.metadata;
+  return (
+    isEventMailboxMetadata(metadata) &&
+    metadata.event.namespace === AGENT_EVENT_NAMESPACE &&
+    isAgentUpdateEventType(metadata.event.eventType) &&
+    metadata.event.status === "stopped"
+  );
 }
 
 /**
@@ -122,7 +138,7 @@ export async function isDroppedChildInput(
  */
 async function isSkippedReply(message: InboundMessage): Promise<boolean> {
   const sender = readInboundMessageSender(message);
-  if (!sender || isPersonStopTurnId(sender.turnId)) {
+  if (!sender || isStopResult(message)) {
     return false;
   }
   const senderStoppedAtMs = await getConversationStoppedAtMs(
@@ -174,7 +190,7 @@ export async function readChildConversationSender(
 /**
  * Read the sender of one reply or message, when it is a child of the
  * Conversation that received it. Otherwise the input has no child sender,
- * such as one that an Agent invocation of an earlier release sent.
+ * such as one that an earlier release sent.
  */
 export async function getChildAgentInputSender(
   message: InboundMessage,

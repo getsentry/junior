@@ -19,10 +19,10 @@ import {
   childAgentTurnOptions,
   commitParentMessageFork,
   isParentMessageAuthor,
-} from "@/chat/agent-invocations/parent-message";
-import { parentResultActor } from "@/chat/agent-invocations/parent-result";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
-import { isChildAgentEvent } from "@/chat/agent-invocations/child-input";
+} from "@/chat/child-agents/parent-message";
+import { parentResultActor } from "@/chat/child-agents/parent-result";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
+import { isChildAgentEvent } from "@/chat/child-agents/child-input";
 import {
   hydrateConversationMessages,
   persistConversationMessages,

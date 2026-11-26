@@ -1,4 +1,4 @@
-/** Shared parent Conversation setup for agent invocation integration tests. */
+/** Shared parent Conversation setup for child agent integration tests. */
 import type { StateAdapter } from "chat";
 import { expect } from "vitest";
 import {
@@ -9,9 +9,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { defineJuniorPlugins } from "@/app";
-import { spawnChildAgent as spawnChild } from "@/chat/agent-invocations/create";
-import { listChildAgents } from "@/chat/agent-invocations/list";
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { spawnChildAgent as spawnChild } from "@/chat/child-agents/create";
+import { listChildAgents } from "@/chat/child-agents/list";
+import type { AgentUpdate } from "@/chat/child-agents/agent-update";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import type { Actor } from "@/chat/actor";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -39,7 +39,7 @@ export const destination = {
   conversationId: parentConversationId,
   platform: "local",
 } as const;
-export const invocationInput = {
+export const spawnInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
   input: "Summarize the durable task.",
   parentConversationId,
@@ -57,8 +57,8 @@ const slackSource = createSlackSource({
   threadTs: "1712345.0001",
   visibility: "public",
 });
-export const slackInvocationInput = {
-  ...invocationInput,
+export const slackSpawnInput = {
+  ...spawnInput,
   actor: {
     platform: "slack",
     teamId: "T123",
@@ -153,7 +153,7 @@ export async function spawnChildAgent(
 ): Promise<SpawnedChild> {
   const { childConversationId } = await spawnChild(
     {
-      ...invocationInput,
+      ...spawnInput,
       idempotencyKey: args.idempotencyKey,
       parentConversationId: args.parentConversationId,
       parentToolCallId: args.idempotencyKey,
@@ -374,7 +374,7 @@ export async function prepareForkParentHistory(): Promise<string> {
             type: "toolCall",
             id: toolCallId,
             name: "startAgent",
-            arguments: { fork: true, task: invocationInput.input },
+            arguments: { fork: true, task: spawnInput.input },
           },
         ],
         stopReason: "toolUse",

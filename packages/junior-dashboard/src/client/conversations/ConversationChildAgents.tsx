@@ -94,7 +94,7 @@ export function ConversationThreads(props: {
           renderItem={(thread) => (
             <ChildAgentRow
               agent={thread}
-              // The report title is the invocation title, so the Thread's
+              // The report title is the task title, so the Thread's
               // own title wins. Archived Threads are not in the feed.
               title={feedThreads.get(thread.conversationId)?.displayTitle}
               to={conversationPath(thread.conversationId)}

@@ -16,7 +16,7 @@ import { FeedThreads } from "./feedThreads";
  * Show the parents of a child Conversation as links, root first, then
  * `current`, the page title. The title carries its own `aria-current`. The
  * mobile header already shows the title, so it may be left out. The agent
- * tree labels a Thread with its invocation title, so a Thread in the feed
+ * tree labels a Thread with its task title, so a Thread in the feed
  * uses its own title, like the sidebar.
  */
 export function ConversationBreadcrumb(props: {

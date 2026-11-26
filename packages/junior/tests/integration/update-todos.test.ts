@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import type { AgentUpdate } from "@/chat/child-agents/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -12,11 +12,11 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   prepareParentConversation,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
 
@@ -27,7 +27,7 @@ async function createHarness() {
     (
       await spawnChildAgent(
         {
-          ...invocationInput,
+          ...spawnInput,
           agentName,
           idempotencyKey: `todos-${agentName}`,
           input: "Review the draft",
@@ -65,7 +65,7 @@ async function createHarness() {
     /** Sends one child Turn's result to the parent, as its loop does. */
     send: async (conversationId: string, update: AgentUpdate) =>
       await publishChildTurn({
-        actor: invocationInput.actor,
+        actor: spawnInput.actor,
         conversationId,
         turnId: "turn_child",
         update,

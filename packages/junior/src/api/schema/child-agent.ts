@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
+import { CHILD_AGENT_STATUSES } from "@/chat/child-agents/statuses";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
   conversationAuxiliaryCostsSchema,
@@ -27,7 +27,7 @@ export const conversationChildAgentSchema = z
     kind: z.enum(["thread", "task"]),
     name: z.string().min(1).optional(),
     redacted: z.literal(true).optional(),
-    status: z.enum(AGENT_INVOCATION_STATUSES),
+    status: z.enum(CHILD_AGENT_STATUSES),
     task: z.string().optional(),
     title: z.string().min(1).optional(),
     updatedAt: z.string().datetime(),

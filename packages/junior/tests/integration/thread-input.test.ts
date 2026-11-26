@@ -1,6 +1,6 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { bindMessageAgent } from "@/chat/child-agents/message";
 import { buildPromptInput } from "@/chat/agent/prompt";
 import { type AgentRun } from "@/chat/agent/types";
 import {
@@ -30,9 +30,9 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { juniorConversations } from "@/db/schema";
 import {
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { webTestActor } from "../fixtures/conversation";
 import {
   createHarness,
@@ -48,7 +48,7 @@ import {
 /** Give the Thread more work from its parent agent, like messageAgent. */
 async function sendParentMessage(harness: Harness, toolCallId: string) {
   const parentRun: AgentRun = {
-    actor: slackInvocationInput.actor,
+    actor: slackSpawnInput.actor,
     conversationId: slackParentConversationId,
     destination: slackDestination,
     instruction: { text: "Coordinate the work." },
@@ -181,7 +181,7 @@ describe("Thread input", () => {
 
       const [parentRun, personRun] = harness.runs;
       expect(parentRun).toMatchObject({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         source: { kind: "parent_message" },
       });
       // The person's Turn uses the Thread's own Destination and Location,
@@ -372,7 +372,7 @@ describe("Thread input", () => {
       const parentRun = harness.runs.find(
         (run) => run.actor?.platform === "slack",
       )!;
-      expect(parentRun).toMatchObject({ actor: slackInvocationInput.actor });
+      expect(parentRun).toMatchObject({ actor: slackSpawnInput.actor });
       expect(parentRun.instruction.text).toContain("Check the deploy.");
       expect(parentRun.instruction.text).toContain(
         "Also check the retry path.",

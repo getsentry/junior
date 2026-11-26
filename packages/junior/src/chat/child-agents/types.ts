@@ -4,7 +4,7 @@ import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
 import type { AgentUpdateStatus } from "./agent-update";
-import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
+import { CHILD_AGENT_STATUSES } from "@/chat/child-agents/statuses";
 
 const exactStringSchema = z
   .string()
@@ -57,7 +57,7 @@ export type ChildAgentSender = {
   parentConversationId: string;
   title?: string;
 };
-type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
+type ChildAgentStatus = (typeof CHILD_AGENT_STATUSES)[number];
 export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
 
 /**
@@ -81,7 +81,7 @@ export type ChildAgent = {
   kind: ChildAgentKind;
   /** How the newest Turn that finished without a stop ended. */
   lastResult?: (typeof CHILD_AGENT_RESULTS)[number];
-  status: AgentInvocationStatus;
+  status: ChildAgentStatus;
   /** Latest task that the parent gave the child. */
   task: string;
   /** Short title of that task. */

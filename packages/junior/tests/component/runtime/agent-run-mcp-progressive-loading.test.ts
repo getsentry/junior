@@ -1055,7 +1055,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       intent: "Ping the demo service.",
       conversationId: "agent:guardian-deny",
       run: {
-        agentInvocationId: "agent-invocation:guardian-deny",
         instruction: { provenance: agentInstructionProvenance },
       },
     },
@@ -1066,7 +1065,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       conversationId: "agent:guardian-deny-result",
       run: {
         actor: { platform: "system", name: "event" } as const,
-        agentInvocationId: "agent-invocation:guardian-deny-result",
         credentialContext: {
           actor: { platform: "system", name: "event" } as const,
         },

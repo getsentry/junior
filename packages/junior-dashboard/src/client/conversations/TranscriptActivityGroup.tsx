@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import {
-  isAgentInvocationResultMessage,
+  isChildResultMessage,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
@@ -38,11 +38,11 @@ export function isCollapsibleActivityEntry(
   // main view.
   if (entry.kind === "subagent") return false;
   if (entry.kind === "tool" && entry.part.startedConversationId) return false;
-  // An agent invocation result left only for its recalled memories is
+  // A child result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
-    return isAgentInvocationResultMessage(entry.message);
+    return isChildResultMessage(entry.message);
   }
   // A message to another agent stays in view, like a message from one.
   return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
@@ -131,7 +131,7 @@ export function routineEventEntryKeys(
       lastEvent = undefined;
     } else if (message.role === "user" && message.eventType === undefined) {
       // A person's message is what the next reply answers. Other Turn
-      // inputs, such as an agent invocation result, keep the Event.
+      // inputs, such as a child result, keep the Event.
       lastEvent = undefined;
     }
   }

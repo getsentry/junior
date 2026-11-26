@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
-import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
-import type { ChildAgentSender } from "@/chat/agent-invocations/types";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import { listUnreportedSiblingAgents } from "@/chat/child-agents/list";
+import { resultAuthorId } from "@/chat/child-agents/sender-actors";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
+import type { ChildAgentSender } from "@/chat/child-agents/types";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { botConfig } from "@/chat/config";
@@ -30,10 +30,10 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import {
   loadTurnEvents,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   stoppedConversationMessageTexts,
   storeConversationStop,
@@ -83,7 +83,7 @@ async function createHelper(
 ): Promise<ChildAgentSender> {
   const { childConversationId } = await spawnChildAgent(
     {
-      ...slackInvocationInput,
+      ...slackSpawnInput,
       idempotencyKey: "helper",
       parentConversationId: childId,
       parentToolCallId: "helper",
@@ -103,7 +103,7 @@ async function createHelper(
 async function sendHelperReply(
   harness: Harness,
   sender: ChildAgentSender,
-  actor: Actor = slackInvocationInput.actor,
+  actor: Actor = slackSpawnInput.actor,
 ) {
   await enqueueStarterUpdate({
     actor,
@@ -234,11 +234,11 @@ describe("child Turns on the Conversation loop", () => {
       expect(resultRuns).toHaveLength(2);
       for (const run of resultRuns) {
         expect(run).toMatchObject({
-          actor: slackInvocationInput.actor,
+          actor: slackSpawnInput.actor,
           instruction: {
             provenance: {
               authority: "context",
-              actor: slackInvocationInput.actor,
+              actor: slackSpawnInput.actor,
             },
           },
         });

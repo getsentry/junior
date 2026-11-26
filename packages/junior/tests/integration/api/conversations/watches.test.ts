@@ -17,10 +17,10 @@ import {
   parentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../../../fixtures/agent-invocations";
-import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+} from "../../../fixtures/child-agents";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const NOW_MS = Date.now();
@@ -75,8 +75,8 @@ describe("conversation watches API", () => {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const { conversationStore } = await prepareSlackParentConversation();
     const reviewer = {
-      childConversationId: await spawnChildWithoutAgentInvocation({
-        actor: slackInvocationInput.actor,
+      childConversationId: await startChildAgent({
+        actor: slackSpawnInput.actor,
         agentName: "reviewer",
         conversationStore,
         idempotencyKey: "watches-reviewer",

@@ -5,9 +5,9 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { getSpawnedChildConversationId } from "@/chat/child-agents/ids";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAndEnqueueConversation,

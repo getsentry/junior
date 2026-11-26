@@ -5,7 +5,7 @@ import type { TranscriptViewMessage } from "../types";
 /** The fields that name the author of a transcript message. */
 export type ConversationOutlineAuthor = Pick<
   TranscriptViewMessage,
-  "actorIdentity" | "actorIdentityId" | "agentInvocationId"
+  "actorIdentity" | "actorIdentityId" | "fromParentAgent"
 >;
 
 /** One person message in the outline, with Junior's reply to it. */
@@ -91,8 +91,8 @@ function outlineAuthor(
     ...(source.actorIdentityId
       ? { actorIdentityId: source.actorIdentityId }
       : undefined),
-    ...(source.agentInvocationId
-      ? { agentInvocationId: source.agentInvocationId }
+    ...(source.fromParentAgent
+      ? { fromParentAgent: source.fromParentAgent }
       : undefined),
   };
 }

@@ -6,10 +6,10 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import { juniorConversations } from "@/db/schema";
 import {
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
-import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+} from "../fixtures/child-agents";
+import { startChildAgent } from "../fixtures/child-agent-start";
 import {
   createHarness,
   finishRun,
@@ -17,7 +17,7 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 
-describe("To-dos of child agents that no Agent invocation names", () => {
+describe("To-dos of child agents", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
@@ -26,10 +26,10 @@ describe("To-dos of child agents that no Agent invocation names", () => {
   async function spawnChild(
     harness: Harness,
     idempotencyKey: string,
-    input: Partial<Parameters<typeof spawnChildWithoutAgentInvocation>[0]> = {},
+    input: Partial<Parameters<typeof startChildAgent>[0]> = {},
   ) {
-    return await spawnChildWithoutAgentInvocation({
-      actor: slackInvocationInput.actor,
+    return await startChildAgent({
+      actor: slackSpawnInput.actor,
       conversationStore: harness.conversationStore,
       idempotencyKey,
       parentConversationId: slackParentConversationId,

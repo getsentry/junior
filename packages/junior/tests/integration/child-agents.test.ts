@@ -1,24 +1,24 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+  MAX_ACTIVE_CHILD_AGENTS,
   messageChildAgent,
-} from "@/chat/agent-invocations/create";
-import { agentTypeInstructions } from "@/chat/agent-invocations/agent-types";
+} from "@/chat/child-agents/create";
+import { agentTypeInstructions } from "@/chat/child-agents/agent-types";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentStoppedError,
-} from "@/chat/agent-invocations/errors";
-import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+} from "@/chat/child-agents/errors";
+import { FORK_INSTRUCTIONS } from "@/chat/child-agents/fork-history";
 import { turnRequestText } from "@/chat/agent/prompt";
 import {
   listOpenChildAgents,
   listUnreportedSiblingAgents,
-} from "@/chat/agent-invocations/list";
+} from "@/chat/child-agents/list";
 import { eq } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
 import {
   getConversationStoppedAtMs,
   stopConversationTree,
@@ -42,14 +42,14 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   sendParentMessage,
-  spawnChildWithoutAgentInvocation,
-} from "../fixtures/child-without-agent-invocation";
+  startChildAgent,
+} from "../fixtures/child-agent-start";
 import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { mswServer } from "../msw/server";
@@ -81,7 +81,7 @@ async function sendSpoofedParentMessage(
   >,
 ) {
   await sendParentMessage({
-    actor: slackInvocationInput.actor,
+    actor: slackSpawnInput.actor,
     childConversationId,
     idempotencyKey: "parent-turn:call-2",
     parentConversationId: slackParentConversationId,
@@ -121,7 +121,7 @@ describe("child agents", () => {
   ) {
     return await messageChildAgent(
       {
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         childConversationId,
         idempotencyKey,
         input: "Check it again.",
@@ -136,10 +136,10 @@ describe("child agents", () => {
   async function spawnChild(
     harness: Harness,
     idempotencyKey: string,
-    input: Partial<Parameters<typeof spawnChildWithoutAgentInvocation>[0]> = {},
+    input: Partial<Parameters<typeof startChildAgent>[0]> = {},
   ) {
-    return await spawnChildWithoutAgentInvocation({
-      actor: slackInvocationInput.actor,
+    return await startChildAgent({
+      actor: slackSpawnInput.actor,
       conversationStore: harness.conversationStore,
       idempotencyKey,
       parentConversationId: slackParentConversationId,
@@ -219,7 +219,7 @@ describe("child agents", () => {
         queue: harness.queue,
         state: harness.state,
       })({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         conversationId: childId,
         update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
@@ -240,7 +240,7 @@ describe("child agents", () => {
 
       const run = harness.runs.at(-1)!;
       expect(run).toMatchObject({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         conversationId: slackParentConversationId,
       });
       expect(run.instruction.text).toContain("Deploy is green.");
@@ -261,7 +261,7 @@ describe("child agents", () => {
         queue: harness.queue,
         state: harness.state,
       })({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         conversationId: childId,
         update: { status: "done", text: "Deploy is green." },
         turnId: "turn_child",
@@ -423,17 +423,13 @@ describe("child agents", () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      for (
-        let index = 0;
-        index < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT;
-        index++
-      ) {
+      for (let index = 0; index < MAX_ACTIVE_CHILD_AGENTS; index++) {
         await spawnChild(harness, `parent-turn:call-${index}`);
       }
 
       await expect(
         spawnChild(harness, "parent-turn:call-over"),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      ).rejects.toBeInstanceOf(ChildAgentLimitError);
     } finally {
       await harness.close();
     }
@@ -511,7 +507,7 @@ describe("child agents", () => {
       const childId = await spawnChild(harness, "parent-turn:call-1");
       const messageAgent = bindMessageAgent(
         {
-          actor: slackInvocationInput.actor,
+          actor: slackSpawnInput.actor,
           conversationId: childId,
           destination: slackDestination,
           instruction: { text: "Check the deploy." },
@@ -771,7 +767,7 @@ describe("child agents", () => {
       const childId = await spawnChild(harness, "parent-turn:call-0");
       for (let index = 1; index < 5; index++) {
         await sendParentMessage({
-          actor: slackInvocationInput.actor,
+          actor: slackSpawnInput.actor,
           childConversationId: childId,
           idempotencyKey: `parent-turn:call-${index}`,
           parentConversationId: slackParentConversationId,

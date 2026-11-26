@@ -15,7 +15,7 @@
 import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { deleteAutomationToolDefinition } from "@/chat/automations/tools/delete";
 import { runAutomationNowToolDefinition } from "@/chat/automations/tools/run-now";
 import { searchAutomationsToolDefinition } from "@/chat/automations/tools/search";

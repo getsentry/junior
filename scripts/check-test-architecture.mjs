@@ -222,7 +222,8 @@ const KIND_BRANCH_PATTERNS = [
   /\bisTopLevelKind\(/g,
 ];
 
-// A field of the parent edge or the Agent invocation read as a condition.
+// A field of the parent edge read as a condition. `agentInvocationId` is the
+// stored meta key that earlier releases wrote on a parent agent's input.
 const EDGE_FIELD_PATTERN =
   /\b(?:parentConversationId|parentToolCallId|agentInvocationId)\b/g;
 const EDGE_CONDITION_BEFORE =
@@ -271,7 +272,7 @@ export const SOURCE_RULES = [
   {
     id: "kind-behavior",
     message:
-      "branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+      "branch on Conversation kind, the parent edge, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
     pathPrefix: "packages/junior/src/",
     exclude: ["packages/junior/src/chat/conversations/kind-behavior.ts"],
     count: countKindBranches,

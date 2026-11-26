@@ -7,10 +7,10 @@ export class AgentNameInUseError extends Error {
 }
 
 /** Parent already has the maximum number of active child agents. */
-export class AgentInvocationLimitError extends Error {
+export class ChildAgentLimitError extends Error {
   constructor(limit: number) {
     super(`Parent already has ${limit} active child agents (limit ${limit})`);
-    this.name = "AgentInvocationLimitError";
+    this.name = "ChildAgentLimitError";
   }
 }
 

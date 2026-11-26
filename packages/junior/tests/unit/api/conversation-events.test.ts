@@ -187,7 +187,8 @@ describe("conversation report event projection", () => {
         },
       },
     });
-    // A parent agent wrote this child input, so it names the agent invocation.
+    // A parent agent wrote this child input. An earlier release stored the
+    // id of the work that wrote it.
     const agentInput = event(2, {
       type: "message",
       messageId: "agent-invocation:invocation-1:input",
@@ -235,7 +236,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           text: "audit the repo",
         },
       },
@@ -275,7 +276,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           redacted: true,
         },
       },

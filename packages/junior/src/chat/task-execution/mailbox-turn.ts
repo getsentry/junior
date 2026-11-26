@@ -33,8 +33,8 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 import {
   isParentMessageAuthor,
   parentMessageAuthor,
-} from "@/chat/agent-invocations/parent-message";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
+} from "@/chat/child-agents/parent-message";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 

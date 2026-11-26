@@ -1,16 +1,16 @@
 import type { StateAdapter } from "chat";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun, SpawnAgentInput } from "@/chat/agent/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { slackInvocationInput } from "./agent-invocations";
+import { slackSpawnInput } from "./child-agents";
 import { slackParentRun, type Harness } from "./thread-input";
 
 /** The parent's Turn, as the root Turn code binds it to agent tools. */
 export function parentRun(turnId = "parent-turn"): AgentRun {
   return slackParentRun({
     credentialContext: {
-      actor: { type: "user", userId: slackInvocationInput.actor.userId },
+      actor: { type: "user", userId: slackSpawnInput.actor.userId },
     },
     turnId,
   });
