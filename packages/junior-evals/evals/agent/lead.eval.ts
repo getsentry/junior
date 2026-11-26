@@ -83,11 +83,6 @@ describe("Lead", () => {
       ),
     );
 
-    // A move inside a `codemode` script records no output, so the case reads
-    // the Space from the moved Conversation's page.
-    expect(
-      completedToolCalls("moveConversationToSpace", conversation).length,
-    ).toBeGreaterThan(0);
     expect(await readConversationSpace(work.conversationId)).toMatchObject({
       name: "Eval work",
     });
