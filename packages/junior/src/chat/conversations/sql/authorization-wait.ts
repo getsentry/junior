@@ -14,19 +14,20 @@ import {
 const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The request and the events that end its wait: the person connected, or a
+ * The events that end a request's wait: the person connected, or a
  * Turn started or ended after the request. A stop or new input ends the
  * parked Turn with `turn_completed`. A child agent's Turn on a parent message
  * that needs a connection abandons its Turn and ends it as `blocked`, so nothing resumes
  * it and its parent gets the result instead.
  */
-const AUTHORIZATION_WAIT_EVENT_TYPES = [
-  "authorization_requested",
+const AUTHORIZATION_WAIT_END_TYPES = [
   "authorization_completed",
   "turn_started",
   "turn_completed",
   "turn_failed",
 ];
+
+const waitEnd = alias(juniorConversationEvents, "authorization_wait_end");
 
 /** The oldest request that still waits, on the app clock. */
 function authorizationWaitStart(): string {
@@ -72,13 +73,17 @@ export function hasUnexpiredAuthorizationRequest(
   conversationId: AnyPgColumn,
 ): SQL<boolean> {
   const events = juniorConversationEvents;
-  // Reads `junior_conversation_events_authorization_request_idx`. It is a
-  // scalar subquery, not `exists`, so Postgres looks up each Conversation
+  // Postgres reads the Conversation's requests from
+  // `junior_conversation_events_type_idx (conversation_id, type, seq)`. It is
+  // a scalar subquery, not `exists`, so Postgres looks up each Conversation
   // and does not hash every recent request for each Conversation it checks.
   return sql<boolean>`coalesce((select true from ${events} where ${events.conversationId} = ${conversationId} and ${events.type} = 'authorization_requested' and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz limit 1), false)`;
 }
 
-/** SQL: the newest wait event is a live request that `requester` matches. */
+/**
+ * SQL: the newest request is live, `requester` matches it, and no event
+ * that ends a wait follows it.
+ */
 function authorizationWait(
   conversationId: AnyPgColumn,
   requester: SQL,
@@ -87,16 +92,23 @@ function authorizationWait(
   const start = authorizationWaitStart();
   // Most Conversations have no request that can still wait. The first
   // check finds that without a read of the Conversation's newest events.
+  // Only then does the newest request check each end type, from one end of
+  // `junior_conversation_events_type_idx (conversation_id, type, seq)`.
   return sql<boolean>`(${hasUnexpiredAuthorizationRequest(conversationId)} and coalesce((
-    select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > ${start}::timestamptz
+    select ${events.createdAt} > ${start}::timestamptz
       and ${requester}
+      and not exists (
+        select 1 from ${juniorConversationEvents} as ${waitEnd}
+        where ${waitEnd.conversationId} = ${events.conversationId}
+          and ${waitEnd.type} in (${sql.join(
+            AUTHORIZATION_WAIT_END_TYPES.map((type) => sql`${type}`),
+            sql`, `,
+          )})
+          and ${waitEnd.seq} > ${events.seq}
+      )
     from ${events}
     where ${events.conversationId} = ${conversationId}
-      and ${events.type} in (${sql.join(
-        AUTHORIZATION_WAIT_EVENT_TYPES.map((type) => sql`${type}`),
-        sql`, `,
-      )})
+      and ${events.type} = 'authorization_requested'
     order by ${events.seq} desc
     limit 1
   ), false))`;

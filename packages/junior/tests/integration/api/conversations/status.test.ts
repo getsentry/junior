@@ -6,7 +6,10 @@ import {
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
-import { recordAuthorizationRequested } from "@/chat/conversations/projection";
+import {
+  recordAuthorizationCompleted,
+  recordAuthorizationRequested,
+} from "@/chat/conversations/projection";
 import { juniorConversations, juniorInboxItems } from "@/db/schema";
 import {
   spawnChildAgent,
@@ -31,6 +34,11 @@ import {
   recordAnswer,
   addItem,
 } from "../../../fixtures/conversation-status";
+import {
+  recordTurnCompletion,
+  recordTurnFailure,
+  recordTurnStart,
+} from "../../../fixtures/turn-start";
 
 describe("conversation status", () => {
   afterEach(async () => {
@@ -152,6 +160,60 @@ describe("conversation status", () => {
       provider: "notion",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+
+    // A connection or a later Turn ends the wait. Only the newest request
+    // can wait again.
+    const signIn = (authorizationId: string) => ({
+      actorId: SLACK_VIEWER.slackUserId,
+      authorizationId,
+      conversationId,
+      kind: "mcp" as const,
+      provider: "notion",
+    });
+    await recordAuthorizationCompleted(signIn("status-sign-in"));
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-again"),
+      delivery: "private_link_reused",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await recordTurnStart(conversationId, "status-sign-in-resumed");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // A Turn that ends, or fails, after the request also ends the wait. A
+    // failed Turn still needs input, so the feed's wait flag shows the end.
+    const awaitsSignIn = async () =>
+      (await fixture.feedRow(conversationId))?.awaitingAuthorization ?? false;
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-completed"),
+      delivery: "private_link_sent",
+    });
+    await expect(awaitsSignIn()).resolves.toBe(true);
+    await recordTurnCompletion(conversationId, "status-sign-in-resumed");
+    await expect(awaitsSignIn()).resolves.toBe(false);
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-failed"),
+      delivery: "private_link_sent",
+    });
+    await expect(awaitsSignIn()).resolves.toBe(true);
+    await recordTurnFailure(conversationId, "status-sign-in-failed-turn");
+    await expect(awaitsSignIn()).resolves.toBe(false);
+    await recordTurnStart(conversationId, "status-sign-in-retried");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-expires"),
+      delivery: "private_link_sent",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    // A request waits for one day.
+    vi.useFakeTimers({
+      now: Date.now() + 24 * 60 * 60 * 1000 + 1_000,
+      toFake: ["Date"],
+    });
+    try {
+      await expect(fixture.status(conversationId)).resolves.toBe("done");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("dates a sign-in wait with the app clock, not the database clock", async () => {
