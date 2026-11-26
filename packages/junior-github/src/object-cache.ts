@@ -149,20 +149,22 @@ export async function markGitHubReviewCleared(
 }
 
 /**
- * Clear the review decision that a card read started at `startedAtMs`
- * stored, when a review webhook came since. The read writes first and
- * checks after, so a webhook either comes before the check, which clears
- * the decision here, or clears it itself after the write.
+ * Clear the review decision `review` that a card read started at
+ * `startedAtMs` stored, when a review webhook came since. The read writes
+ * first and checks after, so a webhook either comes before the check, which
+ * clears the decision here, or clears it itself after the write. A
+ * different decision is from a later read, so it stays.
  */
 export async function clearGitHubReviewAfterRead(
   cache: PluginCache,
   key: string,
-  startedAtMs: number,
+  read: { review: GitHubPullRequestFields["review"]; startedAtMs: number },
 ): Promise<void> {
+  if (read.review === undefined) return;
   const clearedAt = await cache.get<number>(reviewClearedKey(key));
-  if (clearedAt === undefined || clearedAt < startedAtMs) return;
+  if (clearedAt === undefined || clearedAt < read.startedAtMs) return;
   await cache.update<GitHubPullRequestFields | null>(key, (current) =>
-    current?.review === undefined
+    !current || current.review !== read.review
       ? undefined
       : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) },
   );

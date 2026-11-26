@@ -77,14 +77,21 @@ async function storeCard(
   startedAtMs: number,
 ): Promise<void> {
   const fields = githubPullRequestFieldsFromNode(node);
-  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) =>
-    isOlderGitHubObject(current, fields)
-      ? undefined
-      : githubPullRequestEntry({ ...current, ...fields }),
-  );
+  let stored = false;
+  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+    stored = !isOlderGitHubObject(current, fields);
+    return stored
+      ? githubPullRequestEntry({ ...current, ...fields })
+      : undefined;
+  });
   // A review webhook during the read changes the decision after GitHub
   // answered, often with the same `updated_at`.
-  await clearGitHubReviewAfterRead(ctx.cache, key, startedAtMs);
+  if (stored) {
+    await clearGitHubReviewAfterRead(ctx.cache, key, {
+      review: fields.review,
+      startedAtMs,
+    });
+  }
 }
 
 async function loadChunk(

@@ -52,8 +52,8 @@ const SQL_IDENTIFIER_RE = /^[a-z][a-z0-9_]{0,62}$/;
 // Core Inbox subject kinds. A plugin kind starts with the plugin name, so a
 // plugin with one of these names could take over core items.
 const CORE_INBOX_SUBJECT_NAMESPACES = new Set([
-  "agent",
   "automation",
+  "question",
   "reply",
   "todo",
 ]);
