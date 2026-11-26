@@ -521,6 +521,7 @@ export async function wireAgentTools(
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
+      lead: args.behavior.promptMode === "lead",
       source: runSource,
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
