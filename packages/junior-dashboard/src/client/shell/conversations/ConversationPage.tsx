@@ -186,7 +186,7 @@ export function ConversationPage(props: {
     searchParams.get(CONVERSATION_MESSAGE_PARAM) ?? undefined;
   const eventOpen =
     selectedEventSeq !== undefined || linkedTurnId !== undefined;
-  const { closeDetails, detailsOpen, openDetails, reviewOpen } =
+  const { closeDetails, closedByReader, detailsOpen, openDetails, reviewOpen } =
     useConversationDetailsOpen(eventOpen);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
   // A memory chosen in details waits here until its transcript row renders.
@@ -702,6 +702,7 @@ export function ConversationPage(props: {
               lead={kindKnown ? lead : undefined}
               spaceId={spaceId}
               agentTree={conversationDetail?.agentTree}
+              detailsClosedByReader={closedByReader}
               detailsOpen={showDetails}
               errors={[
                 // A refused restore names the archived ancestor to restore

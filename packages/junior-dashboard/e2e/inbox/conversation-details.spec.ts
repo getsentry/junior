@@ -73,6 +73,15 @@ test.describe("new UI", () => {
     // Wide viewports open details beside the chat by default.
     await expect(details).toBeVisible();
     await expect(detailsButton).toBeHidden();
+    // Narrowing the window closes details that nobody opened. Focus does
+    // not move to the phone's `⋯` menu.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(details).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Conversation menu" }),
+    ).not.toBeFocused();
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await expect(details).toBeVisible();
     // Live cost leads the details, not the header.
     const costMetric = details
       .locator('span[tabindex="0"]')

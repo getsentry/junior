@@ -47,5 +47,12 @@ export function useConversationDetailsOpen(eventOpen: boolean) {
       { replace: true },
     );
   }, [setSearchParams]);
-  return { closeDetails, detailsOpen, openDetails, reviewOpen };
+  return {
+    closeDetails,
+    // False while details follow the screen width.
+    closedByReader: detailsChoice === false,
+    detailsOpen,
+    openDetails,
+    reviewOpen,
+  };
 }
