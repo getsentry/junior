@@ -176,10 +176,10 @@ const CASES: DesignCase[] = [
     }),
   },
   {
-    name: "the same ready flip asks when only the Watch intent says to do it",
+    name: "the same ready flip does not run when only the Watch intent says to do it",
     rule: "watch-intent",
     category: "control",
-    expected: { outcomes: ["ask"] },
+    expected: { outcomes: [["ask", "deny"]] },
     request: async () => ({
       actions: [
         await proposal({
