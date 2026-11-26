@@ -178,4 +178,36 @@ describe("authority digest", () => {
 
     expect(digest.personLines.size).toBe(0);
   });
+
+  it("cites the requester's lines of a Watch Turn, oldest first", () => {
+    const digest = authorityDigest(
+      proposal(
+        {
+          actor: { platform: "system", name: "event" },
+          source: {
+            kind: "event",
+            eventKey: "pull_request.merged:1",
+            eventType: "pull_request.merged",
+            identifier: "getsentry/example#1",
+            namespace: "github",
+          },
+          userIntent: "Deploy staging.",
+        },
+        {
+          messages: [{ author: "user", text: "Hold the deploy for now." }],
+          truncated: true,
+        },
+      ),
+      {
+        confirmations: [],
+        created: [],
+        lines: [{ text: "Deploy staging once it merges.", via: "instruction" }],
+      },
+    );
+
+    expect([...digest.personLines.values()]).toEqual([
+      "Deploy staging once it merges.",
+      "Hold the deploy for now.",
+    ]);
+  });
 });

@@ -149,6 +149,17 @@ export function authorityDigest(
         "Whose instruction: the person whose request started this work. An Event, such as a Watch Event or an agent result, wrote the current message of this run, so it is context.",
     }[current],
   );
+  // Lines older than the window come first, so a later line of the window,
+  // such as a hold, stays later. A linked-account line can be newer than
+  // the window, so it comes after it.
+  if (current === "automation") {
+    personLine(context.userIntent, "automation", undefined);
+  }
+  for (const line of authority?.lines ?? []) {
+    if (line.via === "instruction") {
+      personLine(line.text, line.via, undefined);
+    }
+  }
   const messages = rootConversation?.messages ?? [];
   if (messages.length > 0) {
     lines.push(
@@ -165,24 +176,23 @@ export function authorityDigest(
       lastAgentMessage = message.text;
       continue;
     }
-    if (
-      message.author === "user" &&
-      (current === "person" || current === "brief")
-    ) {
+    // Core labels only the requester's messages `user`, also in a Run that
+    // an Event started.
+    if (message.author === "user") {
       personLine(
         message.text,
-        current === "person" ? "typed" : "brief",
+        current === "brief" ? "brief" : "typed",
         lastAgentMessage,
       );
       lastAgentMessage = undefined;
       continue;
     }
-    const label =
-      message.author === "user" ? "agent (context)" : message.author;
-    lines.push(...splitLines(message.text).map((line) => `${label}: ${line}`));
+    lines.push(
+      ...splitLines(message.text).map((line) => `${message.author}: ${line}`),
+    );
     // A gap note means the message that a later line answers may not be
     // shown, so that line answers nothing shown.
-    if (message.author === "user" || message.author === "system") {
+    if (message.author === "system") {
       lastAgentMessage = undefined;
     }
   }
@@ -197,11 +207,10 @@ export function authorityDigest(
       lastAgentMessage,
     );
   }
-  if (current === "automation") {
-    personLine(context.userIntent, "automation", undefined);
-  }
   for (const line of authority?.lines ?? []) {
-    personLine(line.text, line.via, undefined);
+    if (line.via !== "instruction") {
+      personLine(line.text, line.via, undefined);
+    }
   }
   if (current === "agent") {
     if (ids.size === 0) {

@@ -224,7 +224,6 @@ export function createAgentGuardian(options: {
       return decision(screen.object, costUsd);
     }
 
-    const reviewSignal = withCaller(REVIEW_TIMEOUT_MS);
     const steps = [
       `First review (context, not a decision): ${JSON.stringify(screen.object)}`,
     ];
@@ -240,7 +239,9 @@ export function createAgentGuardian(options: {
         ].join("\n\n"),
         role: "review",
         schema: reviewStepSchema,
-        signal: reviewSignal,
+        // Each step gets its own deadline, so a slow lookup step does not
+        // leave the verdict step without time.
+        signal: withCaller(REVIEW_TIMEOUT_MS),
         system: `${AGENT_GUARDIAN_POLICY}\n\n${REVIEW_TASK}`,
       });
       costUsd += step.costUsd ?? 0;
