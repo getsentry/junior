@@ -27,7 +27,7 @@ export async function loadAgentHistory(
 ): Promise<PiMessage[]> {
   const db = executor.db();
   // One statement: the current version and its events come from one snapshot.
-  const currentHistoryVersion = db
+  const currentHistoryVersionQuery = db
     .select({ historyVersion: max(juniorConversationEvents.historyVersion) })
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
@@ -37,7 +37,7 @@ export async function loadAgentHistory(
     .where(
       and(
         eq(juniorConversationEvents.conversationId, conversationId),
-        eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
+        eq(juniorConversationEvents.historyVersion, currentHistoryVersionQuery),
         inArray(juniorConversationEvents.type, READ_TYPES),
       ),
     )
