@@ -19,6 +19,7 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { InboxItemPayload } from "@/api/schema";
 import {
+  juniorConversationAnnotations,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -33,6 +34,7 @@ import {
   slackParentConversationId,
 } from "../fixtures/child-agents";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { seedConversation } from "../fixtures/conversation-retention";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
@@ -291,6 +293,26 @@ describe("the Inbox item of an issue that Junior created", () => {
       );
 
       const body = await createIssue();
+      // Another Conversation attached a link to the issue before the card
+      // was saved. A link does not make that Conversation the item's owner.
+      await seedConversation(getSqlExecutor(), {
+        conversationId: "slack:C999:1.0001",
+        lastActivityAtMs: Date.now(),
+      });
+      await getDb()
+        .insert(juniorConversationAnnotations)
+        .values({
+          annotation: { key: "getsentry/junior#4254", kind: "resource_link" },
+          conversationId: "slack:C999:1.0001",
+          createdAt: new Date(0),
+          key: "getsentry/junior#4254",
+          kind: "resource_link",
+          plugin: "github",
+          subjectId: String(ISSUE_ID),
+          subjectKind: "github:issue",
+          updatedAt: new Date(0),
+          url: ISSUE_URL,
+        });
       // Opening an issue asks nobody.
       await sendGitHubWebhook("issues", issueEvent(body, "opened", []));
       expect(await issueItem()).toBeUndefined();
@@ -383,6 +405,13 @@ describe("the Inbox item of an issue that Junior created", () => {
           dismissAs("sam@example.com", again!.id),
         ]),
       ).toEqual([200, 200]);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
+      // An unassign after the item closed asks nobody, so it brings no
+      // item back for whoever is still assigned.
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "unassigned", ["pat"], { assignee: { login: "sam" } }),
+      );
       expect(await issueItem()).toMatchObject({ status: "dismissed" });
 
       // Once the issue is gone from GitHub, nobody is left to unassign, so
