@@ -43,7 +43,8 @@ export interface GuardianEvalOutput extends Record<string, JsonValue> {
   userAuthorization: string;
 }
 
-function resolveGuardianModelId(): string {
+/** The review model of the Guardian evals: `AI_GUARDIAN_MODEL`, or the default. */
+export function resolveGuardianModelId(): string {
   const configured = process.env["AI_GUARDIAN_MODEL"]?.trim();
   if (configured) {
     return configured;

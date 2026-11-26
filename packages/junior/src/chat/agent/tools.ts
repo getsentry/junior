@@ -90,6 +90,7 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
@@ -557,13 +558,15 @@ export async function wireAgentTools(
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    reviewer: createGuardianActionReviewer({
-      completeObject,
-      destinationFacts: guardianPluginFacts(
-        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-      ),
-      modelId: botConfig.guardianModelId,
-    }),
+    guardian: createCurrentGuardian(
+      createGuardianActionReviewer({
+        completeObject,
+        destinationFacts: guardianPluginFacts(
+          pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+        ),
+        modelId: botConfig.guardianModelId,
+      }),
+    ),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,
