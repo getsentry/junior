@@ -4,15 +4,27 @@
  *
  * The child's model is the only fake. The fixture stores the Thread as a
  * spawn does and records its Turn with the turn lifecycle that a real Turn
- * uses, with the result as the Turn's final text. From the end of that Turn,
- * the product delivers the result to the Lead and runs the Lead's Turn.
+ * uses. The Turn saves its task and its final text to agent history, as a
+ * real Turn does, so a Turn that reads the Thread later sees them. From the
+ * end of that Turn, the product delivers the result to the Lead and runs the
+ * Lead's Turn.
  */
 import type { WebActor } from "@/chat/actor";
 import { getSpawnedChildConversationId } from "@/chat/child-agents/ids";
+import {
+  commitMessages,
+  loadConversationProjection,
+} from "@/chat/conversations/projection";
+import {
+  agentInstructionProvenance,
+  contextProvenance,
+} from "@/chat/conversations/provenance";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { renderParentAgentTask } from "@/chat/input-tags";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { assistantPiMessage } from "./history";
 import { fixtureId } from "./ids";
 import type { ChildResultInput } from "./inputs";
 
@@ -62,11 +74,33 @@ export async function sendChildResult(args: {
     surface: "internal",
     turnId,
   });
+  // Agent history commits take the full history. Each Turn's task is the
+  // Thread's title, the only brief that the fixture has.
+  const history = await loadConversationProjection({
+    conversationId: threadId,
+  });
+  await commitMessages({
+    conversationId: threadId,
+    messages: [
+      ...history.messages,
+      {
+        role: "user",
+        content: [{ type: "text", text: renderParentAgentTask([input.title]) }],
+        timestamp: nowMs,
+      },
+      assistantPiMessage([{ type: "text", text: input.text }], nowMs + 1),
+    ],
+    provenance: [
+      ...history.provenance,
+      agentInstructionProvenance,
+      contextProvenance,
+    ],
+  });
   // A child's Turn that posts no reply answers with its final text.
   await lifecycle.complete({
     answer: { kind: "final_text", text: input.text },
     conversationId: threadId,
-    createdAtMs: nowMs + 1,
+    createdAtMs: nowMs + 2,
     outcome: "no_reply",
     reportAs: args.actor,
     turnId,

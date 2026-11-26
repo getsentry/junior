@@ -219,7 +219,8 @@ async function recordRoot(
   });
 }
 
-function assistantPiMessage(
+/** An assistant message as the agent loop saves it, with no usage. */
+export function assistantPiMessage(
   content: AssistantMessage["content"],
   timestamp: number,
 ): AssistantMessage {
