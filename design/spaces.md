@@ -48,7 +48,8 @@ not need a home stays a one-off Conversation.
   into a public Space.
 - A child Conversation is always in the Space of its root.
 - Each Space has exactly one Lead. A person has no Lead outside a Space.
-- A Space and its Lead share one name, description, and To-do list.
+- A Space and its Lead share one name and description. The Lead's Threads
+  are its plan.
 - A public Space is readable by anyone in the organization. Only its
   members can talk to its Lead or start work in it, so a person joins the
   Space first. Its Conversations follow the usual rules for public
