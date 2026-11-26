@@ -125,19 +125,6 @@ async function treeRows(conversationIds: string[]) {
   return Object.fromEntries(rows.map((row) => [row.conversationId, row]));
 }
 
-/** The Conversation notes of a Conversation, such as a child's `done`. */
-async function noteTexts(conversationId: string) {
-  const page = await getConversationEventStore().query(conversationId, {
-    limit: 100,
-    types: ["structured_event"],
-  });
-  return page.events.flatMap(({ data }) => {
-    if (data.type !== "structured_event") return [];
-    const text: unknown = (data.content as { text?: unknown }).text;
-    return typeof text === "string" ? [text] : [];
-  });
-}
-
 describe("Lead", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
@@ -405,7 +392,7 @@ describe("Lead", () => {
     ).toBe(false);
   });
 
-  it("hears a child's done as a note, and starts a Turn for other ends", async () => {
+  it("starts a Lead Turn for each result of its child, as for any parent", async () => {
     const harness = await createConversationWorkHarness(
       readRunsAgentRunner().agentRunner,
     );
@@ -446,9 +433,8 @@ describe("Lead", () => {
       outcome: "success",
       turnId: "child-turn-1",
     });
-    expect(await leadMailbox()).toEqual([]);
-    expect(await noteTexts(lead.conversationId)).toEqual([
-      expect.stringContaining("Deploy check"),
+    expect(await leadMailbox()).toEqual([
+      expect.stringMatching(/status="done"/),
     ]);
 
     await lifecycle.fail({
@@ -458,6 +444,7 @@ describe("Lead", () => {
       turnId: "child-turn-2",
     });
     expect(await leadMailbox()).toEqual([
+      expect.stringMatching(/status="done"/),
       expect.stringMatching(/status="failed"/),
     ]);
   });

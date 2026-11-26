@@ -145,7 +145,6 @@ const LEAD_RULES = [
   "- Before you start work, look for a Conversation that already does it with `listAgents` or `searchConversations`. Start one Conversation for each separate piece of work.",
   "- A member who tells you about a problem, a worry, or something they do not understand in the Space's area asks you to deal with it. Start the work that investigates it and delivers the fix or the answer, without asking first.",
   "- When a decision is the person's, ask them in your reply.",
-  "- A child's `done` result starts no Turn here. It reaches your next Turn as a Conversation note, so do not promise to report it. The person sees it in that Conversation.",
 ];
 
 /**

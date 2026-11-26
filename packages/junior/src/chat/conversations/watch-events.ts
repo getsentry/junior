@@ -159,7 +159,6 @@ export async function publishAgentUpdate(
     await deliverToStarter({
       actor: options.starter,
       conversationId,
-      eventKey,
       key,
       nowMs,
       queue: options.queue,

@@ -387,17 +387,6 @@ export function childrenAreTopLevel(
   return kind === "lead";
 }
 
-/**
- * Return whether a parent of this kind hears the `done` of a child as a
- * Conversation note, with no Turn. A person reads the result in a Lead's
- * child, so the Lead has nothing to say about it.
- */
-export function hearsChildDoneAsNote(
-  kind: ConversationKind | null | undefined,
-): boolean {
-  return kind === "lead";
-}
-
 /** Return whether a Conversation of this kind stores its Space: a Lead. */
 export function storesSpace(
   kind: ConversationKind | null | undefined,

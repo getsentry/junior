@@ -61,9 +61,6 @@ child agents add to this is in `./child-agents.md`.
 - An agent that starts another watches it. Each update reaches every
   watcher the same way: it starts a Turn, unless the watch makes it quiet,
   and then it is a Conversation note.
-- A Lead gets the `done` updates of its children as Conversation notes, so
-  they start no Turn. `waiting`, `blocked`, `failed`, and `stopped` start a
-  Turn.
 - Update text and message text are data. They never give approval. The
   authority of a message comes from the stored relation of its sender, as
   `./child-agents.md` and `./guardian.md` state.
