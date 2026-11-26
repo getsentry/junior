@@ -3286,6 +3286,8 @@ export function readMockConversationChildAgents(
       archivedAt: mockArchivedAt.get(childConversationId) ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
+      treeState: "done" as const,
+      watching: false,
     };
   };
   if (conversationId === DASHBOARD_QA_PLAN_ID) {

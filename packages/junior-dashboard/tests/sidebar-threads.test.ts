@@ -81,6 +81,35 @@ describe("sidebarThreads", () => {
     ).toBe(7);
   });
 
+  it("orders each level as the Threads panel does", () => {
+    const root = {
+      threads: [
+        thread("done", 10),
+        { ...thread("working", 4), treeState: "working" as const },
+        thread("parent", 3, [
+          thread("child-done", 9),
+          { ...thread("child-needs-you", 1), treeState: "needs_you" as const },
+        ]),
+        { ...thread("needs-you", 2), treeState: "needs_you" as const },
+      ],
+    };
+    // Needs you, then Working, then Done, newest first in each group.
+    expect(rows(sidebarThreads(root, { expanded: true }))).toEqual([
+      ["needs-you", 0],
+      ["working", 0],
+      ["done", 0],
+      ["parent", 0],
+      ["child-needs-you", 1],
+      ["child-done", 1],
+    ]);
+    // The cap keeps the first Threads in that order.
+    expect(rows(sidebarThreads(root, { expanded: false }))).toEqual([
+      ["needs-you", 0],
+      ["working", 0],
+      ["done", 0],
+    ]);
+  });
+
   it("shows every Thread when expanded", () => {
     const result = sidebarThreads({ threads }, { expanded: true });
     expect(rows(result)).toEqual([

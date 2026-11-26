@@ -1,8 +1,7 @@
 import type { Page } from "@playwright/test";
-import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+import type { ConversationChildAgent } from "@sentry/junior/api/schema";
 
 import { NOW_MS } from "../src/mock-reporting/fixtures";
-import { mockFeedPage } from "./mock-reports";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -10,79 +9,59 @@ const BILLING_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
 const BILLING = `/spaces/${BILLING_ID}`;
 
 /**
- * Answer the Billing migration Space's Threads with one or more in each
- * group. Row `index` had its last Message `index` hours before now.
+ * Answer the Billing migration Lead's Threads with one or more in each
+ * group. Row `index` moved last `index` hours before now. The mock Lead is
+ * the only `local:web:` Conversation that the page reads Threads for.
  */
 async function seedThreads(page: Page) {
   await page.route(
     (url) =>
-      url.pathname === "/api/conversations" &&
-      url.searchParams.get("spaceId") === BILLING_ID,
-    async (route) => {
-      const feed = await mockFeedPage(route);
-      const base = feed.conversations[0]!;
+      url.pathname.startsWith("/api/conversations/local%3Aweb%3A") &&
+      url.pathname.endsWith("/agents"),
+    (route) => {
+      const conversationId = decodeURIComponent(
+        new URL(route.request().url()).pathname.split("/")[3]!,
+      );
       const row = (
         index: number,
-        displayTitle: string,
-        summary: string,
-        fields: Partial<ConversationSummaryReport>,
-      ) => {
-        const at = new Date(NOW_MS - index * 3_600_000).toISOString();
-        return {
-          ...base,
-          activityPreview: undefined,
-          conversationId: `internal:space-thread-${index}`,
-          displayTitle,
-          lastMessageAt: at,
-          lastSeenAt: at,
-          latestTurnFailed: false,
-          pinnedAt: null,
-          status: "done" as const,
-          summary,
-          threads: undefined,
-          treeState: "done" as const,
-          turnActive: false,
-          watching: false,
-          ...fields,
-        };
-      };
+        title: string,
+        fields: Partial<ConversationChildAgent>,
+      ): ConversationChildAgent => ({
+        archivedAt: null,
+        conversationId: `internal:space-thread-${index}`,
+        cumulativeDurationMs: (index + 1) * 60_000,
+        kind: "thread",
+        status: "completed",
+        task: title,
+        title,
+        treeState: "done",
+        updatedAt: new Date(NOW_MS - index * 3_600_000).toISOString(),
+        watching: false,
+        ...fields,
+      });
       return route.fulfill({
         json: {
-          ...feed,
-          conversations: [
-            row(
-              0,
-              "Close out the dry run",
-              "Dry run matched every invoice.",
-              {},
-            ),
+          agents: [
+            row(0, "Close out the dry run", {}),
             // A Thread that the mock API can open.
-            row(1, "Check refund webhooks", "Replaying last week's refunds.", {
+            row(1, "Check refund webhooks", {
               conversationId: "internal:questions-qa",
-              status: "working",
+              status: "running",
               treeState: "working",
-              turnActive: true,
             }),
-            row(2, "Backfill invoice IDs", "Waits for the nightly export.", {
-              watching: true,
+            row(2, "Backfill invoice IDs", { watching: true }),
+            row(3, "Approve the cutover window", { treeState: "needs_you" }),
+            row(4, "Reconcile Stripe balances", {
+              error: "Lost access to the Stripe API.",
+              status: "failed",
             }),
-            row(
-              3,
-              "Approve the cutover window",
-              "Pick a window before Friday.",
-              { status: "needs_input", treeState: "needs_you" },
-            ),
-            row(4, "Reconcile Stripe balances", "Lost access to the API.", {
-              latestTurnFailed: true,
-            }),
-            row(5, "Migrate tax settings", "Copying region rules.", {
-              status: "working",
+            row(5, "Migrate tax settings", {
+              status: "running",
               treeState: "working",
-              turnActive: true,
             }),
-            row(6, "Map plan IDs", "Every plan has a new ID.", {}),
+            row(6, "Map plan IDs", {}),
           ],
-          nextCursor: undefined,
+          conversationId,
         },
       });
     },
@@ -104,7 +83,7 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
     threads.getByRole("region", { exact: true, name });
 
   // Needs you, then Working, then Waiting, then Done. Each group runs
-  // newest Message first, and a failed Turn needs the viewer.
+  // newest first, and a failed Thread needs the viewer.
   await expect(threads.getByRole("heading", { level: 4 })).toHaveText([
     "Needs you · 2",
     "Working · 2",
@@ -116,7 +95,7 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
     /Reconcile Stripe balances/,
   ]);
   await expect(
-    group("Needs you").getByRole("img", { name: "Failed" }),
+    group("Needs you").getByText("Lost access to the Stripe API."),
   ).toBeVisible();
   await expect(group("Working").getByRole("link")).toHaveText([
     /Check refund webhooks/,
@@ -125,11 +104,6 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
   await expect(group("Waiting").getByRole("link")).toHaveText([
     /Backfill invoice IDs/,
   ]);
-  // Each row shows its summary under its title.
-  await expect(
-    group("Waiting").getByText("Waits for the nightly export."),
-  ).toBeVisible();
-
   // Done starts collapsed, and its heading opens it.
   const done = group("Done");
   await expect(done.getByRole("link")).toHaveCount(0);

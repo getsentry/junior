@@ -122,8 +122,9 @@ describe("conversation child agents API", () => {
     const response = await expectSqlBudget(
       () => requestChildAgents(slackParentConversationId),
       // Each running child also checks, in one read, that its waiting task
-      // comes from its parent and was sent after any stop.
-      { statements: 8, serialRounds: 5 },
+      // comes from its parent and was sent after any stop. The tree states
+      // of the children take one more read beside the metrics.
+      { statements: 9, serialRounds: 5 },
     );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer)).json(),
@@ -142,7 +143,10 @@ describe("conversation child agents API", () => {
           status: "stopped",
           task: "Private repo read",
           title: "Private repo read",
+          // The test stops it without clearing its queued Turn.
+          treeState: "working",
           updatedAt: new Date(3_000).toISOString(),
+          watching: false,
         },
         {
           childAgentTotals: {
@@ -167,7 +171,10 @@ describe("conversation child agents API", () => {
           status: "running",
           task: "Plan review",
           title: "Plan review",
+          // The reviewer's Turn is queued.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
         {
           conversationId: thread,
@@ -176,7 +183,9 @@ describe("conversation child agents API", () => {
           status: "running",
           task: "",
           archivedAt: new Date(4_000).toISOString(),
+          treeState: "working",
           updatedAt: new Date(500).toISOString(),
+          watching: false,
         },
       ],
       conversationId: slackParentConversationId,
@@ -294,7 +303,10 @@ describe("conversation child agents API", () => {
           kind: "task",
           redacted: true,
           status: "running",
+          // Status shows no content, so a redacted row keeps it.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
       ],
       conversationId: parentConversationId,
