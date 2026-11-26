@@ -1,12 +1,12 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
 import { vi } from "vitest";
-import type { BotConfig } from "@/chat/config";
-import { botConfig } from "@/chat/config";
+import type { ConfigInput } from "@/config";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createConversationWebHarness } from "./conversation";
+import { useConfig } from "./config";
 import { createModelStream } from "./model-stream";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
@@ -26,7 +26,7 @@ type PreviousTurn = {
 };
 
 type AgentFixtureOptions = {
-  botConfig?: Partial<BotConfig>;
+  botConfig?: ConfigInput["bot"];
   previousTurns?: PreviousTurn[];
   responses?: string[];
   modelStream?: AgentRequestStreamFn;
@@ -41,7 +41,7 @@ type AgentFixtureOptions = {
 export async function createAgent(
   options: AgentFixtureOptions = {},
 ): Promise<AgentFixture> {
-  Object.assign(botConfig, options.botConfig);
+  if (options.botConfig) useConfig({ bot: options.botConfig });
   const previousTurns = options.previousTurns ?? [];
   const responses = [
     ...previousTurns.map((turn) => turn.response),

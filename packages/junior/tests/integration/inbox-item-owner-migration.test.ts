@@ -58,9 +58,48 @@ describe("inbox item owner migration", () => {
         ),
       );
 
+      // Ana snoozed the older item and has a push of it. Ben is on the
+      // newer one.
+      for (const user of ["ana", "ben"]) {
+        await fixture.sql.execute(
+          `INSERT INTO junior_users (id, primary_email, primary_email_normalized, created_at, updated_at) VALUES ('user:${user}', '${user}@example.com', '${user}@example.com', now(), now())`,
+        );
+      }
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_item_assignees (item_id, user_id) VALUES ('older', 'user:ana'), ('newer', 'user:ben')`,
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_snoozes (id, user_id, inbox_item_id, state, created_at) VALUES ('ana-older', 'user:ana', 'older', 'snoozed', now())`,
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_item_deliveries (item_id, user_id, channel, event, status, created_at, updated_at) VALUES ('older', 'user:ana', 'web_push', 'created', 'sent', now(), now())`,
+      );
+
       for (const statement of [...owners.sql, ...index.sql]) {
         await fixture.sql.execute(statement);
       }
+
+      // The item that stays open keeps Ana's ask and snooze, and her
+      // devices close the older item.
+      expect(
+        await fixture.sql.query(
+          `SELECT item_id, user_id FROM junior_inbox_item_assignees ORDER BY item_id, user_id`,
+        ),
+      ).toEqual([
+        { item_id: "newer", user_id: "user:ana" },
+        { item_id: "newer", user_id: "user:ben" },
+        { item_id: "older", user_id: "user:ana" },
+      ]);
+      expect(
+        await fixture.sql.query(
+          `SELECT inbox_item_id FROM junior_inbox_snoozes WHERE id = 'ana-older'`,
+        ),
+      ).toEqual([{ inbox_item_id: "newer" }]);
+      expect(
+        await fixture.sql.query(
+          `SELECT status FROM junior_inbox_item_deliveries WHERE item_id = 'older'`,
+        ),
+      ).toEqual([{ status: "cleared" }]);
 
       expect(
         await fixture.sql.query(

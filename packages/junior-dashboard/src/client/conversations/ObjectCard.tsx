@@ -24,7 +24,6 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { DashboardPreview } from "./DashboardPreview";
-import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useObjectPreviews } from "./objectPreviews";
@@ -74,11 +73,10 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 }
 
 /**
- * Show the full card of an annotation's object, or a `live` card that the
- * API resolved for a link: images, facts, and details. A link preview shows
- * it; a reply shows `ObjectRow`. Opening a source is always explicit. A
- * live card can attach its object to the Conversation. A card that a cache
- * serves after a failed read tells when Junior last fetched it. With
+ * Show the full card of an annotation's object, or a card that the API
+ * resolved for a link: images, facts, and details. A link preview shows it;
+ * a reply shows `ObjectRow`. Opening a source is always explicit. A card that
+ * a cache serves after a failed read tells when Junior last fetched it. With
  * `fill`, the card fills the height of its container and its body scrolls.
  * `children` end the body, such as the recent activity of a person.
  */
@@ -87,16 +85,13 @@ export function ObjectCard({
   children,
   className,
   fill,
-  live,
 }: {
   card: OwnedObjectAnnotation;
   children?: ReactNode;
   className?: string;
   fill?: boolean | undefined;
-  live?: boolean | undefined;
 }) {
   const images = useObjectPreviews(card);
-  const attachable = live && card.objectType !== "person";
   const { fetchedAt } = card;
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
@@ -282,7 +277,7 @@ export function ObjectCard({
         )}
         {children}
       </div>
-      {(card.url || fetchedAt || attachable) && (
+      {(card.url || fetchedAt) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
           {card.url && (
             <OutboundLink
@@ -301,7 +296,6 @@ export function ObjectCard({
               Last fetched {formatRelativeTime(fetchedAt)}
             </time>
           )}
-          {attachable && <ObjectAttachAction card={card} />}
         </div>
       )}
     </MessageCard>

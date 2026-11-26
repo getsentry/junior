@@ -12,7 +12,7 @@ import type {
   PluginMcpContent,
   PluginViewerMcp,
 } from "@sentry/junior-plugin-api";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpStoredOAuthCredentials } from "./auth-store";
@@ -29,7 +29,7 @@ function viewerAuthProvider(
   userId: string,
 ): OAuthClientProvider & { mcpLoginOwner(): Promise<McpLoginOwner> } {
   const provider = plugin.manifest.name;
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",

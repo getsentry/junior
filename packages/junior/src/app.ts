@@ -278,23 +278,6 @@ export interface JuniorAppOptions extends BotModelConfig {
   waitUntil?: WaitUntilFn;
 }
 
-/** Resolve the public deployment URL used by ACP and MCP browser authorization. */
-function resolvePublicBaseURL(
-  dashboard: JuniorDashboardOptions | undefined,
-): string | undefined {
-  const configured =
-    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
-  if (configured) return configured;
-
-  const vercelURL =
-    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
-    process.env["VERCEL_URL"]?.trim();
-  if (!vercelURL) return undefined;
-  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
-    ? vercelURL
-    : `https://${vercelURL}`;
-}
-
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
@@ -360,6 +343,7 @@ function appConfigInput(
   options: JuniorAppOptions | undefined,
   virtualConfig: JuniorVirtualConfig | undefined,
 ): ConfigInput {
+  const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   return {
     bot: {
       modelId: options?.modelId,
@@ -374,6 +358,9 @@ function appConfigInput(
       webSearchModelId: options?.webSearchModelId,
       refusalFallbackModelId: options?.refusalFallbackModelId,
       userName: virtualConfig?.botName,
+    },
+    deployment: {
+      configuredBaseUrl: dashboard?.baseURL?.trim() || undefined,
     },
     functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
     limits: options?.limits,
@@ -678,7 +665,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           ? {
               browserAuth: {
                 agentName: botConfig.userName,
-                baseURL: resolvePublicBaseURL(dashboard),
+                baseURL: getChatConfig().deployment.baseUrl,
               },
             }
           : undefined),
@@ -704,7 +691,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     handler: (request, user) =>
       handleMcpConsentPage({
         agentName: botConfig.userName,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         request,
         state: getMcpState(),
         user,
@@ -775,7 +762,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         attachmentStorage,
         queue: conversationWorkQueue,
         state: getMcpState(),

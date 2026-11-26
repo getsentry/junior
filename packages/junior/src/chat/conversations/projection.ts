@@ -30,7 +30,7 @@ import {
   claimProviderConversation,
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
-import { withConversationEventLock } from "@/core/history/lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,

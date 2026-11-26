@@ -69,8 +69,10 @@ Canonical words for Junior code and docs. One concept, one word.
   starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
-- **Starter**: the User of a root's actor, the person whose message started
-  it or the creator of an Automation run. Its child Conversations share it.
+- **Starter**: the User of a Top-level Conversation's actor, the person whose
+  message started it or the creator of an Automation run. Its child
+  Conversations share it. In a Space, that is the person who started the
+  Thread, not the Lead's actor.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
 - **Viewer state**: what a Conversation and its child Conversations need from
