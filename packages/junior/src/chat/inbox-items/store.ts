@@ -3,6 +3,7 @@ import {
   and,
   asc,
   desc,
+  exists,
   eq,
   gt,
   ilike,
@@ -553,6 +554,35 @@ export async function updateInboxItemContent(
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
+    // The question changes first: the item write copies its content onto
+    // the item for the release before this one (`20261126011025_inbox_item_owners`).
+    if (isQuestion(input.subject)) {
+      await tx
+        .update(juniorQuestions)
+        .set({
+          ...questionColumns(input),
+          updatedAt: new Date(input.nowMs),
+          ...(input.addedByTurnId
+            ? { turnId: input.addedByTurnId }
+            : undefined),
+        })
+        .where(
+          and(
+            eq(juniorQuestions.id, input.subject.id),
+            exists(
+              tx
+                .select({ one: sql`1` })
+                .from(juniorInboxItems)
+                .where(
+                  and(
+                    eq(juniorInboxItems.id, input.id),
+                    eq(juniorInboxItems.status, "open"),
+                  ),
+                ),
+            ),
+          ),
+        );
+    }
     const updated = await tx
       .update(juniorInboxItems)
       .set({
@@ -570,18 +600,6 @@ export async function updateInboxItemContent(
       )
       .returning({ ...ownerColumns(), id: juniorInboxItems.id });
     if (!updated[0]) return false;
-    if (isQuestion(input.subject)) {
-      await tx
-        .update(juniorQuestions)
-        .set({
-          ...questionColumns(input),
-          updatedAt: new Date(input.nowMs),
-          ...(input.addedByTurnId
-            ? { turnId: input.addedByTurnId }
-            : undefined),
-        })
-        .where(eq(juniorQuestions.id, input.subject.id));
-    }
     await replaceLinks(tx, updated[0].id, input);
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
@@ -609,10 +627,9 @@ export async function closeInboxItem(
     const closed = await tx
       .update(juniorInboxItems)
       .set({
-        // A question item's answer goes to its question.
-        answer: input.answer
-          ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
-          : null,
+        // A question item's answer goes to its question. The item keeps a
+        // copy, because the release before this one reads it there.
+        answer: input.answer ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,
