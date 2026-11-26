@@ -45,6 +45,8 @@ const messageAgentOutputSchema = z.object({
   delivery: z.enum(["started", "queued", "noted"]),
 });
 
+const startedTitleSchema = z.object({ title: z.string().min(1) });
+
 const deliveryByToolResult = {
   noted: "noted",
   queued: "queued",
@@ -126,7 +128,7 @@ function agentMessageInputText(text: string): string {
 
 /**
  * Name the other Conversation of a message from what this transcript
- * already holds: the agent tree above it, then the Threads and Tasks that it
+ * already holds: the agent tree above it, then the Conversations that it
  * started, by id or by the agent name that `to` can use. The viewer can read
  * each of them, so no title leaks. Without one, a neutral label names it.
  */
@@ -139,8 +141,22 @@ export function agentMessageConversationTitle(
     ids.includes(node.conversationId),
   );
   if (ancestor) return ancestor.label;
+  // A tool call that started a Conversation has its title in the input of
+  // the running call and the started id on the finished one.
+  const inputTitles = new Map<string, string>();
   for (const event of conversation.events) {
     const data = event.data;
+    if (data.type === "tool_calls") {
+      for (const call of data.calls) {
+        const title = startedTitleSchema.safeParse(call.input).data?.title;
+        if (title) inputTitles.set(call.toolCallId, title);
+        const started = call.startedConversationId;
+        if (!started || !ids.includes(started)) continue;
+        const startedTitle = inputTitles.get(call.toolCallId);
+        if (startedTitle) return startedTitle;
+      }
+      continue;
+    }
     if (data.type !== "subagent") continue;
     const named = message.to !== undefined && data.agentName === message.to;
     if (!named && !ids.includes(data.childConversationId)) continue;

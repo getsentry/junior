@@ -164,6 +164,43 @@ describe("agentMessageConversationTitle", () => {
     ).toBe("reviewer");
   });
 
+  it("names a Conversation that a tool call started by the call's title", () => {
+    const toolCalls = (
+      call: Extract<
+        ConversationReportEvent["data"],
+        { type: "tool_calls" }
+      >["calls"][number],
+    ): ConversationReportEvent => ({
+      createdAt: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+      data: { type: "tool_calls", calls: [call] },
+    });
+    const start = {
+      name: "startConversation",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      startedSeq: 1,
+      toolCallId: "start-1",
+    };
+    const events = [
+      toolCalls({
+        ...start,
+        input: { task: "Find it.", title: "Checkout triage" },
+        status: "running",
+      }),
+      toolCalls({
+        ...start,
+        startedConversationId: "root-2",
+        status: "completed",
+      }),
+    ];
+    expect(
+      agentMessageConversationTitle(
+        { events },
+        { conversationId: "root-2", to: "root-2" },
+      ),
+    ).toBe("Checkout triage");
+  });
+
   it("uses a neutral label for a Conversation this transcript does not name", () => {
     expect(
       agentMessageConversationTitle(

@@ -3,7 +3,6 @@ import { useContext } from "react";
 import { Link } from "react-router";
 
 import { ClampedDisplayText } from "../display-text/DisplayText";
-import { LeadPage } from "../lead/leadPage";
 import { cn } from "../styles";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
@@ -118,20 +117,17 @@ function ConversationLink(props: { id: string; title: string }) {
 }
 
 /**
- * The other Conversation's own title when the page lists it, as the sidebar
+ * The other Conversation's own title when the feed lists it, as the sidebar
  * does. Otherwise the name that this transcript recorded for it.
  */
 function useAgentMessageTitle(
   conversation: ConversationTranscript,
   message: AgentMessage,
 ): string {
-  const lead = useContext(LeadPage);
   const feedThreads = useContext(FeedThreads);
   const id = message.conversationId;
-  const listed = id
-    ? (lead?.conversations.get(id) ?? feedThreads.get(id))
-    : undefined;
   return (
-    listed?.displayTitle ?? agentMessageConversationTitle(conversation, message)
+    (id ? feedThreads.get(id)?.displayTitle : undefined) ??
+    agentMessageConversationTitle(conversation, message)
   );
 }
