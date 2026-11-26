@@ -13,6 +13,7 @@ import {
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
+import { isSentAgentMessage } from "./agentMessage";
 import type { TranscriptViewMessage } from "../types";
 import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -43,7 +44,8 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "message") {
     return isAgentInvocationResultMessage(entry.message);
   }
-  return true;
+  // A message to another agent stays in view, like a message from one.
+  return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
 }
 
 /**
