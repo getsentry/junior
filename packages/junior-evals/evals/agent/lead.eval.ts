@@ -297,13 +297,14 @@ describe("Lead child results", () => {
       },
     );
 
-    // A reply before the check passes the claim on as the Thread's report.
+    // A reply on the child's Turn reports the checked state, or passes the
+    // claim on as the Thread's report.
     if (reported.replies.length > 0) {
       await expect(reported).toSatisfyJudge(
         RubricJudge,
         rubric({
           pass: [
-            `The reply says that the Thread reports ${MERGED_PULL_REQUEST} as held, or that the state is not checked.`,
+            `The reply says that ${MERGED_PULL_REQUEST} is merged, that the Thread reports it as held, or that its state is not checked.`,
           ],
           fail: [
             `The reply states as a fact that ${MERGED_PULL_REQUEST} is held or waits on review.`,
