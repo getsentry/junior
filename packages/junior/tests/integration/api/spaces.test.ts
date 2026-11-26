@@ -15,6 +15,7 @@ import {
   versionsSchema,
 } from "@/api/schema";
 import { canReadConversation } from "@/api/conversations/access";
+import { setConversationArchive } from "@/api/conversations/archive";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import {
@@ -30,7 +31,7 @@ import type {
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { getSpaceLead } from "@/chat/lead/conversation";
+import { getSpaceLead, readSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
@@ -948,7 +949,15 @@ describe("Spaces API", () => {
       ).status,
     ).toBe(409);
 
-    // Restore brings back what the archive archived.
+    // A raced second archive keeps the first time, so restore still
+    // brings back what the archive archived.
+    const lead = await readSpaceLead(space.id);
+    await setConversationArchive({
+      applyToChildren: true,
+      archived: true,
+      conversationId: lead!.conversationId,
+      lastSeenAt: new Date(lead!.lastActivityAtMs).toISOString(),
+    });
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: false });
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),

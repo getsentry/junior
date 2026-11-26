@@ -49,6 +49,7 @@ export async function setConversationArchive(
     const db = executor.db();
     const [target] = await db
       .select({
+        archivedAt: juniorConversations.archivedAt,
         lastActivityAt: juniorConversations.lastActivityAt,
         rootConversationId: juniorConversations.rootConversationId,
       })
@@ -72,11 +73,16 @@ export async function setConversationArchive(
           unarchivedChildCount: unarchived.length,
         };
       }
-      const archivedAt = new Date();
-      // Descendants that are already archived keep their own time.
+      // An archived target keeps its time, so a raced or repeated archive
+      // writes the time that a restore of the target clears. Descendants
+      // that are already archived keep their own time.
+      const archivedAt = target.archivedAt ?? new Date();
       await setArchivedAt(
         db,
-        [args.conversationId, ...unarchived.map((node) => node.conversationId)],
+        [
+          ...(target.archivedAt ? [] : [args.conversationId]),
+          ...unarchived.map((node) => node.conversationId),
+        ],
         archivedAt,
       );
       return {
