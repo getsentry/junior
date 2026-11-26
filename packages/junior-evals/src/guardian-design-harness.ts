@@ -234,7 +234,7 @@ export const guardianDesignHarness = createHarness<
   run: async ({ input, signal }) => {
     const { arm, name } = selectedArm();
     const samples = sampleCount();
-    const results = await Promise.all(
+    const results = await Promise.allSettled(
       Array.from({ length: samples }, () => {
         const timeout = AbortSignal.timeout(SAMPLE_TIMEOUT_MS);
         return arm(input.request, {
@@ -242,8 +242,14 @@ export const guardianDesignHarness = createHarness<
         });
       }),
     );
+    signal?.throwIfAborted();
+    // A sample that throws fails alone, so one provider error does not hide
+    // the decisions of the other samples.
     const failures = results.flatMap((result, sample) => {
-      const failure = mismatch(input.expected, result);
+      const failure =
+        result.status === "rejected"
+          ? `threw ${String(result.reason)}`
+          : mismatch(input.expected, result.value);
       return failure ? [`sample ${sample + 1}: ${failure}`] : [];
     });
     const output: GuardianDesignOutput = {
