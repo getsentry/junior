@@ -16,6 +16,7 @@ import { Card } from "../../components/layout/Card";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatTile } from "../../components/metrics/StatTile";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
+import { Skeleton, SkeletonText } from "../../components/ui/skeleton";
 import { formatCompactNumber, formatCostBreakdown } from "../../format";
 import { formatTime } from "../../time";
 
@@ -57,35 +58,49 @@ export function CacheHealth(props: { range: TimeRangeDays }) {
   // A plain type: React Query's data type does not narrow by `status`.
   const data: CacheHealthReport | undefined = query.data;
   const report = data?.status === "ok" ? data : undefined;
+  const loading = !data && !query.error;
   return (
-    <section aria-label="Cache health">
+    <section aria-busy={loading || undefined} aria-label="Cache health">
       <Card>
         <div className="border-b border-dashboard-border-subtle px-4 py-4 sm:px-5">
           <SectionTitle>Cache health</SectionTitle>
           <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             Prompt cache of agent calls
-            {report ? ` to ${report.modelId}` : ""}, without warmups. Write
-            share is cache writes over input tokens. A full rewrite wrote over
-            50k tokens to the cache and read under 20k.
+            {report ? (
+              ` to ${report.modelId}`
+            ) : loading ? (
+              <span aria-hidden="true">
+                {" "}
+                to <SkeletonText className="w-40" />
+              </span>
+            ) : (
+              ""
+            )}
+            , without warmups. Write share is cache writes over input tokens. A
+            full rewrite wrote over 50k tokens to the cache and read under 20k.
             {props.range > 7 ? " Shows the last 7 days." : ""}
             {report?.stale
               ? ` This is from ${formatTime(report.fetchedAt, { hour: "numeric", minute: "2-digit" })}.`
               : ""}
           </p>
-          {report ? <HealthTotals report={report} /> : null}
+          {report ? (
+            <HealthTotals report={report} />
+          ) : loading ? (
+            <HealthTotalsLoading />
+          ) : null}
         </div>
         {report ? (
           <>
             <HealthChart buckets={report.buckets} />
             <Outcomes report={report} />
           </>
+        ) : loading ? (
+          <HealthLoading />
         ) : (
           <EmptyTelemetry>
-            {query.error
-              ? "Cache health failed to load."
-              : data && data.status !== "ok"
-                ? unavailable(data)
-                : "Loading cache health."}
+            {!query.error && data && data.status !== "ok"
+              ? unavailable(data)
+              : "Cache health failed to load."}
           </EmptyTelemetry>
         )}
       </Card>
@@ -153,6 +168,79 @@ function HealthTotals(props: { report: Report }) {
         />
       </div>
     </>
+  );
+}
+
+// Holds one row of breaker chips, as a deployment that warms shows.
+function HealthTotalsLoading() {
+  return (
+    <div aria-hidden="true">
+      <div className="mt-3 flex">
+        <Skeleton className="h-6 w-40 rounded-full" />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {["Write share", "Full rewrites", "Warmups sent", "Net savings"].map(
+          (label) => (
+            <StatTile
+              key={label}
+              label={
+                <>
+                  {label}, <SkeletonText className="w-16" />
+                </>
+              }
+              value={<SkeletonText className="w-14" />}
+            />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Row counts are typical, not a cap: each group lists its nonzero counts.
+const outcomeRowsLoading = [
+  ["Idle periods", 4],
+  ["Warmups sent after", 4],
+  ["Warmups skipped", 4],
+  ["Breaker", 1],
+] as const;
+
+function HealthLoading() {
+  return (
+    <div role="status">
+      <span className="sr-only">Loading cache health</span>
+      <div aria-hidden="true">
+        <div className="px-2 py-3 sm:px-4 sm:py-4">
+          <div className="px-2 pb-2">
+            <ChartLegend
+              ariaLabel="Cache health chart legend"
+              inline
+              items={legend.map((item) => ({
+                ...item,
+                color: "var(--color-dashboard-fill-soft)",
+              }))}
+            />
+          </div>
+          <Skeleton className="h-44 w-full" />
+        </div>
+        <div className="grid gap-4 border-t border-dashboard-border-subtle px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+          {outcomeRowsLoading.map(([label, rows]) => (
+            <div className="min-w-0" key={label}>
+              <div className="font-sans text-xs font-medium text-dashboard-text-muted">
+                {label}
+              </div>
+              <div className="mt-2 grid gap-y-1 font-sans text-xs">
+                {Array.from({ length: rows }, (_, index) => (
+                  <div key={index}>
+                    <SkeletonText className="w-3/4" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
