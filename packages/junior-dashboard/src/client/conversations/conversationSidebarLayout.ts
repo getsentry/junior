@@ -78,9 +78,15 @@ export function readDetailsWidth(columnPx: number): PanelSize {
   return defaultDetailsWidth(columnPx / rootFontPx());
 }
 
-/** Give the details panel width, in rem, for a column `columnRem` wide. */
+/**
+ * Give the details panel width, in rem, for a column `columnRem` wide. It
+ * rounds down to a whole rem, so a 1440px window keeps the 25rem width.
+ */
 export function defaultDetailsWidth(columnRem: number): RemSize {
-  return clampRem(columnRem * DETAILS_DEFAULT.share, DETAILS_DEFAULT);
+  return clampRem(
+    Math.floor(columnRem * DETAILS_DEFAULT.share),
+    DETAILS_DEFAULT,
+  );
 }
 
 /** Save the details panel width in px without a React render per drag step. */
