@@ -203,26 +203,21 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   };
 }
 
-/**
- * Keep the feed rows of one Space, each with its tree state, as the API
- * reads it for a Space's Threads.
- */
+/** Keep the feed rows of one Space. */
 export function filterMockConversationsBySpace(
   feed: ConversationFeed,
   spaceId: string,
 ): ConversationFeed {
   return {
     ...feed,
-    conversations: feed.conversations
-      .filter(
-        (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
-      )
-      .map((row) => ({ ...row, treeState: mockTreeState(row) })),
+    conversations: feed.conversations.filter(
+      (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
+    ),
   };
 }
 
 /** A mock row's tree state. A row with none reads one from its own status. */
-function mockTreeState(row: ConversationFeed["conversations"][number]) {
+export function mockTreeState(row: ConversationFeed["conversations"][number]) {
   return (
     row.treeState ??
     (row.status === "needs_input"

@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 import {
   conversationAuxiliaryCostsSchema,
   conversationUsageSchema,
@@ -30,7 +31,11 @@ export const conversationChildAgentSchema = z
     status: z.enum(AGENT_INVOCATION_STATUSES),
     task: z.string().optional(),
     title: z.string().min(1).optional(),
+    /** What the child and its own children wait on, for the viewer. */
+    treeState: conversationTreeStateSchema,
     updatedAt: z.string().datetime(),
+    /** The child or one of its own children watches for an Event or Timer. */
+    watching: z.boolean(),
   })
   .strict()
   .superRefine((data, context) => {

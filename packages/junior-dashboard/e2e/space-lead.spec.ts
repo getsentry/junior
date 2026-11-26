@@ -114,7 +114,8 @@ test("loads a Space page within its request budget", async ({
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    { requests: 14, serialRounds: 3 },
+    // The Space's Threads are the Lead's child agents, one more read.
+    { requests: 15, serialRounds: 3 },
   );
 });
 
@@ -209,12 +210,10 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByText("No member has talked to this Space's Lead yet."),
   ).toBeVisible();
-  // Its one Thread is done, so it shows once Done opens.
-  const threads = page.getByRole("region", { exact: true, name: "Threads" });
-  await threads.getByRole("button", { name: "Done · 1" }).click();
+  // The Space's Threads are its Lead's, so it has none to list.
   await expect(
-    threads.getByRole("link", { name: /Onboarding doc review/ }),
-  ).toBeVisible();
+    page.getByRole("region", { exact: true, name: "Threads" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 

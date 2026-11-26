@@ -58,39 +58,53 @@ const ATTENTION_GROUPS = ["needs_you", "working", "waiting", "done"] as const;
 
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 
-/**
- * Pick the attention group of a row from its tree state. A failed latest
- * Turn needs the viewer, as on the Space's own row. A tree that watches for
- * an Event or a Timer waits. A pin does not change the group.
- */
-function attentionGroup(conversation: Conversation): AttentionGroup {
-  const state = conversationDisplayState(conversation);
-  if (state === "needs_you" || conversation.latestTurnFailed) {
-    return "needs_you";
-  }
-  if (state === "working") return "working";
-  if (state === "watching") return "waiting";
-  return "done";
-}
+/** The attention group of one row, and when it last moved. */
+export type Attention = { group: AttentionGroup; time: number };
 
 /**
- * Group rows by `attentionGroup`, in `ATTENTION_GROUPS` order, each group
- * newest Message first. Groups with no rows are left out. In flight and a
- * Space's Threads both use this order.
+ * Group rows in `ATTENTION_GROUPS` order, each group newest first. Groups
+ * with no rows are left out. In flight and every Threads list use this
+ * order.
  */
-export function attentionGroups(
-  conversations: Conversation[],
-): { conversations: Conversation[]; group: AttentionGroup }[] {
-  const ordered = newestFirst(conversations);
+export function attentionGroups<T>(
+  rows: readonly T[],
+  attention: (row: T) => Attention,
+): { group: AttentionGroup; rows: T[] }[] {
+  const read = rows.map((row) => ({ row, ...attention(row) }));
+  read.sort((left, right) => right.time - left.time);
   return ATTENTION_GROUPS.flatMap((group) => {
-    const rows = ordered.filter((row) => attentionGroup(row) === group);
-    return rows.length > 0 ? [{ conversations: rows, group }] : [];
+    const grouped = read
+      .filter((item) => item.group === group)
+      .map((item) => item.row);
+    return grouped.length > 0 ? [{ group, rows: grouped }] : [];
   });
 }
 
-/** Sort rows as `attentionGroups` groups them. */
+/**
+ * Read a feed row's attention from its tree state and last Message. A failed
+ * latest Turn needs the viewer, as on the Space's own row. A tree that
+ * watches for an Event or a Timer waits. A pin does not change the group.
+ */
+function conversationAttention(conversation: Conversation): Attention {
+  const state = conversationDisplayState(conversation);
+  return {
+    group:
+      state === "needs_you" || conversation.latestTurnFailed
+        ? "needs_you"
+        : state === "working"
+          ? "working"
+          : state === "watching"
+            ? "waiting"
+            : "done",
+    time: activityTime(conversation),
+  };
+}
+
+/** Sort feed rows in attention order, as In flight shows them. */
 export function attentionOrder(conversations: Conversation[]): Conversation[] {
-  return attentionGroups(conversations).flatMap((group) => group.conversations);
+  return attentionGroups(conversations, conversationAttention).flatMap(
+    (group) => group.rows,
+  );
 }
 
 /** Sort conversations by their last Message, newest first. */
