@@ -20,15 +20,6 @@ import { deleteMessageLinks } from "./message-links";
 import { withConversationMutationLock } from "./store";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
-// No runtime code reads or writes Agent invocations, but the table stays in
-// the database for one release, with its rows and their foreign keys to
-// Conversations. Purge still deletes the rows of a purged tree.
-// TODO(dcramer): Delete with the migration that drops the table.
-const juniorAgentInvocations = pgTable("junior_agent_invocations", {
-  parentConversationId: text("parent_conversation_id").notNull(),
-  childConversationId: text("child_conversation_id").notNull(),
-});
-
 // No runtime code reads legacy Briefs, but the table stays in the database
 // for one release. A Brief holds Conversation content, so purge still
 // deletes the Briefs of a purged non-public tree.
@@ -135,11 +126,6 @@ export async function selectExpiredRoots(
       select 1 from junior_conversation_events events
       where events.conversation_id = tree.conversation_id
     )
-      or exists (
-        select 1 from junior_agent_invocations invocations
-        where invocations.parent_conversation_id = tree.conversation_id
-           or invocations.child_conversation_id = tree.conversation_id
-      )
       or exists (
         select 1 from junior_agent_bindings bindings
         where bindings.parent_conversation_id = tree.conversation_id
@@ -346,15 +332,6 @@ export async function purgeConversationTree(
             .db()
             .delete(juniorTurns)
             .where(inArray(juniorTurns.conversationId, ids));
-          await executor
-            .db()
-            .delete(juniorAgentInvocations)
-            .where(
-              or(
-                inArray(juniorAgentInvocations.parentConversationId, ids),
-                inArray(juniorAgentInvocations.childConversationId, ids),
-              ),
-            );
           await executor
             .db()
             .delete(juniorAgentBindings)
