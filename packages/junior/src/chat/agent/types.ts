@@ -100,12 +100,12 @@ export type SpawnAgent = (
 
 /**
  * Model-safe input for one message to the parent, a child agent, or another
- * top-level agent.
+ * agent that the sender can reach.
  */
 export type MessageAgentInput = {
   /**
    * `parent`, the name or Conversation id of a child agent, or the
-   * Conversation id of another top-level agent.
+   * Conversation id of another agent that the sender can reach.
    */
   to: string;
   text: string;
@@ -125,7 +125,7 @@ export type MessageAgentResult = {
 
 /**
  * Runtime-bound capability to message the parent, a child agent, or another
- * top-level agent.
+ * agent that the sender can reach.
  */
 export type MessageAgent = (
   input: MessageAgentInput,

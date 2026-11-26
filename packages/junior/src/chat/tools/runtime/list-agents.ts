@@ -109,7 +109,7 @@ const listedAgentFields = z
       .enum(CHILD_AGENT_KINDS)
       .optional()
       .describe(
-        "Kind of a child or sibling. thread: people can message it. task: only its parent messages it.",
+        "Kind of a child or sibling. thread: people can message it. task: only its parent gives it work.",
       ),
     summary: z
       .string()

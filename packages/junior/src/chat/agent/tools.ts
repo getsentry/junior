@@ -815,12 +815,9 @@ export function bindAgentTools(
     agents === "children" ||
     (agents === "children_and_parent" && botConfig.maxAgentDepth > 0);
   const spawnAgent = canSpawn ? bindSpawnAgent(run) : undefined;
-  // A child agent can always message its parent, even when it is too deep to
-  // start child agents of its own.
-  const messageAgent =
-    spawnAgent || agents === "children_and_parent"
-      ? bindMessageAgent?.(run, agents)
-      : undefined;
+  // Every agent can message the agents that it can reach, even when it is
+  // too deep to start child agents of its own.
+  const messageAgent = bindMessageAgent?.(run, agents);
   return {
     ...(spawnAgent ? { spawnAgent } : undefined),
     ...(messageAgent ? { messageAgent } : undefined),

@@ -178,7 +178,6 @@
     "packages/junior/src/chat/child-agents/list.ts": 2,
     "packages/junior/src/chat/child-agents/spawn.ts": 1,
     "packages/junior/src/chat/child-agents/stop.ts": 1,
-    "packages/junior/src/chat/child-agents/top-level-message.ts": 2,
     "packages/junior/src/chat/agent/index.ts": 8,
     "packages/junior/src/chat/agent/tools.ts": 2,
     "packages/junior/src/chat/agent/types.ts": 5,

@@ -17,7 +17,7 @@ export type ConversationSource =
 
 /**
  * What a Conversation is. An Automation run and a Lead have no parent. A Task
- * is a child that only its parent messages. A `thread` is one that people
+ * is a child that only its parent gives work. A `thread` is one that people
  * can message, with or without a parent. A Conversation never changes kind.
  */
 export type ConversationKind = "thread" | "automation" | "lead" | "task";

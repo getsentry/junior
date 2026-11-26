@@ -23,7 +23,7 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
 });
 
 export const messageAgentToolDefinition = zodToolDefinition({
-  description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. It does not start a new agent.`,
+  description: `Send a message to your parent agent, one of your child agents, or any other agent that you can reach, such as a sibling. A private conversation reaches only agents in its own channel, DM, or private Space. Use it to give a child more work, an answer, or a correction, or to send a finding while you keep working. A message to a child continues its history. Any other agent runs it as data and sends you no result. A reply arrives later as new input; do not wait or poll for it. It does not end your task.`,
   exposure: "modelOnly",
   // Action review judges the actions that the message names.
   approvalMode: "auto",
@@ -40,7 +40,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of another top-level agent, such as one from listAgents, searchConversations, or slackThreadRead`,
+          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of any other agent that you can reach, such as one from listAgents, searchConversations, or slackThreadRead`,
         ),
       text: z
         .string()
@@ -57,7 +57,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
 
 /**
  * Create the tool that sends one message to the parent, a child agent, or
- * another top-level agent.
+ * another agent that the sender can reach.
  */
 export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
