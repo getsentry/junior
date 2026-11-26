@@ -63,8 +63,7 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendCompactionSnapshot } from "@/chat/services/compaction-snapshot";
-import { CORE_FEATURE_COMPACTION_SNAPSHOT } from "@/chat/core-features/runtime";
+import { appendPluginCompactionContext } from "@/chat/plugins/compaction-context";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -238,14 +237,11 @@ function isTurnContextText(text: string | undefined): text is string {
 }
 
 /**
- * Remove the sections that only the Turn that received them can use, and
- * the sections that the snapshot of core features in the summary replaces.
+ * Remove the sections that only the Turn that received them can use. The
+ * summary holds the plugin state that must survive.
  */
 function withoutRequestContext(text: string): string {
-  return stripTags(text, [
-    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
-    ...CORE_FEATURE_COMPACTION_SNAPSHOT.replacedTags,
-  ]);
+  return stripTags(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
 }
 
 /**
@@ -897,7 +893,7 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      await appendCompactionSnapshot(
+      await appendPluginCompactionContext(
         renderCompactionSummary(summary),
         args.conversationId,
       ),

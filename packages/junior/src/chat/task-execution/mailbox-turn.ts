@@ -27,10 +27,8 @@ import {
   EVENT_MESSAGE_AUTHOR,
   EVENT_SYSTEM_ACTOR,
 } from "@/chat/events/actor";
-import {
-  EVENT_WAIT_MS,
-  isEventMailboxMetadata,
-} from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import {
   isParentMessageAuthor,

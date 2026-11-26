@@ -1,21 +1,20 @@
 # Core does not know To-dos exist. The To-do feature lives in
-# `packages/junior/src/chat/todos/`. Core reaches it only through contracts
-# that each core site owns, wired in `packages/junior/src/chat/core-features/`.
-# The core tool catalog (`tool-support/registry.ts`, `create-tools.ts`) and
-# the database schema list every feature's tools and tables. The Inbox,
+# `packages/junior/src/chat/todos/` as a core registration, and reaches the
+# agent only through plugin hooks. `core-registrations.ts` lists every core
+# registration, `core-system-prompts.ts` lists their prompt-only parts for the
+# build, and the database schema lists every table. The Inbox,
 # Search, and the dashboard API show To-dos to people, so they compose with
 # the feature. In the Slack List tools, "todo" is Slack's own term.
 id: no-core-todos
 language: TypeScript
 severity: error
-message: Core must not import or name To-dos. Put To-do code in packages/junior/src/chat/todos/, and reach it through a contract of the core site, wired in packages/junior/src/chat/core-features/.
+message: Core must not import or name To-dos. Put To-do code in packages/junior/src/chat/todos/, and reach the agent through a plugin hook of its registration.
 files:
   - packages/junior/src/**/*.ts
 ignores:
   - packages/junior/src/chat/todos/**
-  - packages/junior/src/chat/core-features/**
-  - packages/junior/src/chat/tool-support/registry.ts
-  - packages/junior/src/chat/tool-support/create-tools.ts
+  - packages/junior/src/chat/plugins/core-registrations.ts
+  - packages/junior/src/chat/plugins/core-system-prompts.ts
   - packages/junior/src/db/schema.ts
   - packages/junior/src/db/schema/**
   - packages/junior/src/chat/inbox-items/**

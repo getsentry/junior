@@ -1,4 +1,5 @@
 import type { Platform, PluginRegistration } from "@sentry/junior-plugin-api";
+import { coreSystemPromptRegistrations } from "@/chat/plugins/core-system-prompts";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import {
   buildCoreSystemPromptSections,
@@ -68,19 +69,21 @@ async function buildPlatformSections(
 
 /**
  * Build the system prompt sections of every platform and Prompt mode: the
- * core blocks with `botName`, then the guidance of `plugins`. `juniorNitro`
- * runs it once at build. A plugin hook that fails, a `SOUL.md` or `WORLD.md`
- * that exists but can't be read, or an empty `SOUL.md` throws an error that
- * names it.
+ * core blocks with `botName`, then the guidance of `plugins` and of core
+ * registrations. `juniorNitro` runs it once at build. A plugin hook that
+ * fails, a `SOUL.md` or `WORLD.md` that exists but can't be read, or an empty
+ * `SOUL.md` throws an error that names it.
  */
 export async function buildSystemPromptTable(
   plugins: readonly PluginRegistration[],
   botName: string,
 ): Promise<SystemPromptTable> {
   const files = readSystemPromptFilesForBuild();
+  // The same registrations, in the same order, as the runtime has.
+  const registrations = [...plugins, ...coreSystemPromptRegistrations()];
   const [slack, local] = await Promise.all([
-    buildPlatformSections(plugins, "slack", botName, files),
-    buildPlatformSections(plugins, "local", botName, files),
+    buildPlatformSections(registrations, "slack", botName, files),
+    buildPlatformSections(registrations, "local", botName, files),
   ]);
   return { slack, local };
 }

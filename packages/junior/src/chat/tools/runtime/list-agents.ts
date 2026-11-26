@@ -15,7 +15,10 @@ import type { ConversationStatus } from "@/chat/conversations/store";
 import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
-import { CORE_FEATURE_PARENT_AGENT_DETAIL } from "@/chat/core-features/runtime";
+import {
+  loadParentAgentFields,
+  parentAgentFields,
+} from "@/chat/plugins/parent-agent-fields";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
@@ -154,15 +157,6 @@ const listedAgentFields = z
 
 type ListedAgent = z.output<typeof listedAgentFields>;
 
-// Core features add fields to the parent's entry. `ListedAgent` types only
-// the fields of core, so the feature fields have no static keys here.
-const parentAgentDetailFields: Record<never, z.ZodType> =
-  CORE_FEATURE_PARENT_AGENT_DETAIL.fields;
-
-const listedAgentSchema = listedAgentFields
-  .extend(parentAgentDetailFields)
-  .strict();
-
 // Results of a child agent arrive as new tasks, so only a sibling or a
 // match outside the team offers a Watch.
 function listedChildAgent(
@@ -216,41 +210,55 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
   };
 }
 
-const listAgentsOutputSchema = juniorToolOutputSchema.extend({
-  agents: z
-    .array(listedAgentSchema)
-    .describe(
-      "Without a query: this conversation, its parent, its child agents, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations that the person you work for takes part in.",
-    ),
-});
-
-/** Static definition of `listAgents`. */
-export const listAgentsToolDefinition = zodToolDefinition({
-  exposure: "deferred",
-  source: AGENTS_TOOL_SOURCE,
-  description: `List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with ${CORE_FEATURE_PARENT_AGENT_DETAIL.listing}, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.`,
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-  inputSchema: z
-    .object({
-      query: z
-        .string()
-        .trim()
-        .min(1)
-        .max(200)
-        .nullable()
-        .optional()
+/**
+ * Definition of `listAgents`. Plugins add fields to the parent's entry, each
+ * named after its plugin.
+ */
+export function listAgentsToolDefinition() {
+  const fields = [...parentAgentFields()];
+  // `ListedAgent` types only the fields of core, so plugin fields have no
+  // static keys here.
+  const parentFields: Record<never, z.ZodType> = Object.fromEntries(
+    fields.map(([name, { field }]) => [name, field.schema.optional()]),
+  );
+  const parentDetails = fields.map(([, { field }]) => field.description);
+  const parent =
+    parentDetails.length > 0
+      ? `its parent with ${parentDetails.join(" and ")}`
+      : "its parent";
+  return zodToolDefinition({
+    exposure: "deferred",
+    source: AGENTS_TOOL_SOURCE,
+    description: `List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, ${parent}, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.`,
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
+    inputSchema: z
+      .object({
+        query: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .nullable()
+          .optional()
+          .describe(
+            "Words or meaning to match in the title or summary of any conversation that you may read. Omit it to list your team.",
+          ),
+      })
+      .strict(),
+    outputSchema: juniorToolOutputSchema.extend({
+      agents: z
+        .array(listedAgentFields.extend(parentFields).strict())
         .describe(
-          "Words or meaning to match in the title or summary of any conversation that you may read. Omit it to list your team.",
+          "Without a query: this conversation, its parent, its child agents, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations that the person you work for takes part in.",
         ),
-    })
-    .strict(),
-  outputSchema: listAgentsOutputSchema,
-});
+    }),
+  });
+}
 
 /**
  * Create the read-only tool that lists the team of one conversation: its
@@ -267,7 +275,7 @@ export function createListAgentsTool(
   },
 ) {
   return zodTool({
-    ...listAgentsToolDefinition,
+    ...listAgentsToolDefinition(),
     execute: async (input) => {
       const query = input.query ?? undefined;
       if (!query) return { agents: await listTeam(context) };
@@ -319,7 +327,7 @@ async function listTeam(
   // listAgentRelatives reads the parent only from the runtime context,
   // so a child reads only its own parent's details.
   const details = parent
-    ? await CORE_FEATURE_PARENT_AGENT_DETAIL.load({
+    ? await loadParentAgentFields({
         conversationId: context.conversationId,
         parentConversationId: parent.conversationId,
       })

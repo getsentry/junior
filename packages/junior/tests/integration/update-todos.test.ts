@@ -308,10 +308,8 @@ describe("updateTodos", () => {
       ]);
       expect(renderTodoDelta(parentTodos, seen)).toBe(
         [
-          "<todo-delta>",
           `To-do version ${parentTodos[0]!.version}. Others changed these To-dos since you last saw them. Each To-do shows its current fields.`,
           `- ${draft!.id} (done, assignee Echo, changed by child agent Echo): Review the draft`,
-          "</todo-delta>",
         ].join("\n"),
       );
     } finally {

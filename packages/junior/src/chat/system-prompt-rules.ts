@@ -16,9 +16,8 @@
  *    inputs, with no tag table and no context data.
  * 4. Actions and safety: `<safety>` holds action limits, approvals, and
  *    retries with side effects.
- * 5. Tools and skills: `<tool-policy>`, `<skill-policy>`, then the section
- *    of core features (`ToolPolicySection`) hold rules that span tools. A
- *    rule for one tool goes in its description.
+ * 5. Tools and skills: `<tool-policy>` and `<skill-policy>` hold rules
+ *    that span tools. A rule for one tool goes in its description.
  * 6. Communication and output: `<tool-call-style>`, `<conversation>`,
  *    `<slack-actions>`, `<failure-reporting>`, `<output>`.
  * 7. Personality: the consumer's `SOUL.md`, for voice and tone only.
@@ -42,11 +41,6 @@ import { renderTag, type Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
-import {
-  CORE_FEATURE_CHILD_AGENT_RUN_RULES,
-  CORE_FEATURE_TASK_EXECUTION_RULES,
-  CORE_FEATURE_TOOL_POLICY_SECTION,
-} from "@/chat/core-features/system-prompt";
 
 /**
  * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
@@ -94,12 +88,6 @@ const MODE_RULE_SETS: Record<PromptMode, SenderRules[]> = {
 
 type SectionAttributes = { for?: string; format?: string };
 
-/**
- * The block 5 rule section of core features. It follows `<skill-policy>` in
- * every Prompt mode but `lead`.
- */
-export type ToolPolicySection = { tag: string; rules: readonly string[] };
-
 function senderAttributes({ sender }: SenderRules): SectionAttributes {
   return sender ? { for: sender } : {};
 }
@@ -115,7 +103,7 @@ const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself and take the next appropriate step. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
   "- Ask the user a question only when they can give what is missing: access that they control, or a decision that is truly theirs and blocks safe progress. Ask it with `addInboxItem`, never in plain text. When only part of the work is blocked, deliver the rest in this Turn and ask about the blocked part with `addInboxItem`. When nobody in the Conversation can give what is missing, such as data that only someone outside the Conversation controls, say in one line what is missing and add no item. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and name the choice in a few words, even when the reply is mostly code. Do not add an item for a scope choice, an offer, or a follow-up idea.",
-  ...CORE_FEATURE_TASK_EXECUTION_RULES,
+  "- When your reply leaves a decision or a task for a person in this Conversation, it carries an item, not only text, such as an action item with `addInboxItem` for a decision that is theirs. This holds even when an Event's instructions say to tell or remind the person. Waiting for the person to ask you to act is their decision too, so ask it now with an action item. For a person who is not in the Conversation, name who can act instead. A confirmation that a child agent or Guardian asks for is the person's decision, even when their request already named the change.",
 ];
 
 /**
@@ -440,7 +428,7 @@ const CONCISE_REPLY_RULES = [
 
 function renderRuleSection(
   tag: string,
-  lines: readonly string[],
+  lines: string[],
   attributes: SectionAttributes = {},
 ): string {
   return renderTag(
@@ -464,11 +452,7 @@ function buildJobSection(
   if (mode === "child_agent") {
     return renderRuleSection(
       "child-agent-run",
-      [
-        ...CHILD_AGENT_RUN_RULES,
-        ...CORE_FEATURE_CHILD_AGENT_RUN_RULES,
-        ...AGENT_INPUT_RULES,
-      ],
+      [...CHILD_AGENT_RUN_RULES, ...AGENT_INPUT_RULES],
       attributes,
     );
   }
@@ -526,10 +510,6 @@ function buildToolsSection(mode: PromptMode): string {
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
-    renderRuleSection(
-      CORE_FEATURE_TOOL_POLICY_SECTION.tag,
-      CORE_FEATURE_TOOL_POLICY_SECTION.rules,
-    ),
   ].join("\n\n");
 }
 

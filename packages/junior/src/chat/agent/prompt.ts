@@ -20,11 +20,11 @@ import {
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
 import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
+import { pluginPromptHistoryMessages } from "@/chat/plugins/prompt-history-messages";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { CORE_FEATURE_TURN_CONTEXT } from "@/chat/core-features/runtime";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -101,20 +101,6 @@ export interface PromptAssembly {
   userContentParts: UserContentPart[];
 }
 
-/**
- * Renders the Turn context section of core features for the history that a
- * new prompt replays. It returns null when the section has no news.
- */
-type TurnContextRender = (history: readonly PiMessage[]) => string | null;
-
-/**
- * The section of core features in the Turn context of a new prompt. It reads
- * their state of the Conversation once, before the prompt knows its history.
- */
-export type TurnContextSource = (
-  conversationId: string,
-) => Promise<TurnContextRender>;
-
 /** Context that plugin prompt hooks and the user customization read. */
 export type PromptHookContext = Parameters<
   typeof getPluginUserPromptContributions
@@ -126,8 +112,6 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  /** The Turn context section of core features, from its source. */
-  featureContext?: TurnContextRender;
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
@@ -575,22 +559,29 @@ export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
     context: PromptHookContext;
     currentActor?: Actor | undefined;
+    /** The saved history, as `assemblePrompt` gets it. */
+    priorPiMessages?: PiMessage[] | undefined;
     turnId: string;
   },
 ): Promise<PromptTurnContext> {
   if (!planPromptReplay(args).loadsTurnContext) {
     return { pluginUserPromptContributions: [] };
   }
+  const history = withoutTrailingUncheckpointedUserPrompt(
+    args.priorPiMessages,
+    args.userContentParts,
+  ).messages;
   const [
     pluginUserPromptContributions,
     conversationNotes,
     userCustomization,
     workspaces,
-    featureContext,
     askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
+      historyMessages: (pluginName) =>
+        pluginPromptHistoryMessages(history, pluginName),
       turnId: args.turnId,
     }),
     loadTurnConversationNotes({
@@ -601,13 +592,11 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    CORE_FEATURE_TURN_CONTEXT(args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    featureContext,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -708,7 +697,6 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    featureContext,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -737,7 +725,6 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        featureSection: featureContext?.(promptHistoryMessages) ?? null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,

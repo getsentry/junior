@@ -6,8 +6,8 @@
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, eq, inArray, is, ne, sql } from "drizzle-orm";
+import { alias, PgAsyncDatabase } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
@@ -15,7 +15,7 @@ import {
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
@@ -146,7 +146,7 @@ export async function changeTodos(
     validateChange(rows, change);
     // A person can change a status during a Turn, after the Turn context
     // showed the To-dos. The agent's change wins, and its result shows what it
-    // replaced, since no later `<todo-delta>` can.
+    // replaced, since no later To-do delta can.
     const replacedIds = change.update
       .filter((update) => {
         const row = rows.get(update.id)!;
@@ -283,7 +283,7 @@ export async function setTodoStatusByUser(
 /**
  * Close To-dos of one Conversation that are assigned to one of its child
  * agents, for that child. Each change names the child, so the parent sees it
- * in its next `<todo-delta>`. Returns the changed To-dos.
+ * in its next To-do delta. Returns the changed To-dos.
  */
 async function closeChildTodos(
   db: JuniorDatabase,
@@ -610,14 +610,24 @@ async function readTodos(
   );
 }
 
+/**
+ * Narrow the database of a plugin hook context to the To-do database. Core
+ * passes its Postgres database or a transaction of it.
+ */
+export function todosDb(db: unknown): JuniorDatabase {
+  if (!is(db, PgAsyncDatabase)) {
+    throw new TypeError("To-dos need a Postgres database.");
+  }
+  return db;
+}
+
 /** Delete the To-dos of purged Conversations. Titles and notes are content. */
 export async function deleteTodos(
-  executor: JuniorSqlDatabase,
+  db: JuniorDatabase,
   conversationIds: string[],
 ): Promise<void> {
   if (conversationIds.length === 0) return;
-  await executor
-    .db()
+  await db
     .delete(juniorTodos)
     .where(inArray(juniorTodos.conversationId, conversationIds));
 }

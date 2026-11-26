@@ -1,32 +1,37 @@
 /**
- * The system prompt rules of To-dos. Core places them through
- * `chat/core-features/system-prompt.ts`: `<todo-policy>` in block 5 says what
- * goes on the durable To-dos, only work that outlives the Turn. It is not a
- * per-Turn checklist. How to call `updateTodos` goes in its description.
+ * The system prompt guidance of To-dos, which the To-do registration adds
+ * through its `systemPrompt` hook. It says what goes on the durable To-dos:
+ * only work that outlives the Turn. It is not a per-Turn checklist. How to
+ * call `todos_updateTodos` goes in its description.
  */
-import type { ToolPolicySection } from "@/chat/system-prompt-rules";
+import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import { TODOS_REGISTRATION_NAME, UPDATE_TODOS_TOOL_NAME } from "./types";
 
-/** Block 5, `<todo-policy>`. */
-export const TODO_POLICY_SECTION: ToolPolicySection = {
-  tag: "todo-policy",
-  rules: [
-    "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
-    "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-    "- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<todos>` lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns. `<todo-delta>` shows To-dos that people or child agents changed since you last saw them. A child agent's result closes its open To-dos: done when it completes, dropped when it stops.",
-    "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
-    "- To-do ids such as `TODO-12` are only for `updateTodos`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
-  ],
-};
+const TOOL = `\`${UPDATE_TODOS_TOOL_NAME}\``;
 
-/** Block 2 lines of `<child-agent-run>`: how a child closes its To-dos. */
-export const TODO_CHILD_AGENT_RUN_RULES = [
-  "- The parent entry of `listAgents` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with `updateTodos`. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.",
-];
+// The To-do rules. A Lead has no To-do tool, so they name it.
+const TODOS_SYSTEM_PROMPT = [
+  `These rules hold when ${TOOL} is one of your tools.`,
+  `- Use ${TOOL} only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.`,
+  "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
+  `- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. The \`todos\` plugin contribution lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns, and shows To-dos that people or child agents changed since you last saw them. A child agent's result closes its open To-dos: done when it completes, dropped when it stops.`,
+  "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
+  `- To-do ids such as \`TODO-12\` are only for ${TOOL}. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.`,
+  `- In a Turn with a person's input, when your reply leaves a task that only a person in this Conversation can do, the item it carries is a To-do assigned to them with ${TOOL}.`,
+  `- As a child agent: the parent entry of \`listAgents\` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with ${TOOL}. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.`,
+].join("\n");
 
 /**
- * Block 2 lines of `<task-execution>`: a reply that leaves work for a person
- * carries an item, an Inbox item or a To-do assigned to them.
+ * The prompt-only part of the To-do registration. A build renders system
+ * prompts from it, so this module imports no runtime code.
  */
-export const TODO_TASK_EXECUTION_RULES = [
-  "- When your reply leaves a decision or a task for a person in this Conversation, it carries an item, not only text: an action item with `addInboxItem` for a decision that is theirs, or a To-do assigned to them with `updateTodos` for a task that only they can do. This holds even when an Event's instructions say to tell or remind the person. Waiting for the person to ask you to act is their decision too, so ask it now with an action item. For a person who is not in the Conversation, name who can act instead. A confirmation that a child agent or Guardian asks for is the person's decision, even when their request already named the change.",
-];
+export const todosSystemPromptRegistration = {
+  manifest: {
+    name: TODOS_REGISTRATION_NAME,
+    displayName: "To-dos",
+    description: "Durable work that outlives a Turn",
+  },
+  hooks: {
+    systemPrompt: () => [{ text: TODOS_SYSTEM_PROMPT }],
+  },
+} satisfies PluginRegistration;

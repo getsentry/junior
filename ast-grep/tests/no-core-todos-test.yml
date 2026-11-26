@@ -2,12 +2,12 @@ id: no-core-todos
 valid:
   - "// TODO(dcramer): Remove after every deployed reader moves."
   - 'import { listWatches } from "@/chat/events/store";'
-  - "const sections = CORE_FEATURE_TOOL_POLICY_SECTIONS;"
+  - "const fields = parentAgentFields();"
 invalid:
   - 'import { listTodos } from "@/chat/todos/store";'
   - 'const { appendSnapshot } = await import("@/chat/todos/snapshot");'
   - "const todos = await load(conversationId);"
   - "type Row = { todo: string };"
-  - 'const rule = "- Use `updateTodos` for work that outlives this Turn.";'
+  - 'const rule = "- Use `todos_updateTodos` for work that outlives this Turn.";'
   - "// A child's result closes its To-dos."
   - "/** Every open todo of the Conversation. */"

@@ -19,7 +19,7 @@ type TodosInput = {
   update?: Array<{ assignee?: string | null }> | null;
 };
 
-/** Assignees that `updateTodos` calls set on new or changed To-dos. */
+/** Assignees that `todos_updateTodos` calls set on new or changed To-dos. */
 function todoAssignees(calls: ToolCall[]): string[] {
   return calls.flatMap((call) => {
     const input = (call.input as TodosInput | undefined) ?? {};
@@ -70,7 +70,7 @@ describe("Implicit Delegation", () => {
     // The checklist waits on the first task. Only a To-do keeps it if
     // history is compacted before the result arrives.
     expect(
-      todoAssignees(completedToolCalls("updateTodos", conversation)),
+      todoAssignees(completedToolCalls("todos_updateTodos", conversation)),
     ).toEqual(expect.arrayContaining([expect.not.stringMatching(/^self$/i)]));
   });
 
@@ -91,7 +91,7 @@ describe("Implicit Delegation", () => {
     );
 
     // To-dos hold only work that outlives the Turn.
-    expect(completedToolCalls("updateTodos", conversation)).toEqual([]);
+    expect(completedToolCalls("todos_updateTodos", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
   });
 

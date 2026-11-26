@@ -55,7 +55,7 @@ import {
   type ActiveContextCompactionArgs,
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
-import { appendCompactionSnapshot } from "@/chat/services/compaction-snapshot";
+import { appendPluginCompactionContext } from "@/chat/plugins/compaction-context";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
@@ -395,7 +395,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendCompactionSnapshot(
+        await appendPluginCompactionContext(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),

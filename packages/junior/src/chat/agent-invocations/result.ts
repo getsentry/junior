@@ -1,10 +1,8 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import {
-  EVENT_WAIT_MS,
-  type EventMailboxMetadata,
-} from "@/chat/events/notification";
+import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import {
   enqueueAutomatedInput,

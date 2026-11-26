@@ -1,4 +1,7 @@
-import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
+import type {
+  OwnedObjectAnnotation,
+  PromptHistoryMessage,
+} from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
@@ -606,8 +609,11 @@ export async function getPluginUserPromptContributions(args: {
     | "source"
     | "userText"
   >;
+  /** Read the model history that the prompt replays, for one plugin. */
+  historyMessages?: (pluginName: string) => PromptHistoryMessage[];
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
+  const { historyMessages } = args;
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
@@ -627,6 +633,12 @@ export async function getPluginUserPromptContributions(args: {
                 setSpanAttributes,
                 args.turnId,
               ),
+              ...(historyMessages
+                ? {
+                    historyMessages: () =>
+                      historyMessages(plugin.manifest.name),
+                  }
+                : undefined),
             }),
         ))
     );

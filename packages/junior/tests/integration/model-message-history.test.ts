@@ -249,7 +249,9 @@ describe("model message history", () => {
       before: { messages: unknown[] },
       after: { messages: unknown[] },
     ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const deltas = (text: string) => text.split("<todo-delta>").length - 1;
+    const deltas = (text: string) =>
+      text.split('<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:')
+        .length - 1;
 
     await agent.run("first");
     const first = agent.snapshot();
@@ -364,12 +366,53 @@ describe("model message history", () => {
     // The review is a To-do block, so it waits for the next interval.
     expect(
       [...turnText]
-        .filter(([, text]) => text.includes("<todos>"))
+        .filter(([, text]) =>
+          text.includes(
+            '<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:',
+          ),
+        )
         .map(([input]) => input),
     ).toEqual(["fourth"]);
     expect(turnText.get("fourth")).toContain(
       `- TODO-${open!.id} (open, assignee self): Renumber the migration`,
     );
     expect(turnText.get("fourth")).not.toContain("Merge the runner");
+  });
+  it("says how many To-dos it leaves out of a Turn context that they do not fit", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: Array.from({ length: 4 }, (_, index) => `Reply ${index}.`),
+    });
+    await agent.run("first");
+    const self = { conversationId: agent.conversationId() };
+    const count = 20;
+    await changeTodos(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      nowMs: Date.now(),
+      change: {
+        add: Array.from({ length: count }, (_, index) => ({
+          title: `Review part ${index}`,
+          notes: "n".repeat(1_000),
+          status: "open" as const,
+          assignee: self,
+        })),
+        update: [],
+        remove: [],
+      },
+    });
+    let review = "";
+    for (const input of ["second", "third", "fourth"]) {
+      const before = agent.snapshot();
+      await agent.run(input);
+      review = JSON.stringify(
+        agent.snapshot().messages.slice(before.messages.length),
+      );
+    }
+    const shown = review.split("- TODO-").length - 1;
+    expect(shown).toBeGreaterThan(0);
+    expect(shown).toBeLessThan(count);
+    expect(review).toContain(
+      `${count - shown} more To-dos do not fit here. Call \`todos_updateTodos\` with no changes to list every open To-do.`,
+    );
   });
 });
