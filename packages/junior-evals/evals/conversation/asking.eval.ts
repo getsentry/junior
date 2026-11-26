@@ -121,23 +121,32 @@ describe("Asking a Person", () => {
     expect(toolCallsOf("noReply", delivery)).not.toHaveLength(0);
   });
 
-  test("when a child agent is blocked on input that only the person has, the parent adds an action item and does not ask in text", async ({
+  test("when a child agent needs input that only the person has, the child asks with an action item and the parent does not ask again", async ({
     run,
   }) => {
+    const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
         "Hand this off to a child agent: write the gcloud command that deploys our billing-api service to Cloud Run in the region I picked for it last week.",
         { author: MAYA },
       ),
+      {
+        // The parent and the child agent both request tools here.
+        onProgress: (progress) => {
+          if (progress.type === "tool_request") {
+            requestedTools.push(progress.name);
+          }
+        },
+      },
     );
 
     expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
-    // Only Maya knows the region she picked, so the child reports a block.
-    // Its result starts the second Turn. The parent asks in the Inbox.
-    const resultTurn = conversation.turns[1];
-    expect(resultTurn).toBeDefined();
-    expect(askedRequests(resultTurn!)).not.toHaveLength(0);
-    for (const reply of resultTurn!.replies) {
+    // Only Maya knows the region she picked, so the child asks her in the
+    // Inbox itself. The parent gets a `waiting` update and does not ask.
+    expect(requestedTools).toContain("addInboxItem");
+    expect(requestedTools).not.toContain("reportBlocked");
+    expect(askedRequests(conversation)).toHaveLength(0);
+    for (const reply of conversation.replies) {
       expect(reply.text).not.toContain("?");
     }
   });

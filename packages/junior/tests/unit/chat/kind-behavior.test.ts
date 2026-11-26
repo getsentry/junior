@@ -16,7 +16,6 @@ const rootTurn = {
   relatedConversations: true,
   tools: {
     agents: "children",
-    inbox: true,
     subscriptions: true,
     userCustomization: true,
     settings: true,
@@ -48,7 +47,6 @@ const agentInThreadTurn = {
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
-    inbox: false,
     subscriptions: false,
     userCustomization: false,
     settings: false,
@@ -137,6 +135,14 @@ describe("turnBehavior", () => {
       personInput: false,
       expected: agentInTaskTurn,
     },
+    // A person's answer to the Task's own Inbox item. The Turn runs as the
+    // person.
+    {
+      kind: "task",
+      hasParent: true,
+      personInput: true,
+      expected: { ...agentInTaskTurn, waitsForSignIn: true },
+    },
   ] as const)(
     "gives a $kind Turn with a parent $hasParent and person input $personInput its behavior",
     ({ kind, hasParent, personInput, expected }) => {
@@ -149,7 +155,6 @@ describe("turnBehavior", () => {
   it("lists the tools of both senders on every Turn of a Thread", () => {
     expect(promptModeTurnTools("thread")).toEqual({
       ...agentInThreadTurn.tools,
-      inbox: true,
       subscriptions: true,
       userCustomization: true,
       settings: true,
@@ -161,12 +166,6 @@ describe("turnBehavior", () => {
   // tool list stays the same.
   it("lists the run's tools on every Turn of an Automation Conversation", () => {
     expect(promptModeTurnTools("automation")).toEqual(automationTurn.tools);
-  });
-
-  it("rejects a person's input on a task", () => {
-    expect(() =>
-      turnBehavior({ kind: "task", hasParent: true, personInput: true }),
-    ).toThrow("A task Conversation cannot have a person's input");
   });
 
   // A Lead keeps one system prompt and one tool list on every Turn, but only

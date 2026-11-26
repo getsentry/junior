@@ -37,6 +37,7 @@ import {
   recordDashboardRoot,
   recordAnswer,
   addItem,
+  storeActionItem,
 } from "../../../fixtures/conversation-status";
 import {
   recordTurnCompletion,
@@ -449,7 +450,7 @@ describe("conversation status", () => {
       idempotencyKey: "status-asking-child",
     });
     fixture.queue.takeMessageFor(asking.childConversationId);
-    await addItem(asking.childConversationId, ACTION_ITEM);
+    await storeActionItem(asking.childConversationId);
 
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(

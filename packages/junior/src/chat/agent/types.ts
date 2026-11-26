@@ -471,9 +471,9 @@ export function assertRunConsistency(
       }
       switch (destination.platform) {
         case "local": {
-          // A person's Turn in a Thread replies in the Thread. Its
-          // Destination is the Thread's own copy of its root's.
-          if (conversation?.kind === "thread" && conversation.hasParent) {
+          // A person's Turn in a child agent replies in the child. Its
+          // Destination is the child's own copy of its root's.
+          if (conversation?.hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

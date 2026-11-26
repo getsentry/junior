@@ -371,9 +371,9 @@ const STATIC_TOOL_BINDERS = {
   // model can read the active destination or another accessible public channel.
   slackChannelListMessages: (run) =>
     createSlackChannelListMessagesTool(slackOf(run)),
-  // Inbox items link to root Conversations, where a person can see them.
-  // `addInboxItem` is how the agent asks a person anything, so it is loaded
-  // in every root Turn. A child agent asks its parent instead.
+  // `addInboxItem` is how every agent, also a child agent, asks a person
+  // anything, so it is loaded in every Turn. People see a child's item on its
+  // root's surfaces.
   addInboxItem: (run) =>
     createAddInboxItemTool(run.context, run.inboxItemServices()),
   searchInboxItems: (run) =>
@@ -383,11 +383,6 @@ const STATIC_TOOL_BINDERS = {
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
-
-const INBOX_LIMIT = (turnTools: TurnTools) =>
-  turnTools.inbox
-    ? undefined
-    : `A child agent cannot use the Inbox. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`;
 
 // The listed tools that the Turn's own tools can disallow, with the reason
 // that the model sees. A Thread lists the tools of both senders, so one
@@ -425,9 +420,6 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.settings
       ? undefined
       : "Only a person's request changes configuration.",
-  addInboxItem: INBOX_LIMIT,
-  searchInboxItems: INBOX_LIMIT,
-  updateInboxItem: INBOX_LIMIT,
 };
 
 function attachmentStore(run: ToolRun) {

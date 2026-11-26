@@ -9,6 +9,7 @@ import {
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import { listWatches } from "@/chat/events/store";
 import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
@@ -30,7 +31,7 @@ import { childAgentStillWorks } from "./store";
 import { renderDataTag } from "@/chat/input-tags";
 import { remindsNoReplyForChildStatus } from "@/chat/conversations/kind-behavior";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
-import { listUnreportedSiblingAgents } from "./list";
+import { hasWaitingParentWork, listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
   AGENT_EVENT_NAMESPACE,
@@ -39,9 +40,6 @@ import {
 } from "./result-event-type";
 import { renderAgentResult, type AgentUpdateStatus } from "./agent-update";
 import type { ChildAgent, ChildAgentSender } from "./types";
-
-// TODO(dcramer): Add a `waiting` agent update from a child when it can pause
-// for input or auth instead of failing (#881).
 
 /**
  * Render the parent agent input for one child agent result as one
@@ -204,14 +202,12 @@ export async function enqueueAgentMessageToParent(args: {
   });
 }
 
-/** The status of an update that reaches the starter's mailbox. A wait is a note. */
-type StarterUpdateStatus = Exclude<AgentUpdateStatus, "waiting">;
-
-const RESULT_SUMMARIES: Record<StarterUpdateStatus, string> = {
+const RESULT_SUMMARIES: Record<AgentUpdateStatus, string> = {
   blocked: "is blocked.",
   done: "finished.",
   failed: "failed.",
   stopped: "was stopped.",
+  waiting: "waits on a person.",
 };
 
 const UPDATE_OUTCOMES = {
@@ -219,7 +215,10 @@ const UPDATE_OUTCOMES = {
   done: "success",
   failed: "error",
   stopped: "aborted",
-} as const satisfies Record<StarterUpdateStatus, SubagentOutcome>;
+} as const satisfies Record<
+  Exclude<AgentUpdateStatus, "waiting">,
+  SubagentOutcome
+>;
 
 /**
  * Append one agent update of a child agent to its starter's mailbox and
@@ -228,7 +227,7 @@ const UPDATE_OUTCOMES = {
  * `sender` names the child, and `actor` is the Actor that the parent's Turn
  * runs as; the parent never runs with more authority than the child's Turn.
  * `messageKey` keys the message, so a repeat call is safe. The child's
- * markers end first.
+ * markers end first, except for a `waiting` update, which ends nothing.
  */
 export async function enqueueStarterUpdate(args: {
   actor: Actor;
@@ -239,14 +238,16 @@ export async function enqueueStarterUpdate(args: {
   state?: StateAdapter | undefined;
   /** The child Turn that sent the update. */
   turnId: string;
-  update: { status: StarterUpdateStatus; text: string };
+  update: { status: AgentUpdateStatus; text: string };
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.childConversationId;
   const { status } = args.update;
-  await recordChildAgentEnded(senderId, UPDATE_OUTCOMES[status], {
-    state: args.state,
-  });
+  if (status !== "waiting") {
+    await recordChildAgentEnded(senderId, UPDATE_OUTCOMES[status], {
+      state: args.state,
+    });
+  }
   const inboundMessageId = getAgentReplyMessageId(senderId, args.messageKey);
   const rendered = { output: args.update.text, status };
   // A child may message its parent more than once. Final text while the
@@ -304,6 +305,98 @@ export async function enqueueStarterUpdate(args: {
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
   });
+}
+
+/**
+ * Tell the parent of a child agent that the child asked a person with an
+ * Inbox item and waits on the answer, so the parent does not ask again. The
+ * update gives no authority, so the parent runs it as the Event system Actor.
+ * The item keys it, so a later update of the same item reports nothing new.
+ * A Conversation with no parent sends nothing.
+ */
+export async function enqueueChildWaitingToParent(args: {
+  conversationId: string;
+  inboxItemId: string;
+  queue: ConversationWorkQueue;
+  text: string;
+}): Promise<void> {
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
+  const key = `waiting:${args.inboxItemId}`;
+  await enqueueStarterUpdate({
+    actor: EVENT_SYSTEM_ACTOR,
+    messageKey: key,
+    queue: args.queue,
+    sender,
+    turnId: key,
+    update: {
+      status: "waiting",
+      text: `Asked a person with Inbox item ${args.inboxItemId}. Their answer goes to this child agent.\nQuestion: ${args.text}`,
+    },
+  });
+}
+
+/**
+ * Report to the parent of a child agent that a person dismissed the child's
+ * Inbox question. A dismiss starts no Turn, like for a root owner. When that
+ * ends the child's work, the child reports `done` now, as the Event system
+ * Actor. Otherwise the parent gets the dismiss as a message, so it does not
+ * keep waiting on that answer. The item keys both, so a repeat dismiss sends
+ * nothing new. A Conversation with no parent sends nothing.
+ */
+export async function enqueueChildDismissToParent(args: {
+  conversationId: string;
+  inboxItemId: string;
+  queue: ConversationWorkQueue;
+  text: string;
+}): Promise<void> {
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
+  const key = `dismissed:${args.inboxItemId}`;
+  const closed = `${args.text}\nIt closed with no answer`;
+  if (await dismissEndsChildWork(args.conversationId)) {
+    await enqueueStarterUpdate({
+      actor: EVENT_SYSTEM_ACTOR,
+      messageKey: key,
+      queue: args.queue,
+      sender,
+      turnId: key,
+      update: {
+        status: "done",
+        text: `${closed}, so this child agent did not continue.`,
+      },
+    });
+    return;
+  }
+  // A Turn that still runs, such as the one that asked, reports its own end,
+  // and other work reports when it ends.
+  await enqueueAgentMessageToParent({
+    actor: EVENT_SYSTEM_ACTOR,
+    messageKey: key,
+    queue: args.queue,
+    sender,
+    text: `${closed}.`,
+  });
+}
+
+// A dismiss ends the child's work when no Turn of the child runs, none of its
+// own child agents still works, it has no active Watch or Timer, and no input
+// waits to run a later Turn.
+async function dismissEndsChildWork(conversationId: string): Promise<boolean> {
+  const [work, turns, stillWorks, watches, waiting] = await Promise.all([
+    getConversationWorkState({ conversationId }),
+    listActiveMailboxTurns(conversationId),
+    childAgentStillWorks(conversationId),
+    listWatches({ conversationId }),
+    hasWaitingParentWork(conversationId),
+  ]);
+  return (
+    (work?.runningInboundMessageIds.length ?? 0) === 0 &&
+    turns.length === 0 &&
+    !stillWorks &&
+    watches.length === 0 &&
+    !waiting
+  );
 }
 
 /**

@@ -24,6 +24,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createWatch } from "@/chat/events/store";
+import { insertInboxItem } from "@/chat/inbox-items/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { neverRunAgentRunner } from "./agent-runner";
 import { webTestActor } from "./conversation";
@@ -278,6 +279,29 @@ export async function addItem(
     {},
   );
   return result.item.id;
+}
+
+/**
+ * Store the open `ACTION_ITEM` of `conversationId` for the web test viewer,
+ * as an agent added it earlier. Unlike `addItem`, it sends no `waiting`
+ * update to a parent agent, so the parent has no queued Turn.
+ */
+export async function storeActionItem(conversationId: string): Promise<void> {
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected the web test viewer");
+  await insertInboxItem(getDb(), {
+    owner: { id: conversationId, kind: "conversation" },
+    assignedToEveryone: false,
+    assigneeUserIds: [viewer.id],
+    body: ACTION_ITEM.body,
+    conversationIds: [conversationId],
+    dedupeKey: `action:${conversationId}`,
+    kind: "action",
+    nowMs: Date.now(),
+    request: REQUEST,
+    title: ACTION_ITEM.title,
+    visibility: "public",
+  });
 }
 
 /** Start a Watch on a deployment for `conversationId`. */

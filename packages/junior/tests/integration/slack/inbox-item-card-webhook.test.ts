@@ -6,7 +6,12 @@ import {
   pauseConversationDelivery,
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
-import { getConversationStore, getDb } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
@@ -38,6 +43,7 @@ import {
   blocksOf,
   buttonValue,
   inboxItemCardHarness,
+  recordedChanges,
   setUpInboxItemCards,
   slackThread,
   tearDownInboxItemCards,
@@ -168,17 +174,16 @@ describe("Slack webhook: Inbox item cards", () => {
         providerTenantId: "T123",
       }),
     ).resolves.toBe(THREAD);
-    // The other linked thread learns about it once, from the person.
+    // The answer goes only to the agent that asked. The other linked thread
+    // records it once, and gets no input that starts a Turn.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,
       state,
     });
-    expect(other?.messages).toHaveLength(1);
-    expect(other?.messages[0]?.input.text).toContain("answered inbox item");
-    expect(other?.messages[0]?.input.reviewItemChange).toEqual({
-      kind: "submitted",
-      reviewItemId: item.id,
-    });
+    expect(other?.messages ?? []).toHaveLength(0);
+    expect(await recordedChanges(OTHER_THREAD)).toEqual([
+      { kind: "submitted", reviewItemId: item.id },
+    ]);
 
     // Both cards lose their controls and show the answer.
     const updates = slackApiOutbox
@@ -384,14 +389,28 @@ describe("Slack webhook: Inbox item cards", () => {
       value: buttonValue(cards[0], "junior_review_item:choice:0"),
     });
 
-    // A click acts for the parent, which owns the thread, so the parent gets
-    // the answer once.
+    // The child asked, so only the child gets the answer, once, as Ana's
+    // own input. The parent owns the thread, but it only records the answer.
+    const childWork = await getConversationWorkState({
+      conversationId: child,
+      state,
+    });
+    expect(childWork?.messages).toHaveLength(1);
+    expect(childWork?.messages[0]).toMatchObject({
+      input: { reviewItemChange: { kind: "submitted", reviewItemId: item.id } },
+      source: "web",
+    });
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
     });
-    expect(work?.messages).toHaveLength(1);
-    expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
+    // The parent got only the child's `waiting` update.
+    expect(work?.messages.map((message) => message.input.text)).toEqual([
+      expect.stringContaining('status="waiting"'),
+    ]);
+    expect(await recordedChanges(THREAD)).toEqual([
+      { kind: "submitted", reviewItemId: item.id },
+    ]);
   });
 
   it("posts no card in a detached thread until it attaches again", async () => {
@@ -708,14 +727,20 @@ describe("Slack webhook: Inbox item cards", () => {
       status: "done",
     });
 
-    // The retry needs no decision: it shows the close on the card and wakes
-    // the other linked thread.
+    // The retry needs no decision: it shows the close on the card and
+    // records it in the other linked thread, with no Turn there.
     expect((await postInDashboard(ana)).status).toBe(200);
     expect(
       JSON.stringify(blocksOf(slackApiOutbox.calls("chat.update")[0])),
     ).toContain("ana@example.com replied in the thread");
     expect(
       queue.sentRecords().map((record) => record.conversationId),
-    ).toContain(OTHER_THREAD);
+    ).not.toContain(OTHER_THREAD);
+    const recorded = projectConversationMessages(
+      await getConversationEventStore().loadMessageHistory(OTHER_THREAD),
+    );
+    expect(recorded.map((message) => message.text)).toEqual([
+      expect.stringContaining("replied in a thread linked to inbox item"),
+    ]);
   });
 });

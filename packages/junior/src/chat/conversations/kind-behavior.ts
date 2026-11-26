@@ -47,9 +47,10 @@ export type TurnBehavior = {
    */
   idleNeedsPendingWork: boolean;
   /**
-   * The Turn can pause until its web Actor signs in. A child agent's Turn
-   * cannot wait for a person, even when it runs as the web user who started
-   * it. Missing auth blocks it instead.
+   * The Turn can pause until its web Actor signs in. Only a person's Turn
+   * waits. An agent's Turn in a child agent cannot wait for a person, even
+   * when it runs as the web user who started it. Missing auth blocks it
+   * instead.
    */
   waitsForSignIn: boolean;
   /**
@@ -76,7 +77,6 @@ export type TurnBehavior = {
   relatedConversations: boolean;
   tools: {
     agents: AgentTools;
-    inbox: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
     /**
@@ -120,7 +120,6 @@ const ROOT: TurnBehavior = {
   relatedConversations: true,
   tools: {
     agents: "children",
-    inbox: true,
     subscriptions: true,
     userCustomization: true,
     settings: true,
@@ -166,7 +165,6 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
-    inbox: false,
     subscriptions: false,
     userCustomization: false,
     settings: false,
@@ -174,6 +172,14 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     reportBlocked: "parent",
     noReply: false,
   },
+};
+
+// A person's answer to an Inbox item of a Task. The Task keeps its one
+// system prompt and tool list, and it still reports to its parent. The Turn
+// runs as the person, so it can wait for their sign-in.
+const PERSON_IN_TASK: TurnBehavior = {
+  ...CHILD_AGENT_TURN,
+  waitsForSignIn: true,
 };
 
 // Every Turn on a Thread that a person did not send.
@@ -189,7 +195,6 @@ const AGENT_IN_THREAD: TurnBehavior = {
 // one tool list. The Turn's own tools say which of them it can use.
 const THREAD_TOOLS: TurnBehavior["tools"] = {
   ...AGENT_IN_THREAD.tools,
-  inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
   settings: PERSON_IN_THREAD.tools.settings,
@@ -306,9 +311,8 @@ export function turnBehavior(args: {
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
     case "task":
-      if (!args.personInput) return CHILD_AGENT_TURN;
-      // Only an agent writes input to a task.
-      throw new Error("A task Conversation cannot have a person's input");
+      // A person's only input to a Task is the answer to its own Inbox item.
+      return args.personInput ? PERSON_IN_TASK : CHILD_AGENT_TURN;
     case "lead":
       return args.personInput ? LEAD : LEAD_RUNTIME_TURN;
   }
@@ -340,6 +344,17 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
  */
 export function hasConversationMetadata(kind: ConversationKind): boolean {
   return kind !== "task";
+}
+
+/**
+ * Return whether a Conversation takes a person's answer to its own Inbox
+ * item as the person's web input, also when it takes no other web input.
+ * Every child agent asks its own questions, so a Task gets its answers too.
+ */
+export function takesInboxAnswersAsWebInput(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !isTopLevel(conversation);
 }
 
 /**

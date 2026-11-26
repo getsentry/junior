@@ -357,22 +357,32 @@ export async function isInboxItemOpen(
 }
 
 /**
- * Read the action items that the agent added in one Conversation and that a
- * reply can answer: the open items, and the items that a reply closed. A
- * plugin's items are left out: the plugin closes them when its provider
- * state changes, such as when a pull request merges. A To-do's items are
- * left out too: they close when the To-do does.
+ * Read the action items that a reply in one Conversation can answer: the
+ * open items, and the items that a reply closed. The agent added them in
+ * this Conversation, or, in a root, in one of its child agents, which show
+ * their cards in the root's thread. A plugin's items are left out: the
+ * plugin closes them when its provider state changes, such as when a pull
+ * request merges. A To-do's items are left out too: they close when the
+ * To-do does.
  */
 export async function listReplyActionItems(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<InboxItem[]> {
+  const descendants = db
+    .select({ id: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.rootConversationId, conversationId));
   const rows = await db
     .select()
     .from(juniorInboxItems)
     .where(
       and(
-        inboxItemOwnedByConversation(conversationId),
+        eq(juniorInboxItems.ownerKind, "conversation"),
+        or(
+          eq(juniorInboxItems.ownerId, conversationId),
+          inArray(juniorInboxItems.ownerId, descendants),
+        ),
         eq(juniorInboxItems.kind, "action"),
         notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
         notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),

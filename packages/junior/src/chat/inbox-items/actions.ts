@@ -30,6 +30,7 @@ import {
   getInboxItem,
   listReplyActionItems,
   INBOX_ITEM_REPLIED_REASON,
+  ownerConversationId,
   takeInboxItem,
   type InboxItem,
 } from "./store";
@@ -119,7 +120,8 @@ function submittedAnswer(
 
 /**
  * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every
+ * Only the Conversation that added the item gets an answer as input; see
+ * `sendInboxItemMessages`. The first submit or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
@@ -337,7 +339,8 @@ function messageAnswer(
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
- * - The agent added it in this Conversation, its owner.
+ * - The agent added it in this Conversation, its owner, or this is a root
+ *   and one of its child agents added it.
  * - The replier is an assigned User. A Slack replier without a Junior User
  *   closes no item.
  * - The decision model says that the reply answers this item
@@ -348,8 +351,9 @@ function messageAnswer(
  * assignees), or only for other people, stay open. They need an answer on
  * the card or the Inbox. Each item closes as `done` with
  * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
- * is the answer in this Conversation, so only the other linked
- * Conversations get a message. A click that closes the item first wins.
+ * is the answer in this Conversation. When a child agent owns the item, it
+ * gets the reply as the person's answer. The other linked Conversations only
+ * record the close. A click that closes the item first wins.
  * A retry of the reply, or a later reply from the same person, delivers
  * the items that it closed again: the cards show the close, and only the
  * missing messages go. Each message has a key, so a message that was sent
@@ -374,7 +378,14 @@ export async function closeInboxItemsAnsweredByReply(args: {
   if (args.canAnswer && !(await args.canAnswer())) return;
   const user = await args.resolveUser();
   const nowMs = args.nowMs ?? Date.now();
-  const answered = items.filter((candidate) => replyAnswers(candidate, user));
+  // A child agent's item takes the reply as that person's input, so it
+  // needs a User to run as.
+  const answered = items.filter(
+    (candidate) =>
+      replyAnswers(candidate, user) &&
+      (user !== undefined ||
+        ownerConversationId(candidate) === args.conversationId),
+  );
   let matched: Set<string>;
   try {
     matched = await matchReplyToInboxItems({
@@ -412,11 +423,16 @@ export async function closeInboxItemsAnsweredByReply(args: {
       closedItem = await getInboxItem(db, item.id);
       if (!closedItem) continue;
     }
+    // The reply is the answer in this Conversation. The child agent that
+    // asked gets it as the person's answer, like a click on its card.
     await deliverInboxItemChange({
-      change: {
-        kind: "replied",
-        who: user ? (user.displayName ?? user.email) : "A person",
-      },
+      change:
+        user && ownerConversationId(closedItem) !== args.conversationId
+          ? { kind: "submitted", user }
+          : {
+              kind: "replied",
+              who: user ? (user.displayName ?? user.email) : "A person",
+            },
       delivery: args.delivery,
       exceptConversationId: args.conversationId,
       item: closedItem,

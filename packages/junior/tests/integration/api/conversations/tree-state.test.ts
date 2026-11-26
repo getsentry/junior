@@ -461,9 +461,10 @@ describe("conversation tree state", () => {
     ).resolves.toMatchObject({ status: "archived" });
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
-    // An archived Conversation still counts for itself.
+    // An archived Conversation still counts for itself: the `waiting` update
+    // of its Task queued a Turn for it.
     await expect(fixture.tree(childConversationId)).resolves.toEqual({
-      treeState: "done",
+      treeState: "working",
       watching: true,
     });
   });

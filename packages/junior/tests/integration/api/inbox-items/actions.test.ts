@@ -116,7 +116,7 @@ async function pendingMessages(conversationId: string) {
 
 async function savedChanges(
   conversationId: string,
-  kind: "taken" | "dismissed",
+  kind: "taken" | "dismissed" | "submitted",
 ) {
   const messages = projectConversationMessages(
     await getConversationEventStore().loadMessageHistory(conversationId),
@@ -377,25 +377,28 @@ describe("inbox item actions API", () => {
       answer: { values: { decision: ["Reject"], reason: ["Not fair source"] } },
     });
 
-    // Both linked Conversations hear from Ana, once, even after a retry.
+    // The Conversation that asked hears from Ana, once, even after a retry.
     const retry = await api(fixture, ana).act(id, {
       action: "submit",
       answer: { values: { decision: ["Reject"] } },
     });
     expect(retry.status).toBe(200);
-    for (const conversationId of [
-      "slack:CPUB:1.000001",
-      "slack:CPUB:1.000002",
-    ]) {
-      const texts = await pendingTexts(conversationId);
-      expect(texts).toHaveLength(1);
-      expect(texts[0]).toContain("ana@example.com answered inbox item");
-      expect(texts[0]).toContain("Not fair source");
-      // The message records the answer, so the dashboard shows it as one.
-      expect(
-        (await pendingMessages(conversationId))[0]?.input.reviewItemChange,
-      ).toEqual({ kind: "submitted", reviewItemId: id });
-    }
+    const texts = await pendingTexts("slack:CPUB:1.000001");
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain("ana@example.com answered inbox item");
+    expect(texts[0]).toContain("Not fair source");
+    // The message records the answer, so the dashboard shows it as one.
+    expect(
+      (await pendingMessages("slack:CPUB:1.000001"))[0]?.input.reviewItemChange,
+    ).toEqual({ kind: "submitted", reviewItemId: id });
+    // The other linked Conversation only records the answer, once. It gets
+    // no input that starts a Turn.
+    expect(await pendingTexts("slack:CPUB:1.000002")).toEqual([]);
+    expect(
+      (await savedChanges("slack:CPUB:1.000002", "submitted")).map(
+        (message) => message.text,
+      ),
+    ).toEqual([expect.stringContaining("Not fair source")]);
 
     // Ben is too late, and the item leaves the open views.
     expect(

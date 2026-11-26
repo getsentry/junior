@@ -5,7 +5,12 @@ import { expect } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
 import { setTrustConfig } from "@/chat/identities/trust";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -113,6 +118,13 @@ export function buttonValue(
     .find((element) => element.action_id === actionId)?.value;
   if (!value) throw new Error(`no button ${actionId}`);
   return value;
+}
+
+/** The Inbox item changes that one Conversation recorded, oldest first. */
+export async function recordedChanges(conversationId: string) {
+  return projectConversationMessages(
+    await getConversationEventStore().loadMessageHistory(conversationId),
+  ).flatMap((message) => message.meta?.reviewItemChanges ?? []);
 }
 
 /** Give each test the Slack bot token and fresh Slack API mocks. */

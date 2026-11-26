@@ -176,7 +176,7 @@
     "packages/junior/src/chat/child-agents/top-level-message.ts": 2,
     "packages/junior/src/chat/agent/index.ts": 8,
     "packages/junior/src/chat/agent/tools.ts": 2,
-    "packages/junior/src/chat/agent/types.ts": 5,
+    "packages/junior/src/chat/agent/types.ts": 4,
     "packages/junior/src/chat/automation-result.ts": 1,
     "packages/junior/src/chat/automations/tool-access.ts": 1,
     "packages/junior/src/chat/cache-warming/backfill.ts": 1,

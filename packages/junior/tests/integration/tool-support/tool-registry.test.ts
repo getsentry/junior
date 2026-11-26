@@ -279,11 +279,10 @@ describe("static tool registry", () => {
         expect.arrayContaining([
           "setConversationSubscription",
           "moveConversationToSpace",
-          "addInboxItem",
-          "searchInboxItems",
-          "updateInboxItem",
         ]),
       );
+      // Every agent, also a child agent, asks a person with an Inbox item.
+      expect(agent.disabled).not.toContain("addInboxItem");
       expect(agent.disabled).not.toContain("startAgent");
       // A child agent starts child agents, so it sees their arguments.
       expect(
@@ -299,9 +298,6 @@ describe("static tool registry", () => {
         callTool(agent, "setConversationSubscription", { subscribed: true }),
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
-      );
-      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
-        "addInboxItem is disabled in this Turn.",
       );
       // A person's Turn can end with no post. An agent's Turn reports to the
       // parent with its final text, and the parent decides what to do.
