@@ -200,6 +200,9 @@ export function InboxList(props: {
   // view. Only then does the link leave the URL.
   const navigate = useNavigate();
   const linkedId = params.get("item") ?? undefined;
+  // On a phone, a snooze link keeps `?snooze=` until the row is in view,
+  // and the row opens no sheet over the snooze dialog.
+  const snoozeLink = mobile && Boolean(params.get("snooze"));
   // Done shows a linked closed item that is past its first page too. The
   // list state keeps it, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -277,7 +280,7 @@ export function InboxList(props: {
         });
         return;
       }
-      if (expandedKey !== linkedRowKey) {
+      if (!snoozeLink && expandedKey !== linkedRowKey) {
         setExpandedKey(linkedRowKey);
         return;
       }
@@ -356,6 +359,7 @@ export function InboxList(props: {
     setLinkedItems,
     setTodoCollapsed,
     showMore,
+    snoozeLink,
     snoozedKey,
     todoCollapsed,
     view,

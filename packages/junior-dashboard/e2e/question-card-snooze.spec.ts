@@ -190,33 +190,44 @@ test("Dismiss closes a shared question for everyone", async ({
   await expect(shared).toContainText(/Dismissed by/);
 });
 
-test("a Slack card's Snooze link opens the item's snooze dialog", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  const snoozes = recordBodies(page, "/api/inbox/snoozes");
-  await page.goto(
-    `${dashboard.baseURL}/inbox?item=qa-migration-negative&snooze=1`,
-  );
-  const dialog = page.getByRole("dialog", { name: "Custom snooze" });
-  await expect(dialog).toBeVisible();
-  // The link leaves the URL, so a reload does not open the dialog again.
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("snooze"))
-    .toBe(null);
-  await screenshot(page, "inbox-linked-snooze-dialog", { lightTheme: true });
-  await dialog.getByRole("button", { name: "Someday" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect
-    .poll(() => snoozes)
-    .toEqual([
-      expect.objectContaining({
-        inboxItemId: "qa-migration-negative",
-        untilClosed: true,
-      }),
-    ]);
-});
+for (const view of [desktop, mobile]) {
+  test(`a Slack card's Snooze link opens the item's snooze dialog (${view.name})`, async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(view);
+    const snoozes = recordBodies(page, "/api/inbox/snoozes");
+    await page.goto(
+      `${dashboard.baseURL}/inbox?item=qa-migration-negative&snooze=1`,
+    );
+    const dialog = page.getByRole("dialog", { name: "Custom snooze" });
+    await expect(dialog).toBeVisible();
+    // The link leaves the URL, so a reload does not open the dialog again.
+    // The item leaves once the list shows its row.
+    await expect
+      .poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return [params.get("item"), params.get("snooze")];
+      })
+      .toEqual([null, null]);
+    // A phone opens no sheet for the row, so the dialog stays in front.
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await screenshot(page, "inbox-linked-snooze-dialog", {
+      lightTheme: true,
+      view: view.name,
+    });
+    await dialog.getByRole("button", { name: "Someday" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(() => snoozes)
+      .toEqual([
+        expect.objectContaining({
+          inboxItemId: "qa-migration-negative",
+          untilClosed: true,
+        }),
+      ]);
+  });
+}
 
 test("an Inbox question card reads Dismiss, Snooze, then Send", async ({
   dashboard,
