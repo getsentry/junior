@@ -144,8 +144,6 @@
       // from this list when its reads move.
       "files": [
         "packages/junior/src/app.ts",
-        "packages/junior/src/chat/agent/tools.ts",
-        "packages/junior/src/chat/cache-warming/savings.ts",
         "packages/junior/src/chat/config.ts",
         "packages/junior/src/chat/logging.ts",
         "packages/junior/src/chat/mcp/jwt-bearer-provider.ts",
@@ -158,7 +156,6 @@
         "packages/junior/src/chat/plugins/command-env.ts",
         "packages/junior/src/chat/plugins/manifest.ts",
         "packages/junior/src/chat/sentry-telemetry.ts",
-        "packages/junior/src/chat/workspaces/tools/switch.ts",
         "packages/junior/src/handlers/oauth-callback.ts",
         "packages/junior/src/plugins.ts"
       ],
