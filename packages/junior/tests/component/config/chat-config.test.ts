@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadConfig as resolveConfig } from "@/config";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
@@ -483,6 +484,54 @@ describe("chat config", () => {
     process.env["AGENT_TURN_TIMEOUT_MS"] = "999999";
     const { botConfig } = await loadConfig();
     expect(botConfig.turnTimeoutMs).toBe(280000);
+  });
+});
+
+describe("loadConfig", () => {
+  const encryptionEnv = {
+    JUNIOR_ENCRYPTION_KEYS: `k1:${Buffer.alloc(32, 1).toString("base64")}`,
+  };
+
+  it("prefers host options over env", () => {
+    const config = resolveConfig({
+      env: {
+        ...encryptionEnv,
+        AI_MODEL: "anthropic/claude-opus-4.6",
+        DATABASE_URL: TEST_DATABASE_URL,
+        JUNIOR_SQL_STATEMENT_TIMEOUT_MS: "15000",
+      },
+      options: {
+        bot: { modelId: "openai/gpt-5.4" },
+        functionMaxDurationSeconds: 800,
+      },
+    });
+
+    expect(config.bot.modelId).toBe("openai/gpt-5.4");
+    expect(config.bot.fastModelId).toBe("anthropic/claude-opus-4.6");
+    expect(config.sql.statementTimeoutMs).toBe(15_000);
+    expect(config.bot.turnTimeoutMs).toBe(720_000);
+  });
+
+  it("reads no env by default and requires only the encryption keys and database URL", () => {
+    expect(() => resolveConfig()).toThrow("JUNIOR_ENCRYPTION_KEYS is required");
+    expect(() => resolveConfig({ env: encryptionEnv })).toThrow(
+      /^DATABASE_URL is required$/,
+    );
+    expect(
+      resolveConfig({
+        env: encryptionEnv,
+        options: { sql: { databaseUrl: TEST_DATABASE_URL } },
+      }).bot.modelId,
+    ).toBe("anthropic/claude-opus-5.5");
+  });
+
+  it("names the field and its env var in a schema error", () => {
+    expect(() =>
+      resolveConfig({
+        env: { ...encryptionEnv, DATABASE_URL: TEST_DATABASE_URL },
+        options: { bot: { contextWindowTokens: 0 } },
+      }),
+    ).toThrow(/^bot\.contextWindowTokens \(AI_MODEL_CONTEXT_WINDOW_TOKENS\): /);
   });
 });
 
