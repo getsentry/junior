@@ -529,8 +529,13 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       );
     const request = { repo: "getsentry/junior", pull_request: 691 } as const;
 
-    // With no review yet, or a dismissed one, GitHub asks them.
-    for (const reviews of [[], [{ state: "DISMISSED" }]]) {
+    // With no review yet, or a dismissed one, GitHub asks them. A comment
+    // after a dismissed approval waits for a new ask, so it asks too.
+    for (const reviews of [
+      [],
+      [{ state: "DISMISSED" }],
+      [{ state: "DISMISSED" }, { state: "COMMENTED" }],
+    ]) {
       fetch
         .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
         .mockResolvedValueOnce(reviewer({ requested: [], reviews }))
@@ -556,12 +561,15 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     // GitHub already asks them, or they reviewed it: no new request. The
     // review-again flow owns a change request or a comment-only review. An
-    // approval stands when a comment follows it, and the query returns only
-    // the latest review, so that case reads as a comment.
+    // approval stands when a comment follows it.
     for (const state of [
       { requested: ["byk"], reviews: [] },
       { requested: [], reviews: [{ state: "COMMENTED" }] },
       { requested: [], reviews: [{ state: "APPROVED" }] },
+      {
+        requested: [],
+        reviews: [{ state: "APPROVED" }, { state: "COMMENTED" }],
+      },
       { requested: [], reviews: [{ state: "CHANGES_REQUESTED" }] },
     ]) {
       fetch

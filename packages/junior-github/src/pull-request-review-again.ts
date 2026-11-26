@@ -268,17 +268,18 @@ async function feedbackReviews(
     decidedIndex -= 1;
   }
   const decided = reviews[decidedIndex];
-  const approvedAt =
-    decided?.state === "APPROVED"
+  // A dismissed review resets the decision, as an approval stands, so only
+  // comments after a later ask count (`requesterFeedback`).
+  const decidedAt =
+    decided?.state === "APPROVED" || decided?.state === "DISMISSED"
       ? Date.parse(decided.submittedAt ?? "")
       : undefined;
   const comments = reviews
     .slice(decidedIndex + 1)
     .filter(
       (review) =>
-        approvedAt === undefined ||
-        (askedAt > approvedAt &&
-          Date.parse(review.submittedAt ?? "") > askedAt),
+        decidedAt === undefined ||
+        (askedAt > decidedAt && Date.parse(review.submittedAt ?? "") > askedAt),
     );
   const changeRequest = decided?.state === "CHANGES_REQUESTED";
   if (comments.length > 0 && (await commentsCount())) {

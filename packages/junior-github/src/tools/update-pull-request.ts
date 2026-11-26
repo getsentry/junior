@@ -77,7 +77,7 @@ const inputSchema = z
       .literal(true)
       .optional()
       .describe(
-        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person who has reviewed it is not asked again, unless their latest review was dismissed.",
+        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person who has reviewed it is not asked again, unless their latest approval or change request was dismissed.",
       ),
   })
   .strict()
@@ -119,7 +119,7 @@ const outputSchema = pluginToolOutputSchema.merge(
       .boolean()
       .optional()
       .describe(
-        "With request_review: true when GitHub asks the person for a review, false when they have reviewed it and their latest review was not dismissed.",
+        "With request_review: true when GitHub asks the person for a review, false when they have reviewed it and their latest approval or change request was not dismissed.",
       ),
     target: z.literal("updatePullRequest"),
   }),
@@ -195,7 +195,10 @@ const reviewerSchema = z.object({
  * it, and the result is false: after a change request or a comment-only
  * review, only the review-again flow asks, and an approved draft's item says
  * to mark it ready. An approval stands when a comment follows it. A person
- * with no review yet, or whose latest review was dismissed, is asked.
+ * with no review yet is asked. So is one whose latest approval or change
+ * request was dismissed, also with comments since: a dismissal resets their
+ * decision, so those comments wait for a new ask
+ * (`webhooks/pull-request-next-action.ts`).
  */
 async function requestRequesterReview(
   egress: PluginEgress,
@@ -226,8 +229,9 @@ async function requestRequesterReview(
   ) {
     return true;
   }
-  const latest = pullRequest.reviews.nodes[0]?.state;
-  if (latest && latest !== "DISMISSED") return false;
+  const states = pullRequest.reviews.nodes.map((review) => review.state);
+  const decided = [...states].reverse().find((state) => state !== "COMMENTED");
+  if (decided ? decided !== "DISMISSED" : states.length > 0) return false;
   const response = await githubApi(egress, {
     operation: "github.pull.request_reviewers",
     method: "POST",

@@ -71,7 +71,10 @@ export function latestActivity(
  * request, or a comment-only review, which Junior handles like a change
  * request. After the requester approves, only a comment-only review after
  * a later ask counts, so a comment on an approved pull request leaves it
- * ready to merge. A draft cannot merge, so it is left out.
+ * ready to merge. A dismissed review, such as an approval that a push
+ * reset, works the same way: a comment since it waits for a new ask, so a
+ * ready pull request is in limbo and Junior asks. A draft cannot merge, so
+ * it is left out.
  */
 export function requesterFeedback(
   state: GitHubPullRequestMergeState,
@@ -81,7 +84,9 @@ export function requesterFeedback(
   if (state.draft || !review) return false;
   if (review.state === "CHANGES_REQUESTED") return true;
   if (review.state !== "COMMENTED") return false;
-  if (decided?.state !== "APPROVED") return true;
+  if (decided?.state !== "APPROVED" && decided?.state !== "DISMISSED") {
+    return true;
+  }
   const askedAt = timeOf(activity.askedAt);
   return askedAt > decided.at.getTime() && review.at.getTime() > askedAt;
 }

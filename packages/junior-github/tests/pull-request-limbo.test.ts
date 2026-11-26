@@ -238,6 +238,24 @@ describe("limbo review ask", () => {
       },
       name: "a comment-only review answers no ask, but Junior acts next",
     },
+    {
+      asks: true,
+      github: {
+        reviews: [
+          {
+            state: "DISMISSED",
+            submitted_at: "2026-07-02T10:00:00.000Z",
+            user: { login: "Requester" },
+          },
+          {
+            state: "COMMENTED",
+            submitted_at: "2026-07-02T11:00:00.000Z",
+            user: { login: "Requester" },
+          },
+        ],
+      },
+      name: "a push dismissed the requester's approval after their comment",
+    },
   ])(
     "backfill asks the requester's review in limbo: $name",
     async ({ asks, github, item = asks }) => {

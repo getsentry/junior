@@ -189,7 +189,7 @@ export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
 
 /**
  * Read whether GitHub asks one person to review a pull request, and their
- * latest submitted review. A pending review is not submitted.
+ * latest 20 submitted reviews. A pending review is not submitted.
  */
 export const PULL_REQUEST_REVIEWER = githubGraphql(`
   query PullRequestReviewer($owner: String!, $name: String!, $number: Int!, $login: String!) {
@@ -198,7 +198,7 @@ export const PULL_REQUEST_REVIEWER = githubGraphql(`
         reviewRequests(first: 100) {
           nodes { requestedReviewer { __typename ... on User { login } } }
         }
-        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
+        reviews(last: 20, author: $login, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
           nodes { state }
         }
       }
