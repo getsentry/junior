@@ -90,9 +90,7 @@ const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 /** Longest agent turn the function duration allows, after the teardown buffer. */
-function resolveMaxTurnTimeoutMs(
-  functionMaxDurationSeconds: number,
-): number {
+function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
   const budgetSeconds =
     functionMaxDurationSeconds - FUNCTION_TIMEOUT_BUFFER_SECONDS;
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, budgetSeconds * 1000);
