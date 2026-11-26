@@ -70,11 +70,12 @@ describe("Lead", () => {
     );
 
     expect(
-      completedToolCalls("listAgents", conversation).filter((call) =>
-        Object.values((call.input ?? {}) as Record<string, unknown>).some(
-          (value) => value != null,
-        ),
-      ).length,
+      completedToolCalls("listAgents", conversation).filter((call) => {
+        const input = (call.input ?? {}) as Record<string, unknown>;
+        return Boolean(
+          input["query"] || input["annotation"] || input["participating"],
+        );
+      }).length,
     ).toBeGreaterThan(0);
     expect(conversation.replies.length).toBeGreaterThan(0);
     // A question about outside work does not ask to move it.

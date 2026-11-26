@@ -353,10 +353,19 @@ export function createListAgentsTool(
   return zodTool({
     ...listAgentsToolDefinition(channels),
     execute: async (input: ListAgentsInput) => {
-      // Any set field asks for a search, else the tool lists the team.
-      if (Object.values(input).every((value) => value == null)) {
-        return { agents: await listTeam(context) };
-      }
+      // A field that changes what matches asks for a search. A default
+      // value or a limit alone still lists the team.
+      const searches =
+        Boolean(input.query) ||
+        Boolean(input.annotation) ||
+        Boolean(input.conversation_ids) ||
+        Boolean(input.after) ||
+        Boolean(input.before) ||
+        ("channel_id" in input && Boolean(input.channel_id)) ||
+        input.participating === true ||
+        input.roots_only === false ||
+        input.include_archived === true;
+      if (!searches) return { agents: await listTeam(context) };
       // The schema accepts only ISO-8601 timestamps.
       const afterMs = input.after ? Date.parse(input.after) : undefined;
       const beforeMs = input.before ? Date.parse(input.before) : undefined;

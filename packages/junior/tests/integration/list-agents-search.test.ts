@@ -101,13 +101,20 @@ describe("listAgents query", () => {
       baseURL: "https://junior.example.com",
     });
 
-    const result = await executeTool(
-      createListAgentsTool({
-        conversationId: requester,
-        resolvePersonUserId: async () => person.id,
+    const tool = createListAgentsTool({
+      conversationId: requester,
+      resolvePersonUserId: async () => person.id,
+    });
+    // Default values and a limit alone still list the team.
+    expect(
+      await executeTool(tool, {
+        include_archived: false,
+        limit: 10,
+        participating: false,
+        roots_only: true,
       }),
-      { query: "launch decision" },
-    );
+    ).toEqual(await executeTool(tool, {}));
+    const result = await executeTool(tool, { query: "launch decision" });
 
     expect(result.agents).toEqual([
       expect.objectContaining({
