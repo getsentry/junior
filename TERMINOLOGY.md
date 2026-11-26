@@ -45,7 +45,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation metadata**: the stored facts about a Conversation: its
   title and summary. A core task updates the summary after each Turn. A
   public summary outlives the transcript.
-  Do not say "Brief"; it is the retired name.
+  Do not call it a Brief.
+- **Brief**: the work that startAgent, startConversation, or messageAgent
+  hands to another agent. Once Guardian allows it, it is the receiver's
+  instruction.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
