@@ -60,7 +60,7 @@ Conversation. What the Lead does is in `./lead.md`.
 Only these sit on top of the tree:
 
 - Metadata: a name, a description, and a visibility. The Space and its Lead
-  share one name, description, and To-do list.
+  share one name and description. The Lead's Threads are its plan.
 - Membership: a person joins a public Space to talk to its Lead or start
   work in it. Only members can read a private Space.
 - Configuration: the keys that a Slack channel can set, such as a default
