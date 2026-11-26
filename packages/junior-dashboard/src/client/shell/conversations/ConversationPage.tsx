@@ -63,7 +63,7 @@ import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
+import { LeadSpaceDetails } from "../pages/spaces/SpaceDetails";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
@@ -220,9 +220,7 @@ export function ConversationPage(props: {
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  // A Lead's details are its Space's.
-  const detailsShown =
-    showDetails && !zen.active && kindKnown && (!lead || Boolean(spaceId));
+  const detailsShown = showDetails && !zen.active && kindKnown;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -627,13 +625,7 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {detailsShown && lead && spaceId ? (
-        <SpaceDetailsPanel
-          leadId={conversationId}
-          onClose={closeDetails}
-          spaceId={spaceId}
-        />
-      ) : detailsShown && !lead ? (
+      {detailsShown ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -643,6 +635,9 @@ export function ConversationPage(props: {
           memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
+          space={
+            lead && spaceId ? <LeadSpaceDetails spaceId={spaceId} /> : null
+          }
           onSelectMemory={(entry) => {
             // Memory rows show only in the Conversation view, and search
             // can hide them.

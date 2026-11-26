@@ -2,7 +2,6 @@ import type { SpaceReport } from "@sentry/junior/api/schema";
 import { lazy, Suspense, useState } from "react";
 
 import { ActorAvatar } from "../../../components/ActorAvatar";
-import { DetailsPanel } from "../../../components/DetailsPanel";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import {
@@ -10,10 +9,6 @@ import {
   DetailsList,
   DetailsRow,
 } from "../../../conversations/DetailsList";
-import {
-  ConversationThreads,
-  useConversationChildAgents,
-} from "../../../conversations/ConversationChildAgents";
 import { useSpaceData, useSpaceMembersData } from "../../../spaces/queries";
 
 // The picker opens only after a click, so it loads with the first open
@@ -33,64 +28,34 @@ const SpaceSettings = lazy(() =>
 );
 
 /**
- * The Space beside its Lead: what the Space is for, its Threads, its
- * members, and its settings. On a phone it is a bottom sheet.
+ * A Lead's Space in its Conversation details: what the Space is for, its
+ * members, and its settings. The Lead's Threads show above it.
  */
-export function SpaceDetailsPanel(props: {
-  leadId: string;
-  onClose(): void;
-  spaceId: string;
-}) {
+export function LeadSpaceDetails(props: { spaceId: string }) {
   const space = useSpaceData(props.spaceId).data;
-  return (
-    <DetailsPanel
-      label="Space details"
-      onClose={props.onClose}
-      title={
-        <h2 className="m-0 font-sans text-sm font-semibold text-dashboard-text">
-          Space
-        </h2>
-      }
-    >
-      <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
-        {space ? (
-          <SpaceOverview leadId={props.leadId} space={space} />
-        ) : (
-          <Skeleton className="h-4 w-2/3" />
-        )}
-      </div>
-    </DetailsPanel>
+  return space ? (
+    <SpaceOverview space={space} />
+  ) : (
+    <Skeleton className="h-4 w-2/3" />
   );
 }
 
-/**
- * A Space's description, its Threads, its members, and its settings. The
- * Space's Threads are its Lead's, so a Space with no Lead has none.
- */
-export function SpaceOverview(props: {
-  leadId?: string | undefined;
-  space: SpaceReport;
-}) {
+/** A Space's description, its members, and its settings. */
+export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
     <>
       {space.description ? (
-        <p className="m-0 px-1 pb-2 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          {space.description}
-        </p>
+        <DetailsCard label="About" title="About">
+          <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            {space.description}
+          </p>
+        </DetailsCard>
       ) : null}
-      {props.leadId ? <LeadThreads leadId={props.leadId} /> : null}
       <SpaceMembers space={space} />
       <SpaceSettingsCard space={space} />
     </>
   );
-}
-
-/** The Lead's Threads, in the panel that every Conversation shows. */
-function LeadThreads(props: { leadId: string }) {
-  const agents = useConversationChildAgents(props.leadId).data?.agents;
-  const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
-  return threads.length > 0 ? <ConversationThreads threads={threads} /> : null;
 }
 
 function SpaceMembers(props: { space: SpaceReport }) {
