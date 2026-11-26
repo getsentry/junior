@@ -312,10 +312,12 @@ export function createMockMcpTools({ app, origin }) {
         : item.assignees.map((person) => person.displayName ?? person.email),
       canAct: item.canAct,
       conversationIds: item.conversationIds,
-      subject: item.subject
+      // Like `mcpInboxItem`: a subject shows only when it has a web link,
+      // and its title comes from the viewer's card of the link.
+      subject: item.subject?.url
         ? {
             id: item.subject.id,
-            title: item.subject.title,
+            title: item.subject.object?.title,
             url: item.subject.url,
           }
         : undefined,

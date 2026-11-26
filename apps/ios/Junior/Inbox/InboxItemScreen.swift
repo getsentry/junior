@@ -133,7 +133,7 @@ struct InboxItemScreen: View {
         Text(question).type(.base, .medium).foregroundStyle(Tokens.text).fixedSize(horizontal: false, vertical: true)
       }
       if let subject = item.subject {
-        let label = subject.title ?? subject.id
+        let label = subject.label
         if let url = subject.url {
           Button {
             window.openLink(url)

@@ -149,10 +149,16 @@ public struct AcceptedMessage: Decodable, Sendable {
 
 /// One open Inbox item (`mcpInboxItemSchema`). Answers happen on the web.
 public struct InboxItem: Decodable, Sendable, Hashable, Identifiable {
+  /// Sent only when the subject has a web link. `id` can be an opaque
+  /// provider id, such as GitHub's numeric pull request id, and `title` is
+  /// unset when the provider can't be read.
   public struct Subject: Decodable, Sendable, Hashable {
     public var id: String
     public var title: String?
     public var url: String?
+
+    /// The chip text: the title, else the link, never a bare opaque id.
+    public var label: String { title ?? url ?? id }
   }
 
   public var id: String
