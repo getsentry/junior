@@ -221,22 +221,6 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
-    // A mention in the Space's work does not make them a member: people
-    // join a Space themselves.
-    await resolveActorIdentityId(getSqlExecutor(), {
-      email: "spaces-api-bo@example.com",
-      platform: "slack",
-      teamId: "T1",
-      userId: "USPACESBO",
-    });
-    await startConversation(ana, "spaces-api-mention", {
-      message: "<@USPACESBO> look",
-      spaceId: space.id,
-    });
-    expect(
-      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
-    ).toMatchObject({ memberCount: 1, viewerIsMember: false });
-
     const joined = await send(bo, "PUT", `/${space.id}/members/me`);
     expect(joined.status).toBe(200);
     expect(spaceSchema.parse(await joined.json())).toMatchObject({
@@ -259,6 +243,22 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
     expect(await listNames(bo)).not.toContain("Billing migration");
+
+    // A mention in the Space's work invites them to its Lead, as a mention
+    // in any public root does, so they are a member again.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-api-bo@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESBO",
+    });
+    await startConversation(ana, "spaces-api-mention", {
+      message: "<@USPACESBO> look",
+      spaceId: space.id,
+    });
+    expect(
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ memberCount: 2, viewerIsMember: true });
   });
 
   it("lets only members rename or archive a Space", async () => {

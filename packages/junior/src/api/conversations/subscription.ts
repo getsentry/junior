@@ -332,11 +332,6 @@ export async function inviteMentionedPeople(
   const conversation = await readInvitableConversation(viewer, conversationId);
   // A mention never shares a private Conversation. Only Invite does.
   if (conversation?.visibility !== "public") return;
-  // The Participants of a Lead are its Space's members, and a person joins
-  // a Space on purpose, so a mention there adds nobody.
-  if (await isLeadConversation(getDb(), conversation.rootConversationId)) {
-    return;
-  }
   const userIds = await readMentionedUserIds(
     getSqlExecutor(),
     slackUserIds,
