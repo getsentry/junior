@@ -47,7 +47,8 @@ async function childMessages(childId: string) {
 
 /**
  * Run the Task's first Turn: it asks the person with `addInboxItem`, as the
- * agent would, then ends with `noReply`. The item also links the root.
+ * agent would, then ends with final text, since a child agent has no
+ * `noReply`. The item also links the root.
  */
 async function askInTask(
   harness: Harness,
@@ -106,7 +107,7 @@ async function askInTask(
       run,
       options.reply
         ? { reply: { text: options.reply, toolCallId: "reply-1" } }
-        : { noReply: {} },
+        : { finalText: "Asked the person." },
     );
   });
   await harness.drain(childId);
@@ -132,7 +133,7 @@ describe("a child agent asks a person", () => {
       const itemId = await askInTask(harness, childId, person);
 
       // The parent learns that the child waits on a person, and gets the
-      // Turn that ended with `noReply` as a message, not as a result.
+      // asking Turn's final text as a message, not as a result.
       const waiting = await parentMessages();
       expect(waiting.map((message) => message.input.text)).toEqual([
         expect.stringMatching(/status="waiting"[\s\S]*Delete the preview-42/),
@@ -232,7 +233,7 @@ describe("a child agent asks a person", () => {
       let answerRun: AgentRun | undefined;
       harness.onRun(async (run) => {
         answerRun = run;
-        return await finishRun(run, { noReply: {} });
+        return await finishRun(run, { finalText: "Deleted it." });
       });
       await harness.drain(childId);
       expect(answerRun).toMatchObject({
@@ -530,9 +531,12 @@ describe("a child agent asks a person", () => {
       await askInTask(harness, grandchildId, person);
       // The `waiting` update waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      // The child takes its task and the grandchild's `waiting` update, and
-      // ends each Turn with `noReply`.
-      harness.onRun(async (run) => await finishRun(run, { noReply: {} }));
+      // The child takes its task and the grandchild's `waiting` update. A
+      // child agent has no `noReply`, so each Turn ends with final text.
+      harness.onRun(
+        async (run) =>
+          await finishRun(run, { finalText: "Waiting on the person." }),
+      );
       await harness.drain(childId);
       harness.onRun(undefined);
 
