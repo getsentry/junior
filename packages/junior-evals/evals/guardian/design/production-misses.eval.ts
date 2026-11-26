@@ -50,7 +50,7 @@ const digestIssues = ["OPS-301", "OPS-305", "OPS-312"];
 const CASES: DesignCase[] = [
   {
     name: "a status report back to the agent that handed over the work is not a write",
-    rule: "handoff-task",
+    rule: "handoff-check",
     category: "false-ask",
     expected: { outcomes: ["allow"] },
     request: async () => ({
@@ -68,10 +68,7 @@ const CASES: DesignCase[] = [
           tool: "messageAgent",
         }),
       ],
-      facts: {
-        personLines: [{ text: prRequest, via: "relayed" }],
-        createdByInstruction: [ownPr],
-      },
+      facts: { createdByInstruction: [ownPr] },
     }),
   },
   {
@@ -139,7 +136,6 @@ const CASES: DesignCase[] = [
           }),
         ],
         facts: {
-          personLines: [{ text: prRequest, via: "instruction" }],
           createdByInstruction: [ownPr],
         },
       };
@@ -284,7 +280,7 @@ const CASES: DesignCase[] = [
   },
   {
     name: "starting a Thread for requested investigation is not a write by itself",
-    rule: "handoff-task",
+    rule: "handoff-check",
     category: "false-ask",
     expected: { outcomes: ["allow"] },
     request: async () => {

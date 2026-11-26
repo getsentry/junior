@@ -47,22 +47,18 @@ export interface GuardianDesignFacts {
   /**
    * Lines of the person whose instruction the action serves that reach this
    * Turn from somewhere else: from the Turn that started the work
-   * (`instruction`), as words that an agent relayed, or as a message from
-   * the person's linked account.
+   * (`instruction`), or as a message from the person's linked account. A
+   * Conversation that an agent started or messaged gets none: its brief is
+   * its instruction (`brief-is-instruction`).
    */
   personLines?: Array<{
     text: string;
-    via: "instruction" | "relayed" | "linked-account";
+    via: "instruction" | "linked-account";
   }>;
   /** Exact actions that the person confirmed in an Inbox item. */
   confirmed?: Array<{ tool: string; input: Record<string, unknown> }>;
   /** Resources that the same instruction created, such as a pull request. */
   createdByInstruction?: string[];
-  /**
-   * Guardian allowed the startAgent or messageAgent hand-off that gave this
-   * Turn its task, so the task is an instruction (`agent-task`).
-   */
-  handoffAllowed?: boolean;
   /**
    * Who can read the destination of the action (`facts-from-junior`):
    * people of the organization only, or anyone.
@@ -124,11 +120,11 @@ export type DesignRuleId =
   | "bare-yes"
   | "restrictions"
   | "follows-instruction"
-  | "no-retelling"
-  | "relayed-words"
+  | "handoff-check"
+  | "brief-is-instruction"
+  | "no-inheritance"
+  | "results-are-context"
   | "lead-member"
-  | "handoff-task"
-  | "agent-task"
   | "allow-default"
   | "same-outcome"
   | "rule-kinds"

@@ -140,7 +140,6 @@ const CASES: DesignCase[] = [
           }),
         ],
         facts: {
-          personLines: [{ text: fixRequest, via: "instruction" }],
           createdByInstruction: [`${repo}#930`],
         },
       };
