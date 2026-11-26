@@ -5,6 +5,7 @@ import { conversationSubscriptionResponseSchema } from "@sentry/junior/api/schem
 import { patch } from "../http";
 import { withoutVersion } from "../revalidation";
 import { conversationDetailQueryKey } from "./queries";
+import { invalidateMemberSpaces } from "../spaces/queries";
 import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
@@ -45,6 +46,11 @@ export function useConversationSubscription(
           : detail,
       );
     },
-    onSettled: () => invalidateConversationFeeds(queryClient),
+    // A Lead's subscribed Participants are its Space's members.
+    onSettled: () =>
+      Promise.all([
+        invalidateConversationFeeds(queryClient),
+        invalidateMemberSpaces(queryClient),
+      ]),
   });
 }

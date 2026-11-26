@@ -60,7 +60,6 @@ import { useSpaceActions } from "../../spaces/SpaceActions";
 import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { useSpaceParticipants } from "../../spaces/useSpaceParticipants";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
@@ -212,14 +211,10 @@ export function ConversationPage(props: {
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
   const lead = props.detail.data?.kind === "lead";
   const spaceId = props.detail.data?.space?.id;
-  // A Lead's name, archive, and Participants are its Space's, so its menu
-  // and Participants card act on the Space.
+  // A Lead's name and archive are its Space's, so its menu acts on the
+  // Space. Its Participants are its own, like any root.
   const leadSpace = useSpaceData(lead ? spaceId : undefined).data;
   const spaceActions = useSpaceActions(leadSpace);
-  const spaceParticipants = useSpaceParticipants(
-    lead ? spaceId : undefined,
-    leadSpace,
-  );
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
@@ -413,15 +408,11 @@ export function ConversationPage(props: {
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
   // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it, and a member can join one in their private
-  // Space (`canAddConversationMessages` in the API). Only a member reads a
-  // private Space's Conversations, so a readable one with a Space is theirs.
+  // Conversation by posting in it (`canAddConversationMessages` in the API).
   const canReply =
     view === "rich" &&
     detail.data !== undefined &&
-    (detail.data.isParticipant ||
-      detail.data.visibility === "public" ||
-      Boolean(detail.data.space)) &&
+    (detail.data.isParticipant || detail.data.visibility === "public") &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -638,7 +629,6 @@ export function ConversationPage(props: {
           memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
-          participants={spaceParticipants}
           onSelectMemory={(entry) => {
             // Memory rows show only in the Conversation view, and search
             // can hide them.
@@ -759,11 +749,7 @@ export function ConversationPage(props: {
                   moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
-                  subscription: (subscribed) => {
-                    if (!lead) subscription.mutate(subscribed);
-                    else if (subscribed) spaceActions.join();
-                    else spaceActions.leave();
-                  },
+                  subscription: (subscribed) => subscription.mutate(subscribed),
                 },
                 conversation: menuState.conversation,
                 conversationId,
@@ -782,9 +768,7 @@ export function ConversationPage(props: {
                     : archive.isPending,
                   delivery: delivery.isPending,
                   pin: pin.isPending,
-                  subscription: lead
-                    ? spaceActions.pending.membership
-                    : subscription.isPending,
+                  subscription: subscription.isPending,
                 },
               }}
               onSearchChange={setSearch}
@@ -921,13 +905,11 @@ export function ConversationPage(props: {
               detail={detail}
               focusRequest={replyFocusRequest}
               hasNewerPage={Boolean(history.newer)}
-              lead={lead}
               live={live}
               onEngage={engageComposer}
               onFocusRequestDone={setReplyFocusDoneKey}
               onPinRequest={requestPin}
               ref={replyRef}
-              spaceId={spaceId}
               view={view}
             />
           }

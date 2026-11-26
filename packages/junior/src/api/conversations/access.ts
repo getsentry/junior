@@ -6,16 +6,11 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorSpaces,
-} from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { conversationIdsWithParticipantUser } from "./membership";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
-const rootSpace = alias(juniorSpaces, "access_root_space");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
@@ -24,16 +19,8 @@ export interface ConversationAccess {
    * stored tree is invalid or the root has no Destination.
    */
   destinationId?: string;
-  /**
-   * Whether the viewer is a Participant of the root. In a private Space, a
-   * Participant who left the Space is not one.
-   */
+  /** Whether the viewer is a Participant of the root. */
   isParticipant: boolean;
-  /**
-   * The private Space of the root. Its Conversations share one audience,
-   * the members, and only members read or act on them.
-   */
-  privateSpaceId?: string;
   /** Root of the Conversation tree. Missing when the stored tree is invalid. */
   rootConversationId?: string | undefined;
   /** Provider tenant of the root Location, such as a Slack workspace. */
@@ -100,8 +87,6 @@ export async function readConversationAccessRows(
       visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
-      spaceId: rootSpace.id,
-      spaceVisibility: rootSpace.visibility,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -115,7 +100,6 @@ export async function readConversationAccessRows(
       rootDestination,
       eq(rootDestination.id, rootConversation.destinationId),
     )
-    .leftJoin(rootSpace, eq(rootSpace.id, rootConversation.spaceId))
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 }
 
@@ -142,35 +126,19 @@ export function conversationAccessFromRows(
         : undefined;
       const visibility =
         validRootConversationId === undefined ? null : row.visibility;
-      const privateSpaceId =
-        validRootConversationId !== undefined &&
-        row.spaceVisibility === "private" &&
-        row.spaceId
-          ? row.spaceId
-          : undefined;
-      // A private Space is readable only by its members, like a private
-      // Slack channel. Its members are the Participants of its Lead, the
-      // root of every Conversation in it.
-      const isSpaceMember =
-        privateSpaceId === undefined ||
-        (validRootConversationId !== undefined &&
-          participantRootIds.has(validRootConversationId));
       // Participant rows belong to roots, so a row with a parent never
       // matches its own id. That keeps a forged cycle from granting access.
       const isParticipant =
-        isSpaceMember &&
-        ((row.parentConversationId === null &&
+        (row.parentConversationId === null &&
           participantRootIds.has(row.conversationId)) ||
-          (validRootConversationId !== undefined &&
-            participantRootIds.has(validRootConversationId)));
+        (validRootConversationId !== undefined &&
+          participantRootIds.has(validRootConversationId));
       const canViewPrivateContent =
-        privateSpaceId !== undefined
-          ? isSpaceMember
-          : isParticipant ||
-            (validRootConversationId !== undefined &&
-              canExposeConversationPayload({
-                visibility: visibility ?? undefined,
-              }));
+        isParticipant ||
+        (validRootConversationId !== undefined &&
+          canExposeConversationPayload({
+            visibility: visibility ?? undefined,
+          }));
       return [
         row.conversationId,
         {
@@ -179,7 +147,6 @@ export function conversationAccessFromRows(
             ? { destinationId: row.destinationId }
             : undefined),
           isParticipant,
-          ...(privateSpaceId ? { privateSpaceId } : undefined),
           ...(validRootConversationId !== undefined
             ? { rootConversationId: validRootConversationId }
             : undefined),
@@ -203,14 +170,12 @@ export function conversationAccessFromRows(
 /**
  * Whether the viewer may add a Message to a Conversation. A signed-in person
  * joins a public Conversation by posting in it, the same as a public Slack
- * thread: their first Turn adds their Participant row. A member joins a
- * Conversation in their private Space the same way. Any other private one
- * takes Messages only from its Participants.
+ * thread: their first Turn adds their Participant row. A private one takes
+ * Messages only from its Participants.
  */
 export function canAddConversationMessages(
   access: ConversationAccess | undefined,
 ): boolean {
-  if (access?.privateSpaceId) return access.canViewPrivateContent;
   return Boolean(access?.isParticipant || access?.visibility === "public");
 }
 
@@ -218,13 +183,13 @@ export function canAddConversationMessages(
  * Whether the viewer may add a person to a Conversation's Participants. In a
  * public one, anyone who can post may Invite; it grants no access. In a
  * private one, only a Participant may, and it shares the Conversation. A
- * private Space owns its audience, and a Slack-backed private Conversation
- * follows its Slack channel, so neither takes Invites.
+ * Slack-backed private Conversation follows its Slack channel, so it takes
+ * no Invites.
  */
 export function canInviteToConversation(
   access: ConversationAccess | undefined,
 ): boolean {
-  if (!access?.rootConversationId || access.privateSpaceId) return false;
+  if (!access?.rootConversationId) return false;
   if (access.visibility === "public") return true;
   return access.isParticipant && !isSlackBacked(access);
 }
@@ -233,8 +198,7 @@ export function canInviteToConversation(
  * Whether Leave ends the viewer's access: it removes their own Participant
  * row. Only a private Conversation with an explicit Participant list has
  * one. Elsewhere Leave only takes it out of their feed, because the
- * Conversation is public, or a private Space or Slack channel decides who
- * reads it.
+ * Conversation is public, or a Slack channel decides who reads it.
  */
 export function leaveEndsAccess(
   access: ConversationAccess | undefined,
@@ -242,7 +206,6 @@ export function leaveEndsAccess(
   return Boolean(
     access?.rootConversationId &&
     access.visibility !== "public" &&
-    !access.privateSpaceId &&
     access.isParticipant &&
     !isSlackBacked(access),
   );
@@ -302,7 +265,7 @@ export function createConversationAccessReader(
 /** The fields of a Conversation that decide access from another one. */
 export type ConversationReach = Pick<
   ConversationAccess,
-  "destinationId" | "privateSpaceId" | "rootConversationId" | "visibility"
+  "destinationId" | "rootConversationId" | "visibility"
 >;
 
 /**
@@ -311,8 +274,8 @@ export type ConversationReach = Pick<
  * person of the Turn does not change the result. A public Conversation is
  * reachable from any Conversation, on any surface and in any provider tenant.
  * A private Conversation is reachable only from its own tree and from
- * Conversations with the same audience: the same private Space, or else the
- * same Destination.
+ * Conversations with the same audience: the same Destination. A Space's Lead
+ * is the root of all of its work, so the tree covers the whole Space.
  */
 export function canAccessConversation(args: {
   requester: ConversationReach;
@@ -325,16 +288,9 @@ export function canAccessConversation(args: {
   ) {
     return true;
   }
-  // The members of a private Space are its Conversations' one audience. A
-  // Conversation outside the Space has another audience, even at the same
-  // Destination, so it does not reach in, and data does not leave.
-  if (target.privateSpaceId) {
-    return requester.privateSpaceId === target.privateSpaceId;
-  }
   // Conversations share a Destination only when they have the same
   // audience. No provider check belongs here.
   if (
-    requester.privateSpaceId === undefined &&
     requester.destinationId !== undefined &&
     requester.destinationId === target.destinationId
   ) {
