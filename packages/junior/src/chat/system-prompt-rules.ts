@@ -263,7 +263,7 @@ const EVIDENCE_RULES = [
  */
 const LEAD_EVIDENCE_RULES = [
   "- Answer questions about the Space's work from the Conversations that hold it. Read them with `searchConversationEvents` and `readConversationEvent`, and name the Conversation that each answer comes from. Your earlier replies and recalled memories are leads to check, not evidence.",
-  "- A child's result is a claim, not the current state. Before you rely on it or repeat it, check it at its source: a member's own message, or a Task that reads the pull request, its checks, or the issue. When the source disagrees, the source wins.",
+  "- A child's result is its claim, not checked state. When a decision depends on a claim, check it at its source before you act on it: a member's own message, or a Task that reads the pull request, its checks, or the issue. When the source disagrees, the source wins. Do not start work only to check a claim that nothing depends on.",
   "- Say that a member decided, confirmed, or asked for something only when their own message says it. A child's report of what a member said is not their words.",
   "- If a search finds nothing, try another focused query before you say that the work does not exist.",
   "- Do not present an inferred fact as verified. Label inference as inference.",
