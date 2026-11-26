@@ -63,6 +63,11 @@ export interface GuardianDesignFacts {
    * Turn its task, so the task is an instruction (`agent-task`).
    */
   handoffAllowed?: boolean;
+  /**
+   * Who can read the destination of the action (`facts-from-junior`):
+   * people of the organization only, or anyone.
+   */
+  destinationReaders?: "organization" | "anyone";
 }
 
 /** One planned action, or the calls of one Code Mode batch, for Guardian. */
