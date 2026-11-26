@@ -45,6 +45,7 @@ import {
   TODO_INBOX_ITEM_KEY_PREFIX,
   inboxItemAssignedTo,
   inboxItemForUser,
+  inboxItemInSpace,
   inboxItemLinkedTo,
   inboxItemNeedsUser,
   inboxItemOwnedByConversation,
@@ -684,8 +685,12 @@ export interface InboxItemFilters {
    * (`inboxItemForUser`).
    */
   forUserId?: string;
+  /** Keep only the items that need this User now (`inboxItemNeedsUserNow`). */
+  needsUserId?: string;
   /** Keep only the items that this kind of owner owns. */
   ownerKind?: InboxItemOwnerKind;
+  /** Keep only the items of this Space (`inboxItemInSpace`). */
+  spaceId?: string;
   /** Drop the items in Inbox rows that this User snoozed. */
   awakeForUserId?: string;
   /** Keep only the items in Inbox rows that this User snoozed. */
@@ -769,6 +774,12 @@ function searchConditions(
   }
   if (filters.ownerKind) {
     conditions.push(eq(juniorInboxItems.ownerKind, filters.ownerKind));
+  }
+  if (filters.spaceId) {
+    conditions.push(inboxItemInSpace(filters.spaceId));
+  }
+  if (filters.needsUserId) {
+    conditions.push(inboxItemNeedsUserNow(filters.needsUserId));
   }
   if (filters.forUserId) {
     conditions.push(inboxItemForUser(filters.forUserId));

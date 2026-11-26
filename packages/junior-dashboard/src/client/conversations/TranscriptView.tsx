@@ -79,6 +79,8 @@ export function Transcript(props: {
    * one that the questions pill names.
    */
   onShowQuestion?(item: InboxItemPayload): void;
+  /** A pill of the page above the message box, such as a Space's Needs you. */
+  pill?: ReactNode;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
@@ -308,6 +310,7 @@ export function Transcript(props: {
             so the pills sit 12px (16px on md) above the composer, centered
             on the transcript. */}
         <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center gap-2 md:-bottom-5">
+          {view === "rich" ? props.pill : null}
           {showQuestion && view === "rich" ? (
             <WaitingQuestionsPill
               onShow={showQuestion}

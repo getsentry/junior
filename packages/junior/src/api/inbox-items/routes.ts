@@ -4,6 +4,7 @@ import * as z from "zod";
 import { jsonResponse, throwApiError } from "@/api/http";
 import { decodePageCursor, encodePageCursor } from "@/api/page-cursor";
 import type { JuniorApiEnv } from "@/api/route";
+import { requireSpace } from "@/api/spaces/access";
 import { apiErrorSchema } from "@/api/schema/response";
 import {
   inboxItemActionSchema,
@@ -82,7 +83,13 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   InboxItemFilters,
-  "conversationId" | "forUserId" | "ownerKind" | "query" | "snoozedForUserId"
+  | "conversationId"
+  | "forUserId"
+  | "needsUserId"
+  | "ownerKind"
+  | "query"
+  | "snoozedForUserId"
+  | "spaceId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -93,10 +100,12 @@ const cursorSchema = z
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
+    needsUserId: z.string().min(1).optional(),
     ownerKind: z.enum(["automation", "conversation"]).optional(),
     query: z.string().min(1).optional(),
     snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
+    spaceId: z.string().min(1).optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
   })
@@ -136,7 +145,9 @@ function decodeCursor(
   if (
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
+    parsed.needsUserId !== filters.needsUserId ||
     parsed.ownerKind !== filters.ownerKind ||
+    parsed.spaceId !== filters.spaceId ||
     parsed.query !== filters.query ||
     parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
@@ -327,9 +338,11 @@ export function createInboxItemRoutes(services: {
           ? { conversationId: query.conversationId }
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
+        ...(query.needs === "viewer" ? { needsUserId: viewer.id } : undefined),
         ...(query.owner ? { ownerKind: query.owner } : undefined),
         ...(query.q ? { query: query.q } : undefined),
         ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
+        ...(query.spaceId ? { spaceId: query.spaceId } : undefined),
         ...(query.status[0] === "open"
           ? query.sort
             ? { sort: query.sort }
@@ -339,6 +352,7 @@ export function createInboxItemRoutes(services: {
       const after = query.cursor
         ? decodeCursor(query.cursor, filters)
         : undefined;
+      if (filters.spaceId) await requireSpace(viewer.id, filters.spaceId);
       const db = getDb();
       // A person in the Conversation sees every item linked to it.
       const reader = filters.conversationId

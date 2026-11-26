@@ -3,15 +3,19 @@ import {
   createContext,
   use,
   useCallback,
-  useEffect,
   useMemo,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { scrollRootFor } from "../conversations/transcriptScrollRoot";
-import { useInboxItemsData, useWaitingConversations } from "./queries";
+import {
+  useEveryInboxItemPage,
+  useInboxItemsData,
+  useWaitingConversations,
+} from "./queries";
 import { itemConversationId, inboxItemWaitsForAnswer } from "./inboxItemFormat";
 
 /**
@@ -31,17 +35,8 @@ export function useWaitingQuestions(conversationId: string | undefined) {
   // loads. Those questions are not for this Conversation.
   const stale = query.isPlaceholderData;
   // The list pages through every open item, notices too, so a question can
-  // sit past the first page. Load every page so the count is right. A
-  // failed page stops the loop, so it does not retry without end.
-  const { fetchNextPage, hasNextPage, isFetching } = query;
-  const failed = query.isFetchNextPageError;
-  // Each page that lands asks for the next one. The fetch flags alone can
-  // end where they started, so the loop would not run again.
-  const pageCount = query.data?.pages.length ?? 0;
-  useEffect(() => {
-    if (stale || failed || !hasNextPage || isFetching) return;
-    void fetchNextPage();
-  }, [failed, fetchNextPage, hasNextPage, isFetching, pageCount, stale]);
+  // sit past the first page.
+  useEveryInboxItemPage(query);
   // A plugin item and an item of another Conversation have no card here.
   return useMemo(
     () =>
@@ -145,18 +140,39 @@ export function WaitingQuestionsPill(props: {
   const count = props.questions.length;
   const label = `${count} ${count === 1 ? "question" : "questions"} waiting`;
   return (
+    <TranscriptPill
+      icon={
+        <Inbox
+          aria-hidden="true"
+          className="text-dashboard-accent-text"
+          size={14}
+          strokeWidth={2}
+        />
+      }
+      onClick={() => props.onShow(next)}
+    >
+      {label}
+    </TranscriptPill>
+  );
+}
+
+/**
+ * A pill above the message box that says what waits and goes to it. It
+ * takes no focus and docks over nothing.
+ */
+export function TranscriptPill(props: {
+  children: ReactNode;
+  icon: ReactNode;
+  onClick(): void;
+}) {
+  return (
     <Button
       className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
-      onClick={() => props.onShow(next)}
+      onClick={props.onClick}
       variant="outline"
     >
-      <Inbox
-        aria-hidden="true"
-        className="text-dashboard-accent-text"
-        size={14}
-        strokeWidth={2}
-      />
-      {label}
+      {props.icon}
+      {props.children}
     </Button>
   );
 }

@@ -179,6 +179,11 @@ export const inboxItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /**
+     * `viewer` lists only the open items that need the viewer now: open
+     * actions assigned to them, not to Everyone, that they have not snoozed.
+     */
+    needs: z.enum(["viewer"]).optional(),
     /** `automation` lists only Automation alerts. */
     owner: z.enum(["automation"]).optional(),
     /**
@@ -191,6 +196,11 @@ export const inboxItemListQuerySchema = z
     /** Also list the newest done and dismissed items, with the first page. */
     include: z.enum(["archived"]).optional(),
     q: z.string().trim().max(200).optional(),
+    /**
+     * Only the items that a Conversation in this Space owns, also a child
+     * of a root in it. A Space that the viewer cannot read is a 404.
+     */
+    spaceId: z.string().uuid().optional(),
     /**
      * `waiting` lists the open items that wait on the viewer first, then the
      * rest, newest first within each group. By default open items page

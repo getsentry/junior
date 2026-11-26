@@ -56,6 +56,7 @@
     "e2e/paste-text.ts",
     "e2e/person-cards.spec.ts",
     "e2e/space-lead.spec.ts",
+    "e2e/space-needs-you.spec.ts",
     "e2e/space-threads.spec.ts",
     "e2e/object-links-fixture.ts",
     "e2e/object-live-cards.spec.ts",

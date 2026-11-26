@@ -1,9 +1,10 @@
 /**
  * The seed Inbox items for mock reporting. Three Conversations ask the
  * viewer questions, so the question cards in their transcripts, the
- * questions pill, and the Inbox can be checked without a database. GitHub
- * plugin asks, FYI notices, and the alerts of the viewer's Automations that
- * need attention fill the rest of the inbox. `inbox-items.ts` keeps the
+ * questions pill, and the Inbox can be checked without a database. Two of
+ * the Billing migration Space's Conversations ask, so its Needs you list can
+ * be checked too. GitHub plugin asks, FYI notices, and the alerts of the
+ * viewer's Automations that need attention fill the rest of the inbox. `inbox-items.ts` keeps the
  * viewer's actions on them.
  */
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
@@ -51,6 +52,9 @@ const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 // payments-v42, the other rolled it back.
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+// A Billing migration Conversation (`spaces.ts`), so the Space's Needs you
+// list has items from two Conversations.
+const BILLING_EXPORT_CONVERSATION_ID = "internal:history-6";
 // The Dashboard QA Conversation (`todos.ts`). It is not one the Lead started,
 // so its To-do for the viewer leaves the Lead's cards as they are.
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -244,6 +248,41 @@ export function seeds(nowMs: number): MockItemSeed[] {
       },
       status: "open",
       title: "Handle the negative invoices",
+    },
+    {
+      body: "The nightly export failed for 3 invoices. The provider has them already.",
+      conversationId: BILLING_EXPORT_CONVERSATION_ID,
+      createdAt: at(35),
+      id: "qa-billing-export-retry",
+      request: {
+        question: "Export the 3 failed invoices again?",
+        fields: [
+          {
+            id: "export",
+            kind: "choice",
+            label: "Export",
+            options: [{ label: "Export again" }, { label: "Skip them" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Retry the failed invoice export",
+    },
+    {
+      body: "GitHub asks you to review #96.\n\nhttps://github.com/getsentry/payments/pull/96",
+      conversationId: BILLING_EXPORT_CONVERSATION_ID,
+      createdAt: at(33),
+      id: "qa-review-96",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/payments/pull/96",
+        objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
+        title: "Skip invoices that already exported",
+        url: "https://github.com/getsentry/payments/pull/96",
+      },
+      title: "Review requested · #96",
     },
     {
       // The GitHub plugin asks the opener once the pull request can merge.

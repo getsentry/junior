@@ -12,6 +12,7 @@ import {
 } from "../../../conversations/DetailsList";
 import { useSpaceData, useSpaceMembersData } from "../../../spaces/queries";
 import { SpaceThreads } from "../../../spaces/SpaceThreads";
+import { SpaceNeedsYou } from "../../../spaces/SpaceNeedsYou";
 
 // The picker opens only after a click, so it loads with the first open
 // instead of with every Space page.
@@ -56,7 +57,10 @@ export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   );
 }
 
-/** A Space's description, its Threads, its members, and its settings. */
+/**
+ * A Space's description, what in it needs the viewer, its Threads, its
+ * members, and its settings.
+ */
 export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
@@ -66,6 +70,7 @@ export function SpaceOverview(props: { space: SpaceReport }) {
           {space.description}
         </p>
       ) : null}
+      <SpaceNeedsYou spaceId={space.id} />
       <SpaceThreads spaceId={space.id} />
       <SpaceMembers space={space} />
       <SpaceSettingsCard space={space} />

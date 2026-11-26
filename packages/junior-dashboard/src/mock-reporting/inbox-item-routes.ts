@@ -25,24 +25,39 @@ import {
   wakeMockRow,
 } from "./inbox-items";
 import { readMockSnoozeResource } from "./snooze-resources";
+import { mockSpaceIdOfRoot, readMockSpace } from "./spaces";
 import { setMockTodoStatus } from "./todos";
 
 function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
-/** Build what `GET /inbox-items` answers for its query. */
+/**
+ * Build what `GET /inbox-items` answers for its query. `spaceId` keeps the
+ * items of the Space's roots, and `needs=viewer` the awake actions for the
+ * viewer alone, like the API.
+ */
 export function readMockInboxItemList(query: Record<string, string>) {
-  const { conversationId, for: forViewer, owner, q, snoozed, status } = query;
+  const { conversationId, for: forViewer, needs, owner, q, snoozed } = query;
+  const { spaceId, status } = query;
   return {
     items: readMockInboxItems(NOW_MS, {
       closed: Boolean(status && status !== "open"),
       conversationId,
       // A search and a Conversation's own list still show snoozed rows.
-      forViewer: forViewer === "viewer" && !q && !conversationId,
+      forViewer:
+        (forViewer === "viewer" || needs === "viewer") && !q && !conversationId,
       q: q || undefined,
       snoozed: snoozed === "true",
-    }).filter((item) => !owner || item.owner.kind === owner),
+    }).filter(
+      (item) =>
+        (!owner || item.owner.kind === owner) &&
+        (!spaceId ||
+          (item.rootConversationId !== undefined &&
+            mockSpaceIdOfRoot(item.rootConversationId) === spaceId)) &&
+        (needs !== "viewer" ||
+          (item.kind === "action" && !item.assignedToEveryone)),
+    ),
   };
 }
 
@@ -65,9 +80,15 @@ export function readMockInboxItemCount(query: Record<string, string>) {
 export function addMockInboxItemRoutes(
   app: Hono<{ Variables: JuniorApiVariables }>,
 ): void {
-  app.get("/inbox-items", (c) =>
-    jsonResponse(inboxItemListSchema, readMockInboxItemList(c.req.query())),
-  );
+  app.get("/inbox-items", (c) => {
+    const spaceId = c.req.query("spaceId");
+    if (spaceId && !readMockSpace(spaceId))
+      return errorResponse("Space was not found.", 404);
+    return jsonResponse(
+      inboxItemListSchema,
+      readMockInboxItemList(c.req.query()),
+    );
+  });
   app.get("/inbox-items/count", (c) =>
     jsonResponse(inboxItemCountSchema, readMockInboxItemCount(c.req.query())),
   );

@@ -221,6 +221,11 @@ export function filterMockConversationsBySpace(
   };
 }
 
+/** The Space of a root, or of a Lead, as the API reads it from the root. */
+export function mockSpaceIdOfRoot(rootId: string): string | undefined {
+  return mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId);
+}
+
 /** A mock row's tree state. A row with none reads one from its own status. */
 function mockTreeState(row: ConversationFeed["conversations"][number]) {
   return (
@@ -243,9 +248,7 @@ export function withMockSpace<T extends ConversationDetailReport>(
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
   return {
     ...detail,
-    space: spaceRef(
-      mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
-    ),
+    space: spaceRef(mockSpaceIdOfRoot(rootId)),
     visibility: visibilityOf(detail.conversationId, detail.visibility),
   };
 }

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -58,6 +58,8 @@ type InboxItemListFilters = {
   conversationId?: string;
   enabled?: boolean;
   forViewer?: boolean;
+  /** Only the open items that need the viewer now (`needs=viewer`). */
+  needsViewer?: boolean;
   q?: string;
   /** Only the items in Inbox rows that the viewer snoozed: Snoozed. */
   snoozed?: boolean;
@@ -66,6 +68,8 @@ type InboxItemListFilters = {
    * first page holds what needs them now.
    */
   sort?: "waiting";
+  /** Only the items of this Space's Conversations. */
+  spaceId?: string;
 };
 
 function inboxItemListSearch(filters: InboxItemListFilters) {
@@ -74,10 +78,12 @@ function inboxItemListSearch(filters: InboxItemListFilters) {
     params.set("conversationId", filters.conversationId);
   }
   if (filters.forViewer) params.set("for", "viewer");
+  if (filters.needsViewer) params.set("needs", "viewer");
   if (filters.automationAlerts) params.set("owner", "automation");
   if (filters.q) params.set("q", filters.q);
   if (filters.snoozed) params.set("snoozed", "true");
   if (filters.sort) params.set("sort", filters.sort);
+  if (filters.spaceId) params.set("spaceId", filters.spaceId);
   if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
 }
@@ -170,6 +176,27 @@ export function useInboxItemsData(filters: InboxItemListFilters) {
     [pages],
   );
   return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
+}
+
+/**
+ * Load every page of an Inbox item list, so its count is right. Each page
+ * that lands asks for the next one. A failed page stops the loop, so it
+ * does not retry without end. A list that still shows the items of its last
+ * filters loads no more.
+ */
+export function useEveryInboxItemPage(
+  query: ReturnType<typeof useInboxItemsData>["query"],
+) {
+  const { fetchNextPage, hasNextPage, isFetching } = query;
+  const failed = query.isFetchNextPageError;
+  const stale = query.isPlaceholderData;
+  // The fetch flags alone can end where they started, so the page count
+  // runs the effect again.
+  const pageCount = query.data?.pages.length ?? 0;
+  useEffect(() => {
+    if (stale || failed || !hasNextPage || isFetching) return;
+    void fetchNextPage();
+  }, [failed, fetchNextPage, hasNextPage, isFetching, pageCount, stale]);
 }
 
 /**

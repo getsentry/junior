@@ -234,6 +234,37 @@ export function inboxItemForUser(userId: string): SQL {
   )!;
 }
 
+const spaceOwner = alias(juniorConversations, "space_owner");
+const spaceRoot = alias(juniorConversations, "space_root");
+
+/**
+ * SQL: the Inbox item is in this Space. A Conversation owns it, and the
+ * stored root of that owner stores the Space. Only a root stores its Space,
+ * so the item of a child at any depth is in the Space of its root. Links do
+ * not count: they can name Conversations of other Spaces, and a To-do's item
+ * has none.
+ */
+export function inboxItemInSpace(spaceId: string): SQL {
+  return and(
+    eq(juniorInboxItems.ownerKind, "conversation"),
+    exists(
+      getDb()
+        .select({ one: sql`1` })
+        .from(spaceOwner)
+        .innerJoin(
+          spaceRoot,
+          eq(spaceRoot.conversationId, spaceOwner.rootConversationId),
+        )
+        .where(
+          and(
+            eq(spaceOwner.conversationId, juniorInboxItems.ownerId),
+            eq(spaceRoot.spaceId, spaceId),
+          ),
+        ),
+    ),
+  )!;
+}
+
 /** SQL: the Inbox item links this Conversation. */
 export function inboxItemLinkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorInboxItemConversations} where ${juniorInboxItemConversations.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemConversations.conversationId} = ${conversationId})`;

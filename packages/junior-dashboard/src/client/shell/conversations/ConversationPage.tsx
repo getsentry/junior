@@ -64,6 +64,7 @@ import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
+import { SpaceNeedsYouPill } from "../../spaces/SpaceNeedsYou";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
@@ -876,6 +877,14 @@ export function ConversationPage(props: {
                       }
                       pinRequestVersion={pinRequestVersion}
                       onShowQuestion={showQuestion}
+                      pill={
+                        lead && spaceId && !detailsShown ? (
+                          <SpaceNeedsYouPill
+                            onOpen={openDetails}
+                            spaceId={spaceId}
+                          />
+                        ) : undefined
+                      }
                       revealAsk={askReveal}
                       linkedMessageId={linkedMessageId}
                       linkedRowSeq={

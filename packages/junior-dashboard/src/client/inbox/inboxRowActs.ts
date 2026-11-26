@@ -30,7 +30,8 @@ type ActedRow = {
 // Action requests that one row sends at once.
 const ROW_ACTION_REQUESTS = 8;
 
-const FAILED_TITLES: Record<InboxItemActionBody["action"], string> = {
+/** The toast title of each Inbox item action that fails. */
+export const FAILED_TITLES: Record<InboxItemActionBody["action"], string> = {
   dismiss: "Could not dismiss",
   done: "Could not mark it done",
   submit: "Could not send your answer",
