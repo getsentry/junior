@@ -50,7 +50,6 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
   blocked: "warning",
   completed: "success",
-  done: "success",
   error: "danger",
   failed: "danger",
   needs_input: "warning",
@@ -335,6 +334,9 @@ function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
     return <ConversationStateIcon state="watching" />;
   }
   const archived = Boolean(archivedAt);
+  // A done result shows like a completed transcript row. `done` stays out of
+  // `statusTones`, because the drawer shows a done Conversation as neutral.
+  const tone = status === "done" ? "success" : subagentStatusTone(status);
   const Icon = archived
     ? Archive
     : status === "running"
@@ -346,9 +348,7 @@ function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
         aria-hidden="true"
         className={cn(
           "size-3.5",
-          archived
-            ? "text-dashboard-text-faint"
-            : statusIconToneClass[subagentStatusTone(status)],
+          archived ? "text-dashboard-text-faint" : statusIconToneClass[tone],
         )}
       />
       <span className="sr-only">{archived ? "archived" : status}</span>
