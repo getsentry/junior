@@ -705,6 +705,53 @@ describe("tool action review", () => {
     expect(onDecision).toHaveBeenCalledTimes(3);
   });
 
+  it("records the reviews that finished before an abort stops the batch", async () => {
+    const onDecision = vi.fn(async () => undefined);
+    const controller = new AbortController();
+    const review = vi.fn<ToolActionReviewer["review"]>(async (proposal) => {
+      if (proposal.input["target"] === "b") {
+        controller.abort(new Error("Run stopped."));
+        throw new Error("Review aborted.");
+      }
+      return {
+        decision: "allow",
+        reason: "Requested cleanup.",
+        riskLevel: "medium",
+        userAuthorization: "high",
+      };
+    });
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Clean up the preview workspaces.",
+      },
+      onDecision,
+      onFatal: vi.fn(),
+      guardian: createCurrentGuardian({ review }),
+    });
+    const reviewed = definition({ approvalMode: "review" });
+
+    await expect(
+      reviewToolActions(
+        ["a", "b"].map((target) => ({
+          toolCallId: target,
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { target },
+        })),
+        actionReview,
+        controller.signal,
+      ),
+    ).rejects.toThrow("Run stopped.");
+    expect(onDecision).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ toolCallId: "a" }),
+    );
+  });
+
   it("counts each attempt once toward the rejection limit", async () => {
     const actionReview = reviewContext({
       review: vi.fn<ToolActionReviewer["review"]>(async (proposal) => ({

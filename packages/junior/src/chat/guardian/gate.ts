@@ -591,7 +591,8 @@ export function createToolActionReview(options: {
     );
     // Record each decision before its action can continue. A decision that
     // cannot be recorded fails its action like a review that cannot run.
-    return await mapBounded(
+    // After an abort, the decisions that finished are still recorded.
+    const steps = await mapBounded(
       prepared,
       async (entry, index): Promise<ReviewStep> => {
         const outcome = outcomes[index];
@@ -614,9 +615,6 @@ export function createToolActionReview(options: {
             decision: outcome.decision,
           });
         } catch (error) {
-          if (signal?.aborted) {
-            throw error;
-          }
           return unavailableStep(error);
         }
         return {
@@ -627,6 +625,8 @@ export function createToolActionReview(options: {
       },
       MAX_CONCURRENT_PREPARATIONS,
     );
+    signal?.throwIfAborted();
+    return steps;
   };
 
   /**

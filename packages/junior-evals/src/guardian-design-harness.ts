@@ -127,6 +127,8 @@ async function runArm(
     },
     { signal },
   );
+  // A timed-out case is a broken eval run, not an outcome of the case.
+  signal.throwIfAborted();
   const reviews = result.actions.values();
   const actions: GuardianDesignResult["actions"] = [];
   for (const isReviewed of reviewed) {

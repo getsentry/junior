@@ -31,10 +31,8 @@ export function createCurrentGuardian(reviewer: ToolActionReviewer): Guardian {
               outcome: decision.decision,
             };
           } catch (error) {
-            // The caller's abort is a stop, not an unavailable review.
-            if (signal?.aborted) {
-              throw error;
-            }
+            // On the caller's abort, the other reviews of the batch still
+            // finish, so the gate can record them before it stops.
             return { error, outcome: "unavailable" };
           }
         },
