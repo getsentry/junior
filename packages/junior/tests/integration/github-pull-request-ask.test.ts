@@ -8,7 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -150,12 +150,22 @@ describe("the ask of a Junior pull request", () => {
 
   it("closes before the chip says merged, so no reader sees a merged pull request with an open ask", async () => {
     app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    await upsertIdentity(getSqlExecutor(), {
+    const slack = await upsertIdentity(getSqlExecutor(), {
       displayName: "Pat Requester",
+      email: "pat@example.com",
+      emailVerified: true,
       kind: "user",
       provider: "slack",
       providerSubjectId: person.userId,
       providerTenantId: person.teamId,
+    });
+    // "Ready to merge" needs the requester's GitHub login, to read whether
+    // their repository role can merge.
+    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
+      handle: "pat",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "3001",
     });
     const { fixture } = await prepareSlackParentConversation();
     // The footer that links the pull request to its Conversation needs a
@@ -226,6 +236,10 @@ describe("the ask of a Junior pull request", () => {
             },
           });
         }),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/collaborators/pat/permission",
+          () => HttpResponse.json({ permission: "write", role_name: "write" }),
+        ),
         http.get(`${API}/commits`, async () => {
           await observe();
           return HttpResponse.json([]);
