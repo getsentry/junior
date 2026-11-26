@@ -16,7 +16,7 @@ import { juniorConversations } from "@/db/schema";
 const UNIQUE_VIOLATION = "23505";
 
 /** Return the Lead of a Space, if it has one. */
-export async function readSpaceLead(
+async function readSpaceLead(
   spaceId: string,
 ): Promise<Conversation | undefined> {
   const [row] = await getDb()

@@ -5,9 +5,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
-  conversationFeedSchema,
   conversationLeaveResponseSchema,
-  leadSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
   spaceSchema,
@@ -27,16 +25,6 @@ const spacesKey = ["dashboard", "spaces"] as const;
 const memberSpacesKey = [...spacesKey, "member"] as const;
 const spaceKey = (spaceId: string | undefined) =>
   [...spacesKey, "space", spaceId] as const;
-
-/** The query of a Space's Lead. The Lead's id never changes. */
-export function spaceLeadQuery(spaceId: string) {
-  return {
-    queryKey: [...spaceKey(spaceId), "lead"] as const,
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      fetchDashboardJson(leadSchema, `${spaceApiPath(spaceId)}/lead`, signal),
-    staleTime: Number.POSITIVE_INFINITY,
-  };
-}
 
 /** The API path of one Space. */
 const spaceApiPath = (spaceId: string) =>
@@ -93,24 +81,6 @@ export function useSpaceData(spaceId: string | undefined) {
   });
 }
 
-/**
- * Fetch the top-level Conversations of one Space. The key is under the
- * Conversation feeds, so every change to a Conversation refreshes it.
- */
-export function useSpaceConversationsData(spaceId: string | undefined) {
-  return useQuery({
-    enabled: Boolean(spaceId),
-    queryKey: ["dashboard", "conversations", "space", { spaceId }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationFeedSchema,
-        `/api/conversations?${new URLSearchParams({ spaceId: spaceId! })}`,
-        signal,
-      ),
-    retry: false,
-  });
-}
-
 /** Put the changed Space in its cache and refresh the pane's list. */
 function storeSpace(queryClient: QueryClient, space: SpaceReport) {
   queryClient.setQueryData(spaceKey(space.id), space);
@@ -162,16 +132,14 @@ export function useUpdateSpace() {
 export function useLeaveSpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (space: SpaceReport) => {
-      const lead = await queryClient.fetchQuery(spaceLeadQuery(space.id));
-      await post(
+    mutationFn: (space: SpaceReport) =>
+      post(
         conversationLeaveResponseSchema,
-        `/api/conversations/${encodeURIComponent(lead.conversationId)}/leave`,
+        `/api/conversations/${encodeURIComponent(space.leadConversationId)}/leave`,
         {},
-      );
-      return lead.conversationId;
-    },
-    onSuccess: (leadId, space) => {
+      ),
+    onSuccess: (_left, space) => {
+      const leadId = space.leadConversationId;
       if (space.visibility === "private") {
         queryClient.removeQueries({ queryKey: spaceKey(space.id) });
         queryClient.removeQueries({
