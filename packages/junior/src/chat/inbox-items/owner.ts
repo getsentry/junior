@@ -25,12 +25,14 @@ const item = juniorInboxItems;
 
 const annotations = juniorConversationAnnotations;
 
-// The Conversation that first saved an Annotation of the subject's object,
-// such as the one that created a GitHub issue. Later Conversations that
-// change the object add their own Annotations of it.
+// The Conversation that first saved an object Annotation of the subject's
+// object, such as the one that created a GitHub issue. Later Conversations
+// that change the object add their own Annotations of it. An attached link
+// can name the same object, but it does not make its Conversation the
+// owner, as in the plugin's own owner lookup.
 // `junior_conversation_annotations_subject_idx` serves this lookup.
 function annotationOwner(kind: string): SQL {
-  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.subjectKind} = ${kind} and ${annotations.subjectId} = ${item.subjectId} order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
+  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.subjectKind} = ${kind} and ${annotations.subjectId} = ${item.subjectId} and ${annotations.kind} = 'object' order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
 }
 
 /** SQL: the owner Conversation of a plugin item, from the plugin's table. */
