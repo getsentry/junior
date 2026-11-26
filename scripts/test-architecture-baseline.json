@@ -75,7 +75,6 @@
     "packages/junior/tests/component/auth/mcp-oauth-client-auth.test.ts": 1,
     "packages/junior/tests/component/cli/chat-cli.test.ts": 1,
     "packages/junior/tests/component/cli/local-chat-composition.test.ts": 2,
-    "packages/junior/tests/component/config/chat-config.test.ts": 3,
     "packages/junior/tests/component/events/events.test.ts": 1,
     "packages/junior/tests/component/handlers/handlers-webhooks-lazy-load.test.ts": 1,
     "packages/junior/tests/component/linear-native-create.test.ts": 4,
