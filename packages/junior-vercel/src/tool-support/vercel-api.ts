@@ -80,8 +80,8 @@ export function deploymentResult(data: unknown) {
 }
 
 /**
- * Link a deployment that a tool created to the Conversation. A read-only
- * tool, such as an inspect, returns none.
+ * Link a deployment that a tool created or deleted to the Conversation. A
+ * read-only tool, such as an inspect, returns none.
  */
 export function deploymentAnnotation(
   result: ReturnType<typeof deploymentResult>,

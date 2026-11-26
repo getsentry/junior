@@ -5,16 +5,14 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
 import {
   readMessageCardRefs,
-  removedCardSchema,
   resolveMessageCards,
   type MessageCard,
   type MessageCardRef,
 } from "./cards";
 
-/** Card selections, newest first. A newer selection or removal wins. */
+/** Card selections, newest first. A newer selection wins. */
 interface CardSelection {
   cards: Map<string, MessageCardRef>;
-  deleted: Set<string>;
 }
 
 /**
@@ -49,16 +47,9 @@ async function selectTurnCards(
       const details = data["details"];
       if (typeof details !== "object" || details === null) continue;
       if ("timed_out" in details && details.timed_out === true) continue;
-      if ("removedCards" in details && Array.isArray(details.removedCards)) {
-        for (const ref of removedCardSchema
-          .array()
-          .parse(details.removedCards)) {
-          selection.deleted.add(JSON.stringify([ref.plugin, ref.key]));
-        }
-      }
       for (const card of readMessageCardRefs(details)) {
         const key = JSON.stringify([card.plugin, card.key]);
-        if (!selection.deleted.has(key) && !selection.cards.has(key)) {
+        if (!selection.cards.has(key)) {
           selection.cards.set(key, card);
         }
       }
@@ -111,7 +102,7 @@ async function selectChildResultCards(
 export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
-  const selection: CardSelection = { cards: new Map(), deleted: new Set() };
+  const selection: CardSelection = { cards: new Map() };
   const inputMessageIds = await selectTurnCards(conversationId, selection);
   await selectChildResultCards(conversationId, inputMessageIds, selection);
   if (selection.cards.size === 0) return [];

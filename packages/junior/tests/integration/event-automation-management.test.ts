@@ -353,13 +353,8 @@ describe("event automation management", () => {
       },
     );
     expect(deleted).not.toHaveProperty("cards");
-    const conversationId = "local:delete-card";
-    await getConversationStore().recordActivity({
-      conversationId,
-      destination: { platform: "local", conversationId },
-      source: "internal",
-      visibility: "public",
-    });
+    // The tools ran in this Conversation, so it holds the saved card.
+    const conversationId = "test:event-annotations";
     await getConversationEventStore().append(conversationId, [
       {
         createdAtMs: 1,
@@ -380,8 +375,11 @@ describe("event automation management", () => {
         },
       },
     ]);
+    // The reply shows the card once, with the deleted status.
     const cards = await loadPendingMessageCards(conversationId);
-    expect(cards).toEqual([]);
+    expect(cards).toMatchObject([
+      { key: created.automation.id, status: "deleted" },
+    ]);
     await expect(
       execute(
         createUpdateAutomationTool(

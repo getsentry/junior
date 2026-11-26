@@ -38,6 +38,7 @@ const DONE_STATUSES = new Set([
   "cancelled",
   "closed",
   "completed",
+  "deleted",
   "done",
   "merged",
   "resolved",

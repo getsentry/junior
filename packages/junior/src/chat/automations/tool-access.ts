@@ -4,8 +4,6 @@ import type { Identity, User } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { automationListQuerySchema } from "@/api/schema/automation";
 import { isUserActor, type UserActor } from "@/chat/actor";
-import { getDb } from "@/chat/db";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { sanitizeScheduledAutomationPrincipal } from "@/chat/scheduled-automations/identity";
 import type { ScheduledAutomationPrincipal } from "@/chat/scheduled-automations/types";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -210,18 +208,12 @@ export async function requireToolAutomation(
   return candidate;
 }
 
-/** Delete an Automation for a tool and remove its card from the Conversation. */
+/** Delete an Automation for a tool. */
 export async function deleteToolAutomation(
-  conversationId: string,
   current: TaskCandidate,
 ): Promise<TaskCandidate> {
   const deleted = await deleteAutomation(current);
   if (!deleted) throw new ToolInputError(NOT_FOUND);
-  await createPluginAnnotations({
-    conversationId,
-    db: getDb(),
-    plugin: "junior",
-  }).remove("object", current.task.id);
   return deleted;
 }
 

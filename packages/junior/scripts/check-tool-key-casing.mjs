@@ -10,11 +10,7 @@ import {
 const SCHEMA_PROPERTIES = ["inputSchema", "outputSchema"];
 const SNAKE_CASE_KEY = /^[a-z0-9_]+$/;
 // Card fields that tool results carry for the dashboard and Slack cards.
-const ALLOWED_KEYS = new Set([
-  "objectAnnotations",
-  "objectCards",
-  "removedCards",
-]);
+const ALLOWED_KEYS = new Set(["objectAnnotations", "objectCards"]);
 
 /** Check tool input and output schemas in a set of source files. */
 export function checkToolKeyCasingSources(files, packageSrcRoots = {}) {
