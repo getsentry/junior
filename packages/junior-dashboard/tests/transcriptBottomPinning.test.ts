@@ -17,7 +17,7 @@ function activeTurn(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     lastProgressAt: "2026-01-01T00:00:10.000Z",
@@ -397,6 +397,20 @@ describe("transcript bottom pinning", () => {
         source: "scroll",
       }),
     ).toBe("follow");
+  });
+
+  it("keeps the follow state when shrinking content clamps the scroll", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 2_108,
+        snapshot: {
+          clientHeight: 594,
+          scrollHeight: 2_576,
+          scrollTop: 1_982,
+        },
+        source: "scroll",
+      }),
+    ).toBe("preserve");
   });
 
   it("pauses follow when the reader scrolls up inside bottom slack", () => {

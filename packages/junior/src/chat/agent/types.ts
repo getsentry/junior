@@ -25,8 +25,8 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { AgentType } from "@/chat/agent-invocations/agent-types";
-import type { ChildAgentKind } from "@/chat/agent-invocations/types";
+import type { AgentType } from "@/chat/child-agents/agent-types";
+import type { ChildAgentKind } from "@/chat/child-agents/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -336,6 +336,11 @@ export type AgentRun = {
    * unless a caller already bound credentials.
    */
   actor?: Actor;
+  /**
+   * The Actor is an app or bot that wrote the request, not a person. Tools
+   * that need a person, such as Inbox items, see no person in this Run.
+   */
+  actorIsApp?: boolean | undefined;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext | undefined;
   source: Source;
@@ -362,7 +367,7 @@ export type AgentRun = {
    * Optional agent capabilities disabled for this run slice.
    * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
    * hard-fail instead. Default is enabled when omitted.
-   * TODO(dcramer): Issues #881 and #883 track a path for child invocations to
+   * TODO(dcramer): Issues #881 and #883 track a path for child agents to
    * force interactive auth when a delegated tool requires credentials the
    * parent can already request. Children currently disable it.
    */
@@ -408,7 +413,7 @@ export function actorFromRun(
 
 /**
  * Reject contradictory provider coordinates before the run touches state.
- * `conversationKind` comes from the stored Conversation, never from the Run.
+ * `conversation` comes from the stored Conversation, never from the Run.
  */
 export function assertRunConsistency(
   run: Pick<
@@ -421,7 +426,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
-  conversationKind?: ConversationKind,
+  conversation?: { kind: ConversationKind; hasParent: boolean },
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -468,7 +473,7 @@ export function assertRunConsistency(
         case "local": {
           // A person's Turn in a Thread replies in the Thread. Its
           // Destination is the Thread's own copy of its root's.
-          if (conversationKind === "thread") {
+          if (conversation?.kind === "thread" && conversation.hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

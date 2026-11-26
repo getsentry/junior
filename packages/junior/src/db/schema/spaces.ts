@@ -3,9 +3,15 @@ import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
 
 /**
+ * Who can read a Space. Anyone in the organization can find, read, and join a
+ * public Space. Only the members of a private Space can read it.
+ */
+export type SpaceVisibility = "private" | "public";
+
+/**
  * One Space: a named home for a body of related work (`design/spaces.md`).
- * Every Space is public: anyone in the organization can find, read, and join
- * it.
+ * Every root in a Space stores the Space's visibility on its own Location, so
+ * the usual Conversation rules apply to it.
  */
 export const juniorSpaces = pgTable(
   "junior_spaces",
@@ -13,6 +19,10 @@ export const juniorSpaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     description: text("description"),
+    visibility: text("visibility")
+      .$type<SpaceVisibility>()
+      .notNull()
+      .default("public"),
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => juniorUsers.id),
@@ -26,7 +36,11 @@ export const juniorSpaces = pgTable(
   ],
 );
 
-/** One member of a Space. Members see the Space in their sidebar. */
+/**
+ * The members of a Space before they became the Participants of its Lead.
+ * Nothing reads or writes it. Drop it once a release that does not use it
+ * is live.
+ */
 export const juniorSpaceMembers = pgTable(
   "junior_space_members",
   {

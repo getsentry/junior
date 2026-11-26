@@ -16,7 +16,7 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";

@@ -17,7 +17,7 @@ import {
   slackDestination,
   slackParentConversationId,
   loadTurnEvents,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import {
   createHarness,

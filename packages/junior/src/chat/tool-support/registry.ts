@@ -15,7 +15,7 @@
 import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { deleteAutomationToolDefinition } from "@/chat/automations/tools/delete";
 import { runAutomationNowToolDefinition } from "@/chat/automations/tools/run-now";
 import { searchAutomationsToolDefinition } from "@/chat/automations/tools/search";
@@ -27,7 +27,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { hasEventCatalogEntries } from "@/chat/events/catalog";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
-import { getStaticPluginToolDefinitions } from "@/chat/plugins/agent-hooks";
+import { getStaticPluginToolDefinitions } from "@/chat/plugins/hooks/tools";
 import { slackCanvasEditToolDefinition } from "@/chat/slack/tools/canvas/edit";
 import { slackCanvasReadToolDefinition } from "@/chat/slack/tools/canvas/read";
 import { slackCanvasWriteToolDefinition } from "@/chat/slack/tools/canvas/write";
@@ -47,7 +47,9 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
-import { setSpaceConfigurationToolDefinition } from "@/chat/tools/set-space-configuration";
+import { listSpacesToolDefinition } from "@/chat/tools/list-spaces";
+import { moveConversationToSpaceToolDefinition } from "@/chat/tools/move-conversation-to-space";
+import { setConfigurationToolDefinition } from "@/chat/tools/set-configuration";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
@@ -64,13 +66,11 @@ import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progre
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
 import { startAgentToolDefinition } from "@/chat/tools/runtime/start-agent";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
-import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
 import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
-import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
@@ -129,13 +129,9 @@ function always(definition: StaticZodToolDefinition): StaticToolEntry {
 
 const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
-const hasAgents = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents !== "none";
 const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents === "children" ||
   listedTools.agents === "children_and_parent";
-const isLead = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents === "lead";
 
 // Write tools exist when the deployment has a workspace provider, and their
 // text names those providers.
@@ -154,7 +150,6 @@ function workspaceWriteTool(
 // keep the order that they had.
 const CORE_TOOLS = {
   loadSkill: RUN_BUILT,
-  updateTodos: always(updateTodosToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
   submitFeedback: always(submitFeedbackToolDefinition),
@@ -199,16 +194,21 @@ const CORE_TOOLS = {
     when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
   },
-  setSpaceConfiguration: {
-    when: ({ listedTools }) => listedTools.spaces,
-    definition: () => setSpaceConfigurationToolDefinition,
+  listSpaces: always(listSpacesToolDefinition),
+  moveConversationToSpace: {
+    when: ({ listedTools }) => listedTools.settings,
+    definition: () => moveConversationToSpaceToolDefinition,
+  },
+  setConfiguration: {
+    when: ({ listedTools }) => listedTools.settings,
+    definition: () => setConfigurationToolDefinition,
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
-  // A Lead finds Conversations with searchConversations, and every other
-  // Turn with listAgents.
+  // Only a Turn whose `only` list names it lists it, such as a Lead's.
   searchConversations: {
-    when: isLead,
+    when: ({ listedTools }) =>
+      listedTools.only?.includes("searchConversations") === true,
     definition: ({ platform }) =>
       searchConversationsToolDefinition(
         platform === "slack" ? slackConversationSearchChannelFilter : undefined,
@@ -234,14 +234,8 @@ const CORE_TOOLS = {
     when: hasChildAgents,
     definition: () => archiveAgentToolDefinition,
   },
-  listAgents: {
-    when: (scope) => !isLead(scope),
-    definition: () => listAgentsToolDefinition,
-  },
-  messageAgent: {
-    when: hasAgents,
-    definition: () => messageAgentToolDefinition,
-  },
+  listAgents: { definition: listAgentsToolDefinition },
+  messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,
     definition: () => replyToolDefinition,
@@ -315,12 +309,6 @@ const CORE_TOOLS = {
   addInboxItem: always(addInboxItemToolDefinition),
   searchInboxItems: always(searchInboxItemsToolDefinition),
   updateInboxItem: always(updateInboxItemToolDefinition),
-  // Only a Turn whose `only` list names it lists it, such as a Lead's.
-  startConversation: {
-    when: ({ listedTools }) =>
-      listedTools.only?.includes("startConversation") === true,
-    definition: () => startConversationToolDefinition,
-  },
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;

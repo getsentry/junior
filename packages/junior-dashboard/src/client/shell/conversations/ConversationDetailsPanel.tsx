@@ -1,4 +1,5 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ReactNode } from "react";
 
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationGlance } from "./ConversationGlance";
@@ -16,10 +17,8 @@ import type {
   ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../../components/ParticipantAvatarStack";
+import { conversationParticipants } from "../../components/ParticipantAvatarStack";
+import { ConversationParticipants } from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -34,9 +33,10 @@ export function ConversationDetailsPanel(props: {
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry): void;
+  /** A Lead's Space: its description, members, and settings. */
+  space?: ReactNode;
 }) {
   const { conversation, detail } = props;
-  const participants = conversationParticipants(conversation);
   const showUsageBreakdown = hasConversationUsageBreakdown({
     conversation,
     detail,
@@ -51,10 +51,12 @@ export function ConversationDetailsPanel(props: {
       summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
-      identity={
-        participants.length > 0 ? (
-          <ParticipantAvatarStack participants={participants} size="detail" />
-        ) : null
+      participants={
+        <ConversationParticipants
+          conversationId={props.conversationId}
+          detail={detail}
+          participants={conversationParticipants(conversation)}
+        />
       }
       isParticipant={detail?.isParticipant === true}
       onClose={props.onClose}
@@ -62,6 +64,7 @@ export function ConversationDetailsPanel(props: {
       onSelectMemory={props.onSelectMemory}
       links={props.links}
       memoryList={props.memoryList}
+      space={props.space}
       overview={
         hasConversationStats({
           conversation,

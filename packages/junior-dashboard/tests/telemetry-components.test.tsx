@@ -93,7 +93,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -390,7 +390,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="search">
           <TranscriptToolView
-            conversationId="slack:C1:123"
+            conversation={conversation([], { conversationId: "slack:C1:123" })}
             part={{
               id: "tool-1",
               input: { query: "regression" },
@@ -414,7 +414,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <TranscriptToolView
-            conversationId="slack:C1:123"
+            conversation={conversation([], { conversationId: "slack:C1:123" })}
             part={{
               id: "tool-1",
               name: "webSearch",
@@ -1552,7 +1552,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
-          kind: "root",
+          kind: "thread",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1726,7 +1726,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
-          kind: "root",
+          kind: "thread",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -2149,7 +2149,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
-      kind: "root",
+      kind: "thread",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",

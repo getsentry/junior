@@ -19,6 +19,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationKind,
   ConversationSource,
@@ -83,12 +84,15 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root`, `automation`, or `lead` exactly when parent_conversation_id is
-    // null. Set once at create.
-    // The checks below enforce this. A writer of an older deploy leaves it null.
-    // TODO(dcramer): After every deployed writer sets kind, rerun the
-    // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
-    // arm of junior_conversations_kind_parent_check.
+    // Set once at create. A `task` always has a parent, an `automation` or a
+    // `lead` never does, and a `thread` may have one.
+    // The checks below enforce this. A writer of an older deploy leaves it
+    // null, or writes the retired `root`, which the
+    // `junior_conversations_kind_root_to_thread` trigger stores as `thread`.
+    // TODO(dcramer): After every deployed writer sets `thread`, drop that
+    // trigger and `root` from the checks below. After every writer sets
+    // kind, rerun the `kind IS NULL` backfill, add NOT NULL, and drop the
+    // `kind is null or` arm.
     kind: text("kind").$type<ConversationKind>(),
     // The agent settings that every Turn keeps, typed as `AgentConfig` for
     // every kind. Set once at create. Today only a spawn writes it, so a
@@ -108,13 +112,23 @@ export const juniorConversations = pgTable(
     // hide it. Keep as fork clears it.
     quickQuestionAt: timestamptz("quick_question_at"),
     // Roots reference themselves; descendants reference the root whose actor
-    // and destination own their privacy boundary.
+    // and destination own their privacy boundary. A Space's Lead is the root
+    // of every Conversation in its Space.
     rootConversationId: text("root_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // The Space of a root, or null for a one-off. Only a root stores it, so
-    // a child reads the Space of its root and can never disagree with it.
+    // The Space of a Lead. Only a Lead stores it: every other Conversation in
+    // the Space has the Lead as its root and reads it from there
+    // (`rootSpaceIdSql`), so they can never disagree with it.
     spaceId: text("space_id").references(() => juniorSpaces.id),
+    // Who may read the Conversation (policies/conversation-access.md).
+    // Public: anyone. Private: only its root's Participants. Every row of a
+    // tree has the same value: a child copies its root's when it is created,
+    // and `setConversationVisibility` changes the whole tree at once. A root
+    // takes the first known visibility of its Destination or Space. Null
+    // reads as private: no known visibility yet, or a writer of an older
+    // deploy left it null.
+    visibility: text("visibility").$type<ConversationPrivacy>(),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
     /**
      * Set while the Conversation is stopped. Its Watch Events are then saved
@@ -140,15 +154,19 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'automation', 'lead', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'thread', 'automation', 'lead', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ${table.kind} in ('root', 'thread') or ((${table.kind} in ('automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     check(
       "junior_conversations_space_root_check",
       sql`${table.spaceId} is null or ${table.parentConversationId} is null`,
+    ),
+    check(
+      "junior_conversations_visibility_check",
+      sql`${table.visibility} is null or ${table.visibility} in ('public', 'private')`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),

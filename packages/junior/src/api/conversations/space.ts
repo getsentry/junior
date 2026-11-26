@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { canMoveToSpace } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getDb } from "@/chat/db";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { setConversationSpace } from "@/chat/spaces/conversations";
 import { readSpace, type Space } from "@/chat/spaces/store";
 import { throwApiError } from "../http";
@@ -30,10 +31,11 @@ export async function requireSpaceForWork(
 }
 
 /**
- * Put one root Conversation in a Space, or make it a one-off with null.
- * Only a participant moves it. They must be a member of the Space that it
- * leaves and of the Space that it joins. Every Space is public, so only a
- * public root joins one.
+ * Put one tree root in a Space, as a child of the Space's Lead, or make it a
+ * one-off root with null. Only a participant moves it. They must be a member
+ * of the Space that it leaves and of the Space that it joins. Only a public
+ * Conversation joins a Space. One in a private Space stays there, so its
+ * data stays with the members.
  */
 export async function setConversationSpaceForViewer(
   viewer: User,
@@ -49,10 +51,10 @@ export async function setConversationSpaceForViewer(
   if (!conversation || !access?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!canMoveToSpace(conversation.kind)) {
+  if (!canMoveToSpace(conversation)) {
     throwApiError(
       409,
-      "Only a top-level conversation moves. A child is in the Space of its root.",
+      "Only a top-level conversation moves. A child agent is in the Space of its root.",
     );
   }
   const currentSpaceId = conversation.spaceId ?? null;
@@ -72,8 +74,28 @@ export async function setConversationSpaceForViewer(
   if (target && access.visibility !== "public") {
     throwApiError(409, "Only a public conversation can join a Space.");
   }
-  if (!(await setConversationSpace(conversationId, body.spaceId))) {
-    throwApiError(404, "Conversation not found.");
+  const lead = target
+    ? await getSpaceLead({ member: viewer, space: target })
+    : undefined;
+  const refusal = await setConversationSpace(
+    conversationId,
+    target && lead
+      ? { leadConversationId: lead.conversationId, spaceId: target.id }
+      : null,
+    currentSpaceId,
+  );
+  if (refusal === "not_found") throwApiError(404, "Conversation not found.");
+  if (refusal === "moved") {
+    throwApiError(409, "It moved to another Space. Reload and try again.");
+  }
+  if (refusal === "leaves_private") {
+    throwApiError(409, "A conversation in a private Space stays in it.");
+  }
+  if (refusal === "private_into_public") {
+    throwApiError(409, "Only a public conversation can join a Space.");
+  }
+  if (refusal === "shared_location") {
+    throwApiError(409, "A Slack conversation can't join a private Space.");
   }
   return response;
 }

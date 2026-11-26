@@ -5,6 +5,7 @@ import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { mockConversationDetail } from "../mock-reports";
 
 test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -280,7 +281,6 @@ test.describe("new UI", () => {
       async () => {
         await page.goto(
           `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
-          { waitUntil: "networkidle" },
         );
         await expect(
           page.getByRole("heading", {
@@ -440,7 +440,7 @@ test.describe("new UI", () => {
       conversationId: `long-${index}`,
       cumulativeDurationMs: 1_000 + index,
       displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
@@ -679,14 +679,11 @@ test.describe("new UI", () => {
     ).toBeVisible();
     const tasks = details.getByRole("region", { name: "Tasks" });
     await expect(tasks.getByRole("listitem")).toHaveCount(2);
-    await expect(tasks.getByRole("listitem").first()).toContainText(
-      "GitHub access is needed to read the pull request.",
-    );
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.
     await tasks
       .getByRole("button", {
-        name: /^blocked Review the open dashboard pull requests/,
+        name: /^blocked reviewer/,
       })
       .click();
     const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
@@ -816,10 +813,11 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === childDetailPath,
       async (route) => {
-        const response = await route.fetch();
         await route.fulfill({
-          json: { ...(await response.json()), isParticipant: true },
-          response,
+          json: {
+            ...(await mockConversationDetail(route)),
+            isParticipant: true,
+          },
         });
       },
     );

@@ -7,7 +7,7 @@ import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   addReactionToMessage,
   postSlackEphemeralMessage,

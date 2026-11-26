@@ -6,7 +6,7 @@
  * reads the answer and applies the stored outcomes.
  */
 import type { Reply } from "@/chat/turn-answer";
-import type { BlockedReport } from "@/chat/agent-invocations/blocked-report";
+import type { BlockedReport } from "@/chat/child-agents/blocked-report";
 
 /** Dispatch facts that decide what a run posts. */
 export type RunDispatch =

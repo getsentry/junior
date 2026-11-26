@@ -9,7 +9,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -18,15 +18,15 @@ import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 
@@ -106,7 +106,11 @@ async function openPullRequest(): Promise<string> {
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
-    turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+    turnTools: turnBehavior({
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+    }).tools,
     workspace: {} as never,
   })["github_createPullRequest"]!.execute!(
     {

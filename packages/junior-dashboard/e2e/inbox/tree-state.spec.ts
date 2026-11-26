@@ -1,6 +1,7 @@
 import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockConversationDetail, mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   test("one icon shows what each tree waits on", async ({
@@ -15,10 +16,8 @@ test.describe("new UI", () => {
       "internal:dashboard-qa": { treeState: "done", watching: true },
     };
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: feed.conversations.map(
@@ -33,10 +32,8 @@ test.describe("new UI", () => {
     await page.route(
       new RegExp(`/api/conversations/${encodeURIComponent(release)}(\\?.*)?$`),
       async (route) => {
-        const response = await route.fetch();
-        const detail = await response.json();
+        const detail = await mockConversationDetail(route);
         return route.fulfill({
-          response,
           json: { ...detail, treeState: "working" },
         });
       },
@@ -88,7 +85,7 @@ test.describe("new UI", () => {
     await screenshot(page, "inbox-tree-state", { lightTheme: true });
 
     // Each Conversation row shows the same one icon.
-    const row = page
+    const row = list
       .getByRole("listitem")
       .filter({
         has: page.getByRole("link", { name: /^Quarterly reliability review/ }),

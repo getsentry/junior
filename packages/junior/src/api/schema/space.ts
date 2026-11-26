@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 
 /** The longest Space name, so a form can stop at it. */
 export const SPACE_NAME_MAX_CHARS = 80;
@@ -12,6 +13,9 @@ const spaceDescriptionSchema = z
   .max(SPACE_DESCRIPTION_MAX_CHARS)
   .transform((value) => value || null)
   .nullable();
+
+/** Who can read a Space. Only members read a private Space. */
+export const spaceVisibilitySchema = z.enum(["public", "private"]);
 
 export const spaceParamsSchema = z
   .object({ spaceId: z.string().uuid() })
@@ -32,6 +36,7 @@ export const createSpaceBodySchema = z
   .object({
     name: spaceNameSchema,
     description: spaceDescriptionSchema.optional(),
+    visibility: spaceVisibilitySchema.default("public"),
   })
   .strict();
 
@@ -39,10 +44,15 @@ export const updateSpaceBodySchema = z
   .object({
     name: spaceNameSchema.optional(),
     description: spaceDescriptionSchema.optional(),
+    // Accepted only so the route can say why it refuses the change.
+    visibility: spaceVisibilitySchema.optional(),
   })
   .strict()
   .refine(
-    (body) => body.name !== undefined || body.description !== undefined,
+    (body) =>
+      body.name !== undefined ||
+      body.description !== undefined ||
+      body.visibility !== undefined,
     "Change the name or the description.",
   );
 
@@ -55,17 +65,30 @@ export const spaceRefSchema = z
   .object({ id: z.string().uuid(), name: z.string().min(1) })
   .strict();
 
-/** One Space, as the viewer sees it. Every Space is public. */
+/**
+ * One Space, as the viewer sees it. A viewer sees a private Space only while
+ * they are a member.
+ */
 export const spaceSchema = z
   .object({
     id: z.string().uuid(),
     name: z.string().min(1),
     description: z.string().nullable(),
+    visibility: spaceVisibilitySchema,
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
     archivedAt: z.iso.datetime().nullable(),
     memberCount: z.number().int().nonnegative(),
     viewerIsMember: z.boolean(),
+    /**
+     * The tree states of the Space's Conversations that are not archived,
+     * rolled up for the viewer: the first that applies. List rows only.
+     */
+    treeState: conversationTreeStateSchema.optional(),
+    /**
+     * The latest Turn of one of those Conversations failed. List rows only.
+     */
+    latestTurnFailed: z.boolean().optional(),
   })
   .strict();
 
@@ -73,6 +96,7 @@ export const spaceListSchema = z
   .object({ spaces: z.array(spaceSchema) })
   .strict();
 
+export type SpaceVisibilityReport = z.infer<typeof spaceVisibilitySchema>;
 export type SpaceRefReport = z.infer<typeof spaceRefSchema>;
 export type SpaceReport = z.infer<typeof spaceSchema>;
 export type SpaceListReport = z.infer<typeof spaceListSchema>;

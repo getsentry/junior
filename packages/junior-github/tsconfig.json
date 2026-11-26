@@ -21,6 +21,9 @@
     "tests/conversation-changes.ts",
     "tests/pull-request-action-harness.ts",
     "tests/pull-request-action.test.ts",
+    "tests/pull-request-comment-only-review.test.ts",
+    "tests/pull-request-limbo.test.ts",
+    "tests/pull-request-requester-backfill.test.ts",
     "tests/pull-request-review-again.test.ts"
   ]
 }

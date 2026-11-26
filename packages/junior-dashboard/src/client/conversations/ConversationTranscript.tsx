@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { History } from "lucide-react";
+import type { ShowTranscriptRow } from "./transcriptBottomPinning";
 import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
@@ -33,11 +34,12 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { TranscriptTasksLine } from "./TranscriptTasksLine";
-import { TranscriptStartedConversation } from "./TranscriptStartedConversation";
 import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
+import { TranscriptReceivedAgentMessage } from "./TranscriptAgentMessage";
+import { isReceivedAgentMessage } from "./agentMessage";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
@@ -134,6 +136,11 @@ export const TranscriptAskRevealContext = createContext<
       showRow(row: Element): boolean;
     })
   | undefined
+>(undefined);
+
+/** The scroll owner that shows a row, such as a search match. */
+export const TranscriptShowRowContext = createContext<
+  ShowTranscriptRow | undefined
 >(undefined);
 
 function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
@@ -399,6 +406,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             message={entry.message}
             timestamp={entry.message.timestamp}
           />
+        ) : isReceivedAgentMessage(entry.message) ? (
+          <TranscriptReceivedAgentMessage
+            conversation={props.conversation}
+            message={entry.message}
+          />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
@@ -455,7 +467,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView
-          conversationId={props.conversation.conversationId}
+          conversation={props.conversation}
           part={entry.part}
           timestamp={entry.timestamp}
         />
@@ -538,6 +550,7 @@ function TranscriptEntryList(
   // a reveal. Scroll only when the reader steps to another row. A new query
   // or a loaded page does not scroll: a scroll to the top match shows the
   // history sentinel, and each loaded page would then load the next one.
+  const showRow = use(TranscriptShowRowContext);
   const shownMatch = useRef<{
     firstKey?: string;
     matchKey?: string;
@@ -565,10 +578,10 @@ function TranscriptEntryList(
     ) {
       return;
     }
-    listRef.current
-      ?.querySelector(`[data-index="${current}"]`)
-      ?.scrollIntoView({ block: "center" });
-  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
+    const row = listRef.current?.querySelector(`[data-index="${current}"]`);
+    // A search moves the reader off the latest, like any jump.
+    if (row) showRow?.(row, { instant: true });
+  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery, showRow]);
   // The row of a shown question stays mounted, so it can scroll into view
   // and get its mark. A search can drop the row. Then nothing moves.
   const askReveal = use(TranscriptAskRevealContext);
@@ -686,17 +699,7 @@ function TranscriptEntryList(
       }
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
-      if (entry.kind === "tool") {
-        return entry.part.startedConversationId ? (
-          <TranscriptStartedConversation
-            conversationId={entry.part.startedConversationId}
-            input={entry.part.input}
-            timestamp={entry.timestamp}
-          />
-        ) : (
-          renderTool(entry)
-        );
-      }
+      if (entry.kind === "tool") return renderTool(entry);
       return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [
@@ -958,7 +961,7 @@ function RedactedTranscriptView(
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView
-          conversationId={props.conversation.conversationId}
+          conversation={props.conversation}
           part={entry.part}
           timestamp={entry.timestamp}
         />

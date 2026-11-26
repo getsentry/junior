@@ -1,7 +1,6 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { bindMessageAgent } from "@/chat/child-agents/message";
 import { buildPromptInput } from "@/chat/agent/prompt";
 import { type AgentRun } from "@/chat/agent/types";
 import {
@@ -28,12 +27,12 @@ import {
 } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { juniorDestinations } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import {
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { webTestActor } from "../fixtures/conversation";
 import {
   createHarness,
@@ -49,7 +48,7 @@ import {
 /** Give the Thread more work from its parent agent, like messageAgent. */
 async function sendParentMessage(harness: Harness, toolCallId: string) {
   const parentRun: AgentRun = {
-    actor: slackInvocationInput.actor,
+    actor: slackSpawnInput.actor,
     conversationId: slackParentConversationId,
     destination: slackDestination,
     instruction: { text: "Coordinate the work." },
@@ -182,7 +181,7 @@ describe("Thread input", () => {
 
       const [parentRun, personRun] = harness.runs;
       expect(parentRun).toMatchObject({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         source: { kind: "parent_message" },
       });
       // The person's Turn uses the Thread's own Destination and Location,
@@ -226,33 +225,27 @@ describe("Thread input", () => {
     }
   });
 
-  it.each(["direct", "unknown"] as const)(
-    "runs a person's Turn in a Thread as private when the Slack root is %s",
-    async (visibility) => {
-      const harness = await createHarness();
-      try {
-        const threadId = await startFinishedThread(harness);
-        // A Slack DM, or a channel whose type is unknown, has no confirmed
-        // visibility. Missing visibility is private.
-        await getDb()
-          .update(juniorDestinations)
-          .set({ visibility })
-          .where(eq(juniorDestinations.provider, "slack"));
+  it("runs a person's Turn in a Thread as private when the Slack root has no visibility", async () => {
+    const harness = await createHarness();
+    try {
+      const threadId = await startFinishedThread(harness);
+      // A writer of an older deploy leaves the tree null. Missing visibility
+      // is private.
+      await getDb().update(juniorConversations).set({ visibility: null });
 
-        await expect(
-          sendPersonMessage(harness, threadId, "person-1"),
-        ).resolves.toMatchObject({ status: "accepted" });
-        await harness.process(threadId);
+      await expect(
+        sendPersonMessage(harness, threadId, "person-1"),
+      ).resolves.toMatchObject({ status: "accepted" });
+      await harness.process(threadId);
 
-        expect(harness.runs.at(-1)).toMatchObject({
-          actor: webTestActor,
-          source: { kind: "web", visibility: "private" },
-        });
-      } finally {
-        await harness.close();
-      }
-    },
-  );
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: webTestActor,
+        source: { kind: "web", visibility: "private" },
+      });
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("runs a person's Turn in a Thread under a private web root", async () => {
     const harness = await createHarness();
@@ -379,7 +372,7 @@ describe("Thread input", () => {
       const parentRun = harness.runs.find(
         (run) => run.actor?.platform === "slack",
       )!;
-      expect(parentRun).toMatchObject({ actor: slackInvocationInput.actor });
+      expect(parentRun).toMatchObject({ actor: slackSpawnInput.actor });
       expect(parentRun.instruction.text).toContain("Check the deploy.");
       expect(parentRun.instruction.text).toContain(
         "Also check the retry path.",

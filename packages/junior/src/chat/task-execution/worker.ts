@@ -1,3 +1,4 @@
+import { ownsLocation } from "@/chat/conversations/kind-behavior";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
@@ -350,13 +351,14 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit Destination. Read it from a root Conversation
-  // only. A child stores its root's Destination, but its work keeps none, so
-  // invocation and dispatch workers stay free of provider Destinations.
+  // Mailbox wakes may omit Destination. Read it only from a Conversation
+  // that has its own Location. Another child stores its root's Destination,
+  // but its work keeps none, so invocation and dispatch workers stay free of
+  // provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });
-    if (stored && !stored.parentConversationId) {
+    if (stored && ownsLocation(stored)) {
       destination = stored.destination;
     }
   }

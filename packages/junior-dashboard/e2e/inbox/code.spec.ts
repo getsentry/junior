@@ -11,6 +11,11 @@ import {
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { desktop, screenshot } from "../screenshot";
+import {
+  mockCodeRepository,
+  mockFeedPage,
+  mockPeopleCode,
+} from "../mock-reports";
 
 test.describe("new UI", () => {
   test("the Code row opens Mine, and stays the origin of a Conversation that Code opens", async ({
@@ -372,10 +377,8 @@ test.describe("new UI", () => {
   }) => {
     // The reports list at most 100 changes. The counts cover every change.
     await page.route(/\/api\/people\/[^/]+\/code$/, async (route) => {
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockPeopleCode(route);
       await route.fulfill({
-        response,
         json: {
           ...report,
           // Every listed change is active. The one idle change is past the
@@ -393,8 +396,7 @@ test.describe("new UI", () => {
     });
     // The open changes fill the list, so the Closed tab loads its own rows.
     await page.route(/\/api\/code\/repositories\/[^/]+$/, async (route) => {
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockCodeRepository(route);
       const state = new URL(route.request().url()).searchParams.get("state");
       const changes = (count: number, changeState: string, title: string) =>
         Array.from({ length: count }, (_, index) => ({
@@ -408,7 +410,6 @@ test.describe("new UI", () => {
           url: `https://github.com/${report.repository.name}/pull/${index + 1}`,
         }));
       await route.fulfill({
-        response,
         json: {
           ...report,
           changeCounts: { closed: 12, merged: 3, open: 105 },
@@ -490,8 +491,7 @@ test.describe("new UI", () => {
     await page.route("**/api/code/repositories/*", async (route) => {
       const state = new URL(route.request().url()).searchParams.get("state");
       states.push(state);
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockCodeRepository(route);
       const idleChange = {
         id: "00000000-0000-4000-8000-000000000099",
         lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
@@ -509,7 +509,6 @@ test.describe("new UI", () => {
           changeCounts: { closed: 2, merged: 40, open: 3 },
           changes: state === "open" ? [idleChange] : report.changes,
         },
-        response,
       });
     });
     await page.goto(`${dashboard.baseURL}/code?scope=all`);
@@ -602,9 +601,8 @@ test.describe("new UI", () => {
     await page.route(
       /\/api\/conversations\?.*codeRepositoryId=/,
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
-        const [first] = feed.conversations;
+        const feed = await mockFeedPage(route);
+        const first = feed.conversations[0]!;
         const listed = (name: string, treeState: string) => ({
           ...first,
           conversationId: `${first.conversationId}-${treeState}`,
@@ -613,7 +611,6 @@ test.describe("new UI", () => {
           treeState,
         });
         return route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: [
@@ -688,9 +685,8 @@ test.describe("new UI", () => {
       await page.route(
         /\/api\/conversations\?.*codeRepositoryId=/,
         async (route) => {
-          const response = await route.fetch();
-          const feed = await response.json();
-          const [first] = feed.conversations;
+          const feed = await mockFeedPage(route);
+          const first = feed.conversations[0]!;
           const row = (name: string, ageMs: number) => ({
             ...first,
             conversationId: `${first.conversationId}-${name}`,
@@ -699,7 +695,6 @@ test.describe("new UI", () => {
             pinnedAt: null,
           });
           return route.fulfill({
-            response,
             json: {
               ...feed,
               conversations: [

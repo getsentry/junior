@@ -3,10 +3,10 @@
     "message": ["actor", "authority", "index", "is_run_actor", "role"],
     "tool-result": ["index", "is_error", "tool"]
   },
-  "packages/junior/src/chat/agent-invocations/result.ts": {
+  "packages/junior/src/chat/child-agents/result.ts": {
     "agent-message": ["conversation_id", "name", "source", "title"]
   },
-  "packages/junior/src/chat/agent-invocations/top-level-message.ts": {
+  "packages/junior/src/chat/child-agents/top-level-message.ts": {
     "agent-message": ["conversation_id", "source"]
   },
   "packages/junior/src/chat/current-instruction.ts": {
@@ -51,7 +51,7 @@
     "task": ["about", "event"],
     "watch": ["about"]
   },
-  "packages/junior/src/chat/agent-invocations/agent-update.ts": {
+  "packages/junior/src/chat/child-agents/agent-update.ts": {
     "agent-result": [
       "conversation_id",
       "name",

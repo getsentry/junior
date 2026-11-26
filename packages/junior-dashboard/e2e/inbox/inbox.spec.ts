@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -16,9 +17,11 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { waitForRequestsToEnd } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -66,73 +69,100 @@ test.describe("new UI", () => {
     await expect(todo.getByRole("list").first()).toBeVisible();
   });
 
-  test("each entry lists its own rows under its name", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockInboxItems(page, {
-      open: [rollout, license, audit, prReady, migration, prMerge, prReview],
+  // One test per view, so each shoots its own view within the test timeout.
+  test.describe("each entry lists its own rows under its name", () => {
+    const primaryNav = (page: Page) =>
+      page.getByRole("navigation", { name: "Primary" });
+    const sections = (page: Page) =>
+      page.locator("section[aria-label] section[aria-label]");
+
+    test.beforeEach(async ({ dashboard, page }) => {
+      await mockInboxItems(page, {
+        open: [rollout, license, audit, prReady, migration, prMerge, prReview],
+      });
+      await page.goto(`${dashboard.baseURL}/inbox`);
     });
-    await page.goto(`${dashboard.baseURL}/inbox`);
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link")).toHaveText([
-      /^Inbox/,
-      /^Snoozed/,
-      /^Done$/,
-      /^Conversations$/,
-      /^Code$/,
-      /^Automations/,
-      // The viewer's Spaces.
-      /Billing migration$/,
-      /Mobile app$/,
-      new RegExp(checkout),
-    ]);
-    // A filter counts what waits on the viewer, like the badge: the
-    // "Pull request ready for review" notice does not.
-    await expect(
-      page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
-    ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
-    const sections = page.locator("section[aria-label] section[aria-label]");
 
-    // Code lists the viewer's open changes, with their asks.
-    await nav.getByRole("link", { name: "Code", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Code" }),
-    ).toBeVisible();
-    await expect(sections).toHaveText([
-      /^Waiting on you/,
-      /^Waiting on others/,
-    ]);
-    await screenshot(page, "code-mine", { lightTheme: true });
+    test("a filter counts what waits on the viewer", async ({ page }) => {
+      await expect(primaryNav(page).getByRole("link")).toHaveText([
+        /^Inbox/,
+        /^Snoozed/,
+        /^Done$/,
+        /^Conversations$/,
+        /^Code$/,
+        /^Automations/,
+        // The viewer's Spaces.
+        /Billing migration$/,
+        /Mobile app$/,
+        /Pricing launch$/,
+        new RegExp(checkout),
+      ]);
+      // Like the badge: the "Pull request ready for review" notice does not
+      // count.
+      await expect(
+        page
+          .getByRole("navigation", { name: "Asks to show" })
+          .getByRole("link"),
+      ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
+    });
 
-    // Decisions group by Conversation, the longest wait first.
-    await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Decisions" }),
-    ).toBeVisible();
-    await expect(sections).toHaveCount(2);
-    await expect(sections.nth(1)).toHaveAccessibleName(checkout);
-    await screenshot(page, "inbox-decisions", { lightTheme: true });
+    test("Code lists the viewer's open changes, with their asks", async ({
+      page,
+    }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: "Code", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Code" }),
+      ).toBeVisible();
+      await expect(sections(page)).toHaveText([
+        /^Waiting on you/,
+        /^Waiting on others/,
+      ]);
+      await screenshot(page, "code-mine", { lightTheme: true });
+    });
 
-    // Conversations lists every Conversation, To do ones too.
-    await nav.getByRole("link", { name: "Conversations", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Conversations" }),
-    ).toBeVisible();
-    // The row's own link; its summary can link the same Conversation.
-    await expect(
-      page
-        .getByRole("region", { name: "Today" })
-        .locator("a[data-inbox-head]")
-        .getByText(checkout, { exact: true }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-conversations", { lightTheme: true });
+    test("Decisions group by Conversation, the longest wait first", async ({
+      dashboard,
+      page,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Decisions" }),
+      ).toBeVisible();
+      await expect(sections(page)).toHaveCount(2);
+      await expect(sections(page).nth(1)).toHaveAccessibleName(checkout);
+      await screenshot(page, "inbox-decisions", { lightTheme: true });
+    });
 
-    await nav.getByRole("link", { name: /^Automations/ }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Automations" }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-automations", { lightTheme: true });
+    test("Conversations lists every Conversation, To do ones too", async ({
+      page,
+    }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: "Conversations", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Conversations" }),
+      ).toBeVisible();
+      // The row's own link; its summary can link the same Conversation.
+      await expect(
+        page
+          .getByRole("region", { name: "Today" })
+          .locator("a[data-inbox-head]")
+          .getByText(checkout, { exact: true }),
+      ).toBeVisible();
+      await screenshot(page, "inbox-conversations", { lightTheme: true });
+    });
+
+    test("the sidebar opens Automations", async ({ page }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: /^Automations/ })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Automations" }),
+      ).toBeVisible();
+      await screenshot(page, "inbox-automations", { lightTheme: true });
+    });
   });
 
   test("a row answers its ask in place", async ({ dashboard, page }) => {
@@ -555,16 +585,13 @@ test.describe("new UI", () => {
     // The card is not part of the clamped prose, and only one shows.
     await expect(clamp.getByRole("region", { name: card })).toHaveCount(0);
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
-    // In full means nothing clips it once it is scrolled to. On a slow CI
-    // runner the list can still move after one scroll, so scroll again
-    // until the card shows.
-    await expect(async () => {
-      await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
-      await expect(page.getByRole("region", { name: card })).toBeInViewport({
-        ratio: 1,
-        timeout: 1000,
-      });
-    }).toPass();
+    // In full means nothing clips it once it is scrolled to. The card's
+    // reads change its height, so scroll once they end.
+    await waitForRequestsToEnd(page);
+    await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("region", { name: card })).toBeInViewport({
+      ratio: 1,
+    });
   });
 
   test("an item's subject card hides when its text already shows that card", async ({
@@ -781,10 +808,8 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
+        const feed = await mockFeedPage(route);
         await route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: feed.conversations.filter(

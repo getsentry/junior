@@ -24,7 +24,8 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
@@ -53,7 +54,8 @@ import {
 } from "../fixtures/slack/factories/api";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 vi.hoisted(() => {

@@ -1,4 +1,5 @@
 import { interceptTestGitHubChecksHttp } from "./github-checks";
+import { interceptTestGitHubCraftReleaseHttp } from "./github-craft-release";
 import {
   interceptTestGitHubDraftsHttp,
   resetTestGitHubDraftFixtures,
@@ -453,6 +454,11 @@ export async function interceptTestGitHubHttp(input: {
     input.upstreamUrl,
   );
   if (checks) return checks;
+  const craftRelease = await interceptTestGitHubCraftReleaseHttp(
+    input.request,
+    input.upstreamUrl,
+  );
+  if (craftRelease) return craftRelease;
   const drafts = await interceptTestGitHubDraftsHttp(
     input.request,
     input.upstreamUrl,

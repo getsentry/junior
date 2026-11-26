@@ -1,0 +1,67 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7bbde9ec-c4d7-4543-9c2d-fe4a569cff2a",
+  "prevIds": ["453e2def-765a-4fb8-8b61-982131badb8b"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "visibility"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.visibility",
+        "n|col|public.junior_conversations.visibility",
+        "e|col|public.junior_conversations.visibility"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "n|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "e|ck|public.junior_conversations.junior_conversations_visibility_check",
+        "n|con|public.junior_conversations.junior_conversations_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.visibility"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "visibility",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_visibility_check",
+        "value": "\"visibility\" is null or \"visibility\" in ('public', 'private')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

@@ -9,9 +9,13 @@ import { githubRequest } from "../credential-support.js";
  * HTTP 200, such as when the installation is rate limited.
  */
 export class GitHubGraphqlError extends Error {
-  constructor(message: string) {
+  /** GitHub's error types, such as `RATE_LIMIT`. GitHub's own failures have none. */
+  readonly types: string[];
+
+  constructor(message: string, types: string[]) {
     super(message);
     this.name = "GitHubGraphqlError";
+    this.types = types;
   }
 }
 
@@ -43,6 +47,7 @@ export async function githubGraphqlRequest(params: {
           error.type ? `${error.type}: ${error.message}` : error.message,
         )
         .join("; "),
+      failure.data.errors.flatMap((error) => (error.type ? [error.type] : [])),
     );
   }
   return response;

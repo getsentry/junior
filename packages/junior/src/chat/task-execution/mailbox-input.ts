@@ -12,9 +12,9 @@ import {
   eventInboxItemInputs,
   loadInboxItemInput,
 } from "@/chat/inbox-items/prompt-input";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   eventBatchMessageMeta,
-  isEventMailboxMetadata,
   renderEventBatchInputs,
 } from "@/chat/events/notification";
 import type { MailboxTurnInput } from "@/chat/task-execution/mailbox-turn";

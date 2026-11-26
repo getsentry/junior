@@ -2,8 +2,9 @@
 
 Commands that Junior runs in a Sandbox, such as provider CLIs, git, and
 scripts, reach provider APIs like GitHub and Sentry with no real token in the
-Sandbox. When a request leaves the Sandbox, Junior adds the credential that
-the plugin chooses: the plugin's own access, or the Actor's connected account.
+Sandbox. When a request that asks for access leaves the Sandbox, Junior adds
+the credential that the plugin chooses: the plugin's own access, or the
+Actor's connected account.
 
 ## Intent
 
@@ -39,6 +40,12 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
 - Junior never deletes a Sentry organization or project, whatever the
   credential or the Actor's role. A person does that in Sentry.
 - Workspace setup scripts run with no provider credentials.
+- Each Conversation's Sandbox can spend only a fixed share of the GitHub
+  App's hourly GraphQL points. Sandbox GraphQL requests also stop when the
+  App has only a reserve of points left, so that Junior's own GitHub calls
+  keep working. Junior counts the points that GitHub charges, not an
+  estimate. The denial says when the budget resets. A Conversation's
+  Sandbox can also have only a few GraphQL requests in flight at one time.
 
 ## Gaps
 
@@ -47,3 +54,8 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
   Actor's account. A repo script then acts as the Actor only because it
   calls GitHub. This breaks "Other code in the Sandbox does not act as the
   Actor only because it calls a provider domain".
+- The Google plugin refuses every Sandbox request to the Google APIs, also
+  a request that carries its own credential. A person cannot use their own
+  Google account in the Sandbox. This breaks "A credential that a request
+  carries itself is never replaced. A person can use another account in
+  the Sandbox".

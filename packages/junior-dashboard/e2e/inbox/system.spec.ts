@@ -1,7 +1,13 @@
 import { expect, test } from "../test";
-import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { waitForRequestsToEnd } from "../harness";
+import { readMockCacheHealth } from "../../src/mock-reporting/cache-warming";
+import {
+  NOW_MS,
+  readMockConversationStats,
+} from "../../src/mock-reporting/fixtures";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   /** Vary merged changes so the running cost line moves. */
@@ -29,8 +35,7 @@ test.describe("new UI", () => {
   test("shows system usage and plugin details", async ({ page, dashboard }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
     await page.route("**/api/conversations/stats", async (route) => {
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = readMockConversationStats();
       const metricDays = Array.from({ length: 30 }, (_, index) => ({
         date: new Date(NOW_MS - (29 - index) * 86_400_000)
           .toISOString()
@@ -119,6 +124,8 @@ test.describe("new UI", () => {
     await expect(
       page.getByText(/They do not show individual calls/),
     ).toBeVisible();
+    // The scroll would move a chart under the pointer and show its tooltip.
+    await page.mouse.move(-1, -1);
     await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-missing", { view: "desktop" });
     await page.getByRole("button", { name: "30d", exact: true }).click();
@@ -467,9 +474,12 @@ test.describe("new UI", () => {
     // An older answer says when it is from.
     await page.unroute("**/api/cache-warming/health?*");
     await page.route("**/api/cache-warming/health?*", async (route) => {
-      const response = await route.fetch();
+      const window = new URL(route.request().url()).searchParams.get("window");
       await route.fulfill({
-        json: { ...(await response.json()), stale: true },
+        json: {
+          ...readMockCacheHealth(window === "7d" ? "7d" : "24h"),
+          stale: true,
+        },
       });
     });
     await page.reload();
@@ -555,9 +565,9 @@ test.describe("new UI", () => {
       // Answer the Conversation feed last, as a slow feed does. The Inbox
       // must not read the title of each Conversation that it lacks yet.
       await page.route("**/api/conversations?include=*", async (route) => {
-        const response = await route.fetch();
+        const feed = await mockFeedPage(route);
         await new Promise((resolve) => setTimeout(resolve, 1_000));
-        await route.fulfill({ response });
+        await route.fulfill({ json: feed });
       });
 
       await expectRequestBudget(
@@ -579,7 +589,7 @@ test.describe("new UI", () => {
       await page.evaluate(() => {
         window.dispatchEvent(new Event("visibilitychange"));
       });
-      await page.waitForLoadState("networkidle");
+      await waitForRequestsToEnd(page);
       expect(directoryReads).toBe(1);
     });
   });

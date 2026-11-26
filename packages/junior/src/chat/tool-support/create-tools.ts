@@ -5,7 +5,6 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -21,7 +20,6 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
@@ -32,7 +30,7 @@ import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -68,7 +66,9 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
-import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
+import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
+import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AnyToolDefinition,
@@ -107,7 +107,7 @@ import type {
   ToolState,
 } from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -210,11 +210,6 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updateTodos: (run) =>
-    createUpdateTodosTool(
-      run.context,
-      run.inboxItemServices().findMentionedUserId,
-    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
   submitFeedback: (run) => createSubmitFeedbackTool(run.context),
@@ -267,7 +262,18 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
-  setSpaceConfiguration: (run) => createSetSpaceConfigurationTool(run.context),
+  listSpaces: (run) => createListSpacesTool(run.context),
+  moveConversationToSpace: (run) =>
+    createMoveConversationToSpaceTool(run.context),
+  // The Turn keeps the tool listed, so its tool list stays the same, but only
+  // a Conversation with a Slack channel or a Space can use it.
+  setConfiguration: (run) =>
+    withDisabledReason(
+      createSetConfigurationTool(run.context),
+      run.context.locationConfiguration || run.context.spaceId
+        ? undefined
+        : "This conversation has no Slack channel or Space, so it has no configuration to change.",
+    ),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
       run.context,
@@ -388,18 +394,9 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
-  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
-
-// A person's Turn in a Thread lists the agent tools of the Thread, but it
-// cannot use them: their results would report to the parent as the wrong
-// Actor.
-const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
-  turnTools.agents === "none"
-    ? "A person's Turn in a Thread cannot use agent tools."
-    : undefined;
 
 const INBOX_LIMIT = (turnTools: TurnTools) =>
   turnTools.inbox
@@ -412,10 +409,6 @@ const INBOX_LIMIT = (turnTools: TurnTools) =>
 const TURN_TOOL_LIMITS: Partial<
   Record<StaticToolName, (turnTools: TurnTools) => string | undefined>
 > = {
-  startAgent: AGENT_TOOL_LIMIT,
-  stopAgent: AGENT_TOOL_LIMIT,
-  archiveAgent: AGENT_TOOL_LIMIT,
-  messageAgent: AGENT_TOOL_LIMIT,
   // The system prompt says why for each sender: a person's Turn ends with a
   // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
@@ -426,6 +419,10 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."
       : undefined,
+  [NO_REPLY_TOOL_NAME]: (turnTools) =>
+    turnTools.noReply
+      ? undefined
+      : "An agent's Turn in a Thread reports to its parent with its final text.",
   updateUserCustomization: (turnTools) =>
     turnTools.userCustomization
       ? undefined
@@ -434,8 +431,14 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
-  setSpaceConfiguration: (turnTools) =>
-    turnTools.spaces ? undefined : "Only a person's request changes a Space.",
+  moveConversationToSpace: (turnTools) =>
+    turnTools.settings
+      ? undefined
+      : "Only a person's request moves a conversation to a Space.",
+  setConfiguration: (turnTools) =>
+    turnTools.settings
+      ? undefined
+      : "Only a person's request changes configuration.",
   addInboxItem: INBOX_LIMIT,
   searchInboxItems: INBOX_LIMIT,
   updateInboxItem: INBOX_LIMIT,

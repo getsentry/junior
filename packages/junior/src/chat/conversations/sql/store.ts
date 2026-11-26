@@ -1,8 +1,11 @@
-import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { ownLocalDestination } from "@/chat/conversations/destination";
+import { topLevelConversation } from "./listed";
+import { isLeadSql, rootSpaceIdSql } from "@/chat/spaces/tree-space";
+import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { parseDestination, sameDestination } from "@/chat/destination";
+import { sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
 import {
   readConversationRunMetrics,
@@ -21,7 +24,6 @@ import type {
   ConversationRunMetrics,
   ChildConversationKind,
   ConversationSource,
-  ConversationStatus,
   ConversationStore,
   TopLevelConversationKind,
 } from "../store";
@@ -33,7 +35,7 @@ import {
 } from "@/db/schema";
 import {
   destinationUpsertFromDestination,
-  type DestinationUpsert,
+  upsertDestination,
 } from "./destination-upsert";
 import {
   bindProviderConversation,
@@ -47,17 +49,30 @@ import {
   resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
-import {
-  locationForWrite,
-  locationFromRow,
-  visibilityFromLocationRow,
-} from "./location";
+import { locationForWrite, locationFromRow } from "./location";
 import {
   conversationKindFromRow,
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import {
+  destinationFromRow,
+  executionStatusFromValue,
+  msFromDate,
+  requiredMsFromDate,
+  sourceFromValue,
+} from "./row-decode";
+import {
+  childrenAreTopLevel,
+  keepsStoredParent,
+  copiesRootVisibility,
+  kindAllowsParent,
+  storesSpace,
+} from "@/chat/conversations/kind-behavior";
+import {
+  fillMissingTreeVisibility,
+  resolveRootVisibility,
+} from "@/chat/conversations/sql/privacy";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -66,7 +81,20 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
+  parent: { destinationId: string | null } | null;
+  /** The Space of the tree root. Only a Lead stores one. */
+  treeSpaceId: string | null;
 }
+
+const parentConversation = alias(juniorConversations, "parent_conversation");
+
+/** Columns of the parent that `conversationFromRow` reads. */
+const parentReadColumns = {
+  destinationId: parentConversation.destinationId,
+};
+
+/** The Space of the row's tree, for `conversationFromRow`. */
+const treeSpaceIdColumn = rootSpaceIdSql(juniorConversations);
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
@@ -88,80 +116,14 @@ function now(): number {
 function dateFromMs(ms: number): Date {
   return new Date(ms);
 }
-function msFromDate(
-  value: Date | string | null | undefined,
-): number | undefined {
-  if (value === null || value === undefined) {
-    return undefined;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return date.getTime();
-}
-
-function requiredMsFromDate(value: Date | string): number {
-  const ms = msFromDate(value);
-  if (typeof ms !== "number" || Number.isNaN(ms)) {
-    throw new Error("Conversation record timestamp is invalid");
-  }
-  return ms;
-}
-
 function tenantId(value: string | undefined): string {
   return value ?? "";
-}
-
-function sourceFromValue(value: unknown): ConversationSource | undefined {
-  if (
-    value === "api" ||
-    value === "internal" ||
-    value === "local" ||
-    value === "plugin" ||
-    value === "event" ||
-    value === "scheduler" ||
-    value === "slack" ||
-    value === "web"
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (
-    value === "failed" ||
-    value === "idle" ||
-    value === "paused" ||
-    value === "pending" ||
-    value === "running"
-  ) {
-    return value;
-  }
-  throw new Error("Conversation record execution status is invalid");
-}
-
-function destinationFromRow(
-  destination: DestinationRow | null,
-): Destination | undefined {
-  const value =
-    destination?.provider === "slack"
-      ? {
-          platform: "slack",
-          teamId: destination.providerTenantId,
-          channelId: destination.providerDestinationId,
-        }
-      : destination?.provider === "local"
-        ? {
-            platform: "local",
-            conversationId: destination.providerDestinationId,
-          }
-        : undefined;
-  return parseDestination(value);
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = visibilityFromLocationRow(readRow.destination);
+  const visibility = row.visibility ?? undefined;
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -210,6 +172,17 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     readRow.destination,
     sessionSource,
   );
+  const { parent } = readRow;
+  // A Conversation is in the Space of its tree. Only a Lead stores it.
+  const spaceId = row.spaceId ?? readRow.treeSpaceId;
+  // Only a Slack Location is a Location of its own. A web child of a Lead
+  // has its own Destination, but no Location.
+  const ownLocation =
+    parent !== null &&
+    row.location !== null &&
+    row.destinationId !== parent.destinationId
+      ? (true as const)
+      : undefined;
 
   return {
     schemaVersion: 1,
@@ -230,7 +203,8 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.rootConversationId
       ? { rootConversationId: row.rootConversationId }
       : undefined),
-    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
+    ...(spaceId ? { spaceId } : undefined),
+    ...(ownLocation ? { ownLocation } : undefined),
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
@@ -267,7 +241,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: args.kind ?? "root",
+    kind: args.kind ?? "thread",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -362,7 +336,10 @@ export class SqlStore implements ConversationStore {
             );
           }
           // A child stores its parent's Destination row and Location, so it
-          // reads visibility and Location from its own row, the same as a root.
+          // reads its Location from its own row, the same as a root. A
+          // Lead's child gets its own Destination, as a web root does, so it
+          // shares no audience with the Space once it leaves.
+          const toLead = childrenAreTopLevel(parentRow.conversation.kind);
           const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
@@ -372,12 +349,23 @@ export class SqlStore implements ConversationStore {
             }),
             kind: args.kind,
             parentConversationId: args.parentConversationId,
-            ...(location ? { location } : undefined),
+            ...(toLead
+              ? {
+                  destination: ownLocalDestination(args.childConversationId),
+                }
+              : location
+                ? { location }
+                : undefined),
             ...(args.title ? { title: args.title } : undefined),
           };
           await this.upsertConversation({
             conversation: child,
-            destinationId: parentRow.conversation.destinationId ?? undefined,
+            ...(toLead
+              ? undefined
+              : {
+                  destinationId:
+                    parentRow.conversation.destinationId ?? undefined,
+                }),
           });
         },
       );
@@ -534,7 +522,7 @@ export class SqlStore implements ConversationStore {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
-          kind: existing?.kind ?? "root",
+          kind: existing?.kind ?? "thread",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId
@@ -587,6 +575,8 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        parent: parentReadColumns,
+        treeSpaceId: treeSpaceIdColumn,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -598,9 +588,16 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      // Conversations with a parent are excluded from top-level listings and
-      // purge with their root on the root's visibility window.
-      .where(isNull(juniorConversations.parentConversationId))
+      .leftJoin(
+        parentConversation,
+        eq(
+          parentConversation.conversationId,
+          juniorConversations.parentConversationId,
+        ),
+      )
+      // Only tree roots. Other children are left out of top-level listings
+      // and purge with their root on the root's visibility window.
+      .where(topLevelConversation())
       .orderBy(
         desc(juniorConversations.lastActivityAt),
         asc(juniorConversations.conversationId),
@@ -654,7 +651,8 @@ export class SqlStore implements ConversationStore {
     nowMs?: number;
     visibility: ConversationPrivacy;
   }): Promise<void> {
-    await this.upsertDestination(
+    await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination(args),
       args.nowMs ?? Date.now(),
     );
@@ -722,6 +720,8 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        parent: parentReadColumns,
+        treeSpaceId: treeSpaceIdColumn,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -733,6 +733,13 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(
+        parentConversation,
+        eq(
+          parentConversation.conversationId,
+          juniorConversations.parentConversationId,
+        ),
+      )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
   }
@@ -745,7 +752,7 @@ export class SqlStore implements ConversationStore {
   }): Promise<void> {
     const { conversation } = args;
     if (
-      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+      !kindAllowsParent(conversation.kind, !!conversation.parentConversationId)
     ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
@@ -767,7 +774,8 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const upsertedDestinationId = await this.upsertDestination(
+    const upsertedDestination = await upsertDestination(
+      this.executor,
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -778,7 +786,17 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const destinationId = upsertedDestinationId ?? args.destinationId;
+    const destinationId = upsertedDestination?.id ?? args.destinationId;
+    // A root takes the visibility of its Destination. A child copies its
+    // root's, under the lock that `setConversationVisibility` waits on.
+    const visibility = copiesRootVisibility(conversation)
+      ? (
+          await resolveRootVisibility(
+            this.executor,
+            conversation.parentConversationId ?? conversation.conversationId,
+          )
+        ).visibility
+      : (upsertedDestination?.visibility ?? null);
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -796,8 +814,33 @@ export class SqlStore implements ConversationStore {
           where parent.conversation_id = ${conversation.parentConversationId}
         )`
       : conversation.conversationId;
-    const rows = await this.executor
-      .db()
+    // A Lead's children are its child agents, so each stores an agent
+    // config. A spawn writes its own config after this.
+    const agentConfig = sql`(
+      select case when parent.kind = 'lead' then '{}'::jsonb end
+      from junior_conversations parent
+      where parent.conversation_id = ${conversation.parentConversationId ?? null}
+    )`;
+    // Only a Lead stores its Space. A Lead's child reads it from the Lead.
+    const spaceId = storesSpace(conversation.kind)
+      ? (conversation.spaceId ?? null)
+      : null;
+    const db = this.executor.db();
+    // Reads the row as it was before this statement, so a root that first
+    // gets a visibility or an Actor here knows it.
+    const prior = db.$with("prior_conversation").as(
+      db
+        .select({
+          actorIdentityId: juniorConversations.actorIdentityId,
+          visibility: juniorConversations.visibility,
+        })
+        .from(juniorConversations)
+        .where(
+          eq(juniorConversations.conversationId, conversation.conversationId),
+        ),
+    );
+    const rows = await db
+      .with(prior)
       .insert(juniorConversations)
       .values({
         conversationId: conversation.conversationId,
@@ -832,8 +875,10 @@ export class SqlStore implements ConversationStore {
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
         kind: conversation.kind,
+        agentConfig,
         rootConversationId,
-        spaceId: conversation.spaceId ?? null,
+        spaceId,
+        visibility,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -860,8 +905,11 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
-          // Only a new root sends a Space. `setConversationSpace` moves it.
+          // Only a new Lead sends a Space.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
+          // A write fills a missing visibility and never changes a known
+          // one. Only `setConversationVisibility` does.
+          visibility: sql`coalesce(${juniorConversations.visibility}, excluded.visibility)`,
           detailVersion: nextDetailVersion,
         },
       })
@@ -869,75 +917,62 @@ export class SqlStore implements ConversationStore {
         actorIdentityId: juniorConversations.actorIdentityId,
         parentConversationId: juniorConversations.parentConversationId,
         rootConversationId: juniorConversations.rootConversationId,
+        visibility: juniorConversations.visibility,
+        filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
+        setActor: sql<boolean>`not exists (select 1 from ${prior} where ${prior.actorIdentityId} is not null)`,
+        // Name the table: an unqualified column in the subquery would read
+        // the Lead's own row.
+        storedParentIsLead: isLeadSql(
+          sql.raw(`"junior_conversations"."parent_conversation_id"`),
+        ),
+        incomingParentIsLead: isLeadSql(
+          sql`${conversation.parentConversationId ?? null}`,
+        ),
       });
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
+    if (
+      !copiesRootVisibility(conversation) &&
+      row.visibility &&
+      row.filledVisibility
+    ) {
+      await fillMissingTreeVisibility(
+        this.executor,
+        row.rootConversationId,
+        row.visibility,
+      );
+    }
     // A conflict keeps the stored parent. A history append can create the row
     // first under the event lock, so a new child can find a root row here.
     if (
-      row.parentConversationId !== (conversation.parentConversationId ?? null)
+      !keepsStoredParent(
+        { id: row.parentConversationId, isLead: row.storedParentIsLead },
+        {
+          id: conversation.parentConversationId,
+          isLead: row.incomingParentIsLead,
+        },
+      )
     ) {
       throw new Error(
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // The root Actor is a Participant before they author a message.
-    if (row.actorIdentityId && row.parentConversationId === null) {
+    // The root Actor is a Participant before they author a message. Only the
+    // write that sets the Actor adds them, so a later Turn does not undo
+    // their Leave.
+    if (
+      row.actorIdentityId &&
+      row.setActor &&
+      row.parentConversationId === null
+    ) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId: conversation.conversationId,
         atMs: conversation.lastActivityAtMs,
       });
     }
-  }
-
-  private async upsertDestination(
-    destination: DestinationUpsert | undefined,
-    nowMs: number,
-  ): Promise<string | undefined> {
-    if (!destination) {
-      return undefined;
-    }
-    const visibilityUpdate = destination.refreshVisibility
-      ? sql`excluded.visibility`
-      : juniorDestinations.visibility;
-    const rows = await this.executor
-      .db()
-      .insert(juniorDestinations)
-      .values({
-        id: randomUUID(),
-        provider: destination.provider,
-        providerTenantId: tenantId(destination.providerTenantId),
-        providerDestinationId: destination.providerDestinationId,
-        kind: destination.kind,
-        parentDestinationId: null,
-        displayName: destination.displayName ?? null,
-        visibility: destination.visibility,
-        metadata: destination.metadata ?? null,
-        createdAt: dateFromMs(nowMs),
-        updatedAt: dateFromMs(nowMs),
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorDestinations.provider,
-          juniorDestinations.providerTenantId,
-          juniorDestinations.providerDestinationId,
-        ],
-        set: {
-          kind: sql`excluded.kind`,
-          displayName: sql`coalesce(excluded.display_name, ${juniorDestinations.displayName})`,
-          // Signal-less writes remain unknown and must not clobber an existing
-          // public/private value. Live source signals refresh this field so
-          // converted channels converge on the next message.
-          visibility: visibilityUpdate,
-          metadata: sql`coalesce(excluded.metadata_json, ${juniorDestinations.metadata})`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      })
-      .returning({ id: juniorDestinations.id });
-    return rows[0]?.id;
   }
 }
 

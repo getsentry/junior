@@ -41,7 +41,7 @@ function conversation(args: {
   return {
     conversationId: args.conversationId ?? "slack:C123:1712345.0001",
     createdAtMs: 1,
-    kind: args.parentConversationId ? "task" : "root",
+    kind: args.parentConversationId ? "task" : "thread",
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,

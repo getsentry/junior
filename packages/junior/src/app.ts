@@ -36,14 +36,13 @@ import {
   type SandboxResourceConfig,
 } from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
   getPluginApiRoutes,
   getPluginRoutes,
-  setPlugins,
-  validatePlugins,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   setMemoryConfig,
@@ -96,8 +95,8 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import {
   createVercelPluginTaskCallback,
   sendVercelPluginTask,
@@ -116,6 +115,7 @@ import {
   createGatewayModelClient,
   turnStepConsumer,
 } from "@/turn-steps/consumer";
+import { turnTools } from "@/turn-steps/tools";
 import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
 import { sweepTurns } from "@/core/turn/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
@@ -595,6 +595,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     processPluginTask(message, {
       deliveryCount: delivery?.deliveryCount,
       events,
+      sendPluginTask: (task, sendOptions) => sendPluginTask(task, sendOptions),
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     }),
   );
@@ -829,6 +830,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback({
       events,
+      sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     return pluginTaskPOST(c.req.raw);
@@ -865,8 +867,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       await turnStepConsumer(engineCtx, {
         client: createGatewayModelClient(),
         bot: chatConfig.bot,
-        // Core Turns have no tools yet.
-        tools: [],
+        tools: turnTools,
       }),
     );
     return turnStepPOST(c.req.raw);

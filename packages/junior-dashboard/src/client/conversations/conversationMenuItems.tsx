@@ -7,8 +7,8 @@ import {
   ArrowDown,
   ArrowUp,
   Bell,
-  BellOff,
   FolderInput,
+  LogOut,
   MessageSquareShare,
   MessagesSquare,
   Pencil,
@@ -49,6 +49,8 @@ export type ConversationMenu = {
     continueInSlack(): void;
     delivery(paused: boolean): void;
     eventLog(): void;
+    /** Set where the menu can confirm leaving a private Conversation. */
+    leave?: (() => void) | undefined;
     /** Set where the menu can move the Conversation to a Space. */
     moveToSpace?: (() => void) | undefined;
     pin(pinned: boolean): void;
@@ -65,6 +67,7 @@ export type ConversationMenu = {
         | "canContinueInSlack"
         | "deliveryPaused"
         | "isParticipant"
+        | "leaveEndsAccess"
         | "sentryConversationUrl"
         | "subscribed"
         | "turnActive"
@@ -168,11 +171,13 @@ export function useConversationMenuItems(
     label: "Rename",
     onClick: actions.rename,
   });
-  // A child is in the Space of its root, and a Lead never moves. Every
-  // Space is public, so only a public Conversation can join one.
+  // A child is in the Space of its root, and a Lead never moves. Only a
+  // public Conversation can join a Space. A Conversation in a private Space
+  // is private, so it never moves out.
   if (
     actions.moveToSpace &&
-    (conversation?.kind === "root" || conversation?.kind === "automation") &&
+    (conversation?.kind === "thread" || conversation?.kind === "automation") &&
+    !conversation.parentConversationId &&
     conversation.visibility === "public"
   ) {
     actItems.push({
@@ -192,17 +197,28 @@ export function useConversationMenuItems(
     stayOpen: true,
   });
 
-  const notifyItems: ConversationMenuItem[] = [
-    {
-      // Only participants have a subscription. A child uses its root's.
+  const notifyItems: ConversationMenuItem[] = [];
+  // Leave takes it out of your feed, and Join puts it back. A Participant
+  // of a private Conversation is in it even when not subscribed, so they
+  // always get Leave. That Leave also ends access, so it asks first, and
+  // only a menu with that dialog offers it. Only participants have a
+  // subscription. A child uses its root's.
+  const subscribed = detail?.subscribed === true;
+  const leaveEndsAccess = detail?.leaveEndsAccess === true;
+  const joined = subscribed || leaveEndsAccess;
+  if (!leaveEndsAccess || actions.leave) {
+    notifyItems.push({
       disabled: detail?.subscribed === undefined || pending.subscription,
-      icon: detail?.subscribed ? BellOff : Bell,
+      icon: joined ? LogOut : Bell,
       key: "subscription",
-      label: detail?.subscribed ? "Unsubscribe" : "Subscribe",
-      onClick: () => actions.subscription(!detail?.subscribed),
-      toggle: true,
-    },
-  ];
+      label: joined ? "Leave" : "Join",
+      onClick:
+        leaveEndsAccess && actions.leave
+          ? actions.leave
+          : () => actions.subscription(!subscribed),
+      toggle: !leaveEndsAccess,
+    });
+  }
   if (detail?.canContinueInSlack) {
     notifyItems.push({
       // The API refuses while a Turn runs.

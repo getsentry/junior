@@ -50,9 +50,12 @@ import {
   escapeClosingTag,
   escapeTagText,
   escapeTagTextAndQuotes,
+  findTags,
   indentTagLines,
+  openingTag,
   renderInlineTag,
   renderTag,
+  unescapeTagText,
   type Destination,
   type Platform,
   type Source,
@@ -60,6 +63,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { Workspace } from "@/chat/workspaces/types";
 import {
+  buildIdentityHeader,
   buildRuleBlocks,
   SLACK_MENTION_FORMAT_RULE,
   type PromptMode,
@@ -390,16 +394,6 @@ function formatConfigurationLines(
 type PromptPlatform = Platform;
 
 /**
- * Block 1 header: the role and the precedence rule. The consumer and plugin
- * blocks come last, and models tend to follow the nearest rule, so the header
- * states that core rules win.
- */
-const PRECEDENCE_RULE =
-  "The rules in this system prompt hold for the whole conversation. Use the personality section for voice and tone in every reply. The personality, world, and plugin sections at the end set voice and add operator facts and guidance; when they conflict with the rules before them, those rules win.";
-const SLACK_HEADER = `You are a Slack-based helper assistant. ${PRECEDENCE_RULE}`;
-const LOCAL_HEADER = `You are a helper assistant. ${PRECEDENCE_RULE}`;
-
-/**
  * Header of the context message. Trust levels live in `<context-trust>`, so
  * this header only points there.
  */
@@ -698,7 +692,11 @@ export function buildCapabilitySections(params: {
   );
 }
 
-function buildPluginPromptContributionsSection(
+/**
+ * Render plugin contributions as one `<plugin-context>` block, or null for
+ * none. Turn contexts and compaction summaries hold this block.
+ */
+export function renderPluginContextSection(
   contributions: PluginPromptContributionContext[] | undefined,
 ): string | null {
   if (!contributions || contributions.length === 0) {
@@ -730,6 +728,24 @@ function renderPluginContribution(
     ),
     "  ",
   );
+}
+
+/**
+ * Read back the text of one plugin's contributions in a prompt text, such
+ * as a Turn context, oldest first. Escaped text cannot fake a contribution.
+ */
+export function readPluginContributions(
+  text: string,
+  pluginName: string,
+): string[] {
+  const opening = openingTag(
+    "plugin-contribution",
+    { plugin: pluginName },
+    escapeTagTextAndQuotes,
+  ).slice(0, -1);
+  return findTags(text, "plugin-contribution")
+    .filter((block) => block.opening.trimStart().startsWith(`${opening} `))
+    .map((block) => unescapeTagText(block.body).trim());
 }
 
 /** One tool that the current Turn cannot run. */
@@ -844,8 +860,6 @@ type TurnContextPromptInput = {
   askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** From `renderTodoDelta` or `renderTodosReview`. */
-  todos?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
@@ -891,7 +905,7 @@ export function buildCoreSystemPromptSections(
   return [
     {
       name: "header",
-      text: platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
+      text: buildIdentityHeader(platform, mode),
     },
     { name: "identity", text: buildIdentitySection(platform, botName) },
     { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },
@@ -905,7 +919,7 @@ export function buildTurnContextPrompt(
   params: TurnContextPromptInput,
 ): string | null {
   const includeSessionContext = params.includeSessionContext ?? true;
-  const pluginPromptContributions = buildPluginPromptContributionsSection(
+  const pluginPromptContributions = renderPluginContextSection(
     params.pluginPromptContributions,
   );
   const conversationNotes = buildConversationNotesSection(
@@ -929,7 +943,6 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !params.todos &&
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
@@ -941,7 +954,6 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
-    params.todos,
     disabledTools,
     userCustomization,
     askerTimezone,

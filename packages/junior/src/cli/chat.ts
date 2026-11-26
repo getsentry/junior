@@ -144,13 +144,13 @@ async function configureLocalChatPlugins(
 ): Promise<void> {
   const [
     pluginsModule,
-    agentHooksModule,
+    registryModule,
     catalogRuntimeModule,
     validationModule,
     databaseModule,
   ] = await Promise.all([
     import("@/plugins"),
-    import("@/chat/plugins/agent-hooks"),
+    import("@/chat/plugins/hooks/registry"),
     import("@/chat/plugins/catalog-runtime"),
     import("@/chat/plugins/validation"),
     import("@/chat/db"),
@@ -166,7 +166,7 @@ async function configureLocalChatPlugins(
     : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
     Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
-  agentHooksModule.validatePlugins(plugins);
+  registryModule.validatePlugins(plugins);
   const previousPluginCatalogConfig =
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(pluginConfig);
   try {
@@ -180,7 +180,7 @@ async function configureLocalChatPlugins(
       );
     }
     databaseModule.getDb();
-    agentHooksModule.setPlugins(plugins);
+    registryModule.setPlugins(plugins);
   } catch (error) {
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(
       previousPluginCatalogConfig,
@@ -249,10 +249,10 @@ async function prepareLocalChatRun(
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
-  const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
-  const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker } =
-    await import("@/chat/agent-invocations/result");
+  const { bindSpawnAgent } = await import("@/chat/child-agents/spawn");
+  const { bindMessageAgent } = await import("@/chat/child-agents/message");
+  const { runConversation } =
+    await import("@/chat/task-execution/run-conversation");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
   const { resumeForPersonInput } =
@@ -266,10 +266,8 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const childWorker = createChildConversationWorker({
-      runTurn: createConversationTurnWorker(agentRunner, undefined, {
-        queue: localConversationWork.queue,
-      }),
+    const runTurn = createConversationTurnWorker(agentRunner, undefined, {
+      queue: localConversationWork.queue,
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -279,7 +277,7 @@ async function prepareLocalChatRun(
           context.conversationId,
           context.attempt.messages,
         );
-        return await childWorker(context);
+        return await runConversation(context, { runTurn });
       },
     });
   });

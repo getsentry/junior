@@ -453,7 +453,7 @@ const app = await createApp({
 });
 ```
 
-Keys should be registered plugin config keys. Junior retains unregistered defaults but warns at startup because they usually indicate missing plugin wiring. Channel-scoped overrides (`jr-rpc config set`) take precedence.
+Keys should be registered plugin config keys. Junior retains unregistered defaults but warns at startup because they usually indicate missing plugin wiring. Values that Junior sets for a Slack channel or a Space take precedence, and a Space's value wins over a channel's.
 
 ## Sandbox configuration
 

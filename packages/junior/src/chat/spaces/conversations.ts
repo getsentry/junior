@@ -1,9 +1,17 @@
 /**
- * Conversations in a Space (`design/spaces.md`). Only a root stores its
- * Space. A child is in the Space of its root, so the two never disagree.
+ * Conversations in a Space (`design/spaces.md`). Only the Lead stores its
+ * Space. The Space's other Conversations are its children, and their child
+ * agents are in the Space of their root, so none can disagree with it.
  */
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
+import { setMovedWorkVisibility } from "@/chat/conversations/sql/privacy";
 import { alias } from "drizzle-orm/pg-core";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
@@ -11,7 +19,11 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations, juniorSpaces } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorDestinations,
+  juniorSpaces,
+} from "@/db/schema";
 
 /** The id and name that label a Conversation's Space. */
 export interface SpaceRef {
@@ -20,6 +32,7 @@ export interface SpaceRef {
 }
 
 const spaceRoot = alias(juniorConversations, "space_root");
+const spaceLead = alias(juniorConversations, "space_lead");
 
 /** Read the id and name of each Space, by id. A missing id has no entry. */
 export async function readSpaceRefs(
@@ -35,39 +48,157 @@ export async function readSpaceRefs(
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-/**
- * Put one root in a Space, or take it out of every Space with null. Returns
- * false when no root has the id. The caller checks who may move it.
- */
-export async function setConversationSpace(
-  conversationId: string,
-  spaceId: string | null,
-): Promise<boolean> {
-  const rows = await getDb()
-    .update(juniorConversations)
-    .set({ spaceId, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        eq(juniorConversations.conversationId, conversationId),
-        isNull(juniorConversations.parentConversationId),
-      ),
-    )
-    .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+/** Why `setConversationSpace` did not move a Conversation. */
+export type SpaceMoveRefusal =
+  /** No tree root has the id. */
+  | "not_found"
+  /** Another move changed its Space after the caller checked it. */
+  | "moved"
+  /** It is in a private Space, and its data stays with the members. */
+  | "leaves_private"
+  /** It is private, and a public Space would make its data public. */
+  | "private_into_public"
+  /**
+   * The Space is private, and the Conversation shares its Location, such as
+   * a Slack channel, with people who are not members.
+   */
+  | "shared_location";
+
+/** The Space that a move puts a Conversation in, with the Space's Lead. */
+export interface SpaceMoveTarget {
+  leadConversationId: string;
+  spaceId: string;
 }
 
 /**
- * Every Conversation in the Space, at any depth. A root from before
- * `root_conversation_id` was set matches by its own id.
+ * Put one top-level Conversation in a Space, or take it out of every Space
+ * with null. In a Space it is a child of the Space's Lead, and its work is
+ * in the Lead's tree. Out of one it is a root again. Its child agents move
+ * with it. It gets a private Space's visibility, on its work and on its own
+ * Location. The caller checks who may move it out of `fromSpaceId`, the
+ * Space that it read before the move.
  */
-function inSpaceTrees(db: JuniorDatabase, spaceId: string) {
-  const roots = db
+export async function setConversationSpace(
+  conversationId: string,
+  target: SpaceMoveTarget | null,
+  fromSpaceId: string | null,
+): Promise<SpaceMoveRefusal | undefined> {
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // Lock the Conversation, so two moves of it run one after the other. A
+    // Space keeps its visibility, so the Spaces need no lock.
+    const [root] = await db
+      .select({
+        locationId: juniorConversations.destinationId,
+        provider: juniorDestinations.provider,
+        spaceId: rootSpaceIdSql(juniorConversations),
+        visibility: juniorConversations.visibility,
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(
+          eq(juniorConversations.conversationId, conversationId),
+          eq(juniorConversations.kind, "thread"),
+          topLevelConversation(),
+        ),
+      )
+      .limit(1)
+      .for("update", { of: juniorConversations });
+    if (!root) return "not_found";
+    const currentSpaceId = root.spaceId;
+    // The caller's membership check covers only the Space that it read.
+    if (currentSpaceId !== fromSpaceId) return "moved";
+    const spaceIds = [currentSpaceId, target?.spaceId].filter(
+      (id): id is string => typeof id === "string",
+    );
+    const spaces =
+      spaceIds.length > 0
+        ? await db
+            .select({
+              id: juniorSpaces.id,
+              visibility: juniorSpaces.visibility,
+            })
+            .from(juniorSpaces)
+            .where(inArray(juniorSpaces.id, spaceIds))
+        : [];
+    const source = spaces.find((space) => space.id === currentSpaceId);
+    if (source?.visibility === "private") return "leaves_private";
+    const space = spaces.find((space) => space.id === target?.spaceId);
+    if (space?.visibility === "public" && root.visibility !== "public") {
+      return "private_into_public";
+    }
+    // The Conversation and its child agents, read before the move changes
+    // their root. Each statement reads it once, when it starts.
+    const work = inArray(
+      juniorConversations.conversationId,
+      sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`,
+    );
+    if (space?.visibility === "private") {
+      if (root.provider !== "local" || !root.locationId) {
+        return "shared_location";
+      }
+      await db
+        .update(juniorDestinations)
+        .set({ visibility: "private", updatedAt: new Date() })
+        .where(eq(juniorDestinations.id, root.locationId));
+      await setMovedWorkVisibility(executor, conversationId, "private");
+    }
+    // Its work joins the tree of its new parent: the Lead's, or its own.
+    await db
+      .update(juniorConversations)
+      .set({
+        rootConversationId: target?.leadConversationId ?? conversationId,
+        detailVersion: nextDetailVersion,
+      })
+      .where(work);
+    await db
+      .update(juniorConversations)
+      .set({
+        parentConversationId: target?.leadConversationId ?? null,
+        // A Lead's children are its child agents.
+        ...(target
+          ? {
+              agentConfig: sql`coalesce(${juniorConversations.agentConfig}, '{}'::jsonb)`,
+            }
+          : undefined),
+        detailVersion: nextDetailVersion,
+      })
+      .where(eq(juniorConversations.conversationId, conversationId));
+    return undefined;
+  });
+}
+
+/** The ids of a Space's Lead and of its top-level Conversations. */
+function spaceRootIds(db: JuniorDatabase, spaceId: string) {
+  const leads = db
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(eq(spaceLead.spaceId, spaceId));
+  return db
     .select({ id: spaceRoot.conversationId })
     .from(spaceRoot)
-    .where(eq(spaceRoot.spaceId, spaceId));
+    .where(
+      or(
+        inArray(spaceRoot.conversationId, leads),
+        inArray(spaceRoot.parentConversationId, leads),
+      ),
+    );
+}
+
+/** Every Conversation in the Space, at any depth: the Lead's tree. */
+function inSpaceTrees(db: JuniorDatabase, spaceId: string) {
+  const leads = db
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(eq(spaceLead.spaceId, spaceId));
   return or(
-    inArray(juniorConversations.rootConversationId, roots),
-    inArray(juniorConversations.conversationId, roots),
+    inArray(juniorConversations.rootConversationId, leads),
+    inArray(juniorConversations.conversationId, leads),
   )!;
 }
 
@@ -126,12 +257,16 @@ export async function setSpaceArchive(args: {
     );
   });
   if (!args.archived) return;
-  const running = await getDb()
+  const db = getDb();
+  const running = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
     .where(
       and(
-        eq(juniorConversations.spaceId, args.spaceId),
+        inArray(
+          juniorConversations.conversationId,
+          spaceRootIds(db, args.spaceId),
+        ),
         isNull(juniorConversations.stoppedAt),
       ),
     );

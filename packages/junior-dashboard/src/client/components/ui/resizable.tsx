@@ -67,4 +67,4 @@ function ResizableHandle({
 }
 
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup };
-export type { RemSize };
+export type { PanelSize, RemSize };
