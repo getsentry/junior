@@ -73,7 +73,7 @@ import type {
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
-import { withConversationEventLock } from "@/core/history/lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { recordReplies } from "@/core/delivery/outbox";
