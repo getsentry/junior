@@ -37,6 +37,8 @@ it("finds the # reference at the caret", () => {
     end: 14,
     query: "link pull",
   });
+  // The word after a trailing space is not in the reference.
+  expect(at("see #38 |world")).toEqual({ start: 4, end: 8, query: "38 " });
 });
 
 it("skips a # in a word, a URL, an entity, or a heading", () => {

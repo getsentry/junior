@@ -116,12 +116,15 @@ export function useLexicalTypeahead(
           (open?.nodeKey === found.nodeKey && open.start === found.start))
           ? { ...found, edited }
           : undefined;
+      // A focus reads the caret with no caret before it, so it stays in
+      // a closed reference even when that reference opens no menu.
       const closed = closedRef.current;
       if (
         closed &&
-        (next?.nodeKey !== closed.nodeKey ||
-          next.start !== closed.start ||
-          (closed.query !== undefined && !next.query.startsWith(closed.query)))
+        (found?.nodeKey !== closed.nodeKey ||
+          found.start !== closed.start ||
+          (!next && last !== undefined) ||
+          (closed.query !== undefined && !found.query.startsWith(closed.query)))
       ) {
         closedRef.current = undefined;
       }

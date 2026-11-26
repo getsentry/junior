@@ -355,4 +355,21 @@ test("$ finds a skill by its words, and the words after it are text", async ({
   await expect
     .poll(() => sent)
     .toEqual(["use $triage-incident in tpm, then $triage ixci"]);
+  await expect(composer).toHaveText("");
+
+  // Escape keeps the menu closed through a blur and a focus.
+  await composer.pressSequentially("run $triage i");
+  await expect(skills).toBeVisible();
+  await composer.press("Escape");
+  await expect(skills).toBeHidden();
+  await composer.blur();
+  await composer.focus();
+  await composer.pressSequentially("n");
+  await composer.press("Enter");
+  await expect
+    .poll(() => sent)
+    .toEqual([
+      "use $triage-incident in tpm, then $triage ixci",
+      "run $triage in",
+    ]);
 });
