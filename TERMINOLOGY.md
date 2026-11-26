@@ -29,7 +29,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
   Lead. Top-level lists show these.
 - **Space**: a named, shared home for a body of related work. A
-  **Member** of a Space is a User who joined it.
+  **Member** of a Space is a Participant of its Lead: a User who joined,
+  was added, or posted in the Space.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
   is a root, or a child agent that `startAgent` starts as a `thread`. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.

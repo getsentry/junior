@@ -377,7 +377,6 @@ function view(space: MockSpace): SpaceReport {
 function members(space: MockSpace, viewer: User) {
   const others = space.others.map((member) => ({
     ...member,
-    joinedAt: space.createdAt,
     userId: `mock-user:${member.email}`,
   }));
   return space.viewerMember
@@ -386,7 +385,6 @@ function members(space: MockSpace, viewer: User) {
           avatarUrl: null,
           displayName: viewer.displayName ?? null,
           email: viewer.email,
-          joinedAt: space.createdAt,
           userId: viewer.id,
         },
         ...others,

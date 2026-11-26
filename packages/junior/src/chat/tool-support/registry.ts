@@ -232,7 +232,7 @@ const CORE_TOOLS = {
     when: hasChildAgents,
     definition: () => archiveAgentToolDefinition,
   },
-  listAgents: always(listAgentsToolDefinition),
+  listAgents: { definition: listAgentsToolDefinition },
   messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,

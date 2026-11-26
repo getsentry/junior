@@ -3,8 +3,9 @@
 -- Space, so `root_conversation_id` of each moved Conversation's work becomes
 -- the Lead.
 
--- A Space that has Conversations but no Lead yet gets one, as the first
--- open of the Space would make it. Its first Actor is the Space's creator.
+-- A Space that has no Lead yet gets one, as the first open of the Space
+-- would make it. Its first Actor is the Space's creator. The Lead holds the
+-- Space's Conversations and, as its Participants, the Space's members.
 WITH "needs_lead" AS (
   SELECT
     "space"."id" AS "space_id",
@@ -20,13 +21,7 @@ WITH "needs_lead" AS (
       LIMIT 1
     ) AS "actor_identity_id"
   FROM "junior_spaces" "space"
-  WHERE EXISTS (
-    SELECT 1
-    FROM "junior_conversations" "member"
-    WHERE "member"."space_id" = "space"."id"
-      AND "member"."kind" IS DISTINCT FROM 'lead'
-  )
-  AND NOT EXISTS (
+  WHERE NOT EXISTS (
     SELECT 1
     FROM "junior_conversations" "lead"
     WHERE "lead"."space_id" = "space"."id" AND "lead"."kind" = 'lead'
@@ -143,3 +138,18 @@ WHERE "lead"."kind" = 'lead'
   AND "lead"."space_id" = "member"."space_id"
   AND "member"."kind" IS DISTINCT FROM 'lead'
   AND "member"."parent_conversation_id" IS NULL;
+--> statement-breakpoint
+
+-- A Space's members become the Participants of its Lead. A member who was
+-- already one keeps their row.
+-- junior:bounded-backfill: runs once, on the few members of each Space. Spaces are new and small.
+INSERT INTO "junior_conversation_participants" (
+  "user_id",
+  "root_conversation_id",
+  "last_message_at"
+)
+SELECT "member"."user_id", "lead"."conversation_id", "member"."joined_at"
+FROM "junior_space_members" "member"
+JOIN "junior_conversations" "lead"
+  ON "lead"."space_id" = "member"."space_id" AND "lead"."kind" = 'lead'
+ON CONFLICT ("user_id", "root_conversation_id") DO NOTHING;

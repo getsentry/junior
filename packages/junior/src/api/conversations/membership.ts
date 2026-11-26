@@ -17,7 +17,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
@@ -74,22 +73,6 @@ function privateSpaceIds() {
     .where(eq(juniorSpaces.visibility, "private"));
 }
 
-/** The private Spaces that the person is a member of. */
-function memberPrivateSpaceIds(member: ConversationMember) {
-  const rows = getDb()
-    .select({ id: juniorSpaceMembers.spaceId })
-    .from(juniorSpaceMembers)
-    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorSpaceMembers.spaceId));
-  const isPrivate = eq(juniorSpaces.visibility, "private");
-  return "userId" in member
-    ? rows.where(and(eq(juniorSpaceMembers.userId, member.userId), isPrivate))
-    : rows
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorSpaceMembers.userId))
-        .where(
-          and(eq(juniorUsers.primaryEmailNormalized, member.email), isPrivate),
-        );
-}
-
 const spaceLead = alias(juniorConversations, "membership_space_lead");
 
 /**
@@ -116,9 +99,25 @@ function outsidePrivateSpaces(): SQL {
   )!;
 }
 
-/** True when the outer conversation is in a private Space of the person. */
-function inMemberPrivateSpace(member: ConversationMember): SQL {
-  return sql`${juniorConversations.rootConversationId} = any(${spaceLeadArray(memberPrivateSpaceIds(member))})`;
+/**
+ * True when the outer conversation is in a tree that the person is a
+ * Participant of. In a Space the Lead is the root, so this holds for every
+ * Conversation of each Space that the person is a member of.
+ */
+function inParticipantTree(member: ConversationMember): SQL {
+  const rows = getDb()
+    .select({ id: juniorConversationParticipants.rootConversationId })
+    .from(juniorConversationParticipants);
+  const roots =
+    "userId" in member
+      ? rows.where(eq(juniorConversationParticipants.userId, member.userId))
+      : rows
+          .innerJoin(
+            juniorUsers,
+            eq(juniorUsers.id, juniorConversationParticipants.userId),
+          )
+          .where(eq(juniorUsers.primaryEmailNormalized, member.email));
+  return sql`${juniorConversations.rootConversationId} = any(array(${roots}))`;
 }
 
 /**
@@ -127,7 +126,7 @@ function inMemberPrivateSpace(member: ConversationMember): SQL {
  * leaves a private Space no longer reads its roots.
  */
 export function rootSpaceReadableBy(member: ConversationMember): SQL {
-  return or(outsidePrivateSpaces(), inMemberPrivateSpace(member))!;
+  return or(outsidePrivateSpaces(), inParticipantTree(member))!;
 }
 
 /**
@@ -144,7 +143,7 @@ export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
         viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
       ),
     ),
-    viewerUserId ? inMemberPrivateSpace({ userId: viewerUserId }) : undefined,
+    viewerUserId ? inParticipantTree({ userId: viewerUserId }) : undefined,
   )!;
 }
 

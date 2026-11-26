@@ -527,7 +527,7 @@ describe("conversation tree state", () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const viewer = await resolveViewerUser(webTestActor.email);
     const space = await createSpace({
-      creatorUserId: viewer!.id,
+      creator: viewer!,
       description: null,
       name: "Release",
       visibility: "public",
