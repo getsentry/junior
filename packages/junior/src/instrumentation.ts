@@ -1,4 +1,6 @@
 import * as Sentry from "@/chat/sentry";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { setChatSpanEndAttributes } from "@/chat/pi/chat-span";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
   scrubPrivateSentryEvent,
@@ -14,21 +16,6 @@ export {
   nameRequestRoute,
   routeNameMiddleware,
 } from "@/chat/sentry-route-name";
-
-// Junior records its own gen_ai spans with usage and cost. These SDK spans
-// would duplicate them, and the provider ones have no usage because Pi reads
-// provider streams itself. Remove this filter after
-// getsentry/sentry-javascript#25869.
-const MANUAL_GEN_AI_INTEGRATIONS = new Set([
-  "Anthropic_AI",
-  "Google_GenAI",
-  "Groq",
-  "Mistral",
-  "OpenAI",
-  "PiAi",
-  "TogetherAI",
-  "VercelAI",
-]);
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -83,6 +70,10 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
     tracesSampleRate: getTracesSampleRate(),
   };
 }
+
+// The AI integrations record prompts and responses only for public
+// Conversations. They decide when each call starts.
+const recordAiContent = () => getCurrentConversationPrivacy() === "public";
 
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
@@ -143,16 +134,22 @@ export function initSentry(): void {
     beforeSend: scrubPrivateSentryEvent,
     beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
     beforeSendSpan: scrubPrivateSentrySpan,
-    integrations: (defaultIntegrations) =>
-      defaultIntegrations.filter(
+    integrations: (defaultIntegrations) => [
+      ...defaultIntegrations.filter(
         (integration) =>
-          !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name) &&
+          integration.name !== "VercelAI" &&
           // Dedupe drops an error event that matches the previous one, after
           // `captureException` has returned its id. A failed Turn shows that
           // id to the person as its reference, so each capture must send its
           // event. Sentry still groups the events into one issue.
           integration.name !== "Dedupe",
       ),
+      Sentry.piAiIntegration({
+        recordInputs: recordAiContent,
+        recordOutputs: recordAiContent,
+        onSpanEnd: setChatSpanEndAttributes,
+      }),
+    ],
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.

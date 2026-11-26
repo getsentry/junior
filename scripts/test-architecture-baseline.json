@@ -127,7 +127,6 @@
     "packages/junior/tests/unit/app-config.test.ts": 1,
     "packages/junior/tests/unit/app-model-config.test.ts": 1,
     "packages/junior/tests/unit/capabilities/capability-factory.test.ts": 1,
-    "packages/junior/tests/unit/chat/pi/traced-stream.test.ts": 1,
     "packages/junior/tests/unit/chat/sentry-links.test.ts": 1,
     "packages/junior/tests/unit/config/credentials-matrix.test.ts": 2,
     "packages/junior/tests/unit/instrumentation.test.ts": 2,

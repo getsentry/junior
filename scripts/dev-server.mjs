@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -25,6 +26,12 @@ const dashboardPackageDir = path.join(
   "junior-dashboard",
 );
 const exampleDir = path.join(workspaceRoot, "apps", "example");
+const exampleRequire = createRequire(path.join(exampleDir, "package.json"));
+const nitroPackageJson = exampleRequire.resolve("nitro/package.json");
+const nitroCli = path.join(
+  path.dirname(nitroPackageJson),
+  exampleRequire(nitroPackageJson).bin.nitro,
+);
 const useProcessGroups = process.platform !== "win32";
 
 process.env.NODE_ENV = nodeEnv;
@@ -214,13 +221,14 @@ function startNitroDev() {
   if (shuttingDown) {
     return;
   }
-  const child = spawnChild("pnpm", [
-    "--dir",
-    exampleDir,
-    "exec",
-    "nitro",
-    "dev",
-  ]);
+  const child = spawnChild(
+    process.execPath,
+    // `nitro dev` loads packages from `node_modules`, so Sentry's module hook
+    // must be registered before them. The specifier resolves from `exampleDir`.
+    // Nitro's app worker inherits the flag.
+    ["--import", "@sentry/junior/import", nitroCli, "dev"],
+    { cwd: exampleDir },
+  );
   nitroChild = child;
 
   child.on("exit", (code, signal) => {

@@ -138,6 +138,8 @@ attributes. Nested logs and spans inherit them.
   JSON that the size limit counts) and, when a review's model call aborts,
   `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one
   batch, so a Code Mode batch of several actions keeps the last value.
+- `piAiIntegration` records prompts, responses, and tool definitions on
+  `gen_ai.chat` only in public Conversations.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.

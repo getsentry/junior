@@ -20,6 +20,10 @@
       "types": "./dist/app.d.ts",
       "default": "./dist/app.js"
     },
+    "./import": {
+      "types": "./dist/import.d.ts",
+      "default": "./dist/import.js"
+    },
     "./instrumentation": {
       "types": "./dist/instrumentation.d.ts",
       "default": "./dist/instrumentation.js"

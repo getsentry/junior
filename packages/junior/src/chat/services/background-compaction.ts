@@ -44,7 +44,7 @@ import {
 } from "@/chat/pi/agent-history";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { withChatStreamTelemetry } from "@/chat/pi/chat-span";
 import { QUEUE_SIGNATURE_MAX_AGE_MS } from "@/chat/queue/sign";
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
@@ -468,11 +468,14 @@ async function prepareSummary(
     summary = await runWithConversationPrivacy(
       snapshot.conversationPrivacy,
       async () => {
-        const summaryStreamFn = createTracedStreamFn({
-          conversationPrivacy: snapshot.conversationPrivacy,
-          promptName: CONTEXT_COMPACTION_PROMPT_NAME,
-          base: streamFn,
-        });
+        const summaryStreamFn = withChatStreamTelemetry(
+          {
+            attributes: {
+              "gen_ai.prompt.name": CONTEXT_COMPACTION_PROMPT_NAME,
+            },
+          },
+          streamFn,
+        );
         const tools = snapshot.tools.map((tool) => ({
           ...tool,
           execute: async () => {
