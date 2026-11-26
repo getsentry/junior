@@ -50,10 +50,7 @@ BEGIN
     NEW."subject_id" := CASE WHEN kind IS NOT NULL THEN id ELSE coalesce(url, NEW."key") END;
   END IF;
   IF NEW."action" IS NULL THEN
-    NEW."action" := CASE
-        WHEN NEW."kind" = 'resource_link' AND NEW."annotation_json"->>'status' IS NULL THEN 'attached'
-        ELSE 'changed'
-      END;
+    NEW."action" := 'changed';
   END IF;
   RETURN NEW;
 END;
@@ -83,5 +80,5 @@ BEGIN
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_conversation_annotations_stored_fields" BEFORE INSERT OR UPDATE ON "junior_conversation_annotations" FOR EACH ROW WHEN (NEW."annotation_json" ?| ARRAY['title', 'url', 'label', 'status', 'description', 'facts', 'sourceUpdatedAt', 'warning', 'trigger', 'displayType']) EXECUTE FUNCTION "junior_conversation_annotations_stored_fields"();--> statement-breakpoint
--- junior:bounded-backfill: every saved Annotation needs its title and link in the columns before search and cards read them, so the update runs once over the Annotation table. Each Conversation has only the few objects that it created, changed, or attached, and the update writes each row once.
+-- junior:bounded-backfill: every saved Annotation needs its title and link in the columns before search and cards read them, so the update runs once over the Annotation table. Each Conversation has only the few objects that it created or changed, and the update writes each row once.
 UPDATE "junior_conversation_annotations" SET "annotation_json" = "annotation_json" WHERE "annotation_json" ?| ARRAY['title', 'url', 'label', 'status', 'description', 'facts', 'sourceUpdatedAt', 'warning', 'trigger', 'displayType'];

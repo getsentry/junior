@@ -89,7 +89,6 @@ export async function attachObjectLink(
       .join(" "),
   });
   await upsertPluginAnnotation(db, {
-    action: "attached",
     annotation: {
       kind: "resource_link",
       key: object.key,

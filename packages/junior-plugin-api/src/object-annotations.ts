@@ -55,15 +55,8 @@ export const objectSubjectSchema = z
   .strict();
 export type ObjectSubject = z.output<typeof objectSubjectSchema>;
 
-/**
- * What a Conversation did to the object of an Annotation. `attached`: a
- * person attached a link of the object to the Conversation.
- */
-export const annotationActionSchema = z.enum([
-  "created",
-  "changed",
-  "attached",
-]);
+/** What a Conversation did to the object of an Annotation. */
+export const annotationActionSchema = z.enum(["created", "changed"]);
 export type AnnotationAction = z.output<typeof annotationActionSchema>;
 
 /**
@@ -156,6 +149,6 @@ export type SavedObjectAnnotation = z.output<
  * Annotation of the Conversation.
  */
 export const annotatedObjectSchema = savedObjectAnnotationSchema.safeExtend({
-  action: annotationActionSchema.exclude(["attached"]),
+  action: annotationActionSchema,
 });
 export type AnnotatedObject = z.output<typeof annotatedObjectSchema>;

@@ -219,7 +219,8 @@ Canonical words for Junior code and docs. One concept, one word.
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
 - **Annotation**: a pointer from one Conversation to an object that it
-  created, changed, or attached. A read saves none. An update sends no message.
+  created, changed, or deleted. Linked work lists them. A read or a shared
+  link saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
   Annotation types for provider work items, meetings, and other objects.
 - **Message card**: a Message's reference to an Annotation, shown with the

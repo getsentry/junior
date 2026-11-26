@@ -243,7 +243,7 @@ describe("GitHub Annotations without GitHub's id of their object", () => {
     ]);
     expect(await annotationsOf(attached)).toEqual([
       {
-        action: "attached",
+        action: "changed",
         key: "getsentry/junior#77",
         subjectId: "77000",
         subjectKind: "github:pull_request",
