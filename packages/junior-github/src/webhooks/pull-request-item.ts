@@ -40,14 +40,22 @@ export const ENDED_REASONS: Record<EndedState, CloseReason> = {
 function closeReason(
   state: GitHubPullRequestMergeState,
   previous: GitHubPullRequestAction | undefined,
+  mergeAccess: boolean | undefined,
 ): CloseReason {
   if (previous === "merge") {
-    return state.autoMerge
-      ? { reason: "Auto-merge is on.", status: "dismissed" }
-      : {
-          reason: "The pull request is no longer ready to merge.",
-          status: "dismissed",
-        };
+    if (state.autoMerge) {
+      return { reason: "Auto-merge is on.", status: "dismissed" };
+    }
+    if (mergeAccess === false) {
+      return {
+        reason: "Only a person with write access can merge it.",
+        status: "dismissed",
+      };
+    }
+    return {
+      reason: "The pull request is no longer ready to merge.",
+      status: "dismissed",
+    };
   }
   return { reason: "The review request ended.", status: "done" };
 }
@@ -96,6 +104,8 @@ export async function showPullRequestItem(
     /** The requester's review or merge, if they have one. */
     action: GitHubPullRequestAction | undefined;
     askedReviewerIdentityIds: string[];
+    /** Undefined when this sync did not read it. */
+    mergeAccess: boolean | undefined;
     number: number;
     previous: GitHubPullRequestAction | undefined;
     pullRequestId: string;
@@ -123,7 +133,10 @@ export async function showPullRequestItem(
     ...reviewers,
   ];
   if (assignees.length === 0) {
-    await items.close({ subject, ...closeReason(state, args.previous) });
+    await items.close({
+      subject,
+      ...closeReason(state, args.previous, args.mergeAccess),
+    });
     return;
   }
   // The URL stands alone, so the dashboard shows the pull request as one

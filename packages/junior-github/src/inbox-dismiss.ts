@@ -9,8 +9,8 @@ import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 import {
   removeIssueAssignees,
   removeRequestedReviewer,
-  type GitHubInstallationEnv,
-} from "./webhooks/installation-requests.js";
+} from "./webhooks/dismiss-requests.js";
+import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 
 /** Split an Annotation key, such as `getsentry/junior#12`. */
 function parseObjectKey(

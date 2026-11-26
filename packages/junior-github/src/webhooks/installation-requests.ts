@@ -47,7 +47,8 @@ export interface GitHubInstallationEnv {
   tokens?: InstallationTokens | undefined;
 }
 
-function splitRepository(fullName: string, label: string) {
+/** Split `owner/name`, or throw an error that names the request. */
+export function splitRepository(fullName: string, label: string) {
   const [owner, name, ...extra] = fullName.split("/");
   if (!owner || !name || extra.length > 0) {
     throw new Error(`GitHub ${label} received an invalid repository name`);
@@ -428,105 +429,6 @@ export async function requestPullRequestReviewers(
 }
 
 /**
- * Unassign people from one issue, with an issues write token. A gone issue
- * has nobody left to unassign.
- */
-export async function removeIssueAssignees(
-  env: GitHubInstallationEnv,
-  input: { assignees: string[]; number: number; repositoryFullName: string },
-): Promise<void> {
-  const { owner, name } = splitRepository(
-    input.repositoryFullName,
-    "issue unassign",
-  );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { issues: "write" },
-    repositories: [name],
-  });
-  try {
-    await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
-      {
-        body: { assignees: input.assignees },
-        method: "DELETE",
-        token: token.token,
-      },
-    );
-  } catch (error) {
-    // GitHub answers 410 for a deleted issue, and 404 when the issue or its
-    // repository is out of reach.
-    if (
-      error instanceof GitHubRequestError &&
-      (error.status === 404 || error.status === 410)
-    ) {
-      return;
-    }
-    throw error;
-  }
-}
-
-// Only user reviewers: a team request names no person.
-const requestedReviewersSchema = z.object({
-  requested_reviewers: z.array(z.object({ login: z.string().min(1) })),
-});
-
-/**
- * Remove one person from the requested reviewers of a pull request, with a
- * pull requests write token. Does nothing when GitHub does not list them
- * or the pull request is gone.
- */
-export async function removeRequestedReviewer(
-  env: GitHubInstallationEnv,
-  input: { login: string; number: number; repositoryFullName: string },
-): Promise<void> {
-  const { owner, name } = splitRepository(
-    input.repositoryFullName,
-    "review request removal",
-  );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { pull_requests: "write" },
-    repositories: [name],
-  });
-  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}`;
-  try {
-    const pullRequest = requestedReviewersSchema.parse(
-      await githubRequest("https://api.github.com", path, {
-        token: token.token,
-      }),
-    );
-    const login = input.login.toLowerCase();
-    if (
-      !pullRequest.requested_reviewers.some(
-        (reviewer) => reviewer.login.toLowerCase() === login,
-      )
-    ) {
-      return;
-    }
-    await githubRequest(
-      "https://api.github.com",
-      `${path}/requested_reviewers`,
-      {
-        body: { reviewers: [input.login] },
-        method: "DELETE",
-        token: token.token,
-      },
-    );
-  } catch (error) {
-    // A gone pull request has nobody left to remove.
-    if (
-      error instanceof GitHubRequestError &&
-      (error.status === 404 || error.status === 410)
-    ) {
-      return;
-    }
-    throw error;
-  }
-}
-
-/**
  * Return a read-only GitHub reader for one repository, for the review-again
  * check: GraphQL for the pull request, and REST for the branch rules.
  */
@@ -630,21 +532,31 @@ const repositoryPermissionSchema = z.object({
 const REPOSITORY_ROLE_TTL_MS = 10 * 60 * 1000;
 
 /**
- * Read one user's role on a repository, with a metadata-only token. GitHub
- * returns "none" for accounts without access, such as most bots. Roles are
- * cached for ten minutes.
+ * One user's access to a repository. `role` is GitHub's `role_name`, which
+ * includes maintain, triage, and custom roles. `permission` is the base
+ * role that it maps to: admin, write, read, or none.
  */
-export async function loadRepositoryRole(
+interface RepositoryPermission {
+  permission: string;
+  role: string;
+}
+
+/**
+ * Read one user's access to a repository, with a metadata-only token.
+ * GitHub returns "none" for accounts without access, such as most bots. It
+ * is cached for ten minutes.
+ */
+async function loadRepositoryPermission(
   env: GitHubInstallationEnv,
   cache: PluginCache,
   target: { login: string; repositoryFullName: string },
-): Promise<string> {
+): Promise<RepositoryPermission> {
   const { owner, name } = splitRepository(
     target.repositoryFullName,
     "repository role",
   );
-  return await cache.getOrLoad(
-    `repository-role:${owner}/${name}:${target.login}`.toLowerCase(),
+  return await cache.getOrLoad<RepositoryPermission>(
+    `repository-permission:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
       const token = await issueInstallationToken({
         ...env,
@@ -658,13 +570,37 @@ export async function loadRepositoryRole(
           { responses: env.responses, token: token.token },
         ),
       );
-      // role_name includes maintain, triage, and custom roles; permission does not.
       return {
-        value: response.role_name?.trim() || response.permission,
+        value: {
+          permission: response.permission,
+          role: response.role_name?.trim() || response.permission,
+        },
         ttlMs: REPOSITORY_ROLE_TTL_MS,
       };
     },
   );
+}
+
+/** Read one user's role on a repository, such as "maintain" or "none". */
+export async function loadRepositoryRole(
+  env: GitHubInstallationEnv,
+  cache: PluginCache,
+  target: { login: string; repositoryFullName: string },
+): Promise<string> {
+  return (await loadRepositoryPermission(env, cache, target)).role;
+}
+
+/**
+ * Whether one user can merge pull requests on a repository: their base role
+ * is write or admin. Maintain and custom roles map to one of these.
+ */
+export async function loadRepositoryMergeAccess(
+  env: GitHubInstallationEnv,
+  cache: PluginCache,
+  target: { login: string; repositoryFullName: string },
+): Promise<boolean> {
+  const { permission } = await loadRepositoryPermission(env, cache, target);
+  return permission === "admin" || permission === "write";
 }
 
 const timestampSchema = z.iso.datetime({ offset: true });

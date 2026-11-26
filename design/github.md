@@ -71,10 +71,13 @@ also wake a Conversation or run an Event automation.
   draft that Junior held, Junior marks it ready, so GitHub asks its code
   owners only after the requester has looked.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When GitHub says that it can merge
-  and no reviewer requests changes, the requester gets a "Ready to merge"
-  Inbox item. Where GitHub requires no review, a PR with no approval gets
-  it too, and the item tells the requester to review it before they merge.
+  replies in that Conversation know it. When GitHub says that it can merge,
+  no reviewer requests changes, and the requester has write access to the
+  repo, the requester gets a "Ready to merge" Inbox item. A requester
+  without write access gets no merge ask, because a person with write
+  access merges the PR. Where GitHub requires no review, a PR with no
+  approval gets it too, and the item tells the requester to review it
+  before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
 - An issue that Junior opened is an Inbox item for its GitHub assignees who

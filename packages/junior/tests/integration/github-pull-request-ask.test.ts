@@ -231,6 +231,11 @@ describe("the ask of a Junior pull request", () => {
             },
           });
         }),
+        // The requester has write access, so they get the merge ask.
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/collaborators/pat/permission",
+          () => HttpResponse.json({ permission: "write", role_name: "write" }),
+        ),
         http.get(`${API}/commits`, async () => {
           return HttpResponse.json([]);
         }),

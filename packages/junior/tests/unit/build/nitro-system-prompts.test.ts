@@ -4,7 +4,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { botConfig, setBotName } from "@/chat/config";
+import { installChatConfig } from "@/chat/config";
+import { loadConfig } from "@/config";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { buildPluginSystemPromptContributions } from "@/chat/prompt";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
@@ -148,8 +149,9 @@ describe("juniorNitro system prompts", () => {
       sections.find((section) => section.name === "identity");
 
     expect(named.config).toContain('export const botName = "jr";');
-    const previousBotName = botConfig.userName;
-    setBotName("jr");
+    const previousConfig = installChatConfig(
+      loadConfig({ env: process.env, options: { bot: { userName: "jr" } } }),
+    );
     try {
       for (const platform of ["slack", "local"] as const) {
         const sections = table[platform].conversation;
@@ -162,7 +164,7 @@ describe("juniorNitro system prompts", () => {
         );
       }
     } finally {
-      setBotName(previousBotName);
+      installChatConfig(previousConfig);
     }
   });
 
