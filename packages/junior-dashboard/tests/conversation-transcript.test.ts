@@ -30,7 +30,7 @@ function event(seq: number): ConversationReportEvent {
 
 function detail(): ConversationDetailReport {
   return {
-    kind: "root",
+    kind: "thread",
     actorIdentity: { email: "stale@example.com" },
     conversationId: "conversation-1",
     cumulativeDurationMs: 10,

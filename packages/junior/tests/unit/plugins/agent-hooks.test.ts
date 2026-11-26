@@ -58,7 +58,8 @@ import type {
 } from "@/chat/sandbox/workspace";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

@@ -72,7 +72,7 @@ export async function readConversationAgentTree(
       });
       return {
         conversationId: id,
-        kind: "root" as const,
+        kind: root.kind,
         label: summary.displayTitle,
       };
     }

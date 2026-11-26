@@ -76,7 +76,7 @@ const inputSchema = z
       .literal(true)
       .optional()
       .describe(
-        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person whose latest review approves it or requests changes is not asked again.",
+        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person who has reviewed it is not asked again, unless their latest approval or change request was dismissed.",
       ),
   })
   .strict()
@@ -118,7 +118,7 @@ const outputSchema = pluginToolOutputSchema.merge(
       .boolean()
       .optional()
       .describe(
-        "With request_review: true when GitHub asks the person for a review, false when their latest review approves it or requests changes.",
+        "With request_review: true when GitHub asks the person for a review, false when they have reviewed it and their latest approval or change request was not dismissed.",
       ),
     target: z.literal("updatePullRequest"),
   }),
@@ -190,12 +190,14 @@ const reviewerSchema = z.object({
  * Junior keeps a draft for its requester when marking it ready would ask the
  * code owners. A review request asks only the person it names, and the Inbox
  * item follows from it (`webhooks/pull-request-action.ts`). A person whom
- * GitHub already asks is not asked again. Nor is a person whose latest
- * review that approves or requests changes does so, and the result is false:
- * after a change request, only the review-again flow asks, and an approved
- * draft's item says to mark it ready. A comment-only review does not count,
- * so a later comment neither hides a change request nor blocks a new ask.
- * A person whose latest such review was dismissed is asked.
+ * GitHub already asks is not asked again. Nor is a person who has reviewed
+ * it, and the result is false: after a change request or a comment-only
+ * review, only the review-again flow asks, and an approved draft's item says
+ * to mark it ready. An approval stands when a comment follows it. A person
+ * with no review yet is asked. So is one whose latest approval or change
+ * request was dismissed, also with comments since: a dismissal resets their
+ * decision, so those comments wait for a new ask
+ * (`webhooks/pull-request-next-action.ts`).
  */
 async function requestRequesterReview(
   egress: PluginEgress,
@@ -226,8 +228,9 @@ async function requestRequesterReview(
   ) {
     return true;
   }
-  const latest = pullRequest.reviews.nodes[0]?.state;
-  if (latest === "APPROVED" || latest === "CHANGES_REQUESTED") return false;
+  const states = pullRequest.reviews.nodes.map((review) => review.state);
+  const decided = [...states].reverse().find((state) => state !== "COMMENTED");
+  if (decided ? decided !== "DISMISSED" : states.length > 0) return false;
   const response = await githubApi(egress, {
     operation: "github.pull.request_reviewers",
     method: "POST",

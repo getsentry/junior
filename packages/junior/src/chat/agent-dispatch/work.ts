@@ -175,7 +175,7 @@ export async function enqueueAgentDispatch(
     activityAtMs: claimedDispatch.createdAtMs,
     conversationId,
     destination,
-    kind: isAutomationRun(claimedDispatch) ? "automation" : "root",
+    kind: isAutomationRun(claimedDispatch) ? "automation" : "thread",
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,

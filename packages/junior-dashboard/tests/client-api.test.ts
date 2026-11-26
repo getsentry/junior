@@ -146,7 +146,7 @@ describe("dashboard client API", () => {
     const conversationId = "slack:C1:123";
     const detail = {
       conversationId,
-      kind: "root" as const,
+      kind: "thread" as const,
       cumulativeDurationMs: 1,
       displayTitle: "Active conversation",
       eventHistory: { status: "available" as const },
