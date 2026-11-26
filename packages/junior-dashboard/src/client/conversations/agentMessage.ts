@@ -35,6 +35,7 @@ export type AgentMessage = {
 };
 
 const MESSAGE_AGENT_TOOL_NAME = "messageAgent";
+const PARENT_AGENT_TARGET = "parent";
 
 const messageAgentInputSchema = z.object({
   text: z.string(),
@@ -141,6 +142,13 @@ export function agentMessageConversationTitle(
     ids.includes(node.conversationId),
   );
   if (ancestor) return ancestor.label;
+  // The tree ends with this Conversation, so its parent is the node before.
+  // A message to `parent` has no target id until its result arrives.
+  const parent =
+    message.to === PARENT_AGENT_TARGET
+      ? conversation.agentTree?.at(-2)
+      : undefined;
+  if (parent) return parent.label;
   // A tool call that started a Conversation has its title in the input of
   // the running call and the started id on the finished one.
   const inputTitles = new Map<string, string>();

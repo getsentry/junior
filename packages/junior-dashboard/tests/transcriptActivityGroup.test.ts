@@ -173,7 +173,7 @@ describe("transcript activity group", () => {
     ).toBe("1 event · 300ms");
   });
 
-  it("folds quiet replies and unanswered Event messages", () => {
+  it("folds quiet replies and unanswered Event messages, but not agent messages", () => {
     const entries = [
       turnMessage("person", "user"),
       turnMessage("loud-reply", "assistant"),
@@ -183,6 +183,10 @@ describe("transcript activity group", () => {
       }),
       turnMessage("ci", "user", { eventType: "pull_request.checks.failed" }),
       tool("fix"),
+      turnMessage("child-message", "user", {
+        eventType: "agent.message",
+        noReply: true,
+      }),
       turnMessage("quiet-reply", "assistant", { quiet: true }),
       turnMessage("review", "user", { eventType: "pull_request.merged" }),
       turnMessage("merged-reply", "assistant"),
@@ -192,9 +196,11 @@ describe("transcript activity group", () => {
       "quiet-reply",
       "ci",
     ]);
-    expect(activityGroupSummary(entries.slice(2, 6))).toBe(
-      "1 tool call · 2 events · 1 quiet reply",
-    );
+    expect(
+      activityGroupSummary(
+        entries.slice(2, 7).filter((entry) => entry.key !== "child-message"),
+      ),
+    ).toBe("1 tool call · 2 events · 1 quiet reply");
   });
 
   it("summarizes collapsed activity contents for the tooltip", () => {

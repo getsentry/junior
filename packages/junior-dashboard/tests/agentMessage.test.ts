@@ -144,6 +144,15 @@ describe("agentMessageConversationTitle", () => {
     ).toBe("Plan");
   });
 
+  it("names the parent of a message to `parent` before its result", () => {
+    expect(
+      agentMessageConversationTitle(
+        { agentTree: tree, events: [] },
+        { to: "parent" },
+      ),
+    ).toBe("Plan");
+  });
+
   it("names a child by id or by its agent name", () => {
     const events = [subagent({ agentName: "reviewer", title: "Review it" })];
     expect(
