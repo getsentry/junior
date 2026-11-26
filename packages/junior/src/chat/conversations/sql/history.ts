@@ -47,7 +47,7 @@ import {
   unseenEvents,
   type NewEventRow,
 } from "@/conversation-events/store";
-import { writeMessageLinks } from "./message-links";
+import { queueTurnInputLinks, writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
   recordMentionedParticipants,
@@ -251,6 +251,11 @@ class SqlConversationEventStore implements ConversationEventStore {
               conversationId,
               event.data.inputMessageIds,
             );
+            await queueTurnInputLinks(this.executor, {
+              at: new Date(event.createdAtMs),
+              conversationId,
+              inputMessageIds: event.data.inputMessageIds,
+            });
           }
         }
         /* oxlint-enable no-await-in-loop */

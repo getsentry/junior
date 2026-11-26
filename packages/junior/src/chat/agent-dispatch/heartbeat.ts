@@ -3,6 +3,7 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
+import { attachSentLinks } from "@/chat/conversations/sent-links";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { syncAutomationAlerts } from "@/chat/automations/alert-items";
 import { getDb } from "@/chat/db";
@@ -219,6 +220,12 @@ export async function runHeartbeat(args: {
     await syncAutomationAlerts(getDb(), args.nowMs);
   } catch (error) {
     logException(error, "automation_alerts.heartbeat.failed");
+  }
+  try {
+    await attachSentLinks(args.nowMs);
+  } catch (error) {
+    // Claims move the due time ahead, so a later heartbeat retries.
+    logException(error, "sent_links.heartbeat.failed");
   }
   try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });

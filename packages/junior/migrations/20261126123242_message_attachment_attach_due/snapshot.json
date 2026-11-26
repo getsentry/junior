@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "ea997711-00a4-4903-8b84-e619c988fdc7",
+  "prevIds": ["3b9b0905-bde7-4127-8ac0-cb005dd77b4f"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_message_attachments",
+        "attach_due_at"
+      ],
+      "writes": [
+        "s|col|public.junior_message_attachments.attach_due_at",
+        "n|col|public.junior_message_attachments.attach_due_at",
+        "e|col|public.junior_message_attachments.attach_due_at"
+      ],
+      "reads": ["n|tbl|public.junior_message_attachments", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "attach_due_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

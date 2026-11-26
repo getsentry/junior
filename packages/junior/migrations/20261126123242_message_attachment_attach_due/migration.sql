@@ -1,0 +1,1 @@
+ALTER TABLE "junior_message_attachments" ADD COLUMN "attach_due_at" timestamp with time zone;

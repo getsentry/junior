@@ -88,12 +88,22 @@ export const juniorMessageAttachments = pgTable(
     seq: integer("seq").notNull(),
     attachmentId: text("attachment_id").notNull(),
     position: integer("position"),
+    /**
+     * When the heartbeat next adds this link to the Conversation's linked
+     * work (`chat/conversations/sent-links.ts`). Set for the links of a
+     * person's Turn input Message, and null when nothing is left to do.
+     */
+    attachDueAt: timestamptz("attach_due_at"),
   },
   (table) => [
     primaryKey({
       name: "junior_message_attachments_pk",
       columns: [table.conversationId, table.seq, table.attachmentId],
     }),
+    // The heartbeat reads only the due links, which are few.
+    index("junior_message_attachments_attach_due_idx")
+      .on(table.attachDueAt)
+      .where(sql`${table.attachDueAt} IS NOT NULL`),
   ],
 );
 

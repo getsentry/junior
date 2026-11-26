@@ -6,20 +6,48 @@ import { createApp } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { juniorConversationParticipants } from "@/db/schema";
 import { defineJuniorPlugins } from "@/plugins";
+import {
+  CONVERSATION_ID as SLACK_CONVERSATION_ID,
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+  handleSlackWebhookAndFlush,
+  runTestHeartbeat,
+  SLACK_BOT_USER_ID,
+  slackEnvelope,
+  slackWebhookRequest,
+} from "../../fixtures/conversation-work";
+import { linkSlackUser } from "../../fixtures/slack-user";
+import { finishRun } from "../../fixtures/thread-input";
 import { signedInViewer } from "../../fixtures/user";
 
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const DOC_URL = "https://docs.test/d/1";
 const EVENT_URL = "https://docs.test/e/1";
+const FLAKY_URL = "https://docs.test/f/1";
 const TITLE = 'Launch <plan> & "notes"';
 const SECRET = "The launch slips to March.";
 // Only these people can see the objects.
-const READERS = new Set(["alice@example.com", "carol@example.com"]);
+const READERS = new Set([
+  "alice@example.com",
+  "carol@example.com",
+  // The Slack fixture gives Slack user UALICE this email.
+  "ualice@example.com",
+]);
+// Reads of FLAKY_URL that fail before one succeeds.
+let flakyFailures = 0;
 
 function object(objectType: "calendar_event" | "document", url: URL) {
   return {
@@ -79,6 +107,35 @@ async function attachAs(
   return { body: await response.text(), status: response.status };
 }
 
+/** Store Slack Messages, as Slack ingress does, by their authors' Identities. */
+async function sendSlackMessages(
+  messages: Array<{ authorIdentityId: string; id: string; text: string }>,
+) {
+  await getConversationEventStore().append(
+    CONVERSATION_ID,
+    messages.map(({ authorIdentityId, id, text }) => ({
+      createdAtMs: Date.now(),
+      data: {
+        authorIdentityId,
+        messageId: id,
+        role: "user" as const,
+        text,
+        type: "message" as const,
+      },
+    })),
+  );
+}
+
+async function startTurn(turnId: string, inputMessageIds: string[]) {
+  await getTurnLifecycle().start({
+    conversationId: CONVERSATION_ID,
+    createdAtMs: Date.now(),
+    inputMessageIds,
+    surface: "slack",
+    turnId,
+  });
+}
+
 async function nextTurnNotes(turnId: string, conversationId = CONVERSATION_ID) {
   await getTurnLifecycle().start({
     conversationId,
@@ -116,6 +173,18 @@ describe("attach a linked object", () => {
               resolve: async (_ctx, url) => object("document", url),
             },
             {
+              filters: [{ host: "docs.test", pathPrefix: "/f/" }],
+              objectTypes: ["document"],
+              canView: async () => true,
+              resolve: async (_ctx, url) => {
+                if (flakyFailures > 0) {
+                  flakyFailures -= 1;
+                  throw new Error("docs.test is unavailable");
+                }
+                return object("document", url);
+              },
+            },
+            {
               filters: [{ host: "docs.test", pathPrefix: "/e/" }],
               objectTypes: ["calendar_event"],
               // Only `canView` checks access: Junior must not call
@@ -128,9 +197,11 @@ describe("attach a linked object", () => {
       ]),
     });
     await recordConversation(["alice@example.com", "bob@example.com"]);
+    flakyFailures = 0;
   });
 
   afterEach(async () => {
+    await disconnectStateAdapter();
     await closeDb();
   });
 
@@ -236,5 +307,123 @@ describe("attach a linked object", () => {
     );
     expect(await listConversationAnnotations(getDb(), taskId)).toEqual([]);
     expect(await nextTurnNotes("task-turn", taskId)).toEqual([]);
+  });
+
+  it("attaches the links of a Slack mention as its author on the next heartbeat", async () => {
+    const work = await createConversationWorkHarness({
+      run: async (run) => await finishRun(run),
+    });
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> read <${DOC_URL}|the plan> and ${EVENT_URL}.`,
+          user: "UALICE",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => work.adapter,
+        queue: work.queue,
+        runtime: work.runtime,
+        state: work.state,
+      },
+    });
+    await work.process(work.queue.takeMessageFor(SLACK_CONVERSATION_ID));
+    expect(
+      await listConversationAnnotations(getDb(), SLACK_CONVERSATION_ID),
+    ).toEqual([]);
+
+    await runTestHeartbeat(work.queue, Date.now());
+    const annotations = await listConversationAnnotations(
+      getDb(),
+      SLACK_CONVERSATION_ID,
+    );
+    expect(
+      annotations.map(({ kind, label, objectType, url }) => ({
+        kind,
+        label,
+        objectType,
+        url,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "resource_link",
+          label: DOC_URL,
+          objectType: "document",
+          url: DOC_URL,
+        },
+        {
+          kind: "resource_link",
+          label: EVENT_URL,
+          objectType: "calendar_event",
+          url: EVENT_URL,
+        },
+      ]),
+    );
+    expect(annotations).toHaveLength(2);
+    expect(JSON.stringify(annotations)).not.toContain(SECRET);
+    expect(JSON.stringify(annotations)).not.toContain("Launch <plan>");
+    const notes = await nextTurnNotes("next-turn", SLACK_CONVERSATION_ID);
+    expect([...notes].sort()).toEqual([
+      expect.stringContaining(`attached a Calendar event (${EVENT_URL})`),
+      expect.stringContaining(`attached a Document (${DOC_URL})`),
+    ]);
+
+    // The work is done, so a later heartbeat adds nothing.
+    await runTestHeartbeat(work.queue, Date.now() + 60 * 60_000);
+    expect(
+      await listConversationAnnotations(getDb(), SLACK_CONVERSATION_ID),
+    ).toHaveLength(2);
+  });
+
+  it("attaches no link of thread context or of a sender without a User", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await linkSlackUser("bob@example.com", "UBOB");
+    // A Slack account that is linked to no User.
+    const stranger = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerSubjectId: "USTRANGER",
+      providerTenantId: "T123",
+    });
+    await sendSlackMessages([
+      // Thread context: Bob takes part, but did not ask Junior anything.
+      { authorIdentityId: "identity:UBOB", id: "context", text: DOC_URL },
+      { authorIdentityId: stranger.id, id: "ask", text: EVENT_URL },
+    ]);
+    await startTurn("slack-turn", ["ask"]);
+
+    await runTestHeartbeat(queue, Date.now());
+    expect(await listConversationAnnotations(getDb(), CONVERSATION_ID)).toEqual(
+      [],
+    );
+    expect(await nextTurnNotes("next-turn")).toEqual([]);
+  });
+
+  it("tries a failed attach again after its retry delay", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await linkSlackUser("alice@example.com", "UALICE");
+    flakyFailures = 1;
+    await sendSlackMessages([
+      {
+        authorIdentityId: "identity:UALICE",
+        id: "ask",
+        text: `Read ${FLAKY_URL}`,
+      },
+    ]);
+    await startTurn("slack-turn", ["ask"]);
+    const nowMs = Date.now();
+
+    await runTestHeartbeat(queue, nowMs);
+    // The failed attach keeps its claim until the retry delay ends.
+    await runTestHeartbeat(queue, nowMs + 60_000);
+    expect(await listConversationAnnotations(getDb(), CONVERSATION_ID)).toEqual(
+      [],
+    );
+
+    await runTestHeartbeat(queue, nowMs + 11 * 60_000);
+    expect(await listConversationAnnotations(getDb(), CONVERSATION_ID)).toEqual(
+      [expect.objectContaining({ url: FLAKY_URL })],
+    );
   });
 });

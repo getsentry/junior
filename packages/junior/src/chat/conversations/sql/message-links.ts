@@ -1,8 +1,9 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAttachments,
   juniorConversationEvents,
+  juniorIdentities,
   juniorMessageAttachments,
 } from "@/db/schema";
 import { batchMessageLinks, urlAttachmentId } from "../message-links";
@@ -76,6 +77,70 @@ export async function writeMessageLinks(
       );
   }
   await insertLinks(executor, conversationId, links);
+}
+
+/**
+ * Queue the web links of a Turn's input Messages that a person wrote, so the
+ * heartbeat adds them to the Conversation's linked work
+ * (`chat/conversations/sent-links.ts`). Call it in the transaction that
+ * stores the `turn_started` event. The author of a Turn input Message takes
+ * part from that Turn on, as `recordTurnInputParticipants` records. An Event
+ * Message keeps its author only for attribution, so its links stay out.
+ */
+export async function queueTurnInputLinks(
+  executor: JuniorSqlDatabase,
+  args: {
+    at: Date;
+    conversationId: string;
+    inputMessageIds: readonly string[];
+  },
+): Promise<void> {
+  const { conversationId } = args;
+  if (args.inputMessageIds.length === 0) return;
+  const e = juniorConversationEvents;
+  const identities = juniorIdentities;
+  const db = executor.db();
+  const sent = await db
+    .select({ seq: e.seq })
+    .from(e)
+    .innerJoin(identities, eq(identities.id, e.actorIdentityId))
+    .where(
+      and(
+        eq(e.conversationId, conversationId),
+        eq(e.type, "message"),
+        eq(sql`${e.payload}->>'role'`, "user"),
+        inArray(sql<string>`${e.payload}->>'messageId'`, [
+          ...args.inputMessageIds,
+        ]),
+        sql`${e.payload}->'meta'->>'eventType' IS NULL`,
+        eq(identities.kind, "user"),
+        isNotNull(identities.userId),
+      ),
+    );
+  if (sent.length === 0) return;
+  const m = juniorMessageAttachments;
+  const a = juniorAttachments;
+  await db
+    .update(m)
+    .set({ attachDueAt: args.at })
+    .where(
+      and(
+        eq(m.conversationId, conversationId),
+        inArray(
+          m.seq,
+          sent.map((row) => row.seq),
+        ),
+        inArray(
+          m.attachmentId,
+          db
+            .select({ id: a.id })
+            .from(a)
+            .where(
+              and(eq(a.conversationId, conversationId), eq(a.kind, "url")),
+            ),
+        ),
+      ),
+    );
 }
 
 async function insertLinks(

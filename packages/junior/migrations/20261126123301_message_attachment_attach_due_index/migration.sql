@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_message_attachments_attach_due_idx" ON "junior_message_attachments" ("attach_due_at") WHERE "attach_due_at" IS NOT NULL;

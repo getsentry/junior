@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "717d620e-4918-4c2a-a287-4cd2678f6b0a",
+  "prevIds": ["ea997711-00a4-4903-8b84-e619c988fdc7"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_message_attachments",
+        "junior_message_attachments_attach_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_message_attachments_attach_due_idx",
+        "n|idx|public.junior_message_attachments_attach_due_idx",
+        "e|idx|public.junior_message_attachments_attach_due_idx",
+        "n|rel|public.junior_message_attachments_attach_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_message_attachments",
+        "n|sch|public",
+        "n|col|public.junior_message_attachments.attach_due_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_message_attachments",
+        "name": "junior_message_attachments_attach_due_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "attach_due_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"attach_due_at\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

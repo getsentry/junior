@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { createConversationWorkQueueTestAdapter } from "../../../../fixtures/conversation-work";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { afterEach, describe, expect, it } from "vitest";
+import { closeDb, getDb } from "@/chat/db";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { defineJuniorPlugins } from "@/plugins";
+import {
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+  runTestHeartbeat,
+} from "../../../../fixtures/conversation-work";
+import { finishRun } from "../../../../fixtures/thread-input";
 import {
   connectMcpTools,
   MCP_TEST_VIEWER,
@@ -9,6 +19,11 @@ import {
 mockMcpDashboardConfig();
 
 describe("createConversation MCP tool", () => {
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    await closeDb();
+  });
+
   it("starts a Conversation, queues its Turn, and dedupes a retry", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
@@ -58,5 +73,54 @@ describe("createConversation MCP tool", () => {
     const result = await call("createConversation", { message: "Hello" });
 
     expect(result).toMatchObject({ isError: true });
+  });
+
+  it("adds the links of the first Message to linked work after its Turn starts", async () => {
+    const docUrl = "https://docs.test/d/1";
+    const work = await createConversationWorkHarness({
+      run: async (run) => await finishRun(run),
+    });
+    const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
+      conversationWorkQueue: () => work.queue,
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "docs",
+            displayName: "Docs",
+            description: "Docs test plugin",
+            configKeys: [],
+          },
+          objectLinks: [
+            {
+              filters: [{ host: "docs.test", pathPrefix: "/d/" }],
+              objectTypes: ["document"],
+              canView: async (ctx) => ctx.viewer.email === MCP_TEST_VIEWER,
+              resolve: async (_ctx, url) => ({
+                kind: "object" as const,
+                key: url.pathname,
+                label: "Launch plan",
+                objectType: "document" as const,
+                title: "Launch plan",
+                url: url.href,
+              }),
+            },
+          ],
+        }),
+      ]),
+    });
+    const { conversationId } = (
+      await call("createConversation", { message: `Review ${docUrl}` })
+    ).structuredContent as { conversationId: string };
+    await work.process(work.queue.takeMessageFor(conversationId));
+
+    await runTestHeartbeat(work.queue, Date.now());
+    expect(await listConversationAnnotations(getDb(), conversationId)).toEqual([
+      expect.objectContaining({
+        kind: "resource_link",
+        label: docUrl,
+        objectType: "document",
+        url: docUrl,
+      }),
+    ]);
   });
 });
