@@ -61,11 +61,20 @@ export function useSpaceActions(space: SpaceReport | undefined) {
       )?.space?.id === spaceId
     );
   };
+  // A Lead's menu acts on its Space, which can still be loading or fail to
+  // load. Say so instead of acting on the Conversation.
+  const notLoaded = () => {
+    toast.add({
+      priority: "high",
+      title: "The Space has not loaded",
+      type: "error",
+    });
+  };
   // Leaving hides the menu, which drops `mutate` callbacks, so this waits
   // on the promise. A private Space is not readable after the viewer leaves,
   // and the API says why the last member can't leave one.
   const leave = () => {
-    if (!space) return;
+    if (!space) return notLoaded();
     const leavesPage = space.visibility === "private" && pageInSpace(space.id);
     void membership.mutateAsync({ join: false, spaceId: space.id }).then(
       () => {
@@ -83,7 +92,7 @@ export function useSpaceActions(space: SpaceReport | undefined) {
     );
   };
   const toggleArchive = () => {
-    if (!space) return;
+    if (!space) return notLoaded();
     if (space.archivedAt)
       archive.mutate({ archived: false, spaceId: space.id });
     else setConfirmArchive(true);
@@ -91,17 +100,14 @@ export function useSpaceActions(space: SpaceReport | undefined) {
   return {
     archive: toggleArchive,
     join: () => {
-      if (space) membership.mutate({ join: true, spaceId: space.id });
+      if (!space) return notLoaded();
+      membership.mutate({ join: true, spaceId: space.id });
     },
     leave,
-    // Until the Space loads, its actions wait.
-    pending: {
-      archive: !space || archive.isPending,
-      membership: !space || membership.isPending,
-    },
+    pending: { archive: archive.isPending, membership: membership.isPending },
     /** A Space and its Lead share one name. */
     rename: (name: string) => {
-      if (!space) return;
+      if (!space) return notLoaded();
       update.mutate(
         { description: space.description, name, spaceId: space.id },
         {
