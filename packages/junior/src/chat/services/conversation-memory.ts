@@ -259,28 +259,26 @@ function renderThreadContextMessage(
   );
 }
 
-// Cut the text of a Message that alone is larger than the cap until it fits.
-// Escaping can make the text longer, so cut again by what is still over.
+// Cut the text of a Message that alone is larger than the cap to the longest
+// prefix that fits. Escaping can make text longer by a varying amount, so
+// search for the prefix length instead of computing it.
 function renderOversizedMessage(
   message: ConversationMessage,
   conversation: ThreadConversationState,
 ): string {
-  let maxTextChars = THREAD_CONTEXT_MAX_CHARS;
-  for (;;) {
-    const rendered = renderThreadContextMessage(
-      message,
-      conversation,
-      1,
-      maxTextChars,
-    );
-    if (rendered.length <= THREAD_CONTEXT_MAX_CHARS || maxTextChars === 0) {
-      return rendered;
+  const render = (maxTextChars: number) =>
+    renderThreadContextMessage(message, conversation, 1, maxTextChars);
+  let fits = 0;
+  let over = THREAD_CONTEXT_MAX_CHARS;
+  while (over - fits > 1) {
+    const middle = Math.floor((fits + over) / 2);
+    if (render(middle).length <= THREAD_CONTEXT_MAX_CHARS) {
+      fits = middle;
+    } else {
+      over = middle;
     }
-    maxTextChars = Math.max(
-      0,
-      maxTextChars - (rendered.length - THREAD_CONTEXT_MAX_CHARS),
-    );
   }
+  return render(fits);
 }
 
 // A Message that the agent history does not hold: no mention, no Event, and

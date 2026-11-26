@@ -413,6 +413,23 @@ describe("buildConversationContext", () => {
     expect(context).toMatch(/truncated.*slackThreadRead/);
     expect(context).toMatch(/searchConversationEvents/);
   });
+
+  it("keeps text of an oversized message that escaping makes longer", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "&".repeat(70_000),
+        createdAtMs: 1000,
+      },
+    ];
+
+    const context = buildConversationContext(conversation).text ?? "";
+    expect(context.length).toBeLessThan(61_000);
+    expect(context).toContain("&amp;".repeat(10_000));
+    expect(context).toMatch(/truncated.*readConversationEvent/);
+  });
 });
 
 describe("turnHasReply", () => {
