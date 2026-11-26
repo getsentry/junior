@@ -4,17 +4,12 @@
  * visibility. Its members talk to it, and a unique index keeps one Lead for
  * each Space. Its title is the Space's name.
  */
-import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
 import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import type { Conversation } from "@/chat/conversations/store";
-import {
-  recordWebConversationActivity,
-  webActorFromUser,
-} from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
-import { readSpace, type Space } from "@/chat/spaces/store";
+import { createSpaceLead, readSpace, type Space } from "@/chat/spaces/store";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorConversations, juniorSpaces } from "@/db/schema";
 
@@ -41,9 +36,9 @@ export async function readSpaceLead(
 }
 
 /**
- * Return the Lead of a Space, and create it on first use. The member who
- * creates it is its first Actor. It has the Space's visibility and its own
- * Destination, so it reads other Conversations by the usual rules.
+ * Return the Lead of a Space, and create it when it is missing. A Space
+ * gets its Lead when it is created, so this is only for a Lead that a
+ * failed create left out.
  */
 export async function getSpaceLead(args: {
   member: Pick<User, "displayName" | "email" | "id">;
@@ -52,15 +47,7 @@ export async function getSpaceLead(args: {
   const existing = await readSpaceLead(args.space.id);
   if (existing) return existing;
   try {
-    await recordWebConversationActivity({
-      actor: webActorFromUser(args.member),
-      conversationId: `local:web:${randomUUID()}`,
-      nowMs: Date.now(),
-      rootKind: "lead",
-      rootSpaceId: args.space.id,
-      rootTitle: args.space.name,
-      rootVisibility: args.space.visibility,
-    });
+    await createSpaceLead(args);
   } catch (error) {
     if (!isPostgresErrorCode(error, UNIQUE_VIOLATION)) throw error;
   }

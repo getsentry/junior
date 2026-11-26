@@ -35,7 +35,11 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isThread, isTopLevel } from "@/chat/conversations/kind-behavior";
+import {
+  isThread,
+  isTopLevel,
+  ownsLocation,
+} from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -57,8 +61,11 @@ export interface CreateConversationInput {
   title?: string;
   /** New roots default public. Continues never rewrite visibility. */
   visibility?: ConversationPrivacy;
-  /** Space of the new root. The caller checks that the person may use it. */
-  spaceId?: string;
+  /**
+   * Lead of the Space that the new Conversation starts in, as the Lead's
+   * child. The caller checks that the person may use the Space.
+   */
+  leadConversationId?: string;
 }
 
 /** Input for one web Message. */
@@ -79,6 +86,8 @@ export interface AppendWebMessageInput {
   rootVisibility?: ConversationPrivacy;
   /** Applied only when this call creates the conversation root. */
   rootSpaceId?: string;
+  /** Applied only when this call creates the Conversation, as its parent. */
+  leadConversationId?: string;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -256,9 +265,25 @@ export async function recordWebConversationActivity(args: {
   rootKind?: TopLevelConversationKind;
   /** Applied only when this call creates the Conversation root. */
   rootSpaceId?: string;
+  /**
+   * Applied only when this call creates the Conversation: it starts as a
+   * child of this Lead, in the Lead's Space, with the Lead's Location.
+   */
+  leadConversationId?: string;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
-  const existing = await store.get({ conversationId: args.conversationId });
+  let existing = await store.get({ conversationId: args.conversationId });
+  if (!existing && args.leadConversationId) {
+    await store.createChild({
+      childConversationId: args.conversationId,
+      kind: "thread",
+      nowMs: args.nowMs,
+      parentConversationId: args.leadConversationId,
+      source: "web",
+      ...(args.rootTitle ? { title: args.rootTitle } : undefined),
+    });
+    existing = await store.get({ conversationId: args.conversationId });
+  }
   const destination = resolveConversationDestination({
     conversationId: args.conversationId,
     existing: existing?.destination,
@@ -288,7 +313,7 @@ export async function recordWebConversationActivity(args: {
       ? { spaceId: args.rootSpaceId }
       : undefined),
   });
-  return existing && !isTopLevel(existing) ? undefined : destination;
+  return existing && !ownsLocation(existing) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */
@@ -312,7 +337,9 @@ export async function createAndEnqueueConversation(
       uploads: input.uploads,
       ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
-      ...(input.spaceId ? { rootSpaceId: input.spaceId } : undefined),
+      ...(input.leadConversationId
+        ? { leadConversationId: input.leadConversationId }
+        : undefined),
     },
     options,
   );
@@ -351,6 +378,9 @@ export async function appendAndEnqueueWebMessage(
     ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
     ...(input.rootSpaceId && { rootSpaceId: input.rootSpaceId }),
+    ...(input.leadConversationId && {
+      leadConversationId: input.leadConversationId,
+    }),
   });
   let attachments: MessageAttachment[] = [];
   if (input.uploads?.length) {

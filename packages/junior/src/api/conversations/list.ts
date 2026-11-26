@@ -4,7 +4,6 @@ import {
   asc,
   desc,
   eq,
-  exists,
   inArray,
   isNotNull,
   isNull,
@@ -18,6 +17,8 @@ import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
+import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
+import { spaceLeadIds } from "@/chat/spaces/tree-space";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -38,9 +39,9 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
-  readPrivateSpaceMemberships,
 } from "./access";
 import {
+  conversationIdsWithParticipantUser,
   conversationPinnedForUser,
   conversationIsMemberRoot,
   rootSpaceReadableBy,
@@ -137,31 +138,28 @@ function conversationFeedMembershipFilter(
 }
 
 /**
- * Keep root conversations linked to one code repository. A code change can
- * link a child conversation, so linked ids resolve to their root. Private
- * roots stay visible only to their members.
+ * Keep top-level conversations linked to one code repository. A code change
+ * can link a child conversation, so linked ids resolve to their ancestors,
+ * and the list keeps the top-level one. Private roots stay visible only to
+ * their members.
  */
 function conversationCodeRepositoryFilter(
   repositoryId: string,
   viewerUserId: string | undefined,
 ): SQL | undefined {
   return and(
-    sql<boolean>`${juniorConversations.conversationId} IN (
-      SELECT coalesce(linked.root_conversation_id, linked.conversation_id)
-      FROM ${juniorConversations} AS linked
-      WHERE linked.conversation_id IN (
-        SELECT unnest(${juniorCodeChanges.conversationIds})
+    sql<boolean>`${juniorConversations.conversationId} IN ${conversationAncestorsOrSelf(
+      sql`SELECT unnest(${juniorCodeChanges.conversationIds})
         FROM ${juniorCodeChanges}
-        WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}
-      )
-    )`,
+        WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}`,
+    )}`,
     rootVisibleToViewer(viewerUserId),
   );
 }
 
 /**
- * Keep the roots of one Space with the status that the viewer may find. A
- * private Space shows its roots only to its members.
+ * Keep the Lead's children in one Space with the status that the viewer may
+ * find. A private Space shows its work only to its members.
  */
 function conversationSpaceFilter(
   spaceId: string,
@@ -169,7 +167,7 @@ function conversationSpaceFilter(
   viewerUserId: string | undefined,
 ): SQL | undefined {
   return and(
-    eq(juniorConversations.spaceId, spaceId),
+    inArray(juniorConversations.parentConversationId, spaceLeadIds(spaceId)),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "active"
@@ -294,13 +292,11 @@ async function conversationRows(
   return limit === undefined ? rows : rows.limit(limit);
 }
 
-const searchAnnotated = alias(juniorConversations, "search_annotated");
-
 /**
- * Match a root whose tree has an Annotation with the text in its label or
- * title, such as `getsentry/roach#12`. The feed shows the annotations of
- * the whole tree, so search reads the same rows. Private annotations match
- * only where the feed shows them.
+ * Match a top-level Conversation whose tree has an Annotation with the text
+ * in its label or title, such as `getsentry/roach#12`. The feed shows the
+ * annotations of the whole tree, so search reads the same rows. Private
+ * annotations match only where the feed shows them.
  */
 function annotationMatch(
   db: JuniorDatabase,
@@ -308,29 +304,18 @@ function annotationMatch(
   includePrivate: boolean,
 ) {
   const annotation = juniorConversationAnnotations.annotation;
-  return exists(
-    db
-      .select({ one: sql`1` })
-      .from(juniorConversationAnnotations)
-      .innerJoin(
-        searchAnnotated,
-        eq(
-          searchAnnotated.conversationId,
-          juniorConversationAnnotations.conversationId,
-        ),
-      )
-      .where(
-        and(
-          eq(
-            searchAnnotated.rootConversationId,
-            juniorConversations.conversationId,
-          ),
-          includePrivate
-            ? undefined
-            : isPublicConversation(juniorConversations),
+  return and(
+    includePrivate ? undefined : isPublicConversation(juniorConversations),
+    sql<boolean>`${juniorConversations.conversationId} IN ${conversationAncestorsOrSelf(
+      sql`${db
+        .select({
+          conversationId: juniorConversationAnnotations.conversationId,
+        })
+        .from(juniorConversationAnnotations)
+        .where(
           sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
-        ),
-      ),
+        )}`,
+    )}`,
   );
 }
 
@@ -401,6 +386,9 @@ export function conversationFeedVersionQuery(
   // row holds. The tree counts the root's live authorization requests too.
   // A running Thread hides its version, but its row shows its title, which
   // a Turn can set, and an archive hides it, so the tree holds both.
+  // A Lead's child row reads its Lead's whole tree. That moves the token
+  // for changes in other Space work too, but never misses one in its own.
+  const feedRowTreeRoot = sql`coalesce(${juniorConversations.rootConversationId}, ${conversationId})`;
   const child = sql`${feedTree.conversationId} <> ${conversationId}`;
   const active = conversationIsActiveSql(feedTree);
   const tree = db
@@ -423,7 +411,7 @@ export function conversationFeedVersionQuery(
     .where(
       or(
         eq(feedTree.conversationId, conversationId),
-        eq(feedTree.rootConversationId, conversationId),
+        eq(feedTree.rootConversationId, feedRowTreeRoot),
       ),
     );
   const annotations = db
@@ -438,7 +426,7 @@ export function conversationFeedVersionQuery(
         juniorConversationAnnotations.conversationId,
       ),
     )
-    .where(eq(feedAnnotated.rootConversationId, conversationId));
+    .where(eq(feedAnnotated.rootConversationId, feedRowTreeRoot));
   // Postgres runs the lookups below after the LIMIT, so once for each row
   // on the page.
   const page = db
@@ -735,14 +723,31 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
-  // This reads only when a row is in a private Space.
-  const memberSpaceIds = options.viewer
-    ? await readPrivateSpaceMemberships(db, accessRows, options.viewer.id)
-    : new Set<string>();
+  // A Lead's child has the Lead as its root. This reads only when a row is
+  // one, since other feed rows are their own roots.
+  const leadRootIds = [
+    ...new Set(
+      accessRows.flatMap((row) =>
+        row.storedRootConversationId &&
+        row.storedRootConversationId !== row.conversationId
+          ? [row.storedRootConversationId]
+          : [],
+      ),
+    ),
+  ];
+  const leadParticipantIds =
+    options.viewer && leadRootIds.length > 0
+      ? await conversationIdsWithParticipantUser(
+          db,
+          leadRootIds,
+          options.viewer.id,
+        )
+      : new Set<string>();
   const accessByConversation = conversationAccessFromRows(
     accessRows,
-    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
-    memberSpaceIds,
+    options.viewer
+      ? new Set([...participantsByRoot.keys(), ...leadParticipantIds])
+      : new Set(),
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {

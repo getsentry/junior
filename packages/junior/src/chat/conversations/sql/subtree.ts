@@ -67,3 +67,24 @@ export function conversationSubtree(conversationIds: readonly string[]): SQL {
     select scope_conversation_id, conversation_id from walk
   ) conversation_subtree`;
 }
+
+/**
+ * Return a subquery of the given Conversations and each of their ancestors.
+ * A list filter keeps the row that matches its own rules, so a match deep
+ * in a tree finds its top-level Conversation, such as a Lead's child.
+ */
+export function conversationAncestorsOrSelf(selectedIds: SQL): SQL {
+  // UNION, not UNION ALL, so that bad parent links cannot loop forever.
+  return sql`(
+    with recursive ancestor(conversation_id, parent_conversation_id) as (
+      select selected.conversation_id, selected.parent_conversation_id
+      from junior_conversations selected
+      where selected.conversation_id in (${selectedIds})
+      union
+      select parent.conversation_id, parent.parent_conversation_id
+      from junior_conversations parent
+      join ancestor on parent.conversation_id = ancestor.parent_conversation_id
+    )
+    select conversation_id from ancestor
+  )`;
+}

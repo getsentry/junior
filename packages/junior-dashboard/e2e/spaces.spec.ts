@@ -5,7 +5,6 @@ import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
 const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
-const MOBILE_APP_ID = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22";
 // A private Space that the viewer and Avery are in.
 const PRICING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a24";
 // A child of the mock dashboard QA Conversation.
@@ -231,15 +230,15 @@ test("another Space's page does not show the last Space's Threads", async ({
   await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(billingRow).toBeVisible();
 
-  // Hold the next Space's list, so the page shows it loading.
+  // Hold the next Lead's Threads, so the page shows them loading.
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
   await page.route(
     (url) =>
-      url.pathname === "/api/conversations" &&
-      url.searchParams.get("spaceId") === MOBILE_APP_ID,
+      url.pathname.startsWith("/api/conversations/") &&
+      url.pathname.endsWith("/agents"),
     async (route) => {
       await held;
       await route.fallback();

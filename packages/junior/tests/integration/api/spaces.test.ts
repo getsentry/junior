@@ -28,16 +28,13 @@ import type {
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
-import {
-  juniorConversationParticipants,
-  juniorConversations,
-} from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { juniorConversationParticipants } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { signedInViewer } from "../../fixtures/user";
@@ -102,6 +99,7 @@ async function startConversation(
     .conversationId;
 }
 
+/** Read one Space's list, or the viewer's own feed with no Space. */
 async function spaceFeed(
   app: Hono<JuniorApiEnv>,
   spaceId: string,
@@ -110,7 +108,7 @@ async function spaceFeed(
   const response = await request(
     app,
     "GET",
-    `/conversations?spaceId=${spaceId}&status=${status}`,
+    `/conversations?${spaceId ? `spaceId=${spaceId}&` : ""}status=${status}`,
   );
   expect(response.status).toBe(200);
   return conversationFeedSchema.parse(await response.json()).conversations;
@@ -223,6 +221,22 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
+    // A mention in the Space's work does not make them a member: people
+    // join a Space themselves.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-api-bo@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESBO",
+    });
+    await startConversation(ana, "spaces-api-mention", {
+      message: "<@USPACESBO> look",
+      spaceId: space.id,
+    });
+    expect(
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ memberCount: 1, viewerIsMember: false });
+
     const joined = await send(bo, "PUT", `/${space.id}/members/me`);
     expect(joined.status).toBe(200);
     expect(spaceSchema.parse(await joined.json())).toMatchObject({
@@ -332,6 +346,17 @@ describe("Spaces API", () => {
       spaceId: space.id,
     });
     const oneOff = await startConversation(ana, "one-off");
+    // Only members post in the Space's Conversations, too.
+    expect(
+      (
+        await request(
+          bo,
+          "POST",
+          `/conversations/${encodeURIComponent(inSpace)}/messages`,
+          { idempotencyKey: "bo-in-ledger-plan", message: "Hi" },
+        )
+      ).status,
+    ).toBe(403);
 
     // Anyone can read the public Space's list. Rows and the detail name the
     // Space.
@@ -346,6 +371,11 @@ describe("Spaces API", () => {
       name: "Ledger",
     });
     expect((await moveTo(ana, thread, null)).status).toBe(409);
+    // A member's own feed lists the Space's work, with its Threads.
+    const anaRow = (await spaceFeed(ana, "")).find(
+      (row) => row.conversationId === inSpace,
+    );
+    expect(anaRow?.threads?.map((row) => row.conversationId)).toEqual([thread]);
 
     // A move writes only the root, and the child's detail token still
     // changes, so an open child detail refreshes its Space.
@@ -370,6 +400,18 @@ describe("Spaces API", () => {
         await (await moveTo(ana, oneOff, null)).json(),
       ),
     ).toEqual({ space: null });
+    expect(
+      (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
+    ).toEqual([inSpace]);
+
+    // Leave by the last subscriber never archives the Space's work.
+    const left = await request(
+      ana,
+      "POST",
+      `/conversations/${encodeURIComponent(inSpace)}/leave`,
+    );
+    expect(left.status).toBe(200);
+    expect(await left.json()).toEqual({ archivedAt: null });
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
@@ -716,14 +758,6 @@ describe("Spaces API", () => {
     expect(
       await resolveConversationConfiguration({ conversationId: thread }),
     ).toMatchObject({ "github.repo": "getsentry/junior" });
-    // An older root with no root id resolves its Space's values too.
-    await getDb()
-      .update(juniorConversations)
-      .set({ rootConversationId: null })
-      .where(eq(juniorConversations.conversationId, inSpace));
-    expect(
-      await resolveConversationConfiguration({ conversationId: inSpace }),
-    ).toMatchObject({ "github.repo": "getsentry/junior" });
 
     expect(
       await setting("spaces-config-ana@example.com", inSpace, {
@@ -844,11 +878,6 @@ describe("Spaces API", () => {
     });
     const outside = await startConversation(ana, "short-outside");
     const thread = await startThread(first, "local:spaces-archive-thread");
-    // A root from before `root_conversation_id` was set is archived too.
-    await getDb()
-      .update(juniorConversations)
-      .set({ rootConversationId: null })
-      .where(eq(juniorConversations.conversationId, second));
 
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
     expect(await spaceFeed(ana, space.id)).toEqual([]);

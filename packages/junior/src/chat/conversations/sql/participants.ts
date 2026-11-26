@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -129,9 +129,26 @@ export async function readMentionedUserIds(
   return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
 }
 
+/** Return whether a Conversation is a Space's Lead, whose Participants are its members. */
+export async function isLeadConversation(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const [lead] = await db
+    .select({ id: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.conversationId, conversationId),
+        eq(juniorConversations.kind, "lead"),
+      ),
+    );
+  return Boolean(lead);
+}
+
 /**
  * Subscribe the people that a person's Turn input Message mentions, when the
- * root is public. It is an Invite by mention (contract:
+ * root is public and not a Lead. It is an Invite by mention (contract:
  * `api/conversations/subscription.ts`), so an existing Participant keeps
  * their row and their unsubscribe.
  */
@@ -146,6 +163,8 @@ export async function recordMentionedParticipants(
     args.conversationId,
   );
   if (visibility !== "public") return;
+  // A person joins a Space on purpose, so a mention adds no member.
+  if (await isLeadConversation(executor.db(), rootConversationId)) return;
   const userIds = await readMentionedUserIds(
     executor,
     slackUserIds,
