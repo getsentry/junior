@@ -55,4 +55,6 @@ Do not list behaviors. The verification map in
 - [Slack](./slack.md): requests in Slack, and who can start work there.
 - [Spaces](./spaces.md): named, shared homes for related work, each with a
   Lead that starts and steers the work in it.
+- [To-dos](./todos.md): durable work that outlives a Turn, and who it
+  waits on.
 - [Tools](./tools.md): what the model can call, and what each call returns.

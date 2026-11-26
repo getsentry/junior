@@ -193,7 +193,7 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
-const USER_PROMPT_FAILED_TEXT =
+const MISSING_CONTEXT_TEXT =
   "The context of this plugin could not load for this Turn.";
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 
@@ -599,6 +599,19 @@ export function applyPluginFormatMarkdown(
   return transformed;
 }
 
+// Say that a plugin's Turn context is missing, so the model does not take
+// its absence as no state.
+function missingContextNote(
+  pluginName: string,
+): PluginPromptContributionContext {
+  return toPromptContributionContext({
+    hookName: "userPrompt",
+    index: 0,
+    message: { text: MISSING_CONTEXT_TEXT },
+    pluginName,
+  });
+}
+
 /** Collect request-scoped plugin prompt contributions. */
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
@@ -702,6 +715,7 @@ export async function getPluginUserPromptContributions(args: {
         logWarn("plugin.user_prompt.contribution_budget_exceeded", {
           "app.plugin.name": pluginName,
         });
+        contributions.push(missingContextNote(pluginName));
         continue;
       }
       totalChars += pluginContributionChars;
@@ -712,16 +726,7 @@ export async function getPluginUserPromptContributions(args: {
         "app.plugin.name": pluginName,
         "exception.message": safeErrorMessage(error),
       });
-      // Say that the context is missing, so the model does not take its
-      // absence as no state.
-      contributions.push(
-        toPromptContributionContext({
-          hookName: "userPrompt",
-          index: 0,
-          message: { text: USER_PROMPT_FAILED_TEXT },
-          pluginName,
-        }),
-      );
+      contributions.push(missingContextNote(pluginName));
     }
   }
   return contributions;
