@@ -4,7 +4,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  deploymentAnnotation,
   deploymentIdSchema,
+  deploymentResult,
   nonEmptyText,
   teamSchema,
   vercelRequest,
@@ -29,6 +31,16 @@ export const vercelDeploymentDeleteTool = definePluginTool({
     deleted: z.literal(true),
   }),
   async execute(input, _options, ctx) {
+    // Read the deployment first, so its Annotation keeps the facts that a
+    // deleted deployment no longer has.
+    const deployment = deploymentResult(
+      await vercelRequest(
+        ctx.egress,
+        "vercel.deployment.get",
+        `/v13/deployments/${encodeURIComponent(input.deployment_id)}?withGitRepoInfo=true`,
+        input.team,
+      ),
+    );
     await vercelRequest(
       ctx.egress,
       "vercel.deployment.delete",
@@ -40,6 +52,9 @@ export const vercelDeploymentDeleteTool = definePluginTool({
       target: "deployment" as const,
       deployment_id: input.deployment_id,
       deleted: true as const,
+      objectAnnotations: [
+        { ...deploymentAnnotation(deployment), status: "deleted" },
+      ],
     };
   },
 });

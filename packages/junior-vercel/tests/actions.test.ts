@@ -92,12 +92,16 @@ describe("Vercel actions", () => {
       Response.json({ alias: "qa.example.com" }),
       Response.json({ alias: "qa.example.com", deploymentId: "dpl_other" }),
     );
-    await expect(
-      tools["deploymentInspect"].execute?.(
-        { deployment: deployment.id, team: "team_example" },
-        options,
-      ),
-    ).resolves.toMatchObject({ state: "READY", deployment_id: deployment.id });
+    const inspected = await tools["deploymentInspect"].execute?.(
+      { deployment: deployment.id, team: "team_example" },
+      options,
+    );
+    expect(inspected).toMatchObject({
+      state: "READY",
+      deployment_id: deployment.id,
+    });
+    // A read links nothing to the Conversation.
+    expect(inspected).not.toHaveProperty("objectAnnotations");
     await expect(
       tools["aliasAssign"].execute?.(
         {
@@ -123,18 +127,31 @@ describe("Vercel actions", () => {
         deploymentId: null,
         redirect: "example.com",
       }),
+      Response.json(deployment),
       new Response(null, { status: 204 }),
     );
     await expect(
       tools["aliasInspect"].execute?.({ alias: "www.example.com" }, options),
     ).resolves.toMatchObject({ redirect: "example.com", deployment_id: null });
+    // The deleted deployment stays in Linked work with the deleted status.
     await expect(
       tools["deploymentDelete"].execute?.(
         { deployment_id: deployment.id, team: "team_other" },
         options,
       ),
-    ).resolves.toMatchObject({ deleted: true, deployment_id: deployment.id });
-    expect(fetch.mock.calls[1][0].request).toMatchObject({
+    ).resolves.toMatchObject({
+      deleted: true,
+      deployment_id: deployment.id,
+      objectAnnotations: [
+        {
+          key: deployment.id,
+          objectType: "deployment",
+          status: "deleted",
+          url: "https://example.vercel.app",
+        },
+      ],
+    });
+    expect(fetch.mock.calls[2][0].request).toMatchObject({
       method: "DELETE",
       url: `https://api.vercel.com/v13/deployments/${deployment.id}?teamId=team_other`,
     });
@@ -172,6 +189,7 @@ describe("Vercel actions", () => {
 
   it("does not retry uncertain writes or expose raw error payloads", async () => {
     const { tools, fetch } = fixture(
+      Response.json(deployment),
       new Response("private provider details", { status: 500 }),
     );
     await expect(
@@ -180,6 +198,6 @@ describe("Vercel actions", () => {
         options,
       ),
     ).rejects.toThrow("vercel.deployment.delete failed with HTTP 500");
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

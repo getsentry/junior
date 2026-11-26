@@ -294,8 +294,6 @@ async function resolveGoogleFileLink(
   };
 }
 
-const GOOGLE_FILE_DISPLAY_TYPES = new Set<string>(Object.values(DISPLAY_TYPES));
-
 /**
  * Docs, Sheets, and Slides links, and Drive file and folder links, that
  * resolve to document cards.
@@ -317,10 +315,5 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
   ],
   canView: canViewGoogleFileLink,
   objectTypes: ["document"],
-  // One tool reads Docs, Sheets, and Slides. No tool reads other files.
-  readTool: (object) =>
-    object.displayType && GOOGLE_FILE_DISPLAY_TYPES.has(object.displayType)
-      ? "readGoogleFile"
-      : undefined,
   resolve: resolveGoogleFileLink,
 };

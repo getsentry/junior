@@ -26,10 +26,22 @@ export async function saveObjectAnnotations(
 }
 
 /**
- * Save annotations from a successful plugin tool result and attach their cards.
- * An Annotation marks work that the Conversation did, so a read-only tool must
- * not return one: looking up an object does not link it.
+ * Refuse the Annotations of a read-only tool. An Annotation marks an object
+ * that the Conversation created, changed, or deleted. Looking up an object
+ * does not link it.
  */
+export function assertToolChangesObjects(
+  plugin: string,
+  readOnly: boolean,
+): void {
+  if (readOnly) {
+    throw new Error(
+      `Read-only ${plugin} tool returned objectAnnotations. Return them only from tools that change the object.`,
+    );
+  }
+}
+
+/** Save annotations from a successful plugin tool result and attach their cards. */
 export async function annotateToolResult(
   conversationId: string,
   plugin: string,
@@ -51,11 +63,7 @@ export async function annotateToolResult(
     !Array.isArray(details.objectAnnotations)
   )
     return result;
-  if (options.readOnly) {
-    throw new Error(
-      `Read-only ${plugin} tool returned objectAnnotations. Return them only from tools that change the object.`,
-    );
-  }
+  assertToolChangesObjects(plugin, options.readOnly);
   const cards = await saveObjectAnnotations(
     conversationId,
     plugin,

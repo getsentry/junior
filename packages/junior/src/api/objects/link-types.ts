@@ -37,8 +37,6 @@ export interface ObjectLinkType {
     viewer: User,
     urls: URL[],
   ): Promise<ReadonlyMap<string, ObjectLinkPrefetchOutcome> | void>;
-  /** The tool that reads the object live, for a Turn after an attach. */
-  readTool?(object: ObjectAnnotation): string | undefined;
   resolve(
     viewer: User,
     url: URL,

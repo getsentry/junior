@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 
 import {
   hashTokenAt,
-  linkedWorkUrls,
   referenceText,
   splitComposerText,
 } from "../src/client/conversations/composerReferences";
@@ -132,19 +131,4 @@ it("writes each reference as the token that it reads back from", () => {
   ).toEqual(references.map(referenceText));
   // A file is its name, which reads back as text.
   expect(referenceText({ kind: "file", name: "chart.png" })).toBe("chart.png");
-});
-
-it("lists the links that a message sends, once each", () => {
-  const conversation = `${ORIGIN}/conversations/a`;
-  const pull = "https://github.com/getsentry/junior/pull/3842";
-  const doc = "https://docs.google.com/document/d/1abc/edit";
-  const page = "https://example.com/notes";
-  // A memory or a person is not work. Any other link goes to the API, which
-  // attaches only a link that names an object.
-  expect(
-    linkedWorkUrls(
-      `<${conversation}|A> <${pull}|getsentry/junior#3842> <#C1|ops> <${ORIGIN}/memories/m|M> read ${doc}, then <${page}|the notes>. <${conversation}|A again> ${doc} dev@example.com`,
-      ORIGIN,
-    ),
-  ).toEqual([conversation, pull, doc, page]);
 });

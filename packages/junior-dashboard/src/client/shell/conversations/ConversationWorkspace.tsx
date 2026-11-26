@@ -33,7 +33,6 @@ import {
   type ConversationData,
 } from "../../conversations/queries";
 import { prefetchConversationDetail } from "../../conversations/conversationPrefetch";
-import { useAttachLinkedWork } from "../../conversations/composerLinkedWork";
 import {
   newConversationDraftId,
   NewConversationPending,
@@ -92,7 +91,6 @@ export function ConversationWorkspace(props: {
     useInboxConversations();
   const returnPath = useInboxReturnPath();
   const createConversation = useCreateConversation();
-  const attachLinkedWork = useAttachLinkedWork();
   const offerPushNotifications = usePushNotificationsTip();
   const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
   // A pending create shows only on home. Leaving home ends it, whether the
@@ -195,7 +193,6 @@ export function ConversationWorkspace(props: {
         // The page then opens with its transcript, not a skeleton. The
         // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
-        attachLinkedWork(accepted.conversationId, message);
         const left = visit?.aborted;
         if (left && selectedIdRef.current !== accepted.conversationId) {
           // The reply typed meanwhile waits in the new Conversation.

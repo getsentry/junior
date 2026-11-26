@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { removedCardSchema } from "@/chat/conversations/cards";
 import {
   deleteToolAutomation,
   requireToolAutomation,
@@ -7,8 +6,8 @@ import {
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
 import {
+  automationToolResult,
   automationToolResultSchema,
-  compactAutomation,
 } from "@/chat/automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
@@ -37,9 +36,7 @@ export const deleteAutomationToolDefinition = zodToolDefinition({
         ),
     })
     .strict(),
-  outputSchema: automationToolResultSchema
-    .omit({ objectCards: true })
-    .extend({ removedCards: z.array(removedCardSchema) }),
+  outputSchema: automationToolResultSchema,
 });
 
 /** Create the tool that deletes one Automation. */
@@ -54,14 +51,12 @@ export function createDeleteAutomationTool(
         await requireToolCaller(context),
         automationId,
       );
-      const deleted = await deleteToolAutomation(
+      // The card stays in Linked work with the deleted status.
+      return await automationToolResult(
         context.conversationId,
-        current,
+        await deleteToolAutomation(current),
+        catalog,
       );
-      return {
-        automation: compactAutomation(deleted, catalog),
-        removedCards: [{ plugin: "junior", key: automationId }],
-      };
     },
   });
 }

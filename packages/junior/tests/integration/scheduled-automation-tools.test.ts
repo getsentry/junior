@@ -24,6 +24,7 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createTools } from "@/chat/tool-support/create-tools";
@@ -966,7 +967,14 @@ describe("Scheduled automation tools", () => {
         id: taskId,
         status: "deleted",
       },
+      objectCards: [{ key: taskId, status: "deleted" }],
     });
+    // A deleted Automation stays in Linked work with the deleted status.
+    await expect(
+      listConversationAnnotations(dbModule.getDb(), context.conversationId!),
+    ).resolves.toMatchObject([
+      { key: taskId, objectType: "automation", status: "deleted" },
+    ]);
 
     const listed = await executeTool(
       createSearchAutomationsTool(context, NO_EVENTS),

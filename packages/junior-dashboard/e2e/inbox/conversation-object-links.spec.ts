@@ -680,13 +680,13 @@ test.describe("new UI", () => {
     });
   });
 
-  test("Linked work shows an attached link's title only to a viewer who can open it", async ({
+  test("Linked work shows a saved link's title only to a viewer who can open it", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize(desktop);
     const now = new Date().toISOString();
-    // An attached link saves no title: its label is the link.
+    // A saved link has no title: its label is the link.
     await withAnnotations(page, [
       {
         kind: "resource_link",

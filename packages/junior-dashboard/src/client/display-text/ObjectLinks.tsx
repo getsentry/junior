@@ -30,7 +30,8 @@ import { PersonInline, PersonReference } from "../components/PersonReference";
 const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
 const KnownObjectsContext = createContext<{
-  // The URL keys whose Annotation saves only the link, such as an Attach.
+  // The URL keys whose Annotation saves only the link, such as an older
+  // attached link.
   links: ReadonlySet<string>;
   objects: KnownObjects;
 }>({ links: new Set(), objects: new Map() });
@@ -83,7 +84,7 @@ export function KnownObjectsProvider(props: {
 /**
  * Return the saved object that a link points to, when one is known.
  * `linkOnly` is true when the Annotation saves only the link, such as an
- * Attach.
+ * older attached link.
  */
 export function useKnownObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;

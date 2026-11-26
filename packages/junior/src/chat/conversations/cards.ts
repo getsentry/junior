@@ -41,15 +41,14 @@ export function messageCardText(card: MessageCard): string {
   }
 }
 
-/** Identify a deleted object whose pending card must be omitted. */
-export const removedCardSchema = z
-  .object({ plugin: z.string().min(1), key: z.string().min(1) })
-  .strict();
-
 /** Store only the annotation identity with a Message. */
-export const messageCardRefSchema = removedCardSchema.extend({
-  kind: z.literal("object"),
-});
+export const messageCardRefSchema = z
+  .object({
+    kind: z.literal("object"),
+    plugin: z.string().min(1),
+    key: z.string().min(1),
+  })
+  .strict();
 export type MessageCardRef = z.output<typeof messageCardRefSchema>;
 
 /** Remove display facts before saving or reporting a Message card. */

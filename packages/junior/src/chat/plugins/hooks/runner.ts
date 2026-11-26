@@ -5,7 +5,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
+import {
+  assertToolChangesObjects,
+  saveObjectAnnotations,
+} from "@/chat/conversations/annotation-results";
 import { logInfo, logWarn } from "@/chat/logging";
 import {
   runAfterToolExecuteHooks,
@@ -45,6 +48,7 @@ export interface AfterMcpToolHookInput {
   content?: PluginMcpContent[];
   conversationId?: string;
   provider: string;
+  readOnly: boolean;
   structuredContent?: unknown;
   toolName: string;
 }
@@ -110,13 +114,15 @@ export function createPluginHookRunner(
         if (!hook) {
           continue;
         }
-        const annotations = tool.conversationId
-          ? createPluginAnnotations({
-              conversationId: tool.conversationId,
-              db: getDb(),
-              plugin: plugin.manifest.name,
-            })
-          : undefined;
+        // A read changes no object, so its hook gets no annotation store.
+        const annotations =
+          tool.conversationId && !tool.readOnly
+            ? createPluginAnnotations({
+                conversationId: tool.conversationId,
+                db: getDb(),
+                plugin: plugin.manifest.name,
+              })
+            : undefined;
         try {
           // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
           const result = await hook({
@@ -135,6 +141,7 @@ export function createPluginHookRunner(
             },
           });
           if (result && tool.conversationId) {
+            assertToolChangesObjects(plugin.manifest.name, tool.readOnly);
             cards.push(
               // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
               ...(await saveObjectAnnotations(

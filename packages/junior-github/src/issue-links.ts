@@ -219,10 +219,6 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
   objectTypes: ["task", "code_change"],
-  readTool: (object) =>
-    object.objectType === "code_change"
-      ? "github_getPullRequest"
-      : "github_getIssue",
   resolve: resolveLink,
   webPageFallback: true,
 };
@@ -266,7 +262,6 @@ export const githubPullRequestLinks: PluginObjectLinkDefinition = {
   objectTypes: ["code_change"],
   // A page of pull request cards reads GitHub in one query.
   prefetch: prefetchLinks,
-  readTool: () => "github_getPullRequest",
   resolve: resolveLink,
   webPageFallback: true,
 };

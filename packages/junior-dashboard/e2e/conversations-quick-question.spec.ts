@@ -211,14 +211,6 @@ test("asks a quick question about selected reply text", async ({
     "aria-placeholder",
     "Ask a follow-up…",
   );
-  // A reference in a quick question links no work to the parent.
-  const linked: string[] = [];
-  await page.route("**/api/conversations/*/annotations", async (route) => {
-    if (route.request().method() === "POST") {
-      linked.push(route.request().postDataJSON().url);
-    }
-    await route.fallback();
-  });
   await composer.fill("And then?");
   await composer.pressSequentially(" #3842");
   const pulls = page
@@ -249,7 +241,6 @@ test("asks a quick question about selected reply text", async ({
       text: "And then? <https://github.com/getsentry/junior/pull/3842|getsentry/junior#3842>",
     },
   ]);
-  expect(linked).toEqual([]);
   await screenshot(page, "conversation-quick-question-answered");
 
   let kept = 0;
