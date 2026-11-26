@@ -52,6 +52,8 @@ export interface PluginInboxSubjectKind {
    * unless they can see it. An item that would have nobody on it is not
    * added, and an open one closes.
    *
+   * Nobody can take the item, because a take cannot change the roles.
+   *
    * A dismiss removes only the person who dismissed the item. Junior first
    * calls the plugin's `inboxItemDismissed` hook, which removes their role
    * on the provider. When the hook fails, the dismiss fails and the person
@@ -104,6 +106,8 @@ export interface PluginReviewNotice {
    * upsert gave, such as a review request. Only they join the item, and
    * Junior pushes it to them. The others stay only when they are on the
    * open item already, so a person who left comes back only with a new ask.
+   * For a subject kind with `assigneeRoles`, each role holder is on the
+   * item, and this list only picks whom Junior pushes it to.
    */
   askedIdentityIds: string[];
   /** Markdown details for the person. */
