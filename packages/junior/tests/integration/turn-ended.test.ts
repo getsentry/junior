@@ -11,6 +11,7 @@ import {
 import type { EngineContext } from "@/core/engine-context";
 import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
+import { TurnFailedError } from "@/core/turn/failure";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
@@ -147,6 +148,47 @@ describe("advanceTurn at the end of a Turn", () => {
       userText("Did it send?"),
       storedReply(checked),
     ]);
+  });
+});
+
+describe("advanceTurn when host code fails the Turn", () => {
+  it("ends the Turn as failed on the first try, and runs no tool of the batch", async () => {
+    const executed: string[] = [];
+    harness = await createTurnHarness({
+      tools: () =>
+        Promise.resolve({
+          definitions: [sendTool(executed)],
+          hooks: {
+            beforeBatch: () =>
+              Promise.reject(
+                new TurnFailedError("tool_call_limit", {
+                  failureCode: "agent_run_failed",
+                  eventId: "event-1",
+                }),
+              ),
+          },
+          close: () => {},
+        }),
+    });
+    onTestFinished(() => harness.close());
+    await setModelReplies([
+      createAssistantMessage({
+        type: "toolCalls",
+        calls: [{ name: "send", arguments: {}, id: "call-1" }],
+      }),
+    ]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runUntilIdle();
+
+    expect(executed).toEqual([]);
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      attempts: 1,
+      endReason: "tool_call_limit",
+      failureCode: "agent_run_failed",
+      failureEventId: "event-1",
+    });
   });
 });
 
