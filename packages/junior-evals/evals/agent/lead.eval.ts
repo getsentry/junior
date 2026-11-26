@@ -296,8 +296,8 @@ describe("Lead child results", () => {
         ],
       },
     );
-    // Nothing depends on the claim yet, so a reply can only pass it on as
-    // the Thread's report.
+
+    // A reply before the check passes the claim on as the Thread's report.
     if (reported.replies.length > 0) {
       await expect(reported).toSatisfyJudge(
         RubricJudge,
@@ -316,13 +316,25 @@ describe("Lead child results", () => {
       webMessage("is the fix in? can I cut the craft release now?"),
     );
 
+    // The member's release decision depends on the claim, so a child reads
+    // the live state, when the result arrives or when the member asks.
     expect(
       [
-        ...completedToolCalls("startAgent", asked),
-        ...completedToolCalls("messageAgent", asked),
+        ...completedToolCalls("startAgent", reported, asked),
+        ...completedToolCalls("messageAgent", reported, asked),
       ].length,
     ).toBeGreaterThan(0);
-    expect(asked.replies.at(-1)?.text).toMatch(/merged/i);
+    await expect(asked).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The last reply says that ${MERGED_PULL_REQUEST} is merged, or that its state is not confirmed yet.`,
+        ],
+        fail: [
+          `The last reply states as a fact that ${MERGED_PULL_REQUEST} is held or waits on review.`,
+        ],
+      }),
+    );
   });
 
   // Alice asked for retries. Dropping the dead-letter queue changes what
