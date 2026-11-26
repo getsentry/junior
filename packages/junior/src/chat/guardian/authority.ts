@@ -20,8 +20,10 @@ import type { ToolActionProposal } from "@/chat/guardian/proposal";
 /**
  * How a line of the person reaches the Run.
  *
- * - `instruction`: the request that created the Watch whose Event started
- *   this Turn (`follows-instruction`).
+ * - `instruction`: the request that this work serves when the Run's own
+ *   window does not hold it, such as the request that created a Watch or
+ *   an Automation, or one that a long thread pushed out of the window
+ *   (`follows-instruction`).
  * - `linked-account`: a message from the person's linked account, also
  *   when an Event delivers it (`linked-account`).
  *

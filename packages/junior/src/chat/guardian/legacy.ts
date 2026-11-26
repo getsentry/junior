@@ -20,7 +20,7 @@ import type {
 } from "@/chat/guardian/proposal";
 
 const VIA_NOTES: Record<AuthorityRecord["lines"][number]["via"], string> = {
-  instruction: "the request that created this Watch",
+  instruction: "the request that started this work",
   "linked-account": "the person's linked account",
 };
 
