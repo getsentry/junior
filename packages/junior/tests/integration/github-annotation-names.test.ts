@@ -1,6 +1,6 @@
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -683,6 +683,35 @@ describe("a GitHub issue of a renamed repository", () => {
       expect.objectContaining({
         key: "getsentry/junior-next#4254",
         subjectId: "9999000",
+      }),
+    ]);
+
+    // With no row of its own here, the issue takes its key's stale row.
+    await getDb()
+      .delete(juniorConversationAnnotations)
+      .where(
+        and(
+          eq(
+            juniorConversationAnnotations.conversationId,
+            slackParentConversationId,
+          ),
+          eq(juniorConversationAnnotations.key, "getsentry/junior#4254"),
+        ),
+      );
+    await runTool(
+      "github_updateIssue",
+      { issue: 4254, repo: "getsentry/junior-next", state: "open" },
+      {
+        html_url: "https://github.com/getsentry/junior-next/issues/4254",
+        id: 4_254_000,
+        number: 4254,
+        state: "open",
+      },
+    );
+    expect(await annotationsOf(slackParentConversationId)).toEqual([
+      expect.objectContaining({
+        key: "getsentry/junior-next#4254",
+        subjectId: "4254000",
       }),
     ]);
   });

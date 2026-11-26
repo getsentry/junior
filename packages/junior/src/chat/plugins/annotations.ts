@@ -209,53 +209,54 @@ export async function upsertPluginAnnotation(
         action: sql`case when ${table.action} = 'created' then 'created' else ${args.action} end`,
       }
     : undefined;
-  const saved = await db
-    .with(conversationDetailTouch(db, [args.conversationId]))
-    .insert(table)
-    .values({
-      action: args.action,
-      annotation,
-      conversationId: args.conversationId,
-      createdAt: now,
-      key: parsed.key,
-      kind: parsed.kind,
-      plugin: args.plugin,
-      subjectId: subject?.id,
-      subjectKind: subject?.kind,
-      title,
-      updatedAt: now,
-      url: parsed.url,
-    })
-    .onConflictDoUpdate({
-      target: [table.conversationId, table.plugin, table.kind, table.key],
-      set: {
+  // With `guard`, a row of another object keeps its key and subject.
+  const save = async (guard: boolean) =>
+    await db
+      .with(conversationDetailTouch(db, [args.conversationId]))
+      .insert(table)
+      .values({
+        action: args.action,
         annotation,
+        conversationId: args.conversationId,
+        createdAt: now,
+        key: parsed.key,
+        kind: parsed.kind,
+        plugin: args.plugin,
+        subjectId: subject?.id,
+        subjectKind: subject?.kind,
         title,
         updatedAt: now,
         url: parsed.url,
-        ...(subject
-          ? { subjectId: subject.id, subjectKind: subject.kind }
-          : undefined),
-        ...action,
-      },
-      // A row of another object keeps its key and subject.
-      ...(subject
-        ? {
-            setWhere: or(
-              isNull(table.subjectId),
-              and(
-                eq(table.subjectKind, subject.kind),
-                eq(table.subjectId, subject.id),
+      })
+      .onConflictDoUpdate({
+        target: [table.conversationId, table.plugin, table.kind, table.key],
+        set: {
+          annotation,
+          title,
+          updatedAt: now,
+          url: parsed.url,
+          ...(subject
+            ? { subjectId: subject.id, subjectKind: subject.kind }
+            : undefined),
+          ...action,
+        },
+        ...(guard && subject
+          ? {
+              setWhere: or(
+                isNull(table.subjectId),
+                and(
+                  eq(table.subjectKind, subject.kind),
+                  eq(table.subjectId, subject.id),
+                ),
               ),
-            ),
-          }
-        : undefined),
-    })
-    .returning({ key: table.key });
-  if (saved.length > 0 || !subject) return;
+            }
+          : undefined),
+      })
+      .returning({ key: table.key });
+  if ((await save(true)).length > 0 || !subject) return;
   // Another object has the new key here, so the rekey left this object on
   // its old key. The object's row there gets the new content.
-  await db
+  const updated = await db
     .with(conversationDetailTouch(db, [args.conversationId]))
     .update(table)
     .set({ title, updatedAt: now, url: parsed.url, ...action })
@@ -267,7 +268,12 @@ export async function upsertPluginAnnotation(
         eq(table.subjectKind, subject.kind),
         eq(table.subjectId, subject.id),
       ),
-    );
+    )
+    .returning({ key: table.key });
+  if (updated.length > 0) return;
+  // This object has no row here yet. The provider gives it the key now, so
+  // the row of the other object there is stale, and this object takes it.
+  await save(false);
 }
 
 // A move at the provider, such as a repository rename, changes the key of
