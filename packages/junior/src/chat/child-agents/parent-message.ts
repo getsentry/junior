@@ -290,6 +290,12 @@ export function isSavedParentMessage(message: {
     // Legacy read: Messages saved before `fromParentAgent` existed mark a
     // parent message only by this author id prefix. `savedParentMessageSql`
     // reads it the same way. Read the prefix nowhere else.
+    // TODO: Remove this read and the one in `savedParentMessageSql` when no
+    // saved Message has the prefix without `fromParentAgent`. Retention
+    // purges a tree once its last activity is older than
+    // `CONTENT_RETENTION_MS` (90 days public, 14 days private), so check for
+    // such rows no earlier than 90 days after this field shipped. A tree that
+    // stays active keeps its old Messages.
     (typeof message.authorUserId === "string" &&
       message.authorUserId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX))
   );
