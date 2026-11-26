@@ -71,9 +71,10 @@ import {
  * - Given a private Conversation, when a Participant Invites a person, then
  *   that person becomes a Participant and can read it. Only Invite does
  *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. A private Space owns its audience, and a
- *   Slack-backed private Conversation follows its Slack channel, so both
- *   refuse Invite, with the same error as a missing Conversation.
+ *   is always an explicit act. In a private Space the root is its Lead, so
+ *   Invite adds a member, as a member can on the Space. A Slack-backed
+ *   private Conversation follows its Slack channel, so it refuses Invite,
+ *   with the same error as a missing Conversation.
  * - Given a Participant, when they Leave, then they unsubscribe. In a
  *   private Conversation with its own Participant list, their row is also
  *   deleted, so they lose access until someone Invites them again.
@@ -244,7 +245,9 @@ export async function leaveConversation(
           ),
         )
         .limit(2);
-      if (members.length === 1) {
+      // A Leave that raced another Leave by the same person finds only the
+      // other member, and its delete changes nothing.
+      if (members.length === 1 && members[0]!.userId === viewer.id) {
         throwApiError(409, "The last member can't leave a private Space.");
       }
     }
