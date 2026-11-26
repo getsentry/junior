@@ -26,7 +26,7 @@ export async function readConversationRoot(conversationId: string): Promise<
       root,
       eq(
         root.conversationId,
-        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+        sql`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`,
       ),
     )
     .where(eq(juniorConversations.conversationId, conversationId))

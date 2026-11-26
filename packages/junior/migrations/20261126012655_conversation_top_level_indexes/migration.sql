@@ -1,0 +1,2 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_top_level_idx" ON "junior_conversations" ("top_level_conversation_id");--> statement-breakpoint
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_top_level_lookup_idx" ON "junior_conversations" ("conversation_id","top_level_conversation_id");

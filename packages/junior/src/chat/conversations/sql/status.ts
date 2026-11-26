@@ -33,7 +33,7 @@ export interface ConversationStatusColumns {
   kind: AnyPgColumn;
   location: AnyPgColumn;
   parentConversationId: AnyPgColumn;
-  rootConversationId: AnyPgColumn;
+  topLevelConversationId: AnyPgColumn;
   stoppedAt: AnyPgColumn;
 }
 
@@ -119,7 +119,7 @@ function conversationStarterUserIdSql(
     starterRoot.actorIdentityId,
   )} where ${eq(
     starterRoot.conversationId,
-    sql`coalesce(${conversation.rootConversationId}, ${conversation.conversationId})`,
+    sql`coalesce(${conversation.topLevelConversationId}, ${conversation.conversationId})`,
   )})`;
 }
 

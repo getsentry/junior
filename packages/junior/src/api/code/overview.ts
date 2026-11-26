@@ -119,7 +119,7 @@ async function readTreeCosts(conversationIds: readonly string[]) {
     ? await db
         .select({
           conversationId: conversations.conversationId,
-          rootId: sql<string>`coalesce(${conversations.rootConversationId}, ${conversations.conversationId})`,
+          rootId: sql<string>`coalesce(${conversations.topLevelConversationId}, ${conversations.conversationId})`,
         })
         .from(conversations)
         .where(inArray(conversations.conversationId, ids))
@@ -135,11 +135,11 @@ async function readTreeCosts(conversationIds: readonly string[]) {
             sql<number>`coalesce(sum(${conversationUsageCostExpr(conversations.usage)}), 0)`.mapWith(
               Number,
             ),
-          rootId: conversations.rootConversationId,
+          rootId: conversations.topLevelConversationId,
         })
         .from(conversations)
-        .where(inArray(conversations.rootConversationId, rootIds))
-        .groupBy(conversations.rootConversationId)
+        .where(inArray(conversations.topLevelConversationId, rootIds))
+        .groupBy(conversations.topLevelConversationId)
     : [];
   const costOf = new Map(trees.map((tree) => [tree.rootId, tree.costUsd]));
   return (linked: readonly string[]) => {

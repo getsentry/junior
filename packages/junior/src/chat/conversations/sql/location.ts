@@ -2,6 +2,7 @@ import { destinationVisibility } from "./destination-upsert";
 import { fillMissingTreeVisibility } from "./privacy";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { topLevelConversation } from "./listed";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -136,7 +137,7 @@ export async function setFirstConversationLocation(
     .where(
       and(
         eq(juniorConversations.conversationId, args.conversationId),
-        isNull(juniorConversations.parentConversationId),
+        topLevelConversation(),
         isNull(juniorConversations.location),
       ),
     )

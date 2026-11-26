@@ -125,7 +125,7 @@ export function treeAwaitsAuthorization(
   return sql<boolean>`exists (
     select 1 from ${juniorConversations} as ${tree}
     where (${tree.conversationId} = ${rootConversationId}
-        or ${tree.rootConversationId} = ${rootConversationId})
+        or ${tree.topLevelConversationId} = ${rootConversationId})
       and ${awaitsAuthorization(tree.conversationId)}
   )`;
 }

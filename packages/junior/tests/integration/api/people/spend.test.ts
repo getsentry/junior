@@ -261,6 +261,7 @@ describe("personal spend API", () => {
         executionStatus: "idle",
         lastActivityAt: now,
         rootConversationId: "local:system-spend",
+        topLevelConversationId: "local:system-spend",
         schemaVersion: 1,
         source: "local",
         updatedAt: now,

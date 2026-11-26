@@ -463,7 +463,10 @@ describe("dashboard canonical event reporting", () => {
     await appendVisibleHistory(malformedTopLevel, "Malformed private answer");
     await getDb()
       .update(juniorConversations)
-      .set({ rootConversationId: foreignRoot })
+      .set({
+        rootConversationId: foreignRoot,
+        topLevelConversationId: foreignRoot,
+      })
       .where(eq(juniorConversations.conversationId, malformedTopLevel));
 
     const foreignViewer = await resolveViewerUser("foreign-owner@example.com");

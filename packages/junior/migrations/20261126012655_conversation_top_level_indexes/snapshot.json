@@ -1,0 +1,105 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7c660a33-16a5-4dba-883a-541a844620b7",
+  "prevIds": ["dc6ef38e-7241-46cb-b915-a5e12cc7b689"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_top_level_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_top_level_idx",
+        "n|idx|public.junior_conversations_top_level_idx",
+        "e|idx|public.junior_conversations_top_level_idx",
+        "n|rel|public.junior_conversations_top_level_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.top_level_conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_top_level_lookup_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_top_level_lookup_idx",
+        "n|idx|public.junior_conversations_top_level_lookup_idx",
+        "e|idx|public.junior_conversations_top_level_lookup_idx",
+        "n|rel|public.junior_conversations_top_level_lookup_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.conversation_id",
+        "n|col|public.junior_conversations.top_level_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_top_level_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "top_level_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_top_level_lookup_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "top_level_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

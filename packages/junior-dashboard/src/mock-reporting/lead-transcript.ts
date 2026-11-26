@@ -83,24 +83,38 @@ export function mockLeadEvents(
         calls: [
           {
             toolCallId,
-            name: "startConversation",
+            name: "startAgent",
             status: "running",
             startedAt,
             startedSeq,
-            input: { task: start.task, title: start.title },
+            input: { kind: "thread", task: start.task, title: start.title },
           },
         ],
+      });
+      const childStartedAt = new Date(step()).toISOString();
+      const childStartedSeq = events.length;
+      push(at, {
+        type: "subagent",
+        startedSeq: childStartedSeq,
+        startedAt: childStartedAt,
+        childConversationId: start.conversationId,
+        childKind: "thread",
+        subagentKind: "agent",
+        task: start.task,
+        title: start.title,
+        parentToolCallId: toolCallId,
+        status: "running",
       });
       push(step(), {
         type: "tool_calls",
         calls: [
           {
             toolCallId,
-            name: "startConversation",
+            name: "startAgent",
             status: "completed",
             startedAt,
             startedSeq,
-            startedConversationId: start.conversationId,
+            output: { conversation_id: start.conversationId },
           },
         ],
       });

@@ -15,8 +15,9 @@ export type ConversationTreeNode = {
 };
 
 /**
- * Read every Conversation in the trees of the given roots. Every descendant
- * shares `root_conversation_id`, so one indexed read covers any depth.
+ * Read every Conversation in the work of the given top-level Conversations.
+ * Each one shares `top_level_conversation_id`, so one indexed read covers any
+ * depth.
  */
 export async function readConversationTrees(
   db: JuniorDatabase,
@@ -29,11 +30,13 @@ export async function readConversationTrees(
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
-      rootConversationId: juniorConversations.rootConversationId,
+      rootConversationId: juniorConversations.topLevelConversationId,
     })
     .from(juniorConversations)
     .where(
-      inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
+      inArray(juniorConversations.topLevelConversationId, [
+        ...rootConversationIds,
+      ]),
     );
   return new Map(
     rows.map((row) => [
@@ -137,7 +140,7 @@ export async function restoreArchivedPath(
     .select({
       archivedAt: juniorConversations.archivedAt,
       parentConversationId: juniorConversations.parentConversationId,
-      rootConversationId: juniorConversations.rootConversationId,
+      rootConversationId: juniorConversations.topLevelConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))

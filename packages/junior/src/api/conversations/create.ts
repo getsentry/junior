@@ -36,6 +36,7 @@ import {
   canAddConversationMessages,
   readConversationAccessFromSql,
 } from "./access";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { requireSpaceForWork } from "./space";
 import { inviteMentionedPeople } from "./subscription";
 
@@ -128,6 +129,10 @@ export async function createConversationForViewer(
     throwApiError(400, `A conversation in this Space is ${space.visibility}.`);
   }
   const visibility = space?.visibility ?? body.visibility;
+  // Work in a Space starts as a child of its Lead.
+  const lead = space
+    ? await getSpaceLead({ member: viewer, space })
+    : undefined;
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -151,7 +156,7 @@ export async function createConversationForViewer(
         uploads,
         ...(body.title ? { title: body.title } : undefined),
         ...(visibility ? { visibility } : undefined),
-        ...(space ? { spaceId: space.id } : undefined),
+        ...(lead ? { leadConversationId: lead.conversationId } : undefined),
       },
       {
         conversationStore: getConversationStore(),

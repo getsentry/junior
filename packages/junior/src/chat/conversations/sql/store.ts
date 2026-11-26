@@ -1,7 +1,10 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { ownLocalDestination } from "@/chat/conversations/destination";
+import { topLevelConversation } from "./listed";
+import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { parseDestination, sameDestination } from "@/chat/destination";
+import { sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
 import {
   readConversationRunMetrics,
@@ -20,7 +23,6 @@ import type {
   ConversationRunMetrics,
   ChildConversationKind,
   ConversationSource,
-  ConversationStatus,
   ConversationStore,
   TopLevelConversationKind,
 } from "../store";
@@ -53,8 +55,17 @@ import {
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
 import {
+  destinationFromRow,
+  executionStatusFromValue,
+  msFromDate,
+  requiredMsFromDate,
+  sourceFromValue,
+} from "./row-decode";
+import {
+  childrenAreTopLevel,
   copiesRootVisibility,
   kindAllowsParent,
+  storesSpace,
 } from "@/chat/conversations/kind-behavior";
 import {
   fillMissingTreeVisibility,
@@ -68,7 +79,24 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
+  parent: { destinationId: string | null } | null;
+  /** The Space of the tree root. Only a Lead stores one. */
+  treeSpaceId: string | null;
 }
+
+const parentConversation = alias(juniorConversations, "parent_conversation");
+
+/** Columns of the parent that `conversationFromRow` reads. */
+const parentReadColumns = {
+  destinationId: parentConversation.destinationId,
+};
+
+/** The Space of the row's tree root, for `conversationFromRow`. */
+const treeSpaceIdColumn = sql<string | null>`(
+  select tree_root.space_id
+  from junior_conversations tree_root
+  where tree_root.conversation_id = ${juniorConversations.rootConversationId}
+)`;
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
@@ -90,74 +118,8 @@ function now(): number {
 function dateFromMs(ms: number): Date {
   return new Date(ms);
 }
-function msFromDate(
-  value: Date | string | null | undefined,
-): number | undefined {
-  if (value === null || value === undefined) {
-    return undefined;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return date.getTime();
-}
-
-function requiredMsFromDate(value: Date | string): number {
-  const ms = msFromDate(value);
-  if (typeof ms !== "number" || Number.isNaN(ms)) {
-    throw new Error("Conversation record timestamp is invalid");
-  }
-  return ms;
-}
-
 function tenantId(value: string | undefined): string {
   return value ?? "";
-}
-
-function sourceFromValue(value: unknown): ConversationSource | undefined {
-  if (
-    value === "api" ||
-    value === "internal" ||
-    value === "local" ||
-    value === "plugin" ||
-    value === "event" ||
-    value === "scheduler" ||
-    value === "slack" ||
-    value === "web"
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (
-    value === "failed" ||
-    value === "idle" ||
-    value === "paused" ||
-    value === "pending" ||
-    value === "running"
-  ) {
-    return value;
-  }
-  throw new Error("Conversation record execution status is invalid");
-}
-
-function destinationFromRow(
-  destination: DestinationRow | null,
-): Destination | undefined {
-  const value =
-    destination?.provider === "slack"
-      ? {
-          platform: "slack",
-          teamId: destination.providerTenantId,
-          channelId: destination.providerDestinationId,
-        }
-      : destination?.provider === "local"
-        ? {
-            platform: "local",
-            conversationId: destination.providerDestinationId,
-          }
-        : undefined;
-  return parseDestination(value);
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
@@ -212,6 +174,17 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     readRow.destination,
     sessionSource,
   );
+  const { parent } = readRow;
+  // A Conversation is in the Space of its tree. Only a Lead stores it.
+  const spaceId = row.spaceId ?? readRow.treeSpaceId;
+  // Only a Slack Location is a Location of its own. A web child of a Lead
+  // has its own Destination, but no Location.
+  const ownLocation =
+    parent !== null &&
+    row.location !== null &&
+    row.destinationId !== parent.destinationId
+      ? (true as const)
+      : undefined;
 
   return {
     schemaVersion: 1,
@@ -229,10 +202,11 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.rootConversationId
-      ? { rootConversationId: row.rootConversationId }
+    ...(row.topLevelConversationId
+      ? { topLevelConversationId: row.topLevelConversationId }
       : undefined),
-    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
+    ...(spaceId ? { spaceId } : undefined),
+    ...(ownLocation ? { ownLocation } : undefined),
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
@@ -364,7 +338,10 @@ export class SqlStore implements ConversationStore {
             );
           }
           // A child stores its parent's Destination row and Location, so it
-          // reads its Location from its own row, the same as a root.
+          // reads its Location from its own row, the same as a root. A
+          // Lead's child gets its own Destination, as a web root does, so it
+          // shares no audience with the Space once it leaves.
+          const toLead = childrenAreTopLevel(parentRow.conversation.kind);
           const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
@@ -374,12 +351,23 @@ export class SqlStore implements ConversationStore {
             }),
             kind: args.kind,
             parentConversationId: args.parentConversationId,
-            ...(location ? { location } : undefined),
+            ...(toLead
+              ? {
+                  destination: ownLocalDestination(args.childConversationId),
+                }
+              : location
+                ? { location }
+                : undefined),
             ...(args.title ? { title: args.title } : undefined),
           };
           await this.upsertConversation({
             conversation: child,
-            destinationId: parentRow.conversation.destinationId ?? undefined,
+            ...(toLead
+              ? undefined
+              : {
+                  destinationId:
+                    parentRow.conversation.destinationId ?? undefined,
+                }),
           });
         },
       );
@@ -589,6 +577,8 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        parent: parentReadColumns,
+        treeSpaceId: treeSpaceIdColumn,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -600,9 +590,16 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      // Conversations with a parent are excluded from top-level listings and
-      // purge with their root on the root's visibility window.
-      .where(isNull(juniorConversations.parentConversationId))
+      .leftJoin(
+        parentConversation,
+        eq(
+          parentConversation.conversationId,
+          juniorConversations.parentConversationId,
+        ),
+      )
+      // Only tree roots. Other children are left out of top-level listings
+      // and purge with their root on the root's visibility window.
+      .where(topLevelConversation())
       .orderBy(
         desc(juniorConversations.lastActivityAt),
         asc(juniorConversations.conversationId),
@@ -725,6 +722,8 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        parent: parentReadColumns,
+        treeSpaceId: treeSpaceIdColumn,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -736,6 +735,13 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(
+        parentConversation,
+        eq(
+          parentConversation.conversationId,
+          juniorConversations.parentConversationId,
+        ),
+      )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
   }
@@ -803,13 +809,36 @@ export class SqlStore implements ConversationStore {
       this.executor,
       conversation,
     );
-    const rootConversationId = conversation.parentConversationId
-      ? sql<string | null>`(
-          select parent.root_conversation_id
+    // A child is in its parent's tree. A Lead's child is top-level Space
+    // work, so the state of its own work keys on it.
+    const [rootConversationId, topLevelConversationId] =
+      conversation.parentConversationId
+        ? [
+            sql<string | null>`(
+              select parent.root_conversation_id
+              from junior_conversations parent
+              where parent.conversation_id = ${conversation.parentConversationId}
+            )`,
+            sql<string | null>`(
+              select case when parent.kind = 'lead' then ${conversation.conversationId} else parent.top_level_conversation_id end
+              from junior_conversations parent
+              where parent.conversation_id = ${conversation.parentConversationId}
+            )`,
+          ]
+        : [conversation.conversationId, conversation.conversationId];
+    // A Lead's children are its child agents, so each stores an agent
+    // config. A spawn writes its own config after this.
+    const agentConfig = conversation.parentConversationId
+      ? sql`(
+          select case when parent.kind = 'lead' then '{}'::jsonb end
           from junior_conversations parent
           where parent.conversation_id = ${conversation.parentConversationId}
         )`
-      : conversation.conversationId;
+      : null;
+    // Only a Lead stores its Space. A Lead's child reads it from the Lead.
+    const spaceId = storesSpace(conversation.kind)
+      ? (conversation.spaceId ?? null)
+      : null;
     const db = this.executor.db();
     // Reads the row as it was before this statement, so a root that first
     // gets a visibility or an Actor here knows it.
@@ -860,8 +889,10 @@ export class SqlStore implements ConversationStore {
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
         kind: conversation.kind,
+        agentConfig,
         rootConversationId,
-        spaceId: conversation.spaceId ?? null,
+        topLevelConversationId,
+        spaceId,
         visibility,
       })
       .onConflictDoUpdate({
@@ -887,9 +918,10 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          topLevelConversationId: sql`coalesce(${juniorConversations.topLevelConversationId}, excluded.top_level_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
-          // Only a new root sends a Space. `setConversationSpace` moves it.
+          // Only a new Lead sends a Space.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
           // A write fills a missing visibility and never changes a known
           // one. Only `setConversationVisibility` does.
@@ -900,13 +932,13 @@ export class SqlStore implements ConversationStore {
       .returning({
         actorIdentityId: juniorConversations.actorIdentityId,
         parentConversationId: juniorConversations.parentConversationId,
-        rootConversationId: juniorConversations.rootConversationId,
+        topLevelConversationId: juniorConversations.topLevelConversationId,
         visibility: juniorConversations.visibility,
         filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
         setActor: sql<boolean>`not exists (select 1 from ${prior} where ${prior.actorIdentityId} is not null)`,
       });
     const row = rows[0];
-    if (!row?.rootConversationId) {
+    if (!row?.topLevelConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
     if (
@@ -916,26 +948,30 @@ export class SqlStore implements ConversationStore {
     ) {
       await fillMissingTreeVisibility(
         this.executor,
-        row.rootConversationId,
+        row.topLevelConversationId,
         row.visibility,
       );
     }
     // A conflict keeps the stored parent. A history append can create the row
-    // first under the event lock, so a new child can find a root row here.
+    // first under the event lock, so a new child can find a root row here. A
+    // top-level Conversation that moved between Spaces has a new parent, so
+    // a write from before the move keeps the stored one.
     if (
-      row.parentConversationId !== (conversation.parentConversationId ?? null)
+      row.parentConversationId !==
+        (conversation.parentConversationId ?? null) &&
+      row.topLevelConversationId !== conversation.conversationId
     ) {
       throw new Error(
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // The root Actor is a Participant before they author a message. Only the
-    // write that sets the Actor adds them, so a later Turn does not undo
-    // their Leave.
+    // The top-level Actor is a Participant before they author a message.
+    // Only the write that sets the Actor adds them, so a later Turn does not
+    // undo their Leave.
     if (
       row.actorIdentityId &&
       row.setActor &&
-      row.parentConversationId === null
+      row.topLevelConversationId === conversation.conversationId
     ) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

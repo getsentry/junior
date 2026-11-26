@@ -1,0 +1,1 @@
+DROP INDEX "junior_conversations_root_lookup_idx";

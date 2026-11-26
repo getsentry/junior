@@ -22,10 +22,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Visibility**: `public` or `private`, stored on each Conversation. Anyone
   can read a public Conversation. Only its Participants can read a private
   one. Every Conversation in a tree has its root's visibility.
-- **Lead**: a Space's public top-level Conversation that finds, starts,
-  and steers the Space's other Conversations. Each Space has one. It has no
-  child agents and does no work itself. `startConversation` starts a root in
-  the Space for the Member who asked.
+- **Lead**: a Space's Conversation that finds, starts, and steers the
+  Space's other Conversations. Each Space has one, and only the Lead stores
+  its Space. The Space's other Conversations are its child agents, and the
+  Lead is the root of their tree. It does no work itself.
+- **Top-level Conversation**: a Conversation with no parent, or a child of a
+  Lead. Lists show these, and Participants, pins, and other state of one
+  piece of work key on its id (`top_level_conversation_id`). Its child
+  agents store the same id.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -34,8 +38,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. It sets who manages an agent, not access.
+- **Team**: an agent and its child agents. A Lead's child agents are the
+  Conversations in its Space. It sets who manages an agent, not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
@@ -55,8 +59,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation is delivered to. The Run carries it. It grants no delivery or
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent.
+  assistant Messages are stored. Only a Conversation that has its own
+  Location delivers to it, such as a root or a Slack Conversation that moved
+  into a Space. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation status**: what one Conversation's own work needs, shared
@@ -85,9 +90,11 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. A Participant is active until they
-  Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
+- **Participant**: a User who is the Actor of a Turn in a top-level
+  Conversation or its children, or who was invited to it. A Participant is
+  active until they Leave; an inactive Participant keeps access but leaves
+  the active feed. Access, feeds, and defaults that need people use
+  Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
@@ -200,9 +207,9 @@ Canonical words for Junior code and docs. One concept, one word.
   stopped result, reaches the parent. Do not say "Agent invocation"; it is the
   retired name.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
-  top-level agent (the agent of a root Conversation). To a child it is the
-  child's instruction: a Parent message that starts work or steers a running
-  Turn.
+  top-level agent (the agent of a top-level Conversation). To a child it is
+  the child's instruction: a Parent message that starts work or steers a
+  running Turn.
   To a parent or a top-level agent it is an Event Inbound message. The
   agent's own text gives no user approval. A person's own words that it
   passes on, linked to where the person wrote them, count as that person's

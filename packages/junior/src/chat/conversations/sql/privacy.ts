@@ -1,4 +1,5 @@
 import { and, eq, isNull, type SQL } from "drizzle-orm";
+import { topLevelConversation } from "./listed";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -29,16 +30,19 @@ async function readRoot(
     .select({
       requestedConversationId: juniorConversations.conversationId,
       requestedParentConversationId: juniorConversations.parentConversationId,
-      requestedRootConversationId: juniorConversations.rootConversationId,
+      requestedRootConversationId: juniorConversations.topLevelConversationId,
       rootConversationId: privacyRoot.conversationId,
       rootDestinationId: privacyRoot.destinationId,
       rootParentConversationId: privacyRoot.parentConversationId,
-      rootRootConversationId: privacyRoot.rootConversationId,
+      rootRootConversationId: privacyRoot.topLevelConversationId,
     })
     .from(juniorConversations)
     .leftJoin(
       privacyRoot,
-      eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
+      eq(
+        privacyRoot.conversationId,
+        juniorConversations.topLevelConversationId,
+      ),
     )
     .where(eq(juniorConversations.conversationId, conversationId));
   const row = rows[0];
@@ -111,7 +115,7 @@ export async function setConversationVisibility(
     .where(
       and(
         eq(juniorConversations.conversationId, rootConversationId),
-        isNull(juniorConversations.parentConversationId),
+        topLevelConversation(),
       ),
     );
   if (!root) return false;
@@ -119,7 +123,7 @@ export async function setConversationVisibility(
   await db
     .update(juniorConversations)
     .set({ visibility, detailVersion: nextDetailVersion })
-    .where(eq(juniorConversations.rootConversationId, rootConversationId));
+    .where(eq(juniorConversations.topLevelConversationId, rootConversationId));
   return true;
 }
 
@@ -143,7 +147,7 @@ export async function fillMissingTreeVisibility(
     .set({ visibility, detailVersion: nextDetailVersion })
     .where(
       and(
-        eq(juniorConversations.rootConversationId, rootConversationId),
+        eq(juniorConversations.topLevelConversationId, rootConversationId),
         isNull(juniorConversations.visibility),
       ),
     );

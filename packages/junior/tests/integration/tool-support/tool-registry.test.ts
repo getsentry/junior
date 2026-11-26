@@ -411,6 +411,8 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "archiveAgent",
+        "listAgents",
         "listWatches",
         "messageAgent",
         "noReply",
@@ -420,7 +422,8 @@ describe("static tool registry", () => {
         "searchEventTypes",
         "searchInboxItems",
         "setConfiguration",
-        "startConversation",
+        "startAgent",
+        "stopAgent",
         "stopWatchingResources",
         "systemTime",
         // `updateUserCustomization` is listed only with its experiment on.
@@ -435,12 +438,15 @@ describe("static tool registry", () => {
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "listAgents",
         "listWatches",
+        "messageAgent",
         "readConversationEvent",
         "searchConversationEvents",
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
+        "startAgent",
         "stopWatchingResources",
       ]),
     );

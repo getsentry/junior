@@ -15,6 +15,7 @@ import {
 } from "@/chat/agent-invocations/agent-update";
 import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
 import { getPersonStopTurnId } from "@/chat/agent-invocations/ids";
+import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
 import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -33,6 +34,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { renderTaskInput } from "@/chat/task-input";
 import {
   isAgentResourceType,
+  starterWatchId,
   type MatchedWatch,
   type UpdateKey,
 } from "./watch-events";
@@ -44,6 +46,17 @@ const SUMMARIES: Record<AgentUpdateStatus, string> = {
   stopped: "The conversation stopped.",
   waiting: "The conversation waits on a person.",
 };
+
+// A note is one line of runtime context, so it keeps only the start of a
+// child's long final text.
+const LEAD_NOTE_TEXT_MAX_LENGTH = 1_000;
+
+// A Lead hears a child's `done` as a note, so the note carries what the
+// child said.
+function leadDoneSummary(update: AgentUpdate): string {
+  const text = update.text.trim().slice(0, LEAD_NOTE_TEXT_MAX_LENGTH);
+  return text ? `${SUMMARIES.done} It said: ${text}` : SUMMARIES.done;
+}
 
 /**
  * Deliver one agent update to each matched Watch whose Conversation may
@@ -177,6 +190,7 @@ function starterMessageKey(
 export async function deliverToStarter(args: {
   actor?: Actor | undefined;
   conversationId: string;
+  eventKey: string;
   key: UpdateKey;
   nowMs: number;
   queue: ConversationWorkQueue;
@@ -193,6 +207,29 @@ export async function deliverToStarter(args: {
   const status = update?.status;
   if (!update || !status || status === "waiting") return;
   const messageKey = starterMessageKey(key);
+  // A Lead gets its children's `done` as a note. The person reads the result
+  // in the child, so the Lead has nothing to say about it.
+  if (status === "done" && sender.parentHearsDoneAsNote === true) {
+    await recordChildAgentEnded(args.conversationId, "success", {
+      state: args.state,
+    });
+    await addQuietEventNote({
+      event: {
+        eventKey: args.eventKey,
+        eventType: AGENT_UPDATE_EVENT_TYPE,
+        identifier: args.conversationId,
+        namespace: CORE_EVENT_NAMESPACE,
+        occurredAtMs: args.nowMs,
+        trustedSummary: leadDoneSummary(update),
+      },
+      subscription: {
+        conversationId: sender.parentConversationId,
+        id: starterWatchId(args.conversationId),
+        label: `Child agent ${sender.agentName ?? sender.title ?? args.conversationId}`,
+      },
+    });
+    return;
+  }
   await enqueueStarterUpdate({
     actor: args.actor ?? EVENT_SYSTEM_ACTOR,
     messageKey,
