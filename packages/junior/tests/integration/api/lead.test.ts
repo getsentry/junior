@@ -20,7 +20,6 @@ import {
   getConversationStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { closeConversationFixture } from "../../fixtures/conversation";
@@ -56,17 +55,13 @@ function leadPath(spaceId: string): string {
   return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/lead`;
 }
 
-async function readLead(app: Hono<JuniorApiEnv>, spaceId: string) {
-  const response = await app.request(leadPath(spaceId));
-  expect(response.status).toBe(200);
-  return leadSchema.parse(await response.json());
-}
-
 async function readLeadId(
   app: Hono<JuniorApiEnv>,
   spaceId: string,
 ): Promise<string> {
-  return (await readLead(app, spaceId)).conversationId;
+  const response = await app.request(leadPath(spaceId));
+  expect(response.status).toBe(200);
+  return leadSchema.parse(await response.json()).conversationId;
 }
 
 async function postMessage(
@@ -161,53 +156,6 @@ describe("Lead API", () => {
         user: await signedInViewer("lead-api-ana@example.com"),
       }),
     ).resolves.toEqual({ status: "not_found" });
-  });
-
-  it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {
-    const api = apiFor("lead-api-watches@example.com");
-    const spaceId = await createSpace(api, "Deploys");
-    const before = await readLead(api, spaceId);
-    expect(before.lastSeq).toBe(-1);
-    const leadId = before.conversationId;
-    const watch = {
-      conversationId: leadId,
-      events: ["agent.update"],
-      expiresAtMs: Date.now() + 3_600_000,
-      intent: "Tell the person when it finishes.",
-    };
-    await createWatch({
-      ...watch,
-      identifier: "slack:C1:1.0",
-      label: "Conversation Checkout latency",
-      namespace: "junior",
-      resourceType: "agent",
-    });
-    // A Watch on another kind of resource is not a watched Conversation.
-    await createWatch({
-      ...watch,
-      events: ["pull_request.merged"],
-      identifier: "getsentry/junior#1",
-      label: "getsentry/junior#1",
-      namespace: "github",
-      resourceType: "pull_request",
-    });
-
-    // The Turn that adds a Watch also adds transcript events.
-    await getConversationEventStore().append(leadId, [
-      {
-        data: {
-          type: "message",
-          messageId: "lead-api-watches:reply",
-          role: "assistant",
-          text: "Watching it.",
-        },
-        createdAtMs: Date.now(),
-      },
-    ]);
-
-    const after = await readLead(api, spaceId);
-    expect(after.watchedConversationIds).toEqual(["slack:C1:1.0"]);
-    expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
   });
 
   it("keeps the Lead out of the conversation lists", async () => {

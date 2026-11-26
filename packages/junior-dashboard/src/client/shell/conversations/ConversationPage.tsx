@@ -58,7 +58,6 @@ import {
   LeadFirstRun,
   useLeadFirstRun,
 } from "../../lead/LeadFirstRun";
-import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
 import { SpaceChip } from "../../spaces/SpaceTile";
@@ -844,7 +843,7 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <LeadPageScope lead={lead} spaceId={spaceId}>
+                <>
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available
@@ -899,7 +898,7 @@ export function ConversationPage(props: {
                       view={view}
                     />
                   </ConversationCatchUpContext>
-                </LeadPageScope>
+                </>
               )}
             </TranscriptColumn>
           }

@@ -5,7 +5,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
-  conversationFeedSchema,
   setConversationSpaceResponseSchema,
   spaceConfigurationSchema,
   spaceListSchema,
@@ -97,24 +96,6 @@ export function useSpaceConfigurationData(spaceId: string | undefined) {
       fetchDashboardJson(
         spaceConfigurationSchema,
         `${spaceApiPath(spaceId!)}/configuration`,
-        signal,
-      ),
-    retry: false,
-  });
-}
-
-/**
- * Fetch the top-level Conversations of one Space. The key is under the
- * Conversation feeds, so every change to a Conversation refreshes it.
- */
-export function useSpaceConversationsData(spaceId: string | undefined) {
-  return useQuery({
-    enabled: Boolean(spaceId),
-    queryKey: ["dashboard", "conversations", "space", { spaceId }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationFeedSchema,
-        `/api/conversations?${new URLSearchParams({ spaceId: spaceId! })}`,
         signal,
       ),
     retry: false,

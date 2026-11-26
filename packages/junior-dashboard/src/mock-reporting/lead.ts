@@ -7,11 +7,8 @@ import {
   type ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 import { errorResponse } from "./errors";
-import { NOW_MS, readMockConversationAllEvents } from "./fixtures";
-import {
-  MOCK_LEAD_WATCHED_CONVERSATION_IDS,
-  mockLeadEvents,
-} from "./lead-transcript";
+import { NOW_MS } from "./fixtures";
+import { mockLeadEvents } from "./lead-transcript";
 import { createMockLead, findMockLead } from "./sends";
 import { AVERY, MOCK_SPACE_IDS, RILEY, readMockSpace } from "./spaces";
 
@@ -110,16 +107,7 @@ export function createMockSpaceLeadRoutes(): Hono<{
     });
     return jsonResponse(
       leadSchema,
-      {
-        conversationId,
-        lastSeq:
-          readMockConversationAllEvents(conversationId)?.events.at(-1)?.seq ??
-          -1,
-        watchedConversationIds:
-          space.id === MOCK_SPACE_IDS.billing
-            ? MOCK_LEAD_WATCHED_CONVERSATION_IDS
-            : [],
-      },
+      { conversationId },
       { headers: { "cache-control": "private, no-store" } },
     );
   });

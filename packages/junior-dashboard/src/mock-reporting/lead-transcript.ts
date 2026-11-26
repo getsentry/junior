@@ -36,12 +36,6 @@ const deploy: MockStart = {
   title: "Deployment investigation failed",
 };
 
-/** The Conversations that the mock Lead still watches. */
-export const MOCK_LEAD_WATCHED_CONVERSATION_IDS = [
-  latency.conversationId,
-  sentaur.conversationId,
-];
-
 /**
  * A mock Lead's transcript, at fixture time: two Turns that start fixture
  * Conversations in each state and watch some, two routine Watch reports, then
@@ -191,6 +185,7 @@ export function mockLeadEvents(
     status: string,
     watched: MockStart,
     summary: string,
+    text: string,
     n = 0,
   ): MockEventData & { type: "message" } => ({
     type: "message",
@@ -202,7 +197,7 @@ export function mockLeadEvents(
     eventStatus: status,
     eventWatchId: `mock-lead-watch-${watched.conversationId}`,
     trustedSummary: summary,
-    text: summary,
+    text,
   });
 
   turn({
@@ -262,7 +257,13 @@ export function mockLeadEvents(
   for (const [n, minutesAgo] of [42, 38].entries()) {
     push(
       NOW_MS - minutesAgo * MINUTE_MS,
-      report("done", latency, `"${latency.title}" finished a Turn.`, n + 1),
+      report(
+        "done",
+        latency,
+        `"${latency.title}" finished a Turn.`,
+        "Still narrowing it down: the EU checkout pods are the only ones slower.",
+        n + 1,
+      ),
     );
   }
   turn({
@@ -272,6 +273,7 @@ export function mockLeadEvents(
       "waiting",
       sentaur,
       `"${sentaur.title}" waits on the person.`,
+      "Restarting the stuck canary agents needs your approval.",
     ),
     reply:
       "The Sentaur triage wants your approval to restart the stuck canary agents. It has four more questions after that.",
@@ -279,7 +281,12 @@ export function mockLeadEvents(
   turn({
     atMs: NOW_MS - 35 * MINUTE_MS,
     id: "mock-lead-deploy-failed",
-    input: report("failed", deploy, `"${deploy.title}" failed.`),
+    input: report(
+      "failed",
+      deploy,
+      `"${deploy.title}" failed.`,
+      "Lost access to the GoCD API halfway through the investigation.",
+    ),
     reply:
       "The deploy investigation failed: it lost access to the GoCD API halfway through. Tell me if you want it retried.",
   });
