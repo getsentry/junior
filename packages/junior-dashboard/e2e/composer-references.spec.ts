@@ -11,6 +11,8 @@ const THREAD_ID = "junior:internal:dashboard-qa:thread";
 const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
 const CHECKOUT_ID = "slack:CQA123:1770003600.000200";
 const PULL_REQUEST = "https://github.com/getsentry/junior/pull/3842";
+const DOC_URL =
+  "https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit";
 
 async function openThread(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`);
@@ -249,6 +251,9 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
+  // A pasted link of any type is linked too, when it names an object.
+  await composer.pressSequentially("and ");
+  await pasteText(page, DOC_URL);
   // The thread ends at seq 5 when it opens. The sent message comes after it.
   const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
@@ -256,9 +261,9 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect
     .poll(() => sent)
     .toEqual([
-      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
+      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release> and ${DOC_URL}`,
     ]);
-  await expect.poll(() => linked).toEqual([PULL_REQUEST]);
+  await expect.poll(() => linked.sort()).toEqual([DOC_URL, PULL_REQUEST]);
   await readSaved;
 });
 

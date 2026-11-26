@@ -170,9 +170,9 @@ type ConversationComposerProps = {
   /** The Conversation that this composer writes to, if it exists yet. */
   conversation?: ComposerConversation | undefined;
   /**
-   * Add the work that a sent Message references to `conversation`'s linked
-   * work. A composer whose Messages go elsewhere, such as Quick question,
-   * leaves it off.
+   * Add the links of a sent Message to `conversation`'s linked work. A
+   * composer whose Messages go elsewhere, such as Quick question, leaves it
+   * off.
    */
   linksWork?: boolean;
   label: string;

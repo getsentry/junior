@@ -20,11 +20,10 @@ function linkKey(url: string): string {
 }
 
 /**
- * Return a function that adds the Conversations, Tasks, and pull requests
- * that a sent Message references to the Conversation's linked work, with
- * one attach each. It skips links that the Conversation already has and
- * the Conversation itself. A composer with no Conversation yet attaches
- * nothing.
+ * Return a function that adds the links of a sent Message to the
+ * Conversation's linked work, with one attach each. It skips links that the
+ * Conversation already has and the Conversation itself. A composer with no
+ * Conversation yet attaches nothing.
  */
 export function useAttachLinkedWork(
   conversation: ComposerConversation | undefined,
@@ -45,8 +44,8 @@ export function useAttachLinkedWork(
       (url) => !skipped.has(linkKey(url)),
     );
     if (!urls.length) return;
-    // A link that does not attach, such as one the viewer cannot see,
-    // stays only in the Message.
+    // A link that does not attach, such as one that names no object or one
+    // that the viewer cannot see, stays only in the Message.
     void pLimit(ATTACH_REQUESTS)
       .map(urls, (url) =>
         post(

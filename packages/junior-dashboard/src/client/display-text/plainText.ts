@@ -1,8 +1,12 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
-import { markdownPlainText } from "@sentry/junior-plugin-api";
+import {
+  markdownNodes,
+  markdownPlainText,
+  parseMarkdown,
+} from "@sentry/junior-plugin-api";
 
 import { plainTextTokens } from "./mentions";
-import { SLACK_LINK_RE } from "./links";
+import { SLACK_LINK_RE, slackLinksToMarkdown } from "./links";
 
 /**
  * Return display text as one plain string for places that cannot hold
@@ -22,4 +26,17 @@ function stripMarkdown(text: string): string {
       label?.trim() ? label.trim() : url,
     ),
   );
+}
+
+/**
+ * Return the web links that `DisplayText` shows for display text, once
+ * each, in text order: Slack links, Markdown links, and bare links.
+ */
+export function displayTextWebLinks(text: string): string[] {
+  const tree = parseMarkdown(slackLinksToMarkdown(text));
+  const links = markdownNodes(tree, ["link"]).flatMap(({ url }) => {
+    const protocol = URL.canParse(url) ? new URL(url).protocol : undefined;
+    return protocol === "http:" || protocol === "https:" ? [url] : [];
+  });
+  return [...new Set(links)];
 }
