@@ -615,6 +615,8 @@ export async function completeDecision<
           ...extractGenAiUsageAttributes(result.usage, {
             cost: { input: costUsd, total: costUsd },
           }),
+          // Criteria keys from code and numbers, safe in every Conversation.
+          "app.decision.answers": JSON.stringify(result.answers),
           "gen_ai.output.messages":
             privacy === "public"
               ? serializeGenAiAttribute([

@@ -697,6 +697,7 @@ describe("completeText", () => {
     ]) {
       expect(privateSpan?.[key]).toBeUndefined();
     }
+    expect(privateSpan?.["app.decision.answers"]).toContain('"choice":"reply"');
     expect(publicSpan?.["gen_ai.system_instructions"]).toContain(
       "Junior replies.",
     );
