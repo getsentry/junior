@@ -179,7 +179,10 @@ Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs,
 The dashboard can send push notifications through Web Push. When Junior
 replies in a dashboard Conversation, the person who started it gets a notice
 in the Inbox and a notification on each device that they turned on. The notice
-holds the latest reply and closes when they read it. When Junior asks a person
+holds the latest reply and closes when they read it, or when they answer or
+dismiss an Inbox item of that Conversation. A reply adds no notice when an
+open question or request in that Conversation already waits on them, or when
+an Event, such as a pull request review, started the work. When Junior asks a person
 a question in the Inbox, each assigned person gets one notification for it. A
 question for everyone and other notices do not send one. After a question or
 a reply notice closes, the next notification removes it from the device. A

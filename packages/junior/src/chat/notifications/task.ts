@@ -15,10 +15,12 @@ import {
 } from "@/chat/inbox-items/deliveries";
 import {
   closeReadReplyNotice,
+  closeWaitingReplyNotice,
   hasReadLatestReply,
   upsertReplyNotice,
 } from "@/chat/inbox-items/reply-notice";
 import { isInboxItemOpen } from "@/chat/inbox-items/store";
+import { isConversationWaitingOnUser } from "@/chat/inbox-items/waiting";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
@@ -89,6 +91,7 @@ async function readConversationTitle(
 }
 
 type SkipReason =
+  | "event"
   | "has_location"
   | "no_dashboard"
   | "no_reply"
@@ -96,7 +99,8 @@ type SkipReason =
   | "not_configured"
   | "outside_hours"
   | "read"
-  | "slack_paused";
+  | "slack_paused"
+  | "waiting";
 
 function skip(reason: SkipReason): void {
   setSpanAttributes({
@@ -113,11 +117,14 @@ function skip(reason: SkipReason): void {
  * and push the notice to them.
  *
  * Only Conversations without a Location qualify. A Conversation with a
- * Location, such as a Slack thread, already notifies people there.
+ * Location, such as a Slack thread, already notifies people there. A Turn
+ * that an Event started, such as a Watch Event, adds no notice: an Event
+ * goes to the agent and takes no attention.
  */
 async function notifyReply(context: PluginTaskContext): Promise<void> {
   const run = await context.run.load();
   if (run.locationId) return skip("has_location");
+  if (run.source.kind === "event") return skip("event");
   const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
   const db = context.db as JuniorDatabase;
@@ -133,6 +140,18 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
       userId,
     });
     return skip("read");
+  }
+
+  // An open action that waits on the starter, such as a question card or a
+  // review request, already has their attention. The check reads the wait
+  // as "Waiting on you" does, so the two agree.
+  if (await isConversationWaitingOnUser(db, run.conversationId, userId)) {
+    await closeWaitingReplyNotice(db, {
+      conversationId: run.conversationId,
+      nowMs: Date.now(),
+      userId,
+    });
+    return skip("waiting");
   }
 
   // The notice and the push hold only a short plain-text preview. Logs
