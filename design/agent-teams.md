@@ -29,10 +29,9 @@ end-of-Turn contract. A person can see and steer each agent.
 
 **Teams and tools**
 
-- `team` A team is an agent and its child agents. A Lead's team is every
-  Conversation in its Space (`./spaces.md`). A team sets who manages an
-  agent, not who can read it. Visibility and access come from the root, as
-  `../policies/conversation-access.md` states.
+- `team` A team is an agent and its child agents. A team sets who manages
+  an agent, not who can read it. Visibility and access come from the root,
+  as `../policies/conversation-access.md` states.
 - `one-toolset` An agent starts, messages, finds, stops, archives, and
   watches other agents with the same tools for every kind. The kind sets
   which arguments a Turn can use, not which tools exist.

@@ -36,8 +36,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and its child agents. A Lead's team is every
-  Conversation in its Space. It sets who manages an agent, not access.
+- **Team**: an agent and its child agents. It sets who manages an agent,
+  not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
