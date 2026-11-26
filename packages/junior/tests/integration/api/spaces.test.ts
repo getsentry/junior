@@ -27,7 +27,6 @@ import type {
   LocationConfigurationService,
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getSpaceLead } from "@/chat/lead/conversation";
@@ -221,22 +220,6 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
-    // A mention in the Space's work does not make them a member: people
-    // join a Space themselves.
-    await resolveActorIdentityId(getSqlExecutor(), {
-      email: "spaces-api-bo@example.com",
-      platform: "slack",
-      teamId: "T1",
-      userId: "USPACESBO",
-    });
-    await startConversation(ana, "spaces-api-mention", {
-      message: "<@USPACESBO> look",
-      spaceId: space.id,
-    });
-    expect(
-      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
-    ).toMatchObject({ memberCount: 1, viewerIsMember: false });
-
     const joined = await send(bo, "PUT", `/${space.id}/members/me`);
     expect(joined.status).toBe(200);
     expect(spaceSchema.parse(await joined.json())).toMatchObject({
@@ -259,6 +242,22 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
     expect(await listNames(bo)).not.toContain("Billing migration");
+
+    // A Space is its Lead, so a mention in its work adds them, as in any
+    // public root.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-api-bo@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESBO",
+    });
+    await startConversation(ana, "spaces-api-mention", {
+      message: "<@USPACESBO> look",
+      spaceId: space.id,
+    });
+    expect(
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ memberCount: 2, viewerIsMember: true });
   });
 
   it("lets only members rename or archive a Space", async () => {
@@ -612,6 +611,26 @@ describe("Spaces API", () => {
     ).toBe(400);
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
+    // Invite in its work adds a member, as in any private root.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-private-cy@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESCY",
+    });
+    const invited = await request(
+      ana,
+      "POST",
+      `/conversations/${inSpace}/invites`,
+      { slackUserId: "USPACESCY" },
+    );
+    expect(await invited.json()).toEqual({ added: true });
+    expect(await detailSpace(cy, inSpace)).toEqual(spaceRef);
+    expect((await send(cy, "DELETE", `/${space.id}/members/me`)).status).toBe(
+      200,
+    );
+    expect(await detailSpace(cy, inSpace)).toBeNull();
+
     // A participant who leaves no longer finds its Conversations.
     await getDb()
       .insert(juniorConversationParticipants)
@@ -867,7 +886,7 @@ describe("Spaces API", () => {
     });
   });
 
-  it("stops and archives every Conversation when a Space is archived", async () => {
+  it("archives the Lead's tree when a Space is archived", async () => {
     const ana = apiFor("spaces-archive-ana@example.com");
     const space = await createSpace(ana, "Short project");
     const first = await startConversation(ana, "short-first", {
@@ -886,9 +905,10 @@ describe("Spaces API", () => {
         .map((row) => row.conversationId)
         .sort(),
     ).toEqual([first, second].sort());
-    expect(await getConversationStoppedAtMs(first)).toBeDefined();
-    expect(await getConversationStoppedAtMs(second)).toBeDefined();
-    expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
+    expect(
+      (await getConversationStore().get({ conversationId: outside }))
+        ?.archivedAtMs,
+    ).toBeUndefined();
     expect(
       (await getConversationStore().get({ conversationId: thread }))
         ?.archivedAtMs,

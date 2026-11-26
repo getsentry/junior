@@ -9,15 +9,12 @@ import {
   or,
   sql,
   type SQL,
-  type SQLWrapper,
 } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
@@ -61,44 +58,6 @@ function memberParticipantRow(member: ConversationMember, condition?: SQL) {
         );
 }
 
-/** True when the viewer is a materialized participant on this root conversation. */
-export function conversationHasParticipantUser(userId: string): SQL {
-  return exists(memberParticipantRow({ userId }));
-}
-
-function privateSpaceIds() {
-  return getDb()
-    .select({ id: juniorSpaces.id })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.visibility, "private"));
-}
-
-const spaceLead = alias(juniorConversations, "membership_space_lead");
-
-/**
- * The Leads of some Spaces, as one array. Every Conversation in a Space has
- * its Lead as its tree root, so this finds the Space of every row. The
- * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
- * once, where a hashed subquery in a filter is charged on each index probe.
- */
-function spaceLeadArray(spaceIds: SQLWrapper): SQL {
-  const leads = getDb()
-    .select({ id: spaceLead.conversationId })
-    .from(spaceLead)
-    .where(
-      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
-    );
-  return sql`array(${leads})`;
-}
-
-/** True when the outer conversation is in no private Space. */
-function outsidePrivateSpaces(): SQL {
-  return or(
-    isNull(juniorConversations.rootConversationId),
-    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
-  )!;
-}
-
 /**
  * True when the outer conversation is in a tree that the person is a
  * Participant of. In a Space the Lead is the root, so this holds for every
@@ -121,29 +80,35 @@ function inParticipantTree(member: ConversationMember): SQL {
 }
 
 /**
- * True when the outer root conversation is in no Space, in a public Space,
- * or in a private Space that the person is a member of. A participant who
- * leaves a private Space no longer reads its roots.
+ * True when the person may read the outer conversation: it is public, or
+ * they are a Participant of its tree. A Participant row on a Conversation
+ * that has a parent grants nothing, the same as in `access.ts`, so a
+ * Conversation moved into a Space does not stay readable to its old
+ * Participants.
  */
-export function rootSpaceReadableBy(member: ConversationMember): SQL {
-  return or(outsidePrivateSpaces(), inParticipantTree(member))!;
+export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
+  if (!viewerUserId) return isPublicConversation(juniorConversations);
+  const member = { userId: viewerUserId };
+  return or(
+    isPublicConversation(juniorConversations),
+    and(
+      isNull(juniorConversations.parentConversationId),
+      exists(memberParticipantRow(member)),
+    ),
+    inParticipantTree(member),
+  )!;
 }
 
 /**
- * True when the viewer may find the outer root conversation by a link to
- * it: the root is public, or the viewer is a Participant. A root in a
- * private Space is visible only to the Space's members, and to all of them.
+ * `rootVisibleToViewer` for a feed row that `conversationIsMemberRoot`
+ * already matched. A root that it matched has the person's Participant row,
+ * so only a child needs the tree check.
  */
-export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
+export function feedRowReadableBy(member: ConversationMember): SQL {
   return or(
-    and(
-      outsidePrivateSpaces(),
-      or(
-        isPublicConversation(juniorConversations),
-        viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
-      ),
-    ),
-    viewerUserId ? inParticipantTree({ userId: viewerUserId }) : undefined,
+    isPublicConversation(juniorConversations),
+    isNull(juniorConversations.parentConversationId),
+    inParticipantTree(member),
   )!;
 }
 

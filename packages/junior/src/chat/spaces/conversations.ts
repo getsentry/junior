@@ -3,7 +3,7 @@
  * Space. The Space's other Conversations are its children, and their child
  * agents are in the Space of their root, so none can disagree with it.
  */
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 import { setMovedWorkVisibility } from "@/chat/conversations/sql/privacy";
@@ -12,12 +12,8 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
-import { stopConversation } from "@/chat/conversations/stop";
-import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { mapBounded } from "@/chat/fan-out";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -31,7 +27,6 @@ export interface SpaceRef {
   name: string;
 }
 
-const spaceRoot = alias(juniorConversations, "space_root");
 const spaceLead = alias(juniorConversations, "space_lead");
 
 /** Read the id and name of each Space, by id. A missing id has no entry. */
@@ -118,13 +113,19 @@ export async function setConversationSpace(
     );
     const spaces =
       spaceIds.length > 0
-        ? await db
+        ? // A Space is its Lead, so the Lead's visibility is the Space's.
+          await db
             .select({
-              id: juniorSpaces.id,
-              visibility: juniorSpaces.visibility,
+              id: spaceLead.spaceId,
+              visibility: spaceLead.visibility,
             })
-            .from(juniorSpaces)
-            .where(inArray(juniorSpaces.id, spaceIds))
+            .from(spaceLead)
+            .where(
+              and(
+                eq(spaceLead.kind, "lead"),
+                inArray(spaceLead.spaceId, spaceIds),
+              ),
+            )
         : [];
     const source = spaces.find((space) => space.id === currentSpaceId);
     if (source?.visibility === "private") return "leaves_private";
@@ -171,106 +172,4 @@ export async function setConversationSpace(
       .where(eq(juniorConversations.conversationId, conversationId));
     return undefined;
   });
-}
-
-/** The ids of a Space's Lead and of its top-level Conversations. */
-function spaceRootIds(db: JuniorDatabase, spaceId: string) {
-  const leads = db
-    .select({ id: spaceLead.conversationId })
-    .from(spaceLead)
-    .where(eq(spaceLead.spaceId, spaceId));
-  return db
-    .select({ id: spaceRoot.conversationId })
-    .from(spaceRoot)
-    .where(
-      or(
-        inArray(spaceRoot.conversationId, leads),
-        inArray(spaceRoot.parentConversationId, leads),
-      ),
-    );
-}
-
-/** Every Conversation in the Space, at any depth: the Lead's tree. */
-function inSpaceTrees(db: JuniorDatabase, spaceId: string) {
-  const leads = db
-    .select({ id: spaceLead.conversationId })
-    .from(spaceLead)
-    .where(eq(spaceLead.spaceId, spaceId));
-  return or(
-    inArray(juniorConversations.rootConversationId, leads),
-    inArray(juniorConversations.conversationId, leads),
-  )!;
-}
-
-/**
- * Archive or restore a Space with its Conversations.
- *
- * Archive writes one time to the Space and to each unarchived Conversation
- * in it, at any depth. Then it stops each root that is not stopped, with the
- * child agents below it, so no work in the Space keeps running. A retry
- * stops what an earlier try left running.
- *
- * Restore clears the Space and the Conversations that its archive wrote. A
- * Conversation that was archived on its own stays archived. Restore starts
- * no work.
- */
-export async function setSpaceArchive(args: {
-  archived: boolean;
-  queue: ConversationWorkQueue;
-  spaceId: string;
-}): Promise<void> {
-  const executor = getSqlExecutor();
-  await executor.transaction(async () => {
-    const db = executor.db();
-    const [space] = await db
-      .select({ archivedAt: juniorSpaces.archivedAt })
-      .from(juniorSpaces)
-      .where(eq(juniorSpaces.id, args.spaceId))
-      .limit(1)
-      .for("update");
-    if (!space) return;
-    const now = new Date();
-    if (args.archived) {
-      if (space.archivedAt) return;
-      await db
-        .update(juniorSpaces)
-        .set({ archivedAt: now, updatedAt: now })
-        .where(eq(juniorSpaces.id, args.spaceId));
-      await setArchivedAt(
-        db,
-        inSpaceTrees(db, args.spaceId),
-        now,
-        isNull(juniorConversations.archivedAt),
-      );
-      return;
-    }
-    if (!space.archivedAt) return;
-    await db
-      .update(juniorSpaces)
-      .set({ archivedAt: null, updatedAt: now })
-      .where(eq(juniorSpaces.id, args.spaceId));
-    await setArchivedAt(
-      db,
-      inSpaceTrees(db, args.spaceId),
-      null,
-      eq(juniorConversations.archivedAt, space.archivedAt),
-    );
-  });
-  if (!args.archived) return;
-  const db = getDb();
-  const running = await db
-    .select({ conversationId: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        inArray(
-          juniorConversations.conversationId,
-          spaceRootIds(db, args.spaceId),
-        ),
-        isNull(juniorConversations.stoppedAt),
-      ),
-    );
-  await mapBounded(running, ({ conversationId }) =>
-    stopConversation({ conversationId, queue: args.queue }),
-  );
 }

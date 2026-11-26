@@ -11,7 +11,7 @@ import type { Conversation } from "@/chat/conversations/store";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createSpaceLead, readSpace, type Space } from "@/chat/spaces/store";
 import { isPostgresErrorCode } from "@/db/postgres-error";
-import { juniorConversations, juniorSpaces } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 
 // Postgres `unique_violation`: another request created the Lead first.
 const UNIQUE_VIOLATION = "23505";
@@ -57,16 +57,15 @@ export async function getSpaceLead(args: {
 }
 
 /**
- * Return the id and visibility of a Lead's Space. Returns nothing for a
- * Conversation that is not a Lead.
+ * Return the id of a Lead's Space. Returns nothing for a Conversation that
+ * is not a Lead.
  */
 export async function readLeadSpace(
   conversationId: string,
-): Promise<Pick<Space, "id" | "visibility"> | undefined> {
+): Promise<Pick<Space, "id"> | undefined> {
   const [row] = await getDb()
-    .select({ id: juniorSpaces.id, visibility: juniorSpaces.visibility })
+    .select({ id: juniorConversations.spaceId })
     .from(juniorConversations)
-    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorConversations.spaceId))
     .where(
       and(
         eq(juniorConversations.conversationId, conversationId),
@@ -74,7 +73,7 @@ export async function readLeadSpace(
       ),
     )
     .limit(1);
-  return row;
+  return row?.id ? { id: row.id } : undefined;
 }
 
 /**
