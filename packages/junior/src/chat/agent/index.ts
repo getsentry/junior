@@ -1653,7 +1653,11 @@ async function executeAgentRunInPrivacyContext(
                 answerReminderUsed ||
                 failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
                   ? undefined
-                  : remindMissingAnswer(currentAgentMessages(), turnMessages());
+                  : remindMissingAnswer(
+                      currentAgentMessages(),
+                      turnMessages(),
+                      behavior.tools.reportBlocked !== "none",
+                    );
               if (answerReminder) {
                 answerReminderUsed = true;
                 setAgentHistory(answerReminder);

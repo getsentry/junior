@@ -27,6 +27,7 @@ import {
 } from "./agent-invocations";
 import { webTestActor } from "./conversation";
 import { createConversationWorkHarness } from "./conversation-work";
+import { createAssistantMessage } from "./model-stream";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
@@ -220,6 +221,36 @@ export async function finishRun(
       generatedFileCount: 0,
       modelId: "test-model",
       piMessages,
+      reasoningLevel: "medium",
+      shouldTrace: false,
+      toolCalls: [],
+      userInput: run.instruction.text,
+    }),
+  );
+}
+
+/**
+ * End a run's Turn on one tool-free model message, as the agent does: hand
+ * it to the run's delivery port, when the run has one, and save it as the
+ * Turn's last message.
+ */
+export async function speakRun(
+  run: AgentRun,
+  text: string,
+): Promise<AgentRunOutcome> {
+  const input = runInputCheckpoint(run);
+  await saveTurnCheckpoint({ ...input, mode: "running" });
+  await run.durability?.onInputCommitted?.();
+  const message = createAssistantMessage({ type: "text", text });
+  const messages = [...input.messages, message];
+  await run.delivery?.(message);
+  await saveTurnCheckpoint({ ...input, messages, mode: "completed" });
+  return completedAgentRun(
+    buildTurnResult({
+      generatedFileCount: 0,
+      modelId: "test-model",
+      newMessages: [message],
+      piMessages: messages,
       reasoningLevel: "medium",
       shouldTrace: false,
       toolCalls: [],

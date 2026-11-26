@@ -430,10 +430,14 @@ describe("local agent runner", () => {
       turnId: "next-turn",
     });
     expect(notes).toEqual([
-      expect.stringContaining("Your previous turn failed before it finished."),
+      {
+        text: expect.stringContaining(
+          "Your previous turn failed before it finished.",
+        ),
+      },
     ]);
-    expect(notes[0]).toMatch(/event_id=[a-f0-9]{32}/);
-    expect(notes[0]).not.toContain("raw-error-sentinel");
+    expect(notes[0]!.text).toMatch(/event_id=[a-f0-9]{32}/);
+    expect(notes[0]!.text).not.toContain("raw-error-sentinel");
   });
 
   it("classifies a thrown agent run without persisting exception details", async () => {
@@ -932,9 +936,11 @@ describe("local agent runner", () => {
         turnId: "next-turn",
       }),
     ).toEqual([
-      expect.stringContaining(
-        "Your reply was not delivered, so the person did not see it.",
-      ),
+      {
+        text: expect.stringContaining(
+          "Your reply was not delivered, so the person did not see it.",
+        ),
+      },
     ]);
   });
 });

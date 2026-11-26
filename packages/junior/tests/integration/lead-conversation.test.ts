@@ -2,11 +2,17 @@ import { createWebSource, type User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
+import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import type { AgentRun } from "@/chat/agent/types";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import {
+  appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
@@ -17,6 +23,7 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import { createWatch } from "@/chat/events/store";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { readSpaceStates } from "@/api/spaces/state";
 import { setConversationSpace } from "@/chat/spaces/conversations";
@@ -29,6 +36,7 @@ import { juniorConversations } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import { finishRun, speakRun } from "../fixtures/thread-input";
 import { recordSlackRoot } from "../fixtures/conversation-status";
 import { signedInViewer } from "../fixtures/user";
 
@@ -46,6 +54,24 @@ function readRunsAgentRunner() {
       },
     },
     runs,
+  };
+}
+
+/**
+ * Integration tests do not run the agent. This runner ends each run as the
+ * agent does with one model message: tool-free text, or a `reply` call.
+ */
+function scriptedRunner(steps: ({ text: string } | { reply: string })[]) {
+  return {
+    run: async (run: AgentRun): Promise<AgentRunOutcome> => {
+      const step = steps.shift();
+      if (!step) throw new Error("no scripted step is left for this run");
+      return "reply" in step
+        ? await finishRun(run, {
+            reply: { text: step.reply, toolCallId: `reply:${run.turnId}` },
+          })
+        : await speakRun(run, step.text);
+    },
   };
 }
 
@@ -126,16 +152,24 @@ async function treeRows(conversationIds: string[]) {
 }
 
 /** The Conversation notes of a Conversation, such as a child's `done`. */
-async function noteTexts(conversationId: string) {
+async function notes(conversationId: string) {
   const page = await getConversationEventStore().query(conversationId, {
     limit: 100,
     types: ["structured_event"],
   });
   return page.events.flatMap(({ data }) => {
     if (data.type !== "structured_event") return [];
-    const text: unknown = (data.content as { text?: unknown }).text;
-    return typeof text === "string" ? [text] : [];
+    return [data.content as { source?: string; text: string }];
   });
+}
+
+/** The replies that a Conversation's transcript shows. */
+async function transcriptReplies(conversationId: string) {
+  return projectConversationMessages(
+    await getConversationEventStore().loadMessageHistory(conversationId),
+  )
+    .filter((message) => message.role === "assistant")
+    .map((message) => message.text);
 }
 
 describe("Lead", () => {
@@ -405,7 +439,7 @@ describe("Lead", () => {
     ).toBe(false);
   });
 
-  it("hears a child's done as a note, and starts a Turn for other ends", async () => {
+  it("hears a child's done and waits as notes, and starts a Turn for other ends", async () => {
     const harness = await createConversationWorkHarness(
       readRunsAgentRunner().agentRunner,
     );
@@ -447,8 +481,12 @@ describe("Lead", () => {
       turnId: "child-turn-1",
     });
     expect(await leadMailbox()).toEqual([]);
-    expect(await noteTexts(lead.conversationId)).toEqual([
-      expect.stringContaining("Deploy check"),
+    // The child wrote what it said, so the note is its claim.
+    expect(await notes(lead.conversationId)).toEqual([
+      {
+        source: "child_agent",
+        text: expect.stringContaining(`Deploy check (${child})`),
+      },
     ]);
 
     await lifecycle.fail({
@@ -459,6 +497,104 @@ describe("Lead", () => {
     });
     expect(await leadMailbox()).toEqual([
       expect.stringMatching(/status="failed"/),
+    ]);
+    // A child that asks a person in the Inbox does not wake a Lead that
+    // watches it: the person already sees the item.
+    await createWatch(
+      {
+        conversationId: lead.conversationId,
+        events: ["agent.update"],
+        expiresAtMs: Date.now() + 600_000,
+        identifier: child,
+        intent: "Follow the deploy check.",
+        label: "Deploy check",
+        namespace: "junior",
+        resourceType: "agent",
+      },
+      { state: harness.state },
+    );
+    await publishAgentUpdate(
+      child,
+      { type: "waiting", inboxItemId: "item-1" },
+      {
+        queue: harness.queue,
+        state: harness.state,
+        update: async () => ({
+          status: "waiting",
+          text: "Which environment should I deploy to?",
+        }),
+      },
+    );
+    expect(await leadMailbox()).toHaveLength(1);
+    expect((await notes(lead.conversationId)).at(-1)).toEqual({
+      text: expect.stringContaining("waits on a person"),
+    });
+  });
+
+  it("speaks on a Turn that no person sent only through reply", async () => {
+    const harness = await createConversationWorkHarness(
+      scriptedRunner([
+        { text: "Two checks are still running." },
+        { text: "The deploy check is blocked." },
+        { reply: "The deploy check needs your GitHub token." },
+      ]),
+    );
+    const ana = await signedInViewer("lead-reply@example.com");
+    const { lead } = await spaceLead(ana);
+    const child = await startAgent(
+      {
+        conversationId: lead.conversationId,
+        person: ana,
+        queue: harness.queue,
+        state: harness.state,
+      },
+      "call-reply",
+      { title: "Deploy check" },
+    );
+    const blocked = async (turnId: string) => {
+      await enqueueStarterUpdate({
+        actor: { name: "event", platform: "system" },
+        messageKey: turnId,
+        // Past the Event batch wait, so the Turn runs on this delivery.
+        nowMs: Date.now() - 60_000,
+        queue: harness.queue,
+        sender: (await readChildConversationSender(child))!,
+        state: harness.state,
+        turnId,
+        update: { status: "blocked", text: "I need a GitHub token." },
+      });
+      expect(
+        await harness.process(
+          harness.queue.takeMessageFor(lead.conversationId),
+        ),
+      ).toEqual({ status: "completed" });
+    };
+
+    // A person's Turn posts its final text.
+    await appendAndEnqueueWebMessage(
+      {
+        actor: webActorFromUser(ana),
+        conversationId: lead.conversationId,
+        idempotencyKey: "lead-reply-person",
+        message: "How is the deploy going?",
+      },
+      { queue: harness.queue, state: harness.state },
+    );
+    await harness.process(harness.queue.takeMessageFor(lead.conversationId));
+    expect(await transcriptReplies(lead.conversationId)).toEqual([
+      "Two checks are still running.",
+    ]);
+
+    // The Lead's final text on a child's result is not delivered.
+    await blocked("deploy-turn-1");
+    expect(await transcriptReplies(lead.conversationId)).toEqual([
+      "Two checks are still running.",
+    ]);
+
+    await blocked("deploy-turn-2");
+    expect(await transcriptReplies(lead.conversationId)).toEqual([
+      "Two checks are still running.",
+      "The deploy check needs your GitHub token.",
     ]);
   });
 

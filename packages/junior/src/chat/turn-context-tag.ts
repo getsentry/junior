@@ -36,6 +36,7 @@ export type CapabilitySectionTag =
 export const REQUEST_CONTEXT_SECTION_TAG = {
   pluginContext: "plugin-context",
   conversationNotes: "conversation-notes",
+  childReports: "child-reports",
   disabledTools: "disabled-tools",
   userCustomization: "user-customization",
   askerTimezone: "asker-timezone",

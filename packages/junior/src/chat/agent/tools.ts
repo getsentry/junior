@@ -789,7 +789,7 @@ export function bindTurnTools(
   return {
     turnTools:
       run.dispatch?.outcomes?.length === 0
-        ? { ...behavior.tools, reply: false }
+        ? { ...behavior.tools, reply: "none" as const }
         : behavior.tools,
     listedTools,
     ...bindAgentTools(run, listedTools.agents),

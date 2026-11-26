@@ -67,10 +67,12 @@ describe("turn answer", () => {
     const draft = assistantStop("Here is the weekly digest.");
 
     expect(
-      remindMissingAnswer([earlier, draft], [draft])?.at(-1),
+      remindMissingAnswer([earlier, draft], [draft], true)?.at(-1),
     ).toMatchObject({ role: "user" });
     const answeredTurn = [answered("noReply", {}), assistantStop("Done.")];
-    expect(remindMissingAnswer(answeredTurn, answeredTurn)).toBeUndefined();
+    expect(
+      remindMissingAnswer(answeredTurn, answeredTurn, true),
+    ).toBeUndefined();
   });
 
   it("keeps an answer when a later slice errs", () => {
@@ -98,7 +100,7 @@ describe("turn answer", () => {
 
 describe("reply", () => {
   function call(text: string) {
-    const tool = createReplyTool();
+    const tool = createReplyTool("automation");
     return tool.execute!(tool.prepareArguments({ text }), {});
   }
 

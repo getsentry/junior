@@ -53,9 +53,11 @@ export type TurnBehavior = {
    */
   waitsForSignIn: boolean;
   /**
-   * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
-   * reminded once. Its final text is never delivered. Only an Automation run
-   * is gated, because its reply goes to people in a channel.
+   * The Turn must end with one of its answer tools, `reply`, `noReply`, or
+   * `reportBlocked`, or it is reminded once. Its final text is never
+   * delivered, so it reaches people only when it chooses to. An Automation
+   * run is gated because its reply goes to people in a channel. A Lead's Turn
+   * that no person sent is gated so that the Lead stays quiet by default.
    */
   gated: boolean;
   /**
@@ -86,10 +88,11 @@ export type TurnBehavior = {
      */
     settings: boolean;
     /**
-     * The Turn has `reply`. Only a gated Turn has it. The reply goes to the
-     * run's Destination, then its Slack thread.
+     * Where the Turn's `reply` goes. Only a gated Turn has it. `automation`:
+     * the run's Destination, then its Slack thread. `lead`: the Lead's
+     * transcript, which the Space's members read.
      */
-    reply: boolean;
+    reply: "none" | "automation" | "lead";
     /**
      * Who gets a blocked report. `parent`: the parent agent. `automation`:
      * the Automation is blocked with the reason.
@@ -124,7 +127,7 @@ const ROOT: TurnBehavior = {
     subscriptions: true,
     userCustomization: true,
     settings: true,
-    reply: false,
+    reply: "none",
     reportBlocked: "none",
     noReply: true,
   },
@@ -170,7 +173,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     subscriptions: false,
     userCustomization: false,
     settings: false,
-    reply: false,
+    reply: "none",
     reportBlocked: "parent",
     noReply: false,
   },
@@ -211,7 +214,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   tools: {
     ...ROOT.tools,
     settings: false,
-    reply: true,
+    reply: "automation",
     reportBlocked: "automation",
   },
 };
@@ -251,6 +254,7 @@ const LEAD_TOOLS = [
   "setConfiguration",
   "listSpaces",
   "moveConversationToSpace",
+  "reply",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -280,12 +284,16 @@ const LEAD: TurnBehavior = {
   },
 };
 
-// A Lead Turn that no person sent, such as a Watch Event or another agent's
-// message. It lists the Lead's tools, so the Lead keeps one tool list, but
-// it changes no settings: only a person's request does.
+// A Lead's Turn that no person sent, such as on a child's result, a Watch
+// Event, or another agent's message. It lists the Lead's tools, so the Lead
+// keeps one tool list. A person sees what their Space's work does in the work
+// itself, so the Lead speaks only through `reply` and its final text stays
+// out of its transcript. It changes no settings: only a person's request
+// does.
 const LEAD_RUNTIME_TURN: TurnBehavior = {
   ...LEAD,
-  tools: { ...LEAD.tools, settings: false },
+  gated: true,
+  tools: { ...LEAD.tools, reply: "lead", settings: false },
 };
 
 /**
@@ -330,7 +338,9 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
     case "conversation":
       return ROOT.tools;
     case "lead":
-      return LEAD.tools;
+      // Both senders list `reply` and the settings tools, so the Lead keeps
+      // one tool list. Each Turn disables the ones that it cannot use.
+      return { ...LEAD.tools, reply: "lead" };
   }
 }
 
@@ -393,6 +403,17 @@ export function childrenAreTopLevel(
  * child, so the Lead has nothing to say about it.
  */
 export function hearsChildDoneAsNote(
+  kind: ConversationKind | null | undefined,
+): boolean {
+  return kind === "lead";
+}
+
+/**
+ * Return whether a watcher of this kind hears that a Conversation waits on a
+ * person as a Conversation note, with no Turn. The person already sees the
+ * wait in their Inbox and in the Space sidebar, so a Lead has nothing to add.
+ */
+export function hearsWaitAsNote(
   kind: ConversationKind | null | undefined,
 ): boolean {
   return kind === "lead";

@@ -624,7 +624,9 @@ describe("spawn and messageAgent", () => {
           turnId: harness.runs[0]!.turnId,
         }),
       ).resolves.toEqual([
-        "Your parent agent sent this message while it was stopped, so it started no work: Check it again.",
+        {
+          text: "Your parent agent sent this message while it was stopped, so it started no work: Check it again.",
+        },
       ]);
     } finally {
       await harness.close();

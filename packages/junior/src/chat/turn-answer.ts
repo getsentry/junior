@@ -122,16 +122,25 @@ export function readTurnAnswer(
   return undefined;
 }
 
-const MISSING_ANSWER_REMINDER = `This Turn has not ended. Your text was not delivered. Call \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\` now.`;
+// Names only the answer tools that the Turn has: a Lead has no
+// `reportBlocked`.
+function missingAnswerReminder(canReportBlocked: boolean): string {
+  const tools = canReportBlocked
+    ? `\`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\``
+    : `\`${REPLY_TOOL_NAME}\` or \`${NO_REPLY_TOOL_NAME}\``;
+  return `This Turn has not ended. Your text was not delivered. Call ${tools} now.`;
+}
 
 /**
  * Return agent history plus a reminder when the model stopped without an
  * answer, or undefined when the Turn already has one. `turnMessages` are the
- * messages of `messages` that belong to the Turn.
+ * messages of `messages` that belong to the Turn. `canReportBlocked` says
+ * whether the Turn has `reportBlocked`.
  */
 export function remindMissingAnswer(
   messages: readonly PiMessage[],
   turnMessages: readonly PiMessage[],
+  canReportBlocked: boolean,
 ): PiMessage[] | undefined {
   const last = messages.at(-1);
   if (
@@ -145,7 +154,9 @@ export function remindMissingAnswer(
     ...messages,
     {
       role: "user",
-      content: [{ type: "text", text: MISSING_ANSWER_REMINDER }],
+      content: [
+        { type: "text", text: missingAnswerReminder(canReportBlocked) },
+      ],
       timestamp: Date.now(),
     },
   ];

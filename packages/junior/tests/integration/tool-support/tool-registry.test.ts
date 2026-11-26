@@ -419,6 +419,7 @@ describe("static tool registry", () => {
         "moveConversationToSpace",
         "noReply",
         "readConversationEvent",
+        "reply",
         "searchConversationEvents",
         "searchConversations",
         "searchEventTypes",
@@ -434,8 +435,9 @@ describe("static tool registry", () => {
       ].sort(),
     );
     // This Lead has no Slack channel and no Space, so it has no
-    // configuration to change.
-    expect(person.disabled).toEqual(["setConfiguration"]);
+    // configuration to change. Only a Turn that no person sent replies with
+    // `reply`.
+    expect(person.disabled).toEqual(["setConfiguration", "reply"]);
     // Only a person's request moves a Conversation or changes configuration.
     expect(watch.disabled).toEqual(
       expect.arrayContaining(["moveConversationToSpace", "setConfiguration"]),

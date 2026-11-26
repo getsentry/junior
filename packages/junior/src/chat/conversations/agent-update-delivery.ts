@@ -20,7 +20,9 @@ import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
+import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStore, getDb } from "@/chat/db";
+import { hearsWaitAsNote } from "@/chat/conversations/kind-behavior";
 import { CORE_EVENT_NAMESPACE, eventGuidance } from "@/chat/events/catalog";
 import {
   addQuietEventNote,
@@ -47,22 +49,25 @@ const SUMMARIES: Record<AgentUpdateStatus, string> = {
   waiting: "The conversation waits on a person.",
 };
 
-// A note is one line of runtime context, so it keeps only the start of a
-// child's long final text.
+// A note is one line of context, so it keeps only the start of a child's
+// long final text.
 const LEAD_NOTE_TEXT_MAX_LENGTH = 1_000;
 
 // A Lead hears a child's `done` as a note, so the note carries what the
-// child said.
-function leadDoneSummary(update: AgentUpdate): string {
+// child said. `child` names the child once, with the id that the Lead's
+// tools take.
+function leadDoneReport(child: string, update: AgentUpdate): string {
   const text = update.text.trim().slice(0, LEAD_NOTE_TEXT_MAX_LENGTH);
-  return text ? `${SUMMARIES.done} It said: ${text}` : SUMMARIES.done;
+  return text
+    ? `${child} finished a Turn. It said: ${text}`
+    : `${child} finished a Turn.`;
 }
 
 /**
  * Deliver one agent update to each matched Watch whose Conversation may
  * still read the target. The access check runs before the update text
  * reaches the watcher. A Watch that names the update as quiet gives a note
- * that starts no Turn.
+ * that starts no Turn, and so does a wait that a Lead watches.
  */
 export async function deliverAgentUpdate(args: {
   conversationId: string;
@@ -125,7 +130,17 @@ export async function deliverAgentUpdate(args: {
           ) {
             return false;
           }
-          if (isQuietEvent(current, eventType)) {
+          if (
+            isQuietEvent(current, eventType) ||
+            (args.update.status === "waiting" &&
+              hearsWaitAsNote(
+                (
+                  await getConversationStore().get({
+                    conversationId: current.conversationId,
+                  })
+                )?.kind,
+              ))
+          ) {
             if (!turnConversations.has(current.conversationId)) {
               await addQuietEventNote({ event, subscription: current });
             }
@@ -213,20 +228,18 @@ export async function deliverToStarter(args: {
     await recordChildAgentEnded(args.conversationId, "success", {
       state: args.state,
     });
-    await addQuietEventNote({
-      event: {
-        eventKey: args.eventKey,
-        eventType: AGENT_UPDATE_EVENT_TYPE,
-        identifier: args.conversationId,
-        namespace: CORE_EVENT_NAMESPACE,
-        occurredAtMs: args.nowMs,
-        trustedSummary: leadDoneSummary(update),
-      },
-      subscription: {
-        conversationId: sender.parentConversationId,
-        id: starterWatchId(args.conversationId),
-        label: `Child agent ${sender.agentName ?? sender.title ?? args.conversationId}`,
-      },
+    // The child wrote the text, so the note is its claim, not a runtime
+    // fact. The Lead's Turn shows it apart from the runtime notes.
+    const name = sender.agentName ?? sender.title;
+    await addConversationNote({
+      conversationId: sender.parentConversationId,
+      createdAtMs: args.nowMs,
+      key: `quiet_event:${starterWatchId(args.conversationId)}:${args.eventKey}`,
+      source: "child_agent",
+      text: leadDoneReport(
+        name ? `${name} (${args.conversationId})` : args.conversationId,
+        update,
+      ),
     });
     return;
   }

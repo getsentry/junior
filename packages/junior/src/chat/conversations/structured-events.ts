@@ -162,6 +162,8 @@ export const conversationNoteEvent = defineConversationEvent({
   schema: z
     .object({
       text: z.string().trim().min(1).max(MAX_CONVERSATION_NOTE_CHARS),
+      // A child agent wrote the text, so it is a claim, not a runtime fact.
+      source: z.literal("child_agent").optional(),
     })
     .strict(),
   renderEvent(event) {

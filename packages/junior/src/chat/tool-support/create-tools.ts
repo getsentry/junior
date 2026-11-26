@@ -344,7 +344,8 @@ const STATIC_TOOL_BINDERS = {
     run.context.messageAgent
       ? createMessageAgentTool(run.context.messageAgent)
       : undefined,
-  [REPLY_TOOL_NAME]: () => createReplyTool(),
+  [REPLY_TOOL_NAME]: (run) =>
+    createReplyTool(enabledMode(run.listedTools.reply)),
   [REPORT_BLOCKED_TOOL_NAME]: (run) =>
     createReportBlockedTool(enabledMode(run.listedTools.reportBlocked)),
   [NO_REPLY_TOOL_NAME]: () => createNoReplyTool(),
@@ -412,9 +413,9 @@ const TURN_TOOL_LIMITS: Partial<
   // The system prompt says why for each sender: a person's Turn ends with a
   // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
-    turnTools.reply
-      ? undefined
-      : `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`,
+    turnTools.reply === "none"
+      ? `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`
+      : undefined,
   [REPORT_BLOCKED_TOOL_NAME]: (turnTools) =>
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."

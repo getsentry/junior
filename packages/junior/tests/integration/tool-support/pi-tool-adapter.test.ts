@@ -326,7 +326,7 @@ describe("Pi tool adapter integration", () => {
         // Every model-only tool at once.
         turnTools: {
           ...runtimeContext().turnTools,
-          reply: true,
+          reply: "automation",
           noReply: true,
           reportBlocked: "parent",
         },

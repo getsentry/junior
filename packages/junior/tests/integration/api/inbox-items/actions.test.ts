@@ -910,11 +910,13 @@ describe("inbox item actions API", () => {
         turnId: "after-dismiss",
       }),
     ).toEqual([
-      expect.stringMatching(
-        new RegExp(
-          `^cal@example\\.com dismissed inbox item .*\\(${id}\\)\\. It is closed with no answer\\.`,
+      {
+        text: expect.stringMatching(
+          new RegExp(
+            `^cal@example\\.com dismissed inbox item .*\\(${id}\\)\\. It is closed with no answer\\.`,
+          ),
         ),
-      ),
+      },
     ]);
   });
 });

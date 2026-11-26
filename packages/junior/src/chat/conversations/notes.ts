@@ -31,18 +31,25 @@ function failedTurnNote(
   return `Your previous turn failed before it finished. ${seen}${reference} Do not assume that request was completed.`;
 }
 
+/**
+ * One note for a Turn. `child_agent`: a child agent's own report, which the
+ * Turn shows apart from the runtime facts.
+ */
+export type ConversationNote = { source?: "child_agent"; text: string };
+
 /** Most notes that one Turn shows. Older notes in the window are dropped. */
 const MAX_CONVERSATION_NOTES_PER_TURN = 20;
 
 /**
  * Attach a core-written note to a Conversation. It does not start a Turn or
  * change Conversation activity. The key makes a retry add nothing. Long text
- * is cut at the end.
+ * is cut at the end. `source` names a child agent that wrote the text.
  */
 export async function addConversationNote(input: {
   conversationId: string;
   createdAtMs: number;
   key: string;
+  source?: "child_agent";
   text: string;
 }): Promise<void> {
   // One line per note keeps the rendered list unambiguous.
@@ -62,7 +69,10 @@ export async function addConversationNote(input: {
           namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
           name: conversationNoteEvent.eventName,
           version: conversationNoteEvent.version,
-          content: conversationNoteEvent.parse({ text }),
+          content: conversationNoteEvent.parse({
+            text,
+            ...(input.source ? { source: input.source } : undefined),
+          }),
         },
       },
     ],
@@ -80,8 +90,8 @@ export async function addConversationNote(input: {
 export async function loadTurnConversationNotes(input: {
   conversationId: string;
   turnId: string;
-}): Promise<string[]> {
-  const newestFirst: string[] = [];
+}): Promise<ConversationNote[]> {
+  const newestFirst: ConversationNote[] = [];
   let foundTurn = false;
   let beforeSeq: number | undefined;
   /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
@@ -97,7 +107,9 @@ export async function loadTurnConversationNotes(input: {
         if (data.turnId !== input.turnId) return [];
         foundTurn = true;
       } else if (foundTurn && data.type === "turn_failed") {
-        newestFirst.push(failedTurnNote(data.failureCode, data.eventId));
+        newestFirst.push({
+          text: failedTurnNote(data.failureCode, data.eventId),
+        });
         if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       } else if (
         foundTurn &&
@@ -106,10 +118,12 @@ export async function loadTurnConversationNotes(input: {
         data.name === conversationNoteEvent.eventName &&
         data.version === conversationNoteEvent.version
       ) {
-        // The schema makes `text` a string.
-        newestFirst.push(
-          conversationNoteEvent.parse(data.content)["text"] as string,
-        );
+        // The schema makes `text` a string and `source` a known source.
+        const note = conversationNoteEvent.parse(data.content);
+        newestFirst.push({
+          text: note["text"] as string,
+          ...(note["source"] ? { source: "child_agent" as const } : undefined),
+        });
         if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       }
     }

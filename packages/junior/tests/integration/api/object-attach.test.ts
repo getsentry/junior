@@ -192,10 +192,10 @@ describe("attach a linked object", () => {
     expect((await attachAs("alice@example.com", EVENT_URL)).status).toBe(200);
     const notes = await nextTurnNotes("next-turn");
     expect(notes).toEqual([
-      expect.stringContaining(`(${EVENT_URL}) to this Conversation.`),
+      { text: expect.stringContaining(`(${EVENT_URL}) to this Conversation.`) },
     ]);
-    expect(notes[0]).not.toContain("Read it live");
-    expect(notes[0]).not.toContain("Launch");
+    expect(notes[0]!.text).not.toContain("Read it live");
+    expect(notes[0]!.text).not.toContain("Launch");
   });
 
   it("attaches nothing for a viewer who cannot see the object or write to the Conversation", async () => {

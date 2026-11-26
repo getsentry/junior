@@ -237,8 +237,9 @@ const CORE_TOOLS = {
   listAgents: { definition: listAgentsToolDefinition },
   messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
-    when: ({ listedTools }) => listedTools.reply,
-    definition: () => replyToolDefinition,
+    when: ({ listedTools }) => listedTools.reply !== "none",
+    definition: ({ listedTools }) =>
+      replyToolDefinition(enabledMode(listedTools.reply)),
   },
   [REPORT_BLOCKED_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reportBlocked !== "none",

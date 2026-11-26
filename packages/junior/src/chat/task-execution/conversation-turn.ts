@@ -691,7 +691,14 @@ export function createConversationTurnWorker(
                 pendingAuth: conversation.processing.pendingAuth,
                 sandboxRef,
               },
-              delivery: deliverAssistantMessage,
+              // A gated Turn whose transcript is its Location, a Lead's,
+              // speaks only through its `reply`: its model text stays out of
+              // the transcript that members read, so a Lead on a child's
+              // result says nothing unless it chooses to. An Automation run
+              // keeps its text in its own transcript.
+              ...(behavior.gated && behavior.delivery === "location"
+                ? undefined
+                : { delivery: deliverAssistantMessage }),
               durability: {
                 ...(webActor
                   ? {

@@ -20,7 +20,7 @@ const rootTurn = {
     subscriptions: true,
     userCustomization: true,
     settings: true,
-    reply: false,
+    reply: "none",
     reportBlocked: "none",
     noReply: true,
   },
@@ -52,7 +52,7 @@ const agentInThreadTurn = {
     subscriptions: false,
     userCustomization: false,
     settings: false,
-    reply: false,
+    reply: "none",
     reportBlocked: "parent",
     // An agent's Turn reports to its parent with its final text.
     noReply: false,
@@ -81,7 +81,7 @@ const automationTurn = {
   tools: {
     ...rootTurn.tools,
     settings: false,
-    reply: true,
+    reply: "automation",
     reportBlocked: "automation",
   },
 };
@@ -169,22 +169,34 @@ describe("turnBehavior", () => {
     ).toThrow("A task Conversation cannot have a person's input");
   });
 
-  // A Lead keeps one system prompt and one tool list on every Turn, but only
-  // a person's Turn changes settings, such as the Space of a Conversation.
-  it("gives every Turn of a Lead the same tools, and settings only to a person's", () => {
+  // A Lead keeps one system prompt and one tool list on every Turn. A Turn
+  // that no person sent changes no settings and speaks only through `reply`.
+  it("gates a Lead's Turn that no person sent", () => {
     const personTurn = turnBehavior({
       kind: "lead",
       hasParent: false,
       personInput: true,
     });
-    expect(
-      turnBehavior({ kind: "lead", hasParent: false, personInput: false }),
-    ).toEqual({
-      ...personTurn,
-      tools: { ...personTurn.tools, settings: false },
+    const runtimeTurn = turnBehavior({
+      kind: "lead",
+      hasParent: false,
+      personInput: false,
     });
-    expect(personTurn.promptMode).toBe("lead");
-    expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
+    expect(runtimeTurn).toEqual({
+      ...personTurn,
+      gated: true,
+      tools: { ...personTurn.tools, reply: "lead", settings: false },
+    });
+    expect(personTurn).toMatchObject({
+      gated: false,
+      promptMode: "lead",
+      tools: { reply: "none" },
+    });
+    // Both senders list `reply` and the settings tools.
+    expect(promptModeTurnTools("lead")).toEqual({
+      ...personTurn.tools,
+      reply: "lead",
+    });
   });
 
   it("counts only Slack and web input as a person's", () => {
