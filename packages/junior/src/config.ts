@@ -656,14 +656,20 @@ function readEnv(env: Env): ConfigInput {
 const plainObjectSchema = z.record(z.string(), z.unknown());
 
 // `b` wins. Plain objects merge per key, arrays and scalars replace, and
-// undefined values are skipped.
+// undefined values are skipped. An object that names another `provider` is
+// another union variant, so it replaces the object in `a`.
 function mergeConfig(a: unknown, b: unknown): unknown {
   if (b === undefined) {
     return a;
   }
   const left = plainObjectSchema.safeParse(a);
   const right = plainObjectSchema.safeParse(b);
-  if (!left.success || !right.success) {
+  if (
+    !left.success ||
+    !right.success ||
+    (right.data["provider"] !== undefined &&
+      right.data["provider"] !== left.data["provider"])
+  ) {
     return b;
   }
   const merged: Record<string, unknown> = {};

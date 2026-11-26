@@ -512,6 +512,23 @@ describe("loadConfig", () => {
     expect(config.bot.turnTimeoutMs).toBe(720_000);
   });
 
+  it("replaces env attachment storage when options pick another provider", () => {
+    const config = resolveConfig({
+      env: {
+        ...encryptionEnv,
+        DATABASE_URL: TEST_DATABASE_URL,
+        JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "s3",
+        JUNIOR_S3_ACCESS_KEY_ID: "junior",
+        JUNIOR_S3_BUCKET: "junior-attachments",
+        JUNIOR_S3_ENDPOINT: "http://localhost:7070",
+        JUNIOR_S3_SECRET_ACCESS_KEY: "secret",
+      },
+      options: { attachmentStorage: { provider: "memory" } },
+    });
+
+    expect(config.attachmentStorage).toEqual({ provider: "memory" });
+  });
+
   it("reads no env by default and requires only the encryption keys and database URL", () => {
     expect(() => resolveConfig()).toThrow("JUNIOR_ENCRYPTION_KEYS is required");
     expect(() => resolveConfig({ env: encryptionEnv })).toThrow(
