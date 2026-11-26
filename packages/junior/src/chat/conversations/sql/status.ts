@@ -104,19 +104,20 @@ export function conversationTurnFailedSql(
 }
 
 /**
- * SQL: how the Conversation's newest finished Turn ended, from its Turn
- * lifecycle Events: the `turn_completed` outcome, or `failed` for
- * `turn_failed`. Null when no Turn finished.
+ * SQL: the `turn_completed` outcome of the Conversation's newest finished
+ * Turn that was not stopped. A stop is not a result, so a cancelled Turn is
+ * skipped. Null when that Turn failed, since `conversationTurnFailedSql`
+ * owns failure, or when no Turn finished.
  */
 export function conversationLastTurnOutcomeSql(
   conversation: Pick<ConversationStatusColumns, "conversationId">,
 ): SQL<string | null> {
   return sql<
     string | null
-  >`(select case when ${juniorConversationEvents.type} = 'turn_failed' then 'failed' else ${juniorConversationEvents.payload}->>'outcome' end from ${juniorConversationEvents} where ${and(
+  >`(select ${juniorConversationEvents.payload}->>'outcome' from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, conversation.conversationId),
     inArray(juniorConversationEvents.type, ["turn_completed", "turn_failed"]),
-  )} order by ${juniorConversationEvents.seq} desc limit 1)`;
+  )} and coalesce(${juniorConversationEvents.payload}->>'outcome', '') <> 'cancelled' order by ${juniorConversationEvents.seq} desc limit 1)`;
 }
 
 // When #3050 merged; its deploy came later, so no reply before this was

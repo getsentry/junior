@@ -30,11 +30,9 @@ import type { ChildAgent, ChildAgentResult } from "./types";
 
 const childConversationKindSchema = z.enum(["thread", "task"]);
 
-// How a child's finished Turn ended, as its result. A cancelled Turn is a
-// stop, not a result.
+// How a child's newest finished Turn ended, as its result.
 const TURN_OUTCOME_RESULTS: Partial<Record<string, ChildAgentResult>> = {
   blocked: "blocked",
-  failed: "failed",
   no_reply: "completed",
   success: "completed",
 };

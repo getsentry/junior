@@ -715,6 +715,11 @@ describe("child Turns on the Conversation loop", () => {
             .slice(before.length)
             .filter((text) => text.includes("stop after reading the run")),
         ).toEqual([expect.stringMatching(/status="failed"/)]);
+        // The failure wins over the completed Turn before it.
+        const { agents } = (await createListAgentsTool({
+          conversationId: slackParentConversationId,
+        }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
+        expect(agents[0]?.last_result).toBe("failed");
       } finally {
         await harness.close();
       }
@@ -815,6 +820,11 @@ describe("child Turns on the Conversation loop", () => {
       // A stop is not a result, and it drops the child's unread result of
       // its task Turn, so the parent hears nothing.
       await expect(parentMessageTexts()).resolves.toEqual([]);
+      // The listing keeps the result of the task Turn before the stop.
+      const { agents } = (await createListAgentsTool({
+        conversationId: slackParentConversationId,
+      }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
+      expect(agents[0]?.last_result).toBe("completed");
     } finally {
       await harness.close();
     }
