@@ -168,7 +168,7 @@ export function createJuniorApi(
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/search", createSearchRoutes());
   app.route("/api/spaces", createSpaceRoutes());
-  app.route("/api/spaces", createSpaceArchiveRoutes());
+  app.route("/api/spaces", createSpaceArchiveRoutes({ queue }));
   app.route("/api/spaces", createSpaceMemberRoutes());
   app.route("/api/spaces", createSpaceConfigurationRoutes());
   app.route("/api/spaces", createSpaceLeadRoutes());

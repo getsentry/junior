@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { setConversationArchive } from "../conversations/archive";
+import {
+  setConversationArchive,
+  stopArchivedWork,
+} from "../conversations/archive";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { readSpaceLead } from "@/chat/lead/conversation";
 import { throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -14,9 +18,12 @@ import {
 
 /**
  * Create the route that archives or restores a Space. A Space is its Lead,
- * so this archives or restores the Lead's tree, as for any root.
+ * so this archives or restores the Lead's tree, as for any root, and an
+ * archive stops the tree's running work.
  */
-export function createSpaceArchiveRoutes(): Hono<JuniorApiEnv> {
+export function createSpaceArchiveRoutes(options: {
+  queue: ConversationWorkQueue;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.patch(
@@ -49,6 +56,9 @@ export function createSpaceArchiveRoutes(): Hono<JuniorApiEnv> {
         );
         if (result.status === "conflict") {
           throwApiError(409, "The Space received new activity.");
+        }
+        if (result.status === "archived") {
+          await stopArchivedWork(result.archivedConversationIds, options.queue);
         }
       }
       return await spaceResponse(viewerUserId, spaceId);

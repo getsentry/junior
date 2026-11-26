@@ -27,6 +27,7 @@ import type {
   LocationConfigurationService,
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getSpaceLead } from "@/chat/lead/conversation";
@@ -906,7 +907,7 @@ describe("Spaces API", () => {
     });
   });
 
-  it("archives the Lead's tree when a Space is archived", async () => {
+  it("stops and archives the Lead's tree when a Space is archived", async () => {
     const ana = apiFor("spaces-archive-ana@example.com");
     const space = await createSpace(ana, "Short project");
     const first = await startConversation(ana, "short-first", {
@@ -925,6 +926,9 @@ describe("Spaces API", () => {
         .map((row) => row.conversationId)
         .sort(),
     ).toEqual([first, second].sort());
+    expect(await getConversationStoppedAtMs(first)).toBeDefined();
+    expect(await getConversationStoppedAtMs(second)).toBeDefined();
+    expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
     expect(
       (await getConversationStore().get({ conversationId: outside }))
         ?.archivedAtMs,
