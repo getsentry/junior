@@ -1,16 +1,16 @@
 # Inbox kinds
 
 Every Inbox item has a kind, such as `question` or `github:pull_request`.
-This file states the contract that every kind follows, and the rules of
-each kind. [Inbox](./inbox.md) owns what all items share, such as who sees,
-answers, and changes an item.
+This file states the contract that every kind follows.
+[Inbox](./inbox.md) owns what all items share, such as who sees, answers,
+and changes an item.
 
 ## Jobs
 
-- When Junior or a plugin needs a new kind of item, its authors write the
-  kind's rules here first, so people agree on what it asks before the code
+- When Junior or a plugin needs a new kind of item, its authors write
+  the kind's table first, so people agree on what it asks before the code
   exists.
-- When a person reads the rules of a kind, they can say what each viewer
+- When a person reads the table of a kind, they can say what each viewer
   sees for any state of its subject.
 - When a webhook is lost or late, the item still shows the correct ask
   after Junior reads the subject again.
@@ -26,7 +26,8 @@ answers, and changes an item.
   gives the output: nothing, a notice with its step, or an ask with its
   label and choices. When no rule matches, the output is nothing.
 - `unknown-keeps` When the source cannot give a fact yet, such as a merge
-  state that GitHub still computes, each output stays as it is.
+  state that GitHub still computes, a rule of the kind names it and gives
+  the output, usually the output that the person has now.
 - `open-while-asked` The item of a `{kind, id}` is open while one or more
   people get an output. When nobody does, it closes with the reason of the
   rule that matched.
@@ -43,63 +44,26 @@ answers, and changes an item.
   "remove this reviewer on GitHub", and adds an Inbox event. It does not
   change the item. Junior then gets the outputs again. When the command
   fails, the person stays on the item.
-- `push-on-new-ask` A person gets a push when their output changes from
-  nothing to an ask, or to an ask from a different rule. Other changes push
-  nobody.
-- `rules-in-owner-doc` The rules of a core kind are in this file. The rules
-  of a plugin kind are in the design file of its plugin, such as
-  [GitHub](./github.md).
-- `kind-table` Each kind is a decision table in a YAML file in
-  `design/inbox-kinds/`. Its rules use the FIRST hit policy of DMN, and
-  each cell is a simple unary test, such as `clean`, `not(open)`, or `-`.
-  Each rule has its ID in the table. Junior generates the code of the kind,
-  and the text of each rule in the design file, from the table.
+- `kind-table` Each kind is a decision table in a YAML file next to the
+  code of its owner: core kinds in Junior, and plugin kinds in their plugin.
+  Its rules use the
+  [FIRST hit policy](https://docs.camunda.io/docs/components/modeler/dmn/decision-table-hit-policy/#first)
+  of [DMN](https://www.omg.org/dmn/), and each cell is a simple unary test,
+  such as `clean`, `not(open)`, or `-`. Junior generates the code of the
+  kind from its table.
 - `table-checks` The build fails when a rule can never be the first match,
   or when an input can be unknown and no rule names `unknown`.
-
-**`question`** (an agent asks). Source: the question.
-
-- `question-closed` When a person answered or dismissed it, nobody gets it.
-- `question-ask` Its assignees get the question, with its form.
-
-**`notice`** (an agent tells). Source: the notice.
-
-- `notice-closed` When a person dismissed it, nobody gets it.
-- `notice-show` Its assignees get the notice, with its step.
-
-**`todo`**. Source: the To-do and the Conversation's access.
-
-- `todo-closed` When the To-do is done or dropped, or a person does not own
-  it, nobody gets it.
-- `todo-access` When the assignee cannot see the Conversation's private
-  content, nobody gets it.
-- `todo-ask` The assignee gets "To do for you". Done marks the To-do done,
-  and Dismiss drops it.
-
-**`reply`**. Source: the latest reply and the starter's read position.
-
-- `reply-slack` When the Conversation has a Slack thread, nobody gets it.
-- `reply-read` When the starter read the latest reply, nobody gets it.
-- `reply-notice` The starter gets a notice with the latest reply.
-
-**`automation`**. Source: the Automation, its last run, and the enabled
-triggers.
-
-- `alert-dismissed` When a person dismissed an alert of the Automation
-  after it last recovered, nobody gets one. A pause is no recovery.
-- `alert-blocked` When the Automation is blocked, the creator gets a notice
-  to fix the problem and resume it.
-- `alert-trigger` When its trigger is not available, the creator gets a
-  notice that names the problem.
-- `alert-run-failed` When its last run failed or blocked, the creator gets
-  an ask with the steps that fit, such as Run again and Pause.
+- `table-links` Each rule of a table names the rules in `design/` that it
+  serves, and its ID is a sub-feature ID in the verification map. The build
+  fails when a table names a rule that `design/` does not have, or when the
+  verification map has no claim for a rule of a table.
 
 ## Gaps
 
-- `kind-table`: no kind is a table yet. The rules of each kind are prose,
-  and people write its code.
+- `kind-table`: no kind is a table yet, and people write the code of each
+  kind.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.
-- `alert-blocked`, `alert-trigger`: these alerts are actions that ask no
-  question, not notices.
+- `table-links`: no check compares the tables with `design/` or with the
+  verification map.
