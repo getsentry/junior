@@ -18,8 +18,6 @@ import {
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { listOpenChildAgents } from "@/chat/agent-invocations/list";
-import { childAgentStillWorks } from "@/chat/agent-invocations/store";
 import { getConversationEventStore } from "@/chat/db";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { listConversationsWithWatches } from "@/chat/events/store";
@@ -599,6 +597,14 @@ export async function closeTodosOfFinishedChildren(
     )
     .limit(FINISHED_CHILD_SWEEP_LIMIT);
   if (rows.length === 0) return;
+  // Agent invocations load the agent prompt. Core registrations load this
+  // module with the database, so only the heartbeat loads them.
+  const [{ listOpenChildAgents }, { childAgentStillWorks }] = await Promise.all(
+    [
+      import("@/chat/agent-invocations/list"),
+      import("@/chat/agent-invocations/store"),
+    ],
+  );
   const watching = await listConversationsWithWatches({
     conversationIds: [...new Set(rows.map((row) => row.childConversationId))],
   });
