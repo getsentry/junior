@@ -41,6 +41,7 @@ export function BottomSheetContent(props: BottomSheetProps) {
     }),
     [shutSheet, parent],
   );
+  const band = useKeyboardBand();
   // A sheet on a sheet is one step deeper, so ← goes back to the one below.
   const back =
     props.back ?? (parent ? { label: "Back", onBack: shutSheet } : undefined);
@@ -59,76 +60,84 @@ export function BottomSheetContent(props: BottomSheetProps) {
       )}
       sheet={sheet}
       stayBehind={props.stayBehind}
+      // While a touch keyboard is open, the sheet fills the band above it,
+      // as the shell does, so the field in focus stays in view.
+      style={
+        band
+          ? {
+              bottom: "auto",
+              height: `${band.heightPx}px`,
+              maxHeight: `${band.heightPx}px`,
+              top: `${band.offsetTopPx}px`,
+            }
+          : undefined
+      }
     >
-      {(band) => (
-        <>
-          {/* Positioned so header overlays, such as transcript search,
+      {/* Positioned so header overlays, such as transcript search,
               float over the body. */}
-          <div className="relative z-10 shrink-0 border-b border-dashboard-border">
-            <div
-              className={cn(
-                "flex items-start gap-2 py-1.5 pr-2",
-                back ? "pl-1" : "pl-4",
-              )}
+      <div className="relative z-10 shrink-0 border-b border-dashboard-border">
+        <div
+          className={cn(
+            "flex items-start gap-2 py-1.5 pr-2",
+            back ? "pl-1" : "pl-4",
+          )}
+        >
+          {back ? (
+            <Button
+              aria-label={back.label}
+              className="pointer-coarse:size-11"
+              onClick={back.onBack}
+              size="icon"
+              variant="ghost"
             >
-              {back ? (
-                <Button
-                  aria-label={back.label}
-                  className="pointer-coarse:size-11"
-                  onClick={back.onBack}
-                  size="icon"
-                  variant="ghost"
-                >
-                  <ArrowLeft aria-hidden="true" size={16} strokeWidth={2.25} />
-                </Button>
-              ) : null}
-              {props.titleId ? (
-                <div className="min-w-0 flex-1 py-1">{props.title}</div>
-              ) : (
-                <DrawerTitle className="m-0 min-w-0 flex-1 break-words py-2 font-display text-base font-semibold leading-snug text-dashboard-text">
-                  {props.title ?? props.label}
-                </DrawerTitle>
-              )}
-              {props.actions ? (
-                <div className="flex shrink-0 items-center gap-1">
-                  {props.actions}
-                </div>
-              ) : null}
-              <DrawerClose
-                onClick={() => parent?.closeAll()}
-                render={
-                  <Button
-                    aria-label={props.closeLabel ?? "Close"}
-                    className="pointer-coarse:size-11"
-                    size="icon"
-                    variant="ghost"
-                  />
-                }
-              >
-                <XIcon aria-hidden="true" size={16} strokeWidth={2.25} />
-              </DrawerClose>
+              <ArrowLeft aria-hidden="true" size={16} strokeWidth={2.25} />
+            </Button>
+          ) : null}
+          {props.titleId ? (
+            <div className="min-w-0 flex-1 py-1">{props.title}</div>
+          ) : (
+            <DrawerTitle className="m-0 min-w-0 flex-1 break-words py-2 font-display text-base font-semibold leading-snug text-dashboard-text">
+              {props.title ?? props.label}
+            </DrawerTitle>
+          )}
+          {props.actions ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {props.actions}
             </div>
-            {props.subheader ? (
-              <div className="min-w-0 px-4 pb-2">{props.subheader}</div>
-            ) : null}
-          </div>
-          <div
-            className={cn(
-              "min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
-              // The last line clears the home indicator. With the keyboard
-              // open, the keyboard covers it instead.
-              !band && "pb-[env(safe-area-inset-bottom)]",
-              props.bodyClassName,
-            )}
+          ) : null}
+          <DrawerClose
+            onClick={() => parent?.closeAll()}
+            render={
+              <Button
+                aria-label={props.closeLabel ?? "Close"}
+                className="pointer-coarse:size-11"
+                size="icon"
+                variant="ghost"
+              />
+            }
           >
-            <ParentSheetProvider value={stack}>
-              <BottomSheetBodyProvider value>
-                {props.children}
-              </BottomSheetBodyProvider>
-            </ParentSheetProvider>
-          </div>
-        </>
-      )}
+            <XIcon aria-hidden="true" size={16} strokeWidth={2.25} />
+          </DrawerClose>
+        </div>
+        {props.subheader ? (
+          <div className="min-w-0 px-4 pb-2">{props.subheader}</div>
+        ) : null}
+      </div>
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
+          // The last line clears the home indicator. With the keyboard
+          // open, the keyboard covers it instead.
+          !band && "pb-[env(safe-area-inset-bottom)]",
+          props.bodyClassName,
+        )}
+      >
+        <ParentSheetProvider value={stack}>
+          <BottomSheetBodyProvider value>
+            {props.children}
+          </BottomSheetBodyProvider>
+        </ParentSheetProvider>
+      </div>
     </SheetFrame>
   );
 }
@@ -155,47 +164,39 @@ export function ActionSheetContent(props: ActionSheetProps) {
       className="max-w-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       sheet={sheet}
     >
-      {() => (
-        <>
-          <DrawerTitle className="m-0 truncate px-5 pt-3 pb-2 text-center font-sans text-sm font-medium text-dashboard-text-muted">
-            {props.title}
-          </DrawerTitle>
-          <div
-            className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 outline-none"
-            ref={listRef}
-            tabIndex={-1}
+      <DrawerTitle className="m-0 truncate px-5 pt-3 pb-2 text-center font-sans text-sm font-medium text-dashboard-text-muted">
+        {props.title}
+      </DrawerTitle>
+      <div
+        className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 outline-none"
+        ref={listRef}
+        tabIndex={-1}
+      >
+        {props.groups.map((items, index) => (
+          <ul
+            className={cn(
+              GROUP_CLASS,
+              "m-0 list-none divide-y divide-dashboard-border-subtle p-0",
+            )}
+            key={index}
           >
-            {props.groups.map((items, index) => (
-              <ul
-                className={cn(
-                  GROUP_CLASS,
-                  "m-0 list-none divide-y divide-dashboard-border-subtle p-0",
-                )}
-                key={index}
-              >
-                {items.map((item) => (
-                  <li key={item.key}>
-                    <ActionSheetRow
-                      item={item}
-                      onChoose={choose}
-                      onClose={sheet.close}
-                    />
-                  </li>
-                ))}
-              </ul>
+            {items.map((item) => (
+              <li key={item.key}>
+                <ActionSheetRow
+                  item={item}
+                  onChoose={choose}
+                  onClose={sheet.close}
+                />
+              </li>
             ))}
-            <DrawerClose
-              className={cn(
-                ROW_CLASS,
-                GROUP_CLASS,
-                "justify-center font-medium",
-              )}
-            >
-              Cancel
-            </DrawerClose>
-          </div>
-        </>
-      )}
+          </ul>
+        ))}
+        <DrawerClose
+          className={cn(ROW_CLASS, GROUP_CLASS, "justify-center font-medium")}
+        >
+          Cancel
+        </DrawerClose>
+      </div>
     </SheetFrame>
   );
 }
@@ -245,31 +246,19 @@ function ActionSheetRow(props: {
   );
 }
 
-type Band = ReturnType<typeof useKeyboardBand>;
-
 /**
  * The parts that every bottom sheet shares: the swipe drawer, the grabber,
- * the modal marker, the keyboard band, and the layer for `stayBehind`.
+ * the modal marker, and the layer for `stayBehind`.
  */
 function SheetFrame(props: {
-  children(band: Band): ReactNode;
+  children: ReactNode;
   className?: string;
   /** Without it, the sheet's `DrawerTitle` names it. */
   name?: { "aria-label": string } | { "aria-labelledby": string };
   sheet: ReturnType<typeof useSheet>;
   stayBehind?: boolean | undefined;
+  style?: CSSProperties | undefined;
 }) {
-  const band = useKeyboardBand();
-  // While a touch keyboard is open, the sheet fills the band above it, as
-  // the shell does, so the field in focus stays in view.
-  const style: CSSProperties | undefined = band
-    ? {
-        bottom: "auto",
-        height: `${band.heightPx}px`,
-        maxHeight: `${band.heightPx}px`,
-        top: `${band.offsetTopPx}px`,
-      }
-    : undefined;
   // The front modal is the last in the page, so a layer here stays behind
   // one that is already open.
   const layerRef = useRef<HTMLDivElement>(null);
@@ -282,13 +271,13 @@ function SheetFrame(props: {
         {...props.name}
         className={cn("mx-auto w-full", props.className)}
         data-dashboard-modal=""
-        style={style}
+        style={props.style}
       >
         <div
           aria-hidden="true"
           className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-dashboard-border-strong"
         />
-        {props.children(band)}
+        {props.children}
       </DrawerContent>
     </Drawer>
   );

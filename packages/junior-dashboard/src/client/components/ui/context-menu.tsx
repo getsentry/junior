@@ -18,12 +18,22 @@ function ContextMenuPortal({ ...props }: ContextMenuPrimitive.Portal.Props) {
 /** Open the menu on right-click or long press of this area. */
 function ContextMenuTrigger({
   className,
+  onTouchEnd,
   ...props
 }: ContextMenuPrimitive.Trigger.Props) {
   return (
     <ContextMenuPrimitive.Trigger
       data-slot="context-menu-trigger"
       className={cn("select-none", className)}
+      onTouchEnd={(event) => {
+        // A long press opens the menu while the finger is down. The menu
+        // can open under the finger, so the release must not tap one of
+        // its items.
+        if (event.currentTarget.hasAttribute("data-popup-open")) {
+          event.preventDefault();
+        }
+        onTouchEnd?.(event);
+      }}
       {...props}
     />
   );
