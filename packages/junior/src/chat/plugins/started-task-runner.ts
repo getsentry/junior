@@ -19,7 +19,7 @@ import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
-import { readIdentityById } from "@/chat/plugins/viewer";
+import { createPluginUsers } from "@/chat/plugins/viewer";
 import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import {
   type AppEventPublisher,
@@ -85,7 +85,7 @@ function startedTaskContext(
       send: options.sendPluginTask,
       tasks: plugin.tasks,
     }),
-    users: { readIdentity: readIdentityById },
+    users: createPluginUsers(pluginName),
   };
 }
 

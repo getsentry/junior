@@ -1,7 +1,8 @@
 /**
- * Spaces and their members (`design/spaces.md`). A Space's members are the
- * Participants of its Lead. Any signed-in person can read a public Space.
- * Only members read a private Space, and only members change a Space.
+ * Spaces (`design/spaces.md`). A Space's members are the Participants of
+ * its Lead, which join and leave it as any root. Any signed-in person can
+ * read a public Space. Only members read a private Space, and only members
+ * change a Space.
  */
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
@@ -22,7 +23,6 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import {
   recordWebConversationActivity,
   webActorFromUser,
@@ -31,7 +31,6 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorSpaces,
-  juniorUsers,
 } from "@/db/schema";
 import type { SpaceVisibility } from "@/db/schema/spaces";
 
@@ -46,14 +45,8 @@ export interface Space {
   archivedAt: Date | null;
   memberCount: number;
   viewerIsMember: boolean;
-}
-
-/** One member of a Space. */
-export interface SpaceMember {
-  userId: string;
-  email: string;
-  displayName: string | null;
-  avatarUrl: string | null;
+  /** The Lead, which Junior creates with the Space. */
+  leadConversationId: string;
 }
 
 /** Which Spaces a list returns. */
@@ -64,6 +57,7 @@ export interface SpaceListFilter {
 }
 
 const memberLead = alias(juniorConversations, "space_member_lead");
+const lead = alias(juniorConversations, "space_lead");
 const participants = juniorConversationParticipants;
 
 /**
@@ -77,16 +71,28 @@ function spaceLeadId(spaceId: string | typeof juniorSpaces.id) {
     .where(and(eq(memberLead.kind, "lead"), eq(memberLead.spaceId, spaceId)));
 }
 
+// Members are the Lead's subscribed Participants, as `viewerMembership`.
 function memberCountSql() {
   return getDb()
     .select({ value: count() })
     .from(participants)
     .where(
-      inArray(participants.rootConversationId, spaceLeadId(juniorSpaces.id)),
+      and(
+        inArray(participants.rootConversationId, spaceLeadId(juniorSpaces.id)),
+        isNull(participants.unsubscribedAt),
+      ),
     );
 }
 
-function viewerMembership(viewerUserId: string) {
+/**
+ * The viewer's Participant row on the Space's Lead. With `subscribed`, only
+ * while the Lead is in their feed: a member who leaves a public Space keeps
+ * the row, like any public root, but is no longer a member.
+ */
+function viewerMembership(
+  viewerUserId: string,
+  options?: { subscribed: true },
+) {
   return getDb()
     .select({ one: participants.userId })
     .from(participants)
@@ -94,6 +100,7 @@ function viewerMembership(viewerUserId: string) {
       and(
         inArray(participants.rootConversationId, spaceLeadId(juniorSpaces.id)),
         eq(participants.userId, viewerUserId),
+        options?.subscribed ? isNull(participants.unsubscribedAt) : undefined,
       ),
     );
 }
@@ -113,10 +120,15 @@ async function selectSpaces(
       archivedAt: juniorSpaces.archivedAt,
       memberCount: sql<number>`(${memberCountSql()})`.mapWith(Number),
       viewerIsMember: sql<boolean>`${exists(
-        viewerMembership(viewerUserId),
+        viewerMembership(viewerUserId, { subscribed: true }),
       )}`.mapWith(Boolean),
+      leadConversationId: lead.conversationId,
     })
     .from(juniorSpaces)
+    .innerJoin(
+      lead,
+      and(eq(lead.kind, "lead"), eq(lead.spaceId, juniorSpaces.id)),
+    )
     // A private Space is readable only by its members.
     .where(
       and(
@@ -143,7 +155,7 @@ export async function listSpaces(
         ? isNotNull(juniorSpaces.archivedAt)
         : isNull(juniorSpaces.archivedAt),
       filter.membership === "member"
-        ? exists(viewerMembership(viewerUserId))
+        ? exists(viewerMembership(viewerUserId, { subscribed: true }))
         : undefined,
     ),
   );
@@ -257,88 +269,4 @@ export async function updateSpace(
         ),
       );
   });
-}
-
-/**
- * Add one person to a Space: make them a Participant of its Lead. Joining
- * again puts the Space back in their active feed.
- */
-export async function joinSpace(
-  leadConversationId: string,
-  userId: string,
-): Promise<void> {
-  await getDb()
-    .insert(participants)
-    .values({
-      userId,
-      rootConversationId: leadConversationId,
-      lastMessageAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [participants.userId, participants.rootConversationId],
-      set: { unsubscribedAt: null },
-    });
-}
-
-/**
- * Remove one person from a Space. Returns "last_member", and changes
- * nothing, when they are the last member of a private Space: nobody could
- * read or restore a private Space with no members.
- */
-export async function leaveSpace(
-  spaceId: string,
-  userId: string,
-): Promise<"last_member" | undefined> {
-  const executor = getSqlExecutor();
-  return await executor.transaction(async () => {
-    const db = executor.db();
-    // Two members who leave at once take turns on this lock, so the second
-    // sees that the first left.
-    const [space] = await db
-      .select({ visibility: juniorSpaces.visibility })
-      .from(juniorSpaces)
-      .where(eq(juniorSpaces.id, spaceId))
-      .for("update");
-    const lead = inArray(participants.rootConversationId, spaceLeadId(spaceId));
-    if (space?.visibility === "private") {
-      const members = await db
-        .select({ userId: participants.userId })
-        .from(participants)
-        .where(lead)
-        .limit(2);
-      if (members.length === 1 && members[0]!.userId === userId) {
-        return "last_member";
-      }
-    }
-    // Leaving ends membership, so the row goes, not only the feed entry.
-    await db
-      .delete(participants)
-      .where(and(lead, eq(participants.userId, userId)));
-    return undefined;
-  });
-}
-
-/** Return the members of a Space, by email. */
-export async function listSpaceMembers(
-  spaceId: string,
-): Promise<SpaceMember[]> {
-  const db = getDb();
-  const rows = await db
-    .select({
-      userId: participants.userId,
-      email: juniorUsers.primaryEmail,
-      displayName: juniorUsers.displayName,
-    })
-    .from(participants)
-    .innerJoin(juniorUsers, eq(juniorUsers.id, participants.userId))
-    .where(inArray(participants.rootConversationId, spaceLeadId(spaceId)))
-    .orderBy(asc(juniorUsers.primaryEmail), asc(participants.userId));
-  const avatars = await readUserAvatarUrls(
-    db,
-    rows.map((row) => row.userId),
-  );
-  return rows.map((row) => ({
-    ...row,
-    avatarUrl: avatars.get(row.userId) ?? null,
-  }));
 }

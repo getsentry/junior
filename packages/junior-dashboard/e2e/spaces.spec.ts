@@ -4,7 +4,6 @@ import { findMockConversationDetail, mockSpaceList } from "./mock-reports";
 import { expect, test } from "./test";
 
 const BILLING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
-const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
 // A private Space that the viewer and Avery are in.
 const PRICING = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a24";
 // A child of the mock dashboard QA Conversation.
@@ -224,32 +223,21 @@ test("another Space's page does not show the last Space's Threads", async ({
   ).toBeVisible();
 });
 
-test("a non-member opens a Space and joins it", async ({ dashboard, page }) => {
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
-  await expect(
-    page.getByRole("heading", { name: "Docs refresh" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Join Docs refresh to message its Lead."),
-  ).toBeVisible();
-  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
-  // The Conversation menu joins the Space, like the button below the
-  // transcript. The row is a toggle, so the menu stays open on Leave.
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await conversationMenuRow(page, "Join").click();
-  await expect(conversationMenuRow(page, "Leave")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
-  await expect(
-    page.getByRole("list", { name: "Spaces" }).getByRole("link", {
-      name: "Docs refresh",
-    }),
-  ).toBeVisible();
-
-  // A member can leave from the Conversation menu.
+test("a member leaves a public Space from the Conversation menu", async ({
+  dashboard,
+  page,
+}) => {
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
+  const pane = page.getByRole("list", { name: "Spaces" }).getByRole("link", {
+    name: "Billing migration",
+  });
+  await expect(pane).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await conversationMenuRow(page, "Leave").click();
-  await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
+  await expect(pane).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // A public Space stays open, and a message to its Lead joins it again.
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
 });
 
 test("a phone header names the Space and holds its menu", async ({
@@ -257,11 +245,10 @@ test("a phone header names the Space and holds its menu", async ({
   page,
 }) => {
   await page.setViewportSize(mobile);
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
+  await page.goto(`${dashboard.baseURL}${BILLING}`);
   await expect(
-    page.getByRole("heading", { name: "Docs refresh" }),
+    page.getByRole("heading", { name: "Billing migration" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Join" }).click();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(conversationMenuRow(page, "Leave")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -269,7 +256,7 @@ test("a phone header names the Space and holds its menu", async ({
   await expect(page).toHaveURL(/\/inbox$/);
 });
 
-test("archiving a Space asks first, and a restore brings back its composer", async ({
+test("archiving a Space asks first and takes it out of the pane until a restore", async ({
   dashboard,
   page,
 }) => {
@@ -279,16 +266,10 @@ test("archiving a Space asks first, and a restore brings back its composer", asy
   const confirm = page.getByRole("alertdialog");
   await expect(confirm).toContainText("stops and archives every conversation");
   await confirm.getByRole("button", { name: "Archive" }).click();
-  await expect(
-    page.getByText("This Space is archived. Restore it to message its Lead."),
-  ).toBeVisible();
-  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
-  // An archived Space leaves the pane.
-  await expect(
-    page.getByRole("list", { name: "Spaces" }).getByRole("link", {
-      name: "Billing migration",
-    }),
-  ).toHaveCount(0);
+  const pane = page.getByRole("list", { name: "Spaces" }).getByRole("link", {
+    name: "Billing migration",
+  });
+  await expect(pane).toHaveCount(0);
 
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await conversationMenuRow(page, "Restore").click();
@@ -455,10 +436,7 @@ for (const [kind, conversationId] of [
   });
 }
 
-test("creating a private Space shows its lock, and its last member cannot leave", async ({
-  dashboard,
-  page,
-}) => {
+test("creating a private Space shows its lock", async ({ dashboard, page }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
   await page.getByRole("button", { name: "New Space" }).click();
@@ -473,16 +451,9 @@ test("creating a private Space shows its lock, and its last member cannot leave"
   await expect(
     page.getByRole("img", { name: "Private Space" }).filter({ visible: true }),
   ).toHaveCount(2);
-
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await conversationMenuRow(page, "Leave").click();
-  await expect(page.getByRole("alert")).toContainText(
-    "The last member can't leave a private Space.",
-  );
-  await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
 });
 
-test("a member adds people to a private Space with the people picker", async ({
+test("a member invites people to a private Space's Lead", async ({
   dashboard,
   page,
 }) => {
@@ -505,7 +476,7 @@ test("a member adds people to a private Space with the people picker", async ({
   await expect(
     members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
   ).toHaveText(["Casey Nguyen"]);
-  // A Member shows, but cannot be chosen.
+  // A Participant shows, but cannot be chosen.
   await search.fill("avery");
   await expect(settled).toHaveAttribute("aria-busy", "false");
   const avery = members.getByRole("option", { name: /Avery Chen/ });
@@ -534,11 +505,14 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
   page,
 }) => {
   await page.goto(`${dashboard.baseURL}${PRICING}`);
-  // A member talks to the Lead of a private Space without being one of
-  // its Participants first.
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
+  // Leaving a private Lead asks first, like any private root.
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await conversationMenuRow(page, "Leave").click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Leave" })
+    .click();
   await expect(page).toHaveURL(/\/inbox$/);
   await expect(
     page

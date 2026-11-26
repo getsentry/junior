@@ -47,6 +47,7 @@ describe("getInboxItem MCP tool", () => {
       conversationId: CONVERSATION_ID,
       email: MCP_TEST_OTHER_VIEWER,
       title: "Budget review",
+      visibility: "private",
     });
     const item = await seedMcpInboxItem({
       conversationId: CONVERSATION_ID,

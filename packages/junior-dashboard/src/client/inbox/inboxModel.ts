@@ -1,6 +1,7 @@
-import type {
-  AutomationListItem,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type AutomationListItem,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { parsePath } from "react-router";
 
@@ -71,14 +72,21 @@ export function inboxViewPath(
   return search ? `/inbox?${search}` : "/inbox";
 }
 
-/** An ask or notice about a code change, such as a GitHub pull request. */
+/**
+ * A plugin's own ask or notice about a code change, such as a GitHub pull
+ * request. A plugin subject kind has the plugin's name and a colon. An
+ * agent's question or notice that cites one is not one.
+ */
 export function isCodeChangeItem(item: InboxItemPayload): boolean {
-  return item.subject?.objectType === "code_change";
+  return (
+    item.subject?.objectType === "code_change" &&
+    item.subject.kind.includes(":")
+  );
 }
 
 /** A question or approval that Junior asks with a form. */
 export function isDecisionItem(item: InboxItemPayload): boolean {
-  return Boolean(item.request);
+  return Boolean(inboxItemQuestion(item.request));
 }
 
 /** An item that shows a To-do for the viewer. */
@@ -236,9 +244,8 @@ export function doneSections(
 }
 
 /**
- * The state that a pull request ask names before ` · `, as plugin titles
- * such as `Review requested · #91` do. Other pull request items share one
- * group.
+ * The viewer's ask on a pull request, as the subject's live label says,
+ * such as `Review requested`. Other pull request items share one group.
  */
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
@@ -246,7 +253,11 @@ function pullRequestState(
   item: InboxItemPayload,
 ): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
-  const state = item.title.split(" · ")[0];
+  // Without a live card the label is only the kind's, so the ask that the
+  // plugin last wrote in the title, such as "Review requested · #91", says it.
+  const state = item.subject.object
+    ? item.subject.label
+    : item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }
 
@@ -287,7 +298,7 @@ export function inboxItemKind(item: InboxItemPayload): string {
   if (item.status !== "open") return inboxItemStatusLabel(item);
   if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
-  if (item.request) return "Question";
+  if (inboxItemQuestion(item.request)) return "Question";
   const state = pullRequestState(item);
   return state === "Other" ? "Approval" : state;
 }
@@ -317,7 +328,7 @@ function byConversation(
       // back to one.
       label:
         titleOf(group[0]!.conversationId) ??
-        group[0]!.newest.subject?.title ??
+        group[0]!.newest.subject.object?.title ??
         "Untitled",
       rows: group,
     }));
@@ -383,10 +394,11 @@ export function fyiCount(count: number): string {
  * end.
  */
 export function itemRowSubtitle(
-  item: Pick<InboxItemPayload, "subject" | "title">,
+  item: Partial<Pick<InboxItemPayload, "subject">> &
+    Pick<InboxItemPayload, "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
-  const subject = item.subject?.title;
+  const subject = item.subject?.object?.title;
   const tail = subject ? / \(([^()]+)\)$/.exec(subject) : null;
   const about =
     subject && tail && item.title.includes(tail[1]!)

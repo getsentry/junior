@@ -12,7 +12,6 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import { Button } from "../components/ui/button";
 import { ContextMenuItem } from "../components/ui/context-menu";
 import { useToastManager } from "../components/ui/toast";
 import {
@@ -22,7 +21,7 @@ import {
 import { DashboardApiError } from "../http";
 import { inboxViewPath } from "../inbox/inboxModel";
 import { conversationIdFromPath } from "../shell/inboxMobileHeader";
-import { useArchiveSpace, useSpaceMembership, useUpdateSpace } from "./queries";
+import { useArchiveSpace, useLeaveSpace, useUpdateSpace } from "./queries";
 import { spacePath } from "./spaceRoutes";
 
 // The form opens only after a click, so it loads with the first open
@@ -35,7 +34,7 @@ const SpaceFormDialog = lazy(() =>
 
 /**
  * A member's Space actions: edit, rename, archive or restore the Space, or
- * join or leave it. The pane renders `rows` in a Space's menu, and a Lead's
+ * leave it. The pane renders `rows` in a Space's menu, and a Lead's
  * Conversation menu calls the actions. The caller renders `dialogs` once.
  * Without a Space, the actions say that it has not loaded.
  */
@@ -43,7 +42,7 @@ export function useSpaceActions(space: SpaceReport | undefined) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const toast = useToastManager();
-  const membership = useSpaceMembership();
+  const leaveSpace = useLeaveSpace();
   const archive = useArchiveSpace();
   const update = useUpdateSpace();
   const [editing, setEditing] = useState(false);
@@ -71,12 +70,11 @@ export function useSpaceActions(space: SpaceReport | undefined) {
     });
   };
   // Leaving hides the menu, which drops `mutate` callbacks, so this waits
-  // on the promise. A private Space is not readable after the viewer leaves,
-  // and the API says why the last member can't leave one.
+  // on the promise. A private Space is not readable after the viewer leaves.
   const leave = () => {
     if (!space) return notLoaded();
     const leavesPage = space.visibility === "private" && pageInSpace(space.id);
-    void membership.mutateAsync({ join: false, spaceId: space.id }).then(
+    void leaveSpace.mutateAsync(space).then(
       () => {
         if (leavesPage)
           void navigate(inboxViewPath("inbox"), { replace: true });
@@ -104,27 +102,11 @@ export function useSpaceActions(space: SpaceReport | undefined) {
      * undo the latest change.
      */
     archive: setArchived,
-    join: () => {
-      if (!space) return notLoaded();
-      membership.mutate(
-        { join: true, spaceId: space.id },
-        {
-          onError: (error) =>
-            toast.add({
-              description:
-                error instanceof DashboardApiError ? error.apiError : undefined,
-              priority: "high",
-              title: "Could not join the Space",
-              type: "error",
-            }),
-        },
-      );
-    },
     leave,
     /** The Space's name, or the one being saved. */
     name:
       (update.isPending ? update.variables?.name : undefined) ?? space?.name,
-    pending: { archive: archive.isPending, membership: membership.isPending },
+    pending: { archive: archive.isPending },
     /** A Space and its Lead share one name. */
     rename: (name: string) => {
       if (!space) return notLoaded();
@@ -152,7 +134,7 @@ export function useSpaceActions(space: SpaceReport | undefined) {
         <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
           {space.archivedAt ? "Restore Space" : "Archive Space"}
         </ContextMenuItem>
-        <ContextMenuItem disabled={membership.isPending} onClick={leave}>
+        <ContextMenuItem disabled={leaveSpace.isPending} onClick={leave}>
           Leave Space
         </ContextMenuItem>
       </>
@@ -194,18 +176,4 @@ export function useSpaceActions(space: SpaceReport | undefined) {
       </>
     ) : null,
   };
-}
-
-/** Join the Space as the viewer. */
-export function JoinSpaceButton(props: { space: SpaceReport }) {
-  const membership = useSpaceMembership();
-  return (
-    <Button
-      disabled={membership.isPending}
-      onClick={() => membership.mutate({ join: true, spaceId: props.space.id })}
-      variant="default"
-    >
-      Join
-    </Button>
-  );
 }

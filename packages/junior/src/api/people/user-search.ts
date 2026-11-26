@@ -1,24 +1,20 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import {
-  readableSlackTeamId,
-  readConversationAccessFromSql,
-} from "../conversations/access";
+import { readConversationAccessFromSql } from "../conversations/access";
 import { throwApiError } from "../http";
 import type { UserSearchQuery, UserSearchResult } from "../schema/user-search";
-import { requireSpace } from "../spaces/access";
 import {
   readUserSearchFromSql,
   type UserSearchTarget,
 } from "./user-search.query";
 
 /**
- * Find Users to add to a Space or a Conversation. The viewer must be able
- * to read it, so who is a member does not leak; otherwise it looks
- * missing. The Users are those of this install, which is the tenant of
- * every Space and dashboard Conversation. A Conversation in a Slack
- * workspace narrows them to that workspace. Whether the viewer may add
- * them stays with the route that adds them.
+ * Find Users to add to a Conversation, such as a Space's Lead. The viewer
+ * must be able to read it, so who is a Participant does not leak;
+ * otherwise it looks missing. The Users are those of this install, which is
+ * the tenant of every dashboard Conversation, with or without a Slack
+ * account. Whether the viewer may add them stays with the route that adds
+ * them.
  */
 export async function searchUsersForViewer(
   viewer: User,
@@ -35,20 +31,12 @@ async function readUserSearchTarget(
   viewer: User,
   query: UserSearchQuery,
 ): Promise<UserSearchTarget> {
-  if (query.spaceId) {
-    await requireSpace(viewer.id, query.spaceId);
-    return { kind: "space", spaceId: query.spaceId };
-  }
-  const conversationId = query.conversationId!;
+  const { conversationId } = query;
   const access = (
     await readConversationAccessFromSql(getDb(), [conversationId], viewer)
   ).get(conversationId);
   if (!access?.canViewPrivateContent || !access.rootConversationId) {
     throwApiError(404, "Conversation not found.");
   }
-  return {
-    kind: "conversation",
-    rootConversationId: access.rootConversationId,
-    slackTeamId: readableSlackTeamId(access),
-  };
+  return { rootConversationId: access.rootConversationId };
 }

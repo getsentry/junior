@@ -7,6 +7,7 @@ import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import { getInboxItem, type InboxItem } from "@/chat/inbox-items/store";
+import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
@@ -53,6 +54,7 @@ async function inWorkspace(
 
 async function updateCard(
   item: InboxItem,
+  subjectUrl: string | undefined,
   row: CardRow,
   shown: boolean,
   getSlackAdapter: (() => SlackAdapter) | undefined,
@@ -60,7 +62,7 @@ async function updateCard(
   const timestamp = parseSlackMessageTs(row.messageTs);
   if (!timestamp) return;
   const card = shown
-    ? buildSlackInboxItemCard(item)
+    ? buildSlackInboxItemCard(item, subjectUrl)
     : buildHiddenSlackInboxItemCard(item);
   await inWorkspace(row.teamId, getSlackAdapter, () =>
     updateSlackMessage({ ...card, channelId: row.channelId, timestamp }),
@@ -92,13 +94,14 @@ async function resolveCardThread(
 
 async function postCard(
   item: InboxItem,
+  subjectUrl: string | undefined,
   thread: CardThread,
   getSlackAdapter: (() => SlackAdapter) | undefined,
 ): Promise<void> {
   await inWorkspace(thread.teamId, getSlackAdapter, async () => {
     // ast-grep-ignore: no-raw-slack-turn-post -- inbox item card that changes in place, not reply text
     const posted = await postSlackMessage({
-      ...buildSlackInboxItemCard(item),
+      ...buildSlackInboxItemCard(item, subjectUrl),
       channelId: thread.channelId,
       threadTs: thread.threadTs,
     });
@@ -208,13 +211,20 @@ export async function syncInboxItemSlackCards(args: {
                 : [thread],
             )
           ).flat();
+          // The item stores no link: a code change subject reads it from
+          // the code change records. A question has none.
+          const subjectUrl = (await readSubjectLinks(db, [item])).get(
+            subjectKey(item.subject),
+          );
           const results = await Promise.allSettled([
             ...rows.map((row, index) => {
               const thread = carded[index];
               const shown = !!thread && linkedThreads.has(threadKey(thread));
-              return updateCard(item, row, shown, getSlackAdapter);
+              return updateCard(item, subjectUrl, row, shown, getSlackAdapter);
             }),
-            ...missing.map((thread) => postCard(item, thread, getSlackAdapter)),
+            ...missing.map((thread) =>
+              postCard(item, subjectUrl, thread, getSlackAdapter),
+            ),
           ]);
           const failed = results.find((result) => result.status === "rejected");
           if (failed) throw failed.reason;

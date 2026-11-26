@@ -1,7 +1,11 @@
 /** Bind ACP sessions to Junior's existing Conversation runtime. */
 import type { StateAdapter } from "chat";
 import type { User } from "@sentry/junior-plugin-api";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import {
+  canAddConversationMessages,
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "@/api/conversations/access";
 import {
   conversationTurnIdForMessage,
   appendAndEnqueueWebMessage,
@@ -15,8 +19,7 @@ import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore, getDb } from "@/chat/db";
-import { spaceTakesMessagesFrom } from "@/chat/lead/conversation";
+import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversation } from "@/chat/task-execution/store";
 import { hasRunnableConversationWork } from "@/chat/task-execution/state";
@@ -37,8 +40,7 @@ type PromptResult =
       turnId: string;
     }
   | { status: "active" }
-  | { status: "not_found" }
-  | { status: "space_closed" };
+  | { status: "not_found" };
 
 type TurnTerminal =
   | { outcome: "cancelled" | "completed"; status: "completed" }
@@ -80,14 +82,20 @@ interface ConversationOptions {
   state: StateAdapter;
 }
 
+async function readAccess(
+  conversationId: string,
+  user: User,
+): Promise<ConversationAccess | undefined> {
+  return (
+    await readConversationAccessFromSql(getDb(), [conversationId], user)
+  ).get(conversationId);
+}
+
 async function hasConversationAccess(
   conversationId: string,
   user: User,
 ): Promise<boolean> {
-  const access = (
-    await readConversationAccessFromSql(getDb(), [conversationId], user)
-  ).get(conversationId);
-  return Boolean(access?.isParticipant);
+  return Boolean((await readAccess(conversationId, user))?.isParticipant);
 }
 
 /** Return whether one Turn can return its terminal result without racing cleanup. */
@@ -173,19 +181,10 @@ export function createAcpConversations(
     },
 
     async prompt({ conversationId, idempotencyKey, text, user }) {
-      if (!(await hasConversationAccess(conversationId, user))) {
+      // ACP acts only in the person's own Conversations.
+      const access = await readAccess(conversationId, user);
+      if (!access?.isParticipant || !canAddConversationMessages(access)) {
         return { status: "not_found" };
-      }
-      const conversation = await (
-        options.conversationStore ?? getConversationStore()
-      ).get({
-        conversationId,
-      });
-      if (
-        conversation &&
-        !(await spaceTakesMessagesFrom(conversation, user.id))
-      ) {
-        return { status: "space_closed" };
       }
       const currentCursor = await latestEventCursor(
         options.eventStore,

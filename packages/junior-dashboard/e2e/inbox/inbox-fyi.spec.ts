@@ -30,7 +30,7 @@ const replyNotice = {
   id: "item-reply-notice",
   kind: "notice" as const,
   owner: { id: replyConversationId, kind: "conversation" },
-  replyNotice: true as const,
+  subject: { kind: "reply", id: replyConversationId },
   rootConversationId: replyConversationId,
   status: "open" as const,
   title: "Roll back payments-v42",
@@ -333,6 +333,36 @@ test.describe("new UI", () => {
     await expect(
       rowHead(page, "Package release and self-update"),
     ).toBeVisible();
+  });
+
+  test("a notice's card lists its related links", async ({
+    dashboard,
+    page,
+  }) => {
+    // A notice asks nothing, so its request holds only related links.
+    const notice = {
+      ...digest,
+      request: {
+        related: [
+          {
+            label: "Alert rules",
+            note: "Both fired more than 20 times.",
+            url: "https://sentry.sentry.io/alerts/rules/",
+          },
+        ],
+      },
+    };
+    await mockInboxItems(page, { open: [notice] });
+    await page.goto(`${dashboard.baseURL}/inbox?item=${notice.id}`);
+    // The link opens its FYI row, which shows the links.
+    const related = page
+      .getByRole("region", { name: "FYI" })
+      .getByRole("region", { name: "Related" });
+    await expect(
+      related.getByRole("link", { name: "Alert rules" }),
+    ).toHaveAttribute("href", "https://sentry.sentry.io/alerts/rules/");
+    await expect(related).toContainText("Both fired more than 20 times.");
+    await screenshot(page, "inbox-notice-related-card", { lightTheme: true });
   });
 
   test("a sweep dismisses the FYIs of a pinned Conversation too", async ({

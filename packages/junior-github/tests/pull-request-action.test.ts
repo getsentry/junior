@@ -1,17 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK } from "../src/pull-request-action-backfill";
-import {
-  claimGitHubPullRequestReadySync,
-  releaseGitHubPullRequestReadySync,
-} from "../src/pull-request-outcomes/store";
-import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { GITHUB_PULL_REQUEST_ACTION_SYNC_TASK } from "../src/webhooks/pull-request-action";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { createPluginHarness } from "./plugin-harness";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   mockGitHub,
@@ -76,20 +70,12 @@ describe("next action item", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          // The approval gives the requester the merge ask, so it pushes.
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject: {
-            id: PULL_URL,
-            title: "feat(inbox): Add the Inbox notice (#946)",
-            // The Inbox shows the parsed conventional commit title.
-            titleParts: {
-              scope: "inbox",
-              text: "Add the Inbox notice",
-              type: "Feature",
-            },
-            url: PULL_URL,
-          },
+          subject: SUBJECT,
+          // The Inbox reads the title of the pull request from GitHub.
           title: "Ready to merge · #946",
           // The merge is the requester's step, so the item waits on them.
           waitsOnAssignees: true,
@@ -118,7 +104,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The pull request is no longer ready to merge.",
           status: "dismissed",
         },
@@ -154,7 +140,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "Auto-merge is on.",
           status: "dismissed",
         },
@@ -188,7 +174,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The pull request merged.",
           status: "done",
         },
@@ -246,19 +232,30 @@ describe("next action item", () => {
           kind: "upsert",
           notice: {
             body: `GitHub says that #946 can merge with no review. Review it, then merge it.\n\n${PULL_URL}`,
-            dedupeKey: DEDUPE_KEY,
+            subject: SUBJECT,
             title: "Ready to merge · #946",
             waitsOnAssignees: true,
           },
         },
       ]);
 
-      // The approval keeps the same action, so the item does not change.
+      // The approval keeps the same action. The item shows each check's
+      // read, so its text now says that the pull request is approved, and
+      // it asks nobody again.
       github.reviews = [{ state: "APPROVED", user: { login: "requester" } }];
       await webhook.handler(
         reviewSubmitted("approved", { login: "requester" }),
       );
-      expect(calls).toHaveLength(2);
+      expect(calls.slice(2)).toMatchObject([
+        {
+          kind: "upsert",
+          notice: {
+            askedIdentityIds: [],
+            body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
+            title: "Ready to merge · #946",
+          },
+        },
+      ]);
 
       // A change request by any reviewer ends the merge.
       github.reviews.push({
@@ -269,7 +266,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The pull request is no longer ready to merge.",
           status: "dismissed",
         },
@@ -322,19 +319,19 @@ describe("next action item", () => {
       const closes: string[] = [];
       const webhook = route(fixture, [], [], { close: 0 }, closes);
       const conflictCloses = () =>
-        closes.filter((key) => key.startsWith("merge-conflict:"));
+        closes.filter((key) => key.startsWith("merge_conflict:"));
       await webhook.handler(checkSuiteCompleted());
       expect(conflictCloses()).toEqual([]);
 
       github.mergeableStates = ["blocked"];
       await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual(["merge-conflict:getsentry/junior#946"]);
+      expect(conflictCloses()).toEqual(["merge_conflict:1001"]);
     } finally {
       await fixture.close();
     }
   });
 
-  it("shows one item that changes from review to merge", async () => {
+  it("changes the same item from the review ask to the merge ask", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const github: GitHubState = {
@@ -355,13 +352,9 @@ describe("next action item", () => {
       const webhook = route(fixture, calls, [], { close: 0 }, otherCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
-      // Each check closes the items from before one item per pull request,
-      // and the merge conflict notice of a pull request with no conflict.
-      expect(otherCloses).toEqual([
-        "pull-request-ready:getsentry/junior#946",
-        "pull-request-review-requested:getsentry/junior#946",
-        "merge-conflict:getsentry/junior#946",
-      ]);
+      // Each check closes the merge conflict notice of a pull request with
+      // no conflict.
+      expect(otherCloses).toEqual(["merge_conflict:1001"]);
 
       // The GitHub login matches the requester's linked account in any case.
       // A new pull request often has no merge state yet, and the review ask
@@ -373,14 +366,10 @@ describe("next action item", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject: {
-            id: PULL_URL,
-            title: "Add the Inbox notice (#946)",
-            url: PULL_URL,
-          },
+          subject: SUBJECT,
           title: "Review requested · #946",
           waitsOnAssignees: true,
         },
@@ -393,7 +382,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },
@@ -422,9 +411,141 @@ describe("next action item", () => {
       );
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
-        notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+        notice: {
+          askedIdentityIds: ["identity-requester"],
+          subject: SUBJECT,
+          title: "Ready to merge · #946",
+        },
       });
       expect(calls).toHaveLength(4);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps one item for every requested reviewer, pushes only the newly asked one, and drops a reviewer who reviews", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Alice"],
+      // The required check has not passed, so Junior does not ask the
+      // requester yet (`inLimbo`).
+      requiredChecks: ["test"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], undefined, {
+        alice: "identity-alice",
+        bob: "identity-bob",
+      });
+      const upsert = (asked: string[], assignees: string[]) => ({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: expect.objectContaining({
+          askedIdentityIds: asked,
+          assigneeIdentityIds: assignees,
+          subject: SUBJECT,
+          title: "Review requested · #946",
+        }),
+      });
+      await webhook.handler(
+        pullRequestAction("review_requested", false, "Alice"),
+      );
+      expect(calls).toEqual([upsert(["identity-alice"], ["identity-alice"])]);
+
+      // A second request adds Bob to the same item and pushes only to him.
+      github.requestedReviewers = ["Alice", "bob"];
+      await webhook.handler(
+        pullRequestAction("review_requested", false, "bob"),
+      );
+      expect(calls.at(-1)).toEqual(
+        upsert(["identity-bob"], ["identity-alice", "identity-bob"]),
+      );
+
+      // Other events change nothing and push nobody.
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls).toHaveLength(2);
+
+      // Alice reviews, so GitHub no longer requests her review. She leaves
+      // the item, and Bob stays on it with no new push.
+      github.requestedReviewers = ["bob"];
+      github.reviews = [{ state: "COMMENTED", user: { login: "Alice" } }];
+      await webhook.handler(reviewSubmitted("commented", { login: "Alice" }));
+      expect(calls.at(-1)).toEqual(upsert([], ["identity-bob"]));
+
+      // Bob reviews too. Nobody has an ask, so the item closes.
+      github.requestedReviewers = [];
+      await webhook.handler(reviewSubmitted("approved", { login: "bob" }));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          reason: "The review request ended.",
+          status: "done",
+          subject: SUBJECT,
+        },
+        kind: "close",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("asks both reviewers when their review requests arrive together", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Alice", "bob"],
+      // The required check has not passed, so Junior does not ask the
+      // requester yet (`inLimbo`).
+      requiredChecks: ["test"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], undefined, {
+        alice: "identity-alice",
+        bob: "identity-bob",
+      });
+      // GitHub sends one webhook per reviewer. Bob's arrives while Alice's
+      // checks, so Alice's check asks him in its next read.
+      let release!: () => void;
+      github.holdNextPullRead = new Promise((resolve) => {
+        release = resolve;
+      });
+      const first = webhook.handler(
+        pullRequestAction("review_requested", false, "Alice"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const second = webhook.handler(
+        pullRequestAction("review_requested", false, "bob"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      release();
+      await Promise.all([first, second]);
+      const asked = calls.flatMap((call) =>
+        call.kind === "upsert"
+          ? (call.notice as { askedIdentityIds: string[] }).askedIdentityIds
+          : [],
+      );
+      expect(asked.sort()).toEqual(["identity-alice", "identity-bob"]);
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: expect.objectContaining({
+          assigneeIdentityIds: ["identity-alice", "identity-bob"],
+        }),
+      });
     } finally {
       await fixture.close();
     }
@@ -446,25 +567,21 @@ describe("next action item", () => {
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
-      await webhook.handler(pullRequestAction("review_requested"));
-      const subject = {
-        id: PULL_URL,
-        title: "Add the Inbox notice (#946)",
-        url: PULL_URL,
-      };
-      expect(calls).toEqual([
-        {
-          conversationId: "slack:C123:1712345.0001",
-          kind: "upsert",
-          notice: {
-            assigneeIdentityIds: ["identity-requester"],
-            body: `#946 is a draft. Review it, then mark it ready for review.\n\n${PULL_URL}`,
-            dedupeKey: DEDUPE_KEY,
-            subject,
-            title: "Review requested · #946",
-            waitsOnAssignees: true,
-          },
+      const upsert = (body: string) => ({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          askedIdentityIds: ["identity-requester"],
+          assigneeIdentityIds: ["identity-requester"],
+          body: `${body}\n\n${PULL_URL}`,
+          subject: SUBJECT,
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
         },
+      });
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toEqual([
+        upsert("#946 is a draft. Review it, then mark it ready for review."),
       ]);
 
       // The requester approves it, but it stays a draft, such as when the
@@ -475,18 +592,9 @@ describe("next action item", () => {
       await webhook.handler(
         reviewSubmitted("approved", { login: "requester" }),
       );
-      expect(calls.at(-1)).toEqual({
-        conversationId: "slack:C123:1712345.0001",
-        kind: "upsert",
-        notice: {
-          assigneeIdentityIds: ["identity-requester"],
-          body: `You approved #946. Mark it ready for review.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject,
-          title: "Review requested · #946",
-          waitsOnAssignees: true,
-        },
-      });
+      expect(calls.at(-1)).toEqual(
+        upsert("You approved #946. Mark it ready for review."),
+      );
 
       // A comment after the approval does not undo it: the item stays.
       const count = calls.length;
@@ -503,18 +611,7 @@ describe("next action item", () => {
       github.draft = false;
       github.mergeableStates = ["blocked"];
       await webhook.handler(pullRequestAction("ready_for_review"));
-      expect(calls.at(-1)).toEqual({
-        conversationId: "slack:C123:1712345.0001",
-        kind: "upsert",
-        notice: {
-          assigneeIdentityIds: ["identity-requester"],
-          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject,
-          title: "Review requested · #946",
-          waitsOnAssignees: true,
-        },
-      });
+      expect(calls.at(-1)).toEqual(upsert("GitHub asks you to review #946."));
       expect(calls).toHaveLength(3);
     } finally {
       await fixture.close();
@@ -667,7 +764,7 @@ describe("next action item", () => {
         {
           conversationId: "slack:C123:1712345.0001",
           notice: expect.objectContaining({
-            dedupeKey: DEDUPE_KEY,
+            subject: SUBJECT,
             title: "Review requested · #946",
           }),
         },
@@ -745,7 +842,7 @@ describe("next action item", () => {
         {
           conversationId: "slack:C123:1712345.0001",
           notice: expect.objectContaining({
-            dedupeKey: DEDUPE_KEY,
+            subject: SUBJECT,
             title: "Review requested · #946",
           }),
         },
@@ -775,180 +872,6 @@ describe("next action item", () => {
       await route(fixture, calls).handler(reviewSubmitted("approved"));
       expect(requests).toEqual([]);
       expect(calls).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("backfills the next action of quiet pull requests once, one page at a time", async () => {
-    const fixture = await createGitHubFixture();
-    const requests: string[] = [];
-    // GitHub asked the requester before the derivation shipped, and no
-    // webhook came since.
-    mockGitHub(
-      {
-        draft: false,
-        mergeableStates: ["blocked"],
-        merged: false,
-        requestedReviewers: ["Requester"],
-        reviews: [],
-        state: "open",
-      },
-      requests,
-    );
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      // A full first page of pull requests that no person asked for. They
-      // need no GitHub read.
-      for (let number = 1; number <= 50; number += 1) {
-        fixture.codeIndex.seed({
-          conversationIds: [],
-          number,
-          openedAt: new Date("2026-07-01T12:00:00.000Z"),
-          providerId: String(number),
-          repository: { name: "getsentry/junior", providerId: "2001" },
-          state: "open",
-          updatedAt: new Date("2026-07-01T12:00:00.000Z"),
-        });
-      }
-      const h = createPluginHarness(fixture, requesterUsers);
-      const backfills = () =>
-        h.startedTasks.filter(
-          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
-        );
-      const now = Date.parse("2026-07-03T12:00:00.000Z");
-
-      await h.heartbeat(now);
-      expect(backfills()).toHaveLength(1);
-      await h.runStartedTasks();
-      expect(requests).toEqual([]);
-      expect(h.notices).toEqual([]);
-
-      await h.heartbeat(now + 60_000);
-      await h.runStartedTasks();
-      expect(h.notices).toEqual([
-        {
-          conversationId: "slack:C123:1712345.0001",
-          notice: expect.objectContaining({
-            dedupeKey: DEDUPE_KEY,
-            title: "Review requested · #946",
-          }),
-        },
-      ]);
-
-      // The last page is done, so a dismissed item stays closed.
-      h.dismiss(DEDUPE_KEY);
-      await h.heartbeat(now + 120_000);
-      expect(backfills()).toEqual([]);
-      // The reconcile and the name repair read GitHub APIs that this test
-      // does not mock.
-      expect(
-        h.heartbeatLogs.filter(([, message]) =>
-          message.includes("pull request action"),
-        ),
-      ).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("backfills a page again when a webhook was checking one of its pull requests", async () => {
-    const fixture = await createGitHubFixture();
-    const requests: string[] = [];
-    mockGitHub(
-      {
-        draft: false,
-        mergeableStates: ["blocked"],
-        merged: false,
-        reviews: [],
-        state: "open",
-      },
-      requests,
-    );
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      // A webhook checks the pull request while the backfill runs. It checks
-      // again for the backfill's request, but does not ask in limbo.
-      const claim = await claimGitHubPullRequestReadySync(
-        fixture.db(),
-        "1001",
-        { now: new Date(), staleMs: 60_000 },
-      );
-      if (!claim || claim === "held") {
-        throw new Error("expected the webhook's claim");
-      }
-      const h = createPluginHarness(fixture, requesterUsers);
-      const now = Date.parse("2026-07-03T12:00:00.000Z");
-      await h.heartbeat(now);
-      await h.runStartedTasks();
-      expect(requests).toEqual([]);
-      let held: number | undefined = claim.requests;
-      while (held !== undefined) {
-        held = await releaseGitHubPullRequestReadySync(fixture.db(), "1001", {
-          id: claim.id,
-          requests: held,
-        });
-      }
-
-      // The next heartbeat runs the page again, and it asks.
-      await h.heartbeat(now + 60_000);
-      await h.runStartedTasks();
-      expect(
-        requests.filter((request) => request.startsWith("request")),
-      ).toEqual(["request Requester"]);
-      expect(h.notices.map(({ notice }) => notice.title)).toEqual([
-        "Review requested · #946",
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("finishes the backfill past a pull request that Junior does not track", async () => {
-    const fixture = await createGitHubFixture();
-    const requests: string[] = [];
-    mockGitHub(
-      {
-        draft: false,
-        mergeableStates: ["blocked"],
-        merged: false,
-        reviews: [],
-        state: "open",
-      },
-      requests,
-    );
-    try {
-      // The code index and the requester know the pull request, but Junior
-      // has no row for it, so no webhook can hold its check.
-      const at = new Date("2026-07-01T12:00:00.000Z");
-      fixture.codeIndex.seed({
-        conversationIds: ["slack:C123:1712345.0001"],
-        number: 946,
-        openedAt: at,
-        providerId: "1001",
-        repository: { name: "getsentry/junior", providerId: "2001" },
-        state: "open",
-        updatedAt: at,
-      });
-      await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
-        conversationId: "slack:C123:1712345.0001",
-        createdAt: at,
-        identityId: "identity-requester",
-        number: 946,
-        repositoryFullName: "getsentry/junior",
-        updatedAt: at,
-      });
-      const h = createPluginHarness(fixture, requesterUsers);
-      const backfills = () =>
-        h.startedTasks.filter(
-          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
-        );
-      const now = Date.parse("2026-07-03T12:00:00.000Z");
-      await h.heartbeat(now);
-      await h.runStartedTasks();
-      await h.heartbeat(now + 60_000);
-      expect(backfills()).toEqual([]);
-      expect(requests).toEqual([]);
     } finally {
       await fixture.close();
     }

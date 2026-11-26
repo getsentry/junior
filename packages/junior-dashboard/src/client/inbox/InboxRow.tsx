@@ -508,7 +508,7 @@ function InboxRowBody(
   const inlineActions = Boolean(props.itemTitle) && openItems.length === 1;
   // A reply notice's card has nothing to answer, so its link to the reply is
   // its main action.
-  const replyNotice = inlineActions && openItems[0]?.replyNotice;
+  const replyNotice = inlineActions && openItems[0]?.subject.kind === "reply";
   // A sheet keeps its asks through its closing motion.
   const asksShown =
     (props.expanded || props.sheetOpen !== undefined) &&

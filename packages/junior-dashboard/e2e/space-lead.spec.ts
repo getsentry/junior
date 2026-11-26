@@ -11,6 +11,7 @@ const DOCS = "/spaces/6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23";
 
 const LEAD_REPLY =
   "Started both and watching them. I'll report back here when one needs you or finishes.";
+const LATENCY_FINISHED = '"Investigate checkout latency" finished a Turn.';
 
 test("a Space page shows its Lead and the Conversations it started", async ({
   page,
@@ -32,7 +33,7 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   ).toBeVisible();
 
   // The Lead's children show as child agent rows, as in any parent's
-  // transcript. The duration tells them from the Watch Event lines.
+  // transcript. The duration tells them from the agent update rows.
   const child = (title: string) =>
     transcript.getByRole("link", { name: new RegExp(`^${title} \\d+[smh]`) });
   const working = child("Investigate checkout latency");
@@ -41,16 +42,16 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   await expect(working).toBeVisible();
   await expect(child("Checkout latency triage")).toBeVisible();
 
-  // Routine Watch Events fold into one row. The ones that need a person
-  // show as one line each, before the Lead's reply.
+  // Routine agent updates fold into one row. The ones that need a person
+  // show as one row each, before the Lead's reply, as in any transcript.
+  await expect(transcript.getByText(LATENCY_FINISHED).first()).toBeHidden();
   await expect(
-    transcript.getByText("Investigate checkout latency finished").first(),
-  ).toBeHidden();
-  await expect(
-    transcript.getByText("Triage Sentaur GoCD deployment failures needs you"),
+    transcript.getByText(
+      '"Triage Sentaur GoCD deployment failures" waits on the person.',
+    ),
   ).toBeVisible();
   await expect(
-    transcript.getByText("Deployment investigation failed failed"),
+    transcript.getByText('"Deployment investigation failed" failed.'),
   ).toBeVisible();
 
   // The Lead's details show its Threads, and its Participants are its
@@ -72,12 +73,8 @@ test("a Space page shows its Lead and the Conversations it started", async ({
 
   // The folded row opens in place to the routine updates.
   await transcript.getByRole("button", { name: /^2 routine updates/ }).click();
-  await expect(
-    transcript.getByText("Investigate checkout latency finished"),
-  ).toHaveCount(2);
-  await expect(
-    transcript.getByText("Investigate checkout latency finished").first(),
-  ).toBeVisible();
+  await expect(transcript.getByText(LATENCY_FINISHED)).toHaveCount(2);
+  await expect(transcript.getByText(LATENCY_FINISHED).first()).toBeVisible();
 
   // A message from the page goes to the Lead, not to a new Conversation.
   const sends: string[] = [];
@@ -129,12 +126,14 @@ test("the Lead's own link shows the Conversation header", async ({
   dashboard,
 }) => {
   await page.setViewportSize(desktop);
-  const lead = await page.request.get(
-    `${dashboard.baseURL}/api/spaces/${BILLING_ID}/lead`,
+  const space = await page.request.get(
+    `${dashboard.baseURL}/api/spaces/${BILLING_ID}`,
   );
-  const { conversationId } = (await lead.json()) as { conversationId: string };
+  const { leadConversationId } = (await space.json()) as {
+    leadConversationId: string;
+  };
   await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(leadConversationId)}`,
   );
   await expect(
     page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
@@ -180,7 +179,10 @@ test("a new Lead opens as an empty Conversation", async ({
   await screenshot(page, "space-lead-empty");
 });
 
-test("a non-member reads the Lead", async ({ page, dashboard }) => {
+test("a non-member reads and can message a public Lead", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${DOCS}`);
   const transcript = page.getByLabel("Conversation transcript");
@@ -189,33 +191,9 @@ test("a non-member reads the Lead", async ({ page, dashboard }) => {
       "Which onboarding pages still describe the old setup flow?",
     ),
   ).toBeVisible();
-  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
-  await expect(
-    page.getByText("Join Docs refresh to message its Lead."),
-  ).toBeVisible();
+  // As in any public Conversation, a message joins them.
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await screenshot(page, "space-lead-non-member");
-});
-
-test("a non-member sees a Space whose Lead no member has talked to", async ({
-  page,
-  dashboard,
-}) => {
-  await page.route("**/api/spaces/*/lead", (route) =>
-    route.fulfill({
-      json: { error: "This Space has no Lead yet." },
-      status: 404,
-    }),
-  );
-  await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
-  await expect(
-    page.getByText("No member has talked to this Space's Lead yet."),
-  ).toBeVisible();
-  // The Space's Threads are its Lead's, so it has none to list.
-  await expect(
-    page.getByRole("region", { exact: true, name: "Threads" }),
-  ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 
 test.describe("on a touch screen", () => {
