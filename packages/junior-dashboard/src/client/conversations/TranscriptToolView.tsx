@@ -41,12 +41,14 @@ export const TranscriptToolView = memo(
       <ToolCallView {...props} />
     );
   },
-  // A message row reads titles from the rest of the Conversation. They are
-  // stored before the message is sent, so a newer copy does not change them.
+  // A message row reads titles from the rest of the Conversation. Events
+  // store them before the message is sent, so newer events do not change
+  // them. The agent tree takes the current titles, such as after a rename.
   (previous, next) =>
     previous.part === next.part &&
     previous.timestamp === next.timestamp &&
-    previous.conversation.conversationId === next.conversation.conversationId,
+    previous.conversation.conversationId === next.conversation.conversationId &&
+    previous.conversation.agentTree === next.conversation.agentTree,
 );
 
 function ToolCallView(props: ToolViewProps) {
