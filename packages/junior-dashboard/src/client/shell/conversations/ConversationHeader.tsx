@@ -100,6 +100,8 @@ export function ConversationHeader(
 function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The reader closed details. A resize can also close them. */
+  detailsClosedByReader?: boolean | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -163,10 +165,16 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // Closing details removes their focused close button, and focus falls to
+  // the body. Return it to the button that opens them. Not when a resize
+  // closes them: the resize can also hide another focused element, and the
+  // focus that falls from it stays on the body.
+  const detailsClosedByReader = props.detailsClosedByReader;
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
+      detailsClosedByReader &&
       document.activeElement === document.body
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
@@ -175,7 +183,7 @@ function ConversationTitleHeader(props: {
       trigger?.focus({ preventScroll: true });
     }
     wasDetailsOpen.current = detailsOpen;
-  }, [detailsOpen]);
+  }, [detailsOpen, detailsClosedByReader]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;
