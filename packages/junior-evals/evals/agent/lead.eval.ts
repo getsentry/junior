@@ -1,11 +1,7 @@
 import { describe, expect } from "vitest";
 import { webMessage } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import {
-  completedToolCalls,
-  toolCallsOf,
-  toolOutput,
-} from "@junior-evals/fixture/results";
+import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const CRON_WORK =
@@ -75,8 +71,9 @@ describe("Lead", () => {
   // Before the Lead could move Conversations, it started a Conversation to
   // do the move. The case measures whether it moves the work itself.
   test("when a person asks their Lead to move work into its Space, it moves the Conversation", async ({
-    run,
+    agent,
   }) => {
+    const { readConversationSpace, run } = await agent();
     const work = await run(webMessage(CRON_WORK));
 
     const conversation = await run(
@@ -86,13 +83,14 @@ describe("Lead", () => {
       ),
     );
 
-    const moves = completedToolCalls("moveConversationToSpace", conversation);
-    expect(moves.map((call) => toolOutput(call))).toContainEqual(
-      expect.objectContaining({
-        conversation_id: work.conversationId,
-        space: expect.objectContaining({ name: "Eval work" }),
-      }),
-    );
+    // A move inside a `codemode` script records no output, so the case reads
+    // the Space from the moved Conversation's page.
+    expect(
+      completedToolCalls("moveConversationToSpace", conversation).length,
+    ).toBeGreaterThan(0);
+    expect(await readConversationSpace(work.conversationId)).toMatchObject({
+      name: "Eval work",
+    });
     expect(toolCallsOf("startConversation", conversation)).toEqual([]);
   });
 
