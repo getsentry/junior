@@ -127,7 +127,7 @@ export function linearIssueAnnotation(issue: LinearIssue): ObjectAnnotation {
             : [],
       priority:
         typeof issue.priority === "number"
-          ? ["No priority", "Urgent", "High", "Normal", "Low"][issue.priority]
+          ? ["No priority", "Urgent", "High", "Medium", "Low"][issue.priority]
           : factName(issue.priority),
       project: factName(issue.project),
       cycle: factName(issue.cycle),
