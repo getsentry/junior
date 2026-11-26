@@ -77,6 +77,28 @@ export function githubRepositoryMove(from: string, to: string) {
   return { from: repositoryPrefix(from), to: repositoryPrefix(to) };
 }
 
+type RepositoryRename = readonly [from: string, to: string];
+
+/**
+ * Order repository renames so that each runs before the rename into its old
+ * name: `a→b` after `b→c`, or the keys of `a` would end on `c`. Renames in
+ * a cycle, such as two repositories that swapped names, have no safe order
+ * and are returned apart.
+ */
+export function orderRepositoryRenames(renames: Iterable<RepositoryRename>): {
+  cyclic: RepositoryRename[];
+  ordered: RepositoryRename[];
+} {
+  const pending = [...renames];
+  const ordered: RepositoryRename[] = [];
+  for (;;) {
+    const sources = new Set(pending.map(([from]) => from.toLowerCase()));
+    const next = pending.findIndex(([, to]) => !sources.has(to.toLowerCase()));
+    if (next < 0) return { cyclic: pending, ordered };
+    ordered.push(...pending.splice(next, 1));
+  }
+}
+
 // GitHub answers a renamed repository's old name, and its link names the
 // repository now. So the key follows the link, and a tool call by the old
 // name keeps the Annotation on the new key.

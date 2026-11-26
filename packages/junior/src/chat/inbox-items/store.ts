@@ -499,7 +499,7 @@ export async function insertInboxItem(
     }
     // The old owner columns stay for the release before this one, and a
     // trigger writes them from this owner (migration
-    // `20261126034025_inbox_item_owners`). A later release drops both.
+    // `20261126154025_inbox_item_owners`). A later release drops both.
     await tx.execute(
       sql`select set_config('junior.inbox_item_owner_kind', ${input.owner.kind}, true), set_config('junior.inbox_item_owner_id', ${input.owner.id}, true)`,
     );
@@ -569,7 +569,7 @@ export async function updateInboxItemContent(
       .for("update");
     if (!open[0]) return false;
     // The question changes first: the item write copies its content onto
-    // the item for the release before this one (`20261126034025_inbox_item_owners`).
+    // the item for the release before this one (`20261126154025_inbox_item_owners`).
     if (isQuestion(input.subject)) {
       await tx
         .update(juniorQuestions)

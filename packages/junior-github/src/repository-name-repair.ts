@@ -16,7 +16,7 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { githubRepositoryMove } from "./annotations.js";
+import { githubRepositoryMove, orderRepositoryRenames } from "./annotations.js";
 
 export const GITHUB_REPOSITORY_NAME_REPAIR_TASK = "repairRepositoryNames";
 
@@ -61,6 +61,7 @@ export function githubRepositoryNameRepairTask(
       if (stored.size > 0) {
         const readFullName = await loadFullNames();
         const updatedAt = new Date();
+        const renames: [from: string, to: string][] = [];
         await pLimit(READ_CONCURRENCY).map(
           [...stored],
           async ([providerId, name]) => {
@@ -72,9 +73,7 @@ export function githubRepositoryNameRepairTask(
                 providerId,
                 updatedAt,
               });
-              await ctx.annotations.objectsMoved(
-                githubRepositoryMove(name, fullName),
-              );
+              renames.push([name, fullName]);
             } catch (error) {
               ctx.log.error(
                 "GitHub repository name repair failed",
@@ -84,6 +83,24 @@ export function githubRepositoryNameRepairTask(
             }
           },
         );
+        // A move rewrites every key under its old name, so moves run one at
+        // a time, and a chain of renames runs from its newest name back.
+        const { cyclic, ordered } = orderRepositoryRenames(renames);
+        for (const [from, to] of ordered) {
+          try {
+            // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
+            await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
+          } catch (error) {
+            ctx.log.error(
+              "GitHub repository Annotation move failed",
+              { from, to },
+              error,
+            );
+          }
+        }
+        for (const [from, to] of cyclic) {
+          ctx.log.error("GitHub repository renames form a cycle", { from, to });
+        }
       }
       await ctx.state.set(DONE_KEY, true);
     },

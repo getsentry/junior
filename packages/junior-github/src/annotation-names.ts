@@ -19,7 +19,7 @@ import type {
   ListedAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { githubRepositoryMove } from "./annotations.js";
+import { githubRepositoryMove, orderRepositoryRenames } from "./annotations.js";
 import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 import type {
   GitHubObjectName,
@@ -200,7 +200,11 @@ export function githubAnnotationNamesTask(
               return;
             }
             if (!name) return;
-            if (!named) {
+            // A named object is no longer listed on a retry, so its move is
+            // kept before the write that names it can fail.
+            if (renamed) moves.set(stored.toLowerCase(), [stored, renamed]);
+            if (named) return;
+            try {
               await ctx.annotations.nameObject(key, {
                 subject: {
                   id: name.id,
@@ -211,8 +215,9 @@ export function githubAnnotationNamesTask(
                 },
                 url: name.url,
               });
+            } catch (error) {
+              failure ??= error;
             }
-            if (renamed) moves.set(stored.toLowerCase(), [stored, renamed]);
           });
         }
         // A move changes keys of the batch and of later rows, so it runs
@@ -220,12 +225,16 @@ export function githubAnnotationNamesTask(
         // so a moved object is still named. Each move names at least one
         // object, so this ends. A moved object with its id needs nothing
         // more.
-        for (const [from, to] of moves.values()) {
+        const renames = orderRepositoryRenames(moves.values());
+        for (const [from, to] of renames.ordered) {
           // oxlint-disable-next-line no-await-in-loop -- Few repositories move, and each move is one write.
           await ctx.annotations.objectsMoved(githubRepositoryMove(from, to));
         }
+        for (const [from, to] of renames.cyclic) {
+          ctx.log.error("GitHub repository renames form a cycle", { from, to });
+        }
         const last = batch.at(-1);
-        if (!named && moves.size > 0) {
+        if (!named && renames.ordered.length > 0) {
           progress = { pass: "unnamed", slices: progress.slices };
         } else if (failure !== undefined) {
           break;

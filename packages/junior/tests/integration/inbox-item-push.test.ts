@@ -865,6 +865,11 @@ describe("inbox item push", () => {
       200,
     );
     await execute(tools.add, ASK);
-    expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
+    // Her dismiss in the Conversation also closes its reply notice.
+    expect((await getInboxItem(getDb(), notice))?.status).toBe("done");
+    expect(pushes[5]?.["close"]).toEqual(
+      expect.arrayContaining([notice, next.item.id, acme]),
+    );
+    expect(pushes[5]?.["close"]).toHaveLength(3);
   });
 });

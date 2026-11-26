@@ -10,7 +10,6 @@ import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
 import { MessageLink } from "../components/MessageLink";
-import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
 import { useObjectPreviews } from "./objectPreviews";
@@ -21,10 +20,7 @@ import { useObjectPreviews } from "./objectPreviews";
  * opens the source. A reply with several objects stays short; the link
  * preview of an object chip still shows the full card.
  */
-export function ObjectRow(props: {
-  card: OwnedObjectAnnotation;
-  live?: boolean;
-}) {
+export function ObjectRow(props: { card: OwnedObjectAnnotation }) {
   const { card } = props;
   const previews = useObjectPreviews(card);
   // An automation has its own card with its prompt and schedule, and a
@@ -35,7 +31,7 @@ export function ObjectRow(props: {
     card.facts?.type === "trace" ||
     card.facts?.type === "dashboard"
   ) {
-    return <ObjectCard card={card} live={props.live} />;
+    return <ObjectCard card={card} />;
   }
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
@@ -129,12 +125,6 @@ export function ObjectRow(props: {
           srcSet={image.srcSet}
         />
       ))}
-      {props.live && card.objectType !== "person" ? (
-        // Above the row link, so the action does not open the source.
-        <span className="relative z-10 shrink-0">
-          <ObjectAttachAction card={card} />
-        </span>
-      ) : null}
     </section>
   );
 }

@@ -74,6 +74,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();
   const memoryConfig = original.readChatConfig({
     ...process.env,
+    JUNIOR_BASE_URL: "https://junior.example.com",
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -608,7 +609,6 @@ describe("createTestSandbox", () => {
     delete process.env["VERCEL_OIDC_TOKEN"];
     delete process.env["VERCEL_SANDBOX_KEEPALIVE_MS"];
     delete process.env["SANDBOX_VCPUS"];
-    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     process.env["JUNIOR_SECRET"] = "test-secret";
   });
 
@@ -616,7 +616,6 @@ describe("createTestSandbox", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     await disconnectStateAdapter();
-    delete process.env["JUNIOR_BASE_URL"];
     delete process.env["JUNIOR_SECRET"];
   });
 

@@ -43,7 +43,6 @@ import {
   splitComposerText,
   type ComposerReference,
 } from "./composerReferences";
-import { useAttachLinkedWork } from "./composerLinkedWork";
 import type ComposerEditor from "./composer-editor/ComposerEditor";
 import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
 import editorChunkUrl from "./composer-editor/editorChunkUrl";
@@ -169,12 +168,6 @@ type ConversationComposerProps = {
   compact?: boolean;
   /** The Conversation that this composer writes to, if it exists yet. */
   conversation?: ComposerConversation | undefined;
-  /**
-   * Add the work that a sent Message references to `conversation`'s linked
-   * work. A composer whose Messages go elsewhere, such as Quick question,
-   * leaves it off.
-   */
-  linksWork?: boolean;
   label: string;
   placeholder?: string | undefined;
   /**
@@ -259,9 +252,6 @@ export const ConversationComposer = memo(function ConversationComposer(
         reference,
       ]),
     ),
-  );
-  const attachLinkedWork = useAttachLinkedWork(
-    props.linksWork ? props.conversation : undefined,
   );
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
@@ -449,7 +439,6 @@ export const ConversationComposer = memo(function ConversationComposer(
       setHoldPending(true);
       try {
         await send();
-        attachLinkedWork(text);
       } catch {
         // The parent shows the error. The draft stays for a retry, with
         // focus, so Enter sends it again.
@@ -471,10 +460,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     queueMicrotask(() => {
       submittingRef.current = false;
     });
-    await send().then(
-      () => attachLinkedWork(text),
-      () => {},
-    );
+    await send().catch(() => {});
   };
 
   // Put queued text back ahead of anything the reader already typed.

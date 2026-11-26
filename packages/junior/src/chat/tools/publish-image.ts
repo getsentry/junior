@@ -1,7 +1,7 @@
 import * as z from "zod";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { publishImage } from "@/chat/artifacts/store";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
@@ -65,7 +65,7 @@ export function createPublishImageTool(args: {
       .strict(),
     outputSchema,
     async execute({ path, expires_in_minutes }) {
-      const publicBaseUrl = resolveBaseUrl()?.trim();
+      const publicBaseUrl = getChatConfig().deployment.baseUrl;
       if (!publicBaseUrl) {
         throw new Error(
           "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.",

@@ -145,7 +145,7 @@ See [Dashboard](/operate/dashboard/#configure-push-notifications).
 | ----------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Conditional | VAPID public key. Required for push notifications.                                                                                      |
 | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Conditional | VAPID private key. Required for push notifications.                                                                                     |
-| `JUNIOR_WEB_PUSH_SUBJECT`     | No          | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
+| `JUNIOR_WEB_PUSH_SUBJECT`     | No          | `mailto:` or `https:` contact for push services. Defaults to the public base URL (`JUNIOR_BASE_URL`, else the Vercel URL) when it is `https:`. Notifications stay off with an `http:` URL. |
 
 ## Build-time snapshot warmup
 
