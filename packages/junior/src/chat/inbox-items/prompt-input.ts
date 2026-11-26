@@ -1,6 +1,6 @@
 /**
  * Prompt inputs for person answers to Inbox items. An answer is its own
- * prompt content part, keyed by the item id that `addInboxItem` returned.
+ * prompt content part, keyed by the item id that `askUserQuestion` returned.
  * The runtime builds it from the stored change record and the item, so the
  * model never reads status prose. It repeats the question, then one line for
  * each answered field. `input-tags.ts` lists the input tags.
@@ -41,6 +41,29 @@ function typedAnswerText(
   ].join("\n\n");
 }
 
+function shortQuestion(text: string): string {
+  const question = text.trim();
+  return question.length > QUESTION_MAX_LENGTH
+    ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`
+    : question;
+}
+
+// A request whose fields each hold their own question shows each question
+// right above its answer, so the model maps each answer to its question.
+function questionAnswerLines(
+  request: UserInputRequest,
+  answer: UserInputAnswer,
+): string[] {
+  const { other, values } = normalizeUserInputAnswer(request, answer);
+  return [
+    ...request.fields.flatMap((field) => [
+      `Question ${field.id} (${field.label}): ${shortQuestion(field.description ?? field.label)}`,
+      `Answer: ${values[field.id]?.join(", ") || "(no answer)"}`,
+    ]),
+    ...(other ? [`Other: ${other}`] : []),
+  ];
+}
+
 // Render one answer to an Inbox item as a prompt input. Only an action
 // item with a request takes an answer.
 function renderInboxItemAnswer(
@@ -48,19 +71,17 @@ function renderInboxItemAnswer(
 ): RuntimeInstructionInput | undefined {
   const request = inboxItemQuestion(item.request);
   if (!request || !item.answer) return undefined;
-  const question = request.question.trim();
   const requestText = typedAnswerText(request, item.answer);
   const text = renderTag(
     "inbox-item-answer",
     { id: item.id },
-    [
-      `Question: ${
-        question.length > QUESTION_MAX_LENGTH
-          ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`
-          : question
-      }`,
-      formatUserInputAnswer(request, item.answer),
-    ].map(escapeTagText),
+    (request.question
+      ? [
+          `Question: ${shortQuestion(request.question)}`,
+          formatUserInputAnswer(request, item.answer),
+        ]
+      : questionAnswerLines(request, item.answer)
+    ).map(escapeTagText),
   );
   return {
     kind: "runtime",

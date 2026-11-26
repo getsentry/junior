@@ -13,16 +13,14 @@ import {
   EVERYONE_ASSIGNEE,
   type FindMentionedUserId,
 } from "@/chat/inbox-items/assignees";
-import type {
-  InboxItemNoticeRequest,
-  InboxItemRelatedLink,
-  InboxItemRequest,
+import {
+  inboxItemRequestSchema,
+  type InboxItemNoticeRequest,
+  type InboxItemRequest,
 } from "@/chat/inbox-items/request";
 import {
-  userInputFieldsSchema,
-  userInputQuestionSchema,
-  userInputRequestSchema,
-  type UserInputRequest,
+  USER_INPUT_LIMITS,
+  type UserInputField,
 } from "@/chat/inbox-items/user-input-request";
 import { parseToolInput } from "@/chat/tool-support/zod-tool";
 import {
@@ -34,7 +32,7 @@ import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
-/** Deferred tool catalog source for the Inbox item tools after add. */
+/** Deferred tool catalog source for the Inbox item tools. */
 export const INBOX_TOOL_SOURCE = {
   id: "inbox",
   description: "Update and search Inbox items: work that needs a person.",
@@ -53,16 +51,6 @@ export const assigneesSchema = z
 export const conversationIdsSchema = z
   .array(z.string().trim().min(1).max(500))
   .max(10);
-
-/** Title of an Inbox item. */
-export const titleSchema = z.string().trim().min(1).max(200);
-/** Body of an Inbox item. */
-export const bodySchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(4000)
-  .describe("Markdown details for the person.");
 
 /** Runtime context that the Inbox item tools read. */
 export type InboxItemToolContext = Pick<
@@ -156,136 +144,122 @@ function requestResult({
   };
 }
 
-const relatedSchema = z
+const RECOMMENDED_SUFFIX = /\s*\(recommended\)$/i;
+// The Inbox row shows the title, so it stays short.
+const MAX_TITLE_CHARS = 200;
+
+const questionOptionSchema = z
+  .object({
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxLabelChars)
+      .describe(
+        "The choice the person picks, 1-5 words. The answer uses this text.",
+      ),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxDescriptionChars)
+      .describe("What this choice means or what happens if it is picked."),
+  })
+  .strict();
+
+/**
+ * The questions of `askUserQuestion` and `updateInboxItem`. The keys are
+ * the ones of Claude Code's `AskUserQuestion`, which models know, so they
+ * are camelCase where it is (`multiSelect`).
+ */
+export const questionsSchema = z
   .array(
     z
       .object({
-        url: z
+        question: z
           .string()
-          .url()
-          .max(2000)
-          .refine(
-            // `url()` also accepts `javascript:` and `data:` URLs.
-            (url) =>
-              URL.canParse(url) &&
-              ["http:", "https:"].includes(new URL(url).protocol),
-            "Use an http(s) URL.",
-          )
+          .trim()
+          .min(1)
+          .max(USER_INPUT_LIMITS.maxFieldDescriptionChars)
+          .describe(
+            "The complete question, clear and specific, ending with a question mark.",
+          ),
+        header: z
+          .string()
+          .trim()
+          .min(1)
+          .max(12)
+          .describe(
+            "A very short label for the question, at most 12 characters, such as `Approach`.",
+          ),
+        options: z
+          .array(questionOptionSchema)
+          .min(USER_INPUT_LIMITS.minOptions)
+          .max(4)
+          .describe(
+            'The 2-4 choices. Put the recommended one first and end its label with "(Recommended)". Do not add an "Other" choice: the person can always write their own answer.',
+          ),
+        multiSelect: z
+          .boolean()
           .nullable()
           .optional()
           .describe(
-            "A link, such as a chart, a log search, or the pull request that the item is about. The card shows these links.",
+            "True lets the person pick more than one choice. Default false.",
           ),
-        conversation_id: z
-          .string()
-          .trim()
-          .min(1)
-          .max(500)
-          .nullable()
-          .optional()
-          .describe("A related Conversation. Set this or `url`."),
-        label: z
-          .string()
-          .trim()
-          .min(1)
-          .max(120)
-          .describe("Short name of the link, such as `Checkout p95 chart`."),
-        note: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .regex(/^[^\r\n]*$/, "Use one line.")
-          .nullable()
-          .optional()
-          .describe("One line: what this link shows."),
       })
       .strict(),
   )
-  .max(10);
+  .min(1)
+  .max(USER_INPUT_LIMITS.maxFields)
+  .describe(
+    "The questions to ask, 1-4. Ask each decision as its own question, with its own choices, not several decisions in one question.",
+  );
 
-const questionRequestSchema = z.object({
-  request: userInputRequestSchema,
-});
-
-/**
- * Return the question of an action. An action needs one. A notice asks
- * nothing, so its `request` may hold only related links.
- */
-export function questionInput(
-  kind: InboxItem["kind"],
-  request: z.output<typeof requestInputSchema> | null | undefined,
-): UserInputRequest | undefined {
-  if (kind === "notice") {
-    if (request?.question || request?.fields) {
-      throw new ToolInputError(
-        "A notice asks nothing, so its `request` holds only `related`. To ask, use kind `action`.",
-      );
-    }
-    return undefined;
-  }
-  if (!request?.question || !request.fields) {
-    throw new ToolInputError(
-      "An action item needs a `request` with a `question` and `fields`.",
-    );
-  }
-  const { related: _related, ...question } = request;
-  return parseToolInput(questionRequestSchema, { request: question }).request;
+/** The stored content of the questions that an agent asks. */
+export interface QuestionContent {
+  body: string;
+  request: InboxItemRequest;
+  title: string;
 }
 
-/** The `request` param of the Inbox item tools that ask or change a question. */
-export const requestInputSchema = z.object({
-  question: userInputQuestionSchema
-    .optional()
-    .describe(
-      "The question, in markdown. Include the facts the person needs to decide. Required for an action. Not allowed for a notice.",
-    ),
-  fields: userInputFieldsSchema
-    .optional()
-    .describe(
-      "What to ask, in display order. Use one `choice` field for a simple decision. Required for an action. Not allowed for a notice.",
-    ),
-  related: relatedSchema
-    .nullable()
-    .optional()
-    .describe(
-      "Links related to the item: what it is about, such as a pull request, and the sources for its facts. With a suggested answer, link what supports it and what argues against it. Each entry has a `url` or a `conversation_id`.",
-    ),
-});
-
-/**
- * Normalize the related links: each entry names exactly one link, null
- * fields mean omitted, and a link is stored as `URL.href`, so it matches
- * the link of the work that it names.
- */
-export function relatedInput(
-  related: z.output<typeof relatedSchema> | null | undefined,
-): InboxItemRelatedLink[] {
-  return (related ?? []).map((entry) => {
-    if (Boolean(entry.url) === Boolean(entry.conversation_id)) {
-      throw new ToolInputError(
-        "Each `related` entry needs a `url` or a `conversation_id`, not both.",
-      );
-    }
-    return {
-      label: entry.label,
-      ...(entry.url ? { url: new URL(entry.url).href } : undefined),
-      ...(entry.conversation_id
-        ? { conversationId: entry.conversation_id }
-        : undefined),
-      ...(entry.note ? { note: entry.note } : undefined),
-    };
-  });
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
 /**
- * Store the question with its normalized related links, if it has any. A
- * notice stores only its related links.
+ * Store each question as one field with its own question, header, and
+ * choices, and no question that the fields share, so every surface shows
+ * each question with its own answer. A label that ends with
+ * "(Recommended)" becomes a recommended choice.
  */
-export function requestInput(
-  question: UserInputRequest | undefined,
-  related: InboxItemRelatedLink[],
-): InboxItemRequest | InboxItemNoticeRequest | undefined {
-  if (!question) return related.length > 0 ? { related } : undefined;
-  return { ...question, ...(related.length > 0 ? { related } : undefined) };
+export function questionContent(
+  questions: z.output<typeof questionsSchema>,
+): QuestionContent {
+  const fields: UserInputField[] = questions.map((entry, index) => ({
+    id: `q${index + 1}`,
+    label: entry.header,
+    description: entry.question,
+    kind: entry.multiSelect ? "multi_choice" : "choice",
+    options: entry.options.map((option) => {
+      const label = option.label.replace(RECOMMENDED_SUFFIX, "").trim();
+      return {
+        label: label || option.label,
+        description: option.description,
+        ...(label && label !== option.label
+          ? { recommended: true }
+          : undefined),
+      };
+    }),
+  }));
+  const request = parseToolInput(inboxItemRequestSchema, { fields });
+  return {
+    body: questions.map((entry) => entry.question).join("\n\n"),
+    request,
+    title: truncate(
+      questions.length === 1
+        ? questions[0]!.question
+        : questions.map((entry) => entry.header).join(" · "),
+      MAX_TITLE_CHARS,
+    ),
+  };
 }

@@ -54,5 +54,5 @@ export type InboxItemNoticeRequest = z.output<
 export function inboxItemQuestion(
   request: InboxItemRequest | InboxItemNoticeRequest | null | undefined,
 ): InboxItemRequest | undefined {
-  return request && "question" in request ? request : undefined;
+  return request && "fields" in request ? request : undefined;
 }

@@ -300,7 +300,7 @@ describe("Slack tool registration", () => {
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools["createAutomation"]?.disabledReason).toBeDefined();
       expect(tools["addReaction"]?.disabledReason).toBeDefined();
-      expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
+      expect(tools["askUserQuestion"]?.disabledReason).toBeUndefined();
     }
     expect(messageTurn["createAutomation"]?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
@@ -349,8 +349,8 @@ describe("Slack tool registration", () => {
 
   it("loads the tool that asks a person in every root Turn", () => {
     const tools = createTools([], {}, ctx());
-    expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
-    expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
+    expect(tools["askUserQuestion"]?.exposure).not.toBe("deferred");
+    expect(tools["askUserQuestion"]?.disabledReason).toBeUndefined();
 
     // A child agent reports the need to its parent.
     const childTools = createTools(
@@ -366,7 +366,7 @@ describe("Slack tool registration", () => {
         }).tools,
       },
     );
-    expect(childTools["addInboxItem"]?.disabledReason).toContain(
+    expect(childTools["askUserQuestion"]?.disabledReason).toContain(
       "reportBlocked",
     );
   });

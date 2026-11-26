@@ -151,7 +151,7 @@ test.describe("new UI", () => {
               data: {
                 calls: [
                   {
-                    name: "addInboxItem",
+                    name: "askUserQuestion",
                     output: { item: { id: migration.id } },
                     status: "completed",
                     toolCallId: "add-migration",

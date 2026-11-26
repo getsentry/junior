@@ -228,11 +228,13 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(41),
       addedByTurnId: "qa-turn-migration",
       id: "qa-migration-tables",
+      // `askUserQuestion` stores each question as its own field, with no
+      // question that the fields share.
       request: {
-        question: "Which tables go in the first batch?",
         fields: [
           {
-            id: "tables",
+            description: "Which tables go in the first batch?",
+            id: "q1",
             kind: "multi_choice",
             label: "Tables",
             options: [
@@ -242,10 +244,18 @@ export function seeds(nowMs: number): MockItemSeed[] {
             ],
           },
           {
-            description: "This person gets a ping if a batch fails.",
-            id: "owner",
-            kind: "text",
-            label: "On-call owner",
+            description: "Who gets paged if a batch fails?",
+            id: "q2",
+            kind: "choice",
+            label: "Owner",
+            options: [
+              {
+                description: "Owns the billing service.",
+                label: "Billing on-call",
+                recommended: true,
+              },
+              { description: "Ran the dry run.", label: "Avery" },
+            ],
           },
         ],
       },
@@ -260,12 +270,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
       id: "qa-migration-negative",
       shared: true,
       request: {
-        question: "What should happen to the 12 negative invoices?",
         fields: [
           {
-            id: "fix",
+            description: "What should happen to the 12 negative invoices?",
+            id: "q1",
             kind: "choice",
-            label: "Negative invoices",
+            label: "Invoices",
             options: [{ label: "Skip them" }, { label: "Zero them" }],
           },
         ],

@@ -9,7 +9,12 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertInboxItem } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRequest,
+} from "@/chat/inbox-items/request";
+import { ask as questions } from "../../../fixtures/questions";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
@@ -22,7 +27,6 @@ const ROLLOUT_ID = "slack:CPUB:1.000001";
 const LATENCY_ID = "slack:CPUB:1.000002";
 const ROLLBACK_ID = "slack:CPUB:1.000003";
 const OTHER_ID = "slack:CPUB:1.000004";
-const PRIVATE_ID = "slack:DPRIV:1.000005";
 const OTHER_TENANT_ID = "slack:CEXT:1.000006";
 const BUSY_ID = "slack:CPUB:1.000007";
 const SMOKE_ID = "slack:CPUB:1.000008";
@@ -85,10 +89,63 @@ function context(conversationId: string) {
   };
 }
 
-// Parse the input first, as the agent runtime does.
-async function add(conversationId: string, input: Record<string, unknown>) {
-  const tool = createAddInboxItemTool(context(conversationId), services);
+async function update(conversationId: string, input: Record<string, unknown>) {
+  const tool = createUpdateInboxItemTool(context(conversationId), services);
   return await (tool as any).execute((tool as any).prepareArguments(input), {});
+}
+
+// Ask `question` as the agent of `conversationId`, then link
+// `conversation_ids`, as an agent does. Parse each input first, as the
+// agent runtime does.
+async function ask(
+  conversationId: string,
+  question: string,
+  input: { assignees: string[]; conversation_ids?: string[] },
+) {
+  const tool = createAskUserQuestionTool(context(conversationId), services);
+  const added = await (tool as any).execute(
+    (tool as any).prepareArguments({
+      assignees: input.assignees,
+      questions: questions(question),
+    }),
+    {},
+  );
+  if (input.conversation_ids) {
+    await update(conversationId, {
+      id: added.item.id,
+      conversation_ids: input.conversation_ids,
+    });
+  }
+  return added;
+}
+
+let legacyCount = 0;
+
+// An item that an agent stored before `askUserQuestion`, when an ask or a
+// notice could carry related links. Its stored links still show.
+async function legacyItem(
+  conversationId: string,
+  assignee: User,
+  item: {
+    conversationIds?: string[];
+    kind: "action" | "notice";
+    request: InboxItemNoticeRequest | InboxItemRequest;
+    title: string;
+  },
+) {
+  legacyCount += 1;
+  return (await insertInboxItem(getDb(), {
+    assignedToEveryone: false,
+    assigneeUserIds: [assignee.id],
+    body: "Stored before askUserQuestion.",
+    conversationIds: item.conversationIds ?? [conversationId],
+    kind: item.kind,
+    nowMs: Date.now(),
+    owner: { id: conversationId, kind: "conversation" },
+    request: item.request,
+    subject: { id: `ask:legacy-${legacyCount}`, kind: "question" },
+    title: item.title,
+  }))!;
 }
 
 function api(fixture: ConversationFixture, viewer: User) {
@@ -118,7 +175,6 @@ describe("inbox item related links", () => {
     ]) {
       await slackConversation(id, "CPUB", "public");
     }
-    await slackConversation(PRIVATE_ID, "DPRIV", "private");
     await slackConversation(OTHER_TENANT_ID, "CEXT", "public", "T999");
     const ana = await user("ana@example.com");
     await user("ben@example.com");
@@ -130,77 +186,29 @@ describe("inbox item related links", () => {
         url: "https://sentry.example.com/canary",
       },
       {
-        conversation_id: LATENCY_ID,
+        conversationId: LATENCY_ID,
         label: "Checkout latency",
         note: "p95 rose after payments-v42.",
       },
     ];
-    const ask = {
-      assignees: ["ana@example.com"],
-      body: "The canary is clean.",
-      conversation_ids: [ROLLBACK_ID],
+    const rolloutItem = await legacyItem(ROLLOUT_ID, ana, {
+      conversationIds: [ROLLOUT_ID, ROLLBACK_ID],
       kind: "action",
       request: { ...REQUEST, related: links },
       title: "Approve the payments-v42 rollout",
-    };
-
-    // Each entry names one link, and a related Conversation passes the
-    // link check, so a private one cannot reach a public item.
-    await expect(
-      add(ROLLOUT_ID, {
-        ...ask,
-        request: {
-          ...REQUEST,
-          related: [
-            {
-              label: "Both",
-              url: RELEASE_URL,
-              conversation_id: LATENCY_ID,
-            },
-          ],
-        },
-      }),
-    ).rejects.toThrow("needs a `url` or a `conversation_id`");
-    await expect(
-      add(ROLLOUT_ID, {
-        ...ask,
-        request: {
-          ...REQUEST,
-          related: [{ label: "DM", conversation_id: PRIVATE_ID }],
-        },
-      }),
-    ).rejects.toThrow(`Conversation ${PRIVATE_ID} is not found.`);
-    await expect(
-      add(ROLLOUT_ID, {
-        ...ask,
-        request: {
-          ...REQUEST,
-          related: [{ label: "Script", url: "javascript:alert(1)" }],
-        },
-      }),
-    ).rejects.toThrow("Use an http(s) URL.");
-
-    const added = await add(ROLLOUT_ID, ask);
-    expect(added.item.request.related).toEqual(links);
+    });
+    const added = { item: rolloutItem };
     // Other work in the related Conversation, in the linked Conversation,
     // and a question that links the same release. Only the linked
     // Conversation's work is related: a related link relates a question to
     // no other item.
-    await add(LATENCY_ID, {
+    await ask(LATENCY_ID, "Checkout p95 rose after payments-v42", {
       assignees: ["ana@example.com"],
-      body: "p95 went from 210 ms to 890 ms after payments-v42.",
-      kind: "notice",
-      title: "Checkout p95 rose after payments-v42",
     });
-    const hold = await add(ROLLBACK_ID, {
+    const hold = await ask(ROLLBACK_ID, "Hold the payments-v42 deploy", {
       assignees: ["ana@example.com"],
-      body: "Morgan asked to hold the deploy.",
-      kind: "notice",
-      title: "Hold the payments-v42 deploy",
     });
-    await add(SMOKE_ID, {
-      assignees: ["ana@example.com"],
-      body: "The smoke tests have not run yet.",
+    await legacyItem(SMOKE_ID, ana, {
       kind: "action",
       request: {
         ...REQUEST,
@@ -208,31 +216,12 @@ describe("inbox item related links", () => {
       },
       title: "Run the payments-v42 smoke tests?",
     });
-    await add(OTHER_ID, {
+    await ask(OTHER_ID, "Roll out billing-v7?", {
       assignees: ["ana@example.com"],
-      body: "Unrelated.",
-      kind: "action",
-      request: {
-        ...REQUEST,
-        related: [
-          {
-            label: "billing-v7",
-            url: "https://sentry.example.com/releases/billing-v7",
-          },
-        ],
-      },
-      title: "Roll out billing-v7?",
     });
     // An open item that Ana cannot see stays out of her related work.
-    await add(OTHER_TENANT_ID, {
+    await ask(OTHER_TENANT_ID, "Release notes elsewhere", {
       assignees: ["ben@example.com"],
-      body: "Notes in another workspace.",
-      kind: "action",
-      request: {
-        ...REQUEST,
-        related: [{ label: "payments-v42", url: RELEASE_URL }],
-      },
-      title: "Release notes elsewhere",
     });
 
     // The page reads its items, then the related work of the whole page at
@@ -247,15 +236,7 @@ describe("inbox item related links", () => {
     const rollout = list.items.find(
       (item: { id: string }) => item.id === added.item.id,
     );
-    expect(rollout.request.related).toEqual([
-      links[0],
-      links[1],
-      {
-        conversationId: LATENCY_ID,
-        label: "Checkout latency",
-        note: "p95 rose after payments-v42.",
-      },
-    ]);
+    expect(rollout.request.related).toEqual(links);
     // The related links show on the card, but they do not decide it: the
     // subject is the question, which has no link or card of its own.
     expect(rollout.subject).toEqual({
@@ -270,44 +251,36 @@ describe("inbox item related links", () => {
     const single = await (await api(fixture, ana)(`/${added.item.id}`)).json();
     expect(single.related).toEqual(rollout.related);
 
-    // A change that does not name the related links keeps them.
-    const update = createUpdateInboxItemTool(context(ROLLOUT_ID), services);
-    const changed = await (update as any).execute(
-      (update as any).prepareArguments({
-        id: added.item.id,
-        title: "Approve the payments-v42 rollout now",
-      }),
-      {},
-    );
-    expect(changed.item.request.related).toEqual(links);
+    // New questions keep the stored related links.
+    const changed = await update(ROLLOUT_ID, {
+      id: added.item.id,
+      questions: questions("Approve the payments-v42 rollout now?"),
+    });
+    expect(changed.item.request.related).toEqual([
+      links[0],
+      links[1],
+      {
+        conversation_id: LATENCY_ID,
+        label: "Checkout latency",
+        note: "p95 rose after payments-v42.",
+      },
+    ]);
   });
 
-  it("links an agent notice to its pull request", async () => {
+  it("keeps a stored notice's pull request link off its card", async () => {
     // The GitHub plugin's link types read pull request links.
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const fixture = await createConversationFixture();
     await slackConversation(ROLLOUT_ID, "CPUB", "public");
     const ana = await user("ana@example.com");
     const links = [{ label: "The pull request", url: PR_URL }];
-    const notice = {
-      assignees: ["ana@example.com"],
-      body: "It merged after the canary passed.",
+    // A stored notice asks nothing, so its request holds only related links.
+    const merged = await legacyItem(ROLLOUT_ID, ana, {
       kind: "notice",
-      title: "The payments-v42 pull request merged",
-    };
-
-    // A notice asks nothing, so its request holds only related links.
-    await expect(
-      add(ROLLOUT_ID, { ...notice, request: { ...REQUEST, related: links } }),
-    ).rejects.toThrow("A notice asks nothing");
-    const merged = await add(ROLLOUT_ID, {
-      ...notice,
       request: { related: links },
+      title: "The payments-v42 pull request merged",
     });
-    expect(merged.item.request).toEqual({ related: links });
-    const rollout = await add(ROLLOUT_ID, {
-      assignees: ["ana@example.com"],
-      body: "The pull request merged.",
+    const rollout = await legacyItem(ROLLOUT_ID, ana, {
       kind: "action",
       request: { ...REQUEST, related: links },
       title: "Roll out payments-v42?",
@@ -318,16 +291,13 @@ describe("inbox item related links", () => {
       list.items.find((item: { id: string }) => item.id === id);
     // The notice's related link does not decide its card, as for a
     // question.
-    expect(listed(merged.item.id)).toMatchObject({ kind: "notice" });
-    expect(listed(merged.item.id).subject).toEqual({
-      id: merged.item.subject.id,
-      kind: "question",
-    });
+    expect(listed(merged.id)).toMatchObject({ kind: "notice" });
+    expect(listed(merged.id).subject).toEqual(merged.subject);
     // Its card shows the related links instead.
-    expect(listed(merged.item.id).request).toEqual({ related: links });
+    expect(listed(merged.id).request).toEqual({ related: links });
     // Linking one pull request does not relate the two.
-    expect(listed(rollout.item.id).related).toBeUndefined();
-    expect(listed(merged.item.id).related).toBeUndefined();
+    expect(listed(rollout.id).related).toBeUndefined();
+    expect(listed(merged.id).related).toBeUndefined();
     // Only the question is a decision. A question that links a pull
     // request is not a pull request's own ask.
     expect(await (await api(fixture, ana)("/count")).json()).toMatchObject({
@@ -344,12 +314,8 @@ describe("inbox item related links", () => {
     const ana = await user("ana@example.com");
     // The related question is older than every question in the busy
     // Conversation.
-    const rose = await add(LATENCY_ID, {
+    const rose = await ask(LATENCY_ID, "Checkout p95 rose after payments-v42", {
       assignees: ["ana@example.com"],
-      body: "p95 went from 210 ms to 890 ms after payments-v42.",
-      kind: "action",
-      request: REQUEST,
-      title: "Checkout p95 rose after payments-v42",
     });
     const start = Date.now();
     for (let index = 1; index <= 210; index += 1) {
@@ -366,21 +332,13 @@ describe("inbox item related links", () => {
         title: `Busy release ${index}`,
       });
     }
-    const busy = await add(ROLLOUT_ID, {
+    const busy = await ask(ROLLOUT_ID, "Hold the busy release?", {
       assignees: ["ana@example.com"],
-      body: "The busy release waits.",
       conversation_ids: [BUSY_ID],
-      kind: "action",
-      request: REQUEST,
-      title: "Hold the busy release",
     });
-    const added = await add(ROLLOUT_ID, {
+    const added = await ask(ROLLOUT_ID, "Approve the payments-v42 rollout?", {
       assignees: ["ana@example.com"],
-      body: "The canary is clean.",
       conversation_ids: [LATENCY_ID],
-      kind: "action",
-      request: REQUEST,
-      title: "Approve the payments-v42 rollout",
     });
 
     // The busy Conversation keeps only its own newest candidates, so the

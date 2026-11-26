@@ -11,7 +11,7 @@ import { usersInfoOk } from "../../fixtures/slack/factories/api";
 
 import {
   CARD_TS,
-  SHIP_REQUEST,
+  SHIP_QUESTION,
   THREAD,
   addItem,
   blocksOf,
@@ -21,6 +21,7 @@ import {
   slackThread,
   tearDownInboxItemCards,
 } from "../../fixtures/slack/inbox-item-cards";
+import { ask } from "../../fixtures/questions";
 
 describe("Slack webhook: who answers an Inbox item card", () => {
   beforeEach(setUpInboxItemCards);
@@ -33,22 +34,15 @@ describe("Slack webhook: who answers an Inbox item card", () => {
     await linkSlackUser("ben@example.com", "U456");
 
     const { item } = await addItem(ana, {
-      kind: "notice",
-      title: "Rotate the deploy key",
-      body: "The deploy key expires on Friday.",
       assignees: ["ana@example.com"],
+      questions: ask("Rotate the deploy key?"),
     });
 
     const posts = slackApiOutbox.messages();
     expect(posts.map((post) => post.params["channel"])).toEqual(["C123"]);
-    // A notice with no related links has a title that links nowhere.
-    expect(blocksOf(posts[0])[0]?.text).toContain("**Rotate the deploy key**");
-    // A notice has nothing to answer, so its only control is Dismiss.
-    expect(
-      blocksOf(posts[0])
-        .find((block) => block.type === "actions")
-        ?.elements?.map((element) => element.action_id),
-    ).toEqual(["junior_review_item:dismiss"]);
+    expect(blocksOf(posts[0])[0]?.text).toContain(
+      "**Decision**: Rotate the deploy key?",
+    );
 
     // Only an assignee can act. Ben gets an ephemeral note.
     await click({
@@ -111,10 +105,7 @@ describe("Slack webhook: who answers an Inbox item card", () => {
 
     // The agent asks without naming anyone, so the question goes to Ana.
     const { item } = await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
     });
     expect(item.assignees).toEqual(["ana@example.com"]);
     const shipIt = buttonValue(
@@ -178,9 +169,7 @@ describe("Slack webhook: who answers an Inbox item card", () => {
     expect(work?.messages.map((message) => message.input.authorId)).toEqual([
       "U456",
     ]);
-    expect(work?.messages[0]?.input.text).toContain(
-      "Decision (decision): Ship it",
-    );
+    expect(work?.messages[0]?.input.text).toContain("Decision (q1): Ship it");
   });
 
   // Which open question a reply answers is a decision model choice, so the

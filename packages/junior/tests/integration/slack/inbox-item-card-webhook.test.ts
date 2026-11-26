@@ -1,4 +1,4 @@
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import {
   closeInboxItem,
   getInboxItem,
   INBOX_ITEM_REPLIED_REASON,
+  insertInboxItem,
 } from "@/chat/inbox-items/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorInboxItems } from "@/db/schema";
@@ -31,13 +32,14 @@ import { usersInfoOk } from "../../fixtures/slack/factories/api";
 
 import {
   OTHER_THREAD,
-  SHIP_REQUEST,
+  SHIP_QUESTION,
   THREAD,
   addItem,
   blocksOf,
   buttonValue,
   inboxItemCardHarness,
   setUpInboxItemCards,
+  shipQuestions,
   slackThread,
   tearDownInboxItemCards,
   updateItem,
@@ -59,11 +61,8 @@ describe("Slack webhook: Inbox item cards", () => {
     await linkSlackUser("ben@example.com", "U456");
 
     const { item } = await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
       assignees: ["everyone"],
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
       conversation_ids: [OTHER_THREAD],
     });
 
@@ -89,16 +88,10 @@ describe("Slack webhook: Inbox item cards", () => {
     // The choices change. A click on the old card cannot pick a choice that
     // the item no longer offers.
     const shipIt = buttonValue(posts[0], "junior_review_item:choice:0");
-    const changeChoices = async (options: Array<{ label: string }>) => {
-      await updateItem(ana, {
-        id: item.id,
-        request: {
-          ...SHIP_REQUEST,
-          fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
-        },
-      });
+    const changeChoices = async (labels: string[]) => {
+      await updateItem(ana, { id: item.id, questions: shipQuestions(labels) });
     };
-    await changeChoices([{ label: "Hold" }, { label: "Wait" }]);
+    await changeChoices(["Hold", "Wait"]);
     await click({
       actionId: "junior_review_item:choice:0",
       actionTs: "1712345.0002",
@@ -111,7 +104,7 @@ describe("Slack webhook: Inbox item cards", () => {
     );
     // A stale button picks the label that it shows, not the new choice in
     // its place.
-    await changeChoices([{ label: "Hold" }, { label: "Ship it" }]);
+    await changeChoices(["Hold", "Ship it"]);
     const updatesBeforeClose = slackApiOutbox.calls("chat.update").length;
 
     // Two fast clicks both see an open item, but only one adds a Turn.
@@ -148,11 +141,9 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
     expect(work?.messages[0]?.input.text).toContain(
-      `answered inbox item "Ship release 1.2.3" (${item.id})`,
+      `answered inbox item "Ship release 1.2.3?" (${item.id})`,
     );
-    expect(work?.messages[0]?.input.text).toContain(
-      "Decision (decision): Ship it",
-    );
+    expect(work?.messages[0]?.input.text).toContain("Decision (q1): Ship it");
     // The input records the answer, so its saved Message shows as one.
     expect(work?.messages[0]?.input.reviewItemChange).toEqual({
       kind: "submitted",
@@ -237,11 +228,8 @@ describe("Slack webhook: Inbox item cards", () => {
     const { item } = await addItem(
       ana,
       {
-        kind: "action",
-        title: "Ship release 1.2.3",
-        body: "The release checks passed.",
         assignees: ["ana@example.com"],
-        request: SHIP_REQUEST,
+        questions: [SHIP_QUESTION],
       },
       run,
     );
@@ -267,9 +255,7 @@ describe("Slack webhook: Inbox item cards", () => {
     });
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
-    expect(work?.messages[0]?.input.text).toContain(
-      "Decision (decision): Ship it",
-    );
+    expect(work?.messages[0]?.input.text).toContain("Decision (q1): Ship it");
   });
 
   it("gives a click on a plugin item's choice to the plugin, with no Turn", async () => {
@@ -365,11 +351,8 @@ describe("Slack webhook: Inbox item cards", () => {
     });
     const ana = await linkSlackUser("ana@example.com", "U123");
     const input = {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
     };
     // The child adds the item first, and the parent links it later. The
     // thread keeps one card.
@@ -415,80 +398,119 @@ describe("Slack webhook: Inbox item cards", () => {
     await pauseConversationDelivery(THREAD);
     const ana = await linkSlackUser("ana@example.com", "U123");
     const input = {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
     };
     const { item } = await addItem(ana, input, child);
     await updateItem(ana, { id: item.id, conversation_ids: [child, THREAD] });
     expect(slackApiOutbox.messages()).toHaveLength(0);
 
     await resumeConversationDelivery(THREAD);
-    await updateItem(ana, { id: item.id, body: "The checks passed again." });
+    await updateItem(ana, {
+      id: item.id,
+      questions: [{ ...SHIP_QUESTION, question: "Ship release 1.2.3 now?" }],
+    });
     expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
-  it("names the recommended option of a form in the card text", async () => {
+  it("shows each question of a card with its own choices", async () => {
     inboxItemCardHarness();
     await slackThread(THREAD, "public");
     const ana = await linkSlackUser("ana@example.com", "U123");
     await addItem(ana, {
-      kind: "action",
-      title: "Plan the rollout",
-      body: "Pick a rollout window.",
       assignees: ["everyone"],
-      request: {
-        question: "How should the rollout go?",
-        fields: [
-          {
-            id: "window",
-            kind: "choice",
-            label: "Window",
-            options: [
-              { label: "Tuesday 02:00 UTC", recommended: true },
-              { label: "Thursday 02:00 UTC" },
-            ],
-          },
-          { id: "notes", kind: "text", label: "Notes" },
-        ],
-      },
+      questions: [
+        {
+          question: "When should the rollout start?",
+          header: "Window",
+          options: [
+            {
+              label: "Tuesday 02:00 UTC (Recommended)",
+              description: "The quietest hour.",
+            },
+            { label: "Thursday 02:00 UTC", description: "After the freeze." },
+          ],
+        },
+        {
+          question: "Which regions go first?",
+          header: "Regions",
+          multiSelect: true,
+          options: [
+            { label: "us", description: "Most traffic." },
+            { label: "eu", description: "Least traffic." },
+          ],
+        },
+      ],
     });
 
+    // No question sits above the two: each shows its own text and choices,
+    // and a card of two questions answers in a form, not with buttons.
     const [post] = slackApiOutbox.messages();
-    expect(JSON.stringify(blocksOf(post))).toContain(
-      "Tuesday 02:00 UTC (suggested), Thursday 02:00 UTC",
-    );
+    const text = blocksOf(post).find(
+      (block) => block.type === "markdown",
+    )?.text;
+    expect(text).toContain("**Window**: When should the rollout start?");
+    expect(text).toContain("Tuesday 02:00 UTC (suggested), Thursday 02:00 UTC");
+    expect(text).toContain("**Regions**: Which regions go first?");
+    expect(
+      blocksOf(post)
+        .find((block) => block.type === "actions")
+        ?.elements?.map((element) => element.action_id),
+    ).toEqual(["junior_review_item:dismiss", "junior_review_item:answer"]);
   });
 
-  it("lists a question's and a notice's related links below the body", async () => {
+  it("lists the related links that a stored item has below its body", async () => {
     setDashboardConversationLinkOptions({ baseURL: "https://junior.example" });
     try {
       inboxItemCardHarness();
       await slackThread(THREAD, "public");
       await slackThread(OTHER_THREAD, "public");
-      const ana = await linkSlackUser("ana@example.com", "U123");
       const related = [
         { label: "Canary [errors]", url: "https://example.com/canary" },
         // The same link again shows once.
         { label: "Canary", url: "https://example.com/canary" },
-        { label: "Checkout latency", conversation_id: OTHER_THREAD },
+        { label: "Checkout latency", conversationId: OTHER_THREAD },
       ];
-      await addItem(ana, {
-        kind: "action",
-        title: "Roll out payments-v42?",
-        body: "The canary is green.",
-        assignees: ["everyone"],
-        request: { ...SHIP_REQUEST, related },
-      });
-      await addItem(ana, {
-        kind: "notice",
-        title: "payments-v42 rolled out",
-        body: "All regions are on payments-v42.",
-        assignees: ["everyone"],
-        request: { related },
-      });
+      // Agents stored related links before `askUserQuestion`, on a question
+      // and on a notice.
+      const show = createInboxItemShow();
+      const stored = [
+        {
+          body: "The canary is green.",
+          kind: "action" as const,
+          request: {
+            question: "Ship release 1.2.3?",
+            fields: [
+              {
+                id: "decision",
+                kind: "choice" as const,
+                label: "Decision",
+                options: [{ label: "Ship it" }, { label: "Hold" }],
+              },
+            ],
+            related,
+          },
+          title: "Roll out payments-v42?",
+        },
+        {
+          body: "All regions are on payments-v42.",
+          kind: "notice" as const,
+          request: { related },
+          title: "payments-v42 rolled out",
+        },
+      ];
+      for (const [index, item] of stored.entries()) {
+        const added = await insertInboxItem(getDb(), {
+          ...item,
+          assignedToEveryone: true,
+          assigneeUserIds: [],
+          conversationIds: [THREAD],
+          nowMs: Date.now(),
+          owner: { id: THREAD, kind: "conversation" },
+          subject: { id: `ask:legacy-${index}`, kind: "question" },
+        });
+        await show(added!.id);
+      }
 
       const conversation = `https://junior.example/conversations/${encodeURIComponent(OTHER_THREAD)}`;
       const lines = slackApiOutbox.messages().map((post) => {
@@ -519,11 +541,8 @@ describe("Slack webhook: Inbox item cards", () => {
       await slackThread(THREAD, "public");
       const ana = await linkSlackUser("ana@example.com", "U123");
       const { item } = await addItem(ana, {
-        kind: "action",
-        title: "Ship release 1.2.3",
-        body: "The release checks passed.",
         assignees: ["everyone"],
-        request: SHIP_REQUEST,
+        questions: [SHIP_QUESTION],
       });
 
       const [post] = slackApiOutbox.messages();
@@ -559,19 +578,13 @@ describe("Slack webhook: Inbox item cards", () => {
       await slackThread(THREAD, "public");
       const ana = await linkSlackUser("ana@example.com", "U123");
       const { item } = await addItem(ana, {
-        kind: "action",
-        title: "Review the release notes",
-        body: "The notes need a look.",
         assignees: ["ana@example.com"],
-        request: {
-          question: "What should change?",
-          fields: [{ id: "notes", kind: "text", label: "Notes" }],
-        },
+        questions: [SHIP_QUESTION],
       });
 
       await actOnInboxItem({
         action: "submit",
-        answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
+        answer: { requestId: item.id, other: "x".repeat(3_000), values: {} },
         delivery: { queue, show: createInboxItemShow() },
         id: item.id,
         user: ana,
@@ -600,32 +613,19 @@ describe("Slack webhook: Inbox item cards", () => {
     inboxItemCardHarness();
     await slackThread(THREAD, "public");
     const ana = await linkSlackUser("ana@example.com", "U123");
-    const question = "Which checks should block the release? "
-      .repeat(75)
-      .trim();
-    const field = (id: string) => ({
-      id,
-      kind: "multi_choice",
-      label: `Checks for ${id}`.padEnd(75, "."),
-      description: "Pick every check that must pass. ".repeat(6).trim(),
-      options: Array.from({ length: 10 }, (_, index) => ({
-        label: `Check ${index} of ${id}`.padEnd(75, "."),
-      })),
-    });
+    const question = (id: string) =>
+      `Which checks of ${id} should block the release? `.repeat(22).trim();
     await addItem(ana, {
-      kind: "action",
-      title: "Choose the release checks".padEnd(200, "."),
-      // Under the body cap, so only the markdown limit shortens it.
-      body: "The release has many checks. ".repeat(100).trim(),
       assignees: ["everyone"],
-      request: {
-        question,
-        fields: ["a", "b", "c", "d"].map(field),
-        related: Array.from({ length: 10 }, (_, index) => ({
-          label: `Release ${index}`,
-          url: `https://example.com/releases/${index}/${"1.2.3/".repeat(320)}`,
+      questions: ["a", "b", "c", "d"].map((id) => ({
+        question: question(id),
+        header: `Checks ${id}`,
+        multiSelect: true,
+        options: Array.from({ length: 4 }, (_, index) => ({
+          label: `Check ${index} of ${id}`.padEnd(75, "."),
+          description: "Pick it when this check must pass. ".repeat(5).trim(),
         })),
-      },
+      })),
     });
 
     const [post] = slackApiOutbox.messages();
@@ -633,9 +633,8 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(markdown?.text?.length).toBeLessThanOrEqual(
       SLACK_MAX_MARKDOWN_CHARS,
     );
-    expect(markdown?.text).toContain("The release has many checks.");
-    expect(markdown?.text).toContain(`${question}\n\n`);
-    expect(markdown?.text).toContain("Check 9 of d");
+    expect(markdown?.text).toContain(question("a"));
+    expect(markdown?.text).toContain("Check 3 of d");
   });
 
   // Which open question a reply answers is a decision model choice, so the
@@ -664,10 +663,7 @@ describe("Slack webhook: Inbox item cards", () => {
 
     // The agent asks without naming anyone, so the question goes to Ana.
     const { item } = await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
     });
     expect(item.assignees).toEqual(["ana@example.com"]);
 
@@ -677,26 +673,18 @@ describe("Slack webhook: Inbox item cards", () => {
 
     // A Slack Actor without a Junior User asks a question with no
     // assignees. It is for Everyone, so a reply never answers it.
-    const unassigned = await (
-      createAddInboxItemTool(
-        {
-          conversationId: THREAD,
-          resolveActorIdentity: async () => ({
-            identity: { id: "identity:slack:UNOUSER" } as any,
-          }),
-          source: { kind: "slack" } as any,
-        },
-        createSlackInboxItemToolServices(
-          createConversationWorkQueueTestAdapter,
-        ),
-      ) as any
-    ).execute(
+    const unassignedTool = createAskUserQuestionTool(
       {
-        kind: "action",
-        title: "Ship release 1.2.4",
-        body: "The release checks passed.",
-        request: SHIP_REQUEST,
+        conversationId: THREAD,
+        resolveActorIdentity: async () => ({
+          identity: { id: "identity:slack:UNOUSER" } as any,
+        }),
+        source: { kind: "slack" } as any,
       },
+      createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+    ) as any;
+    const unassigned = await unassignedTool.execute(
+      unassignedTool.prepareArguments({ questions: [SHIP_QUESTION] }),
       {},
     );
     expect(unassigned.item.assignees).toEqual([]);
@@ -744,10 +732,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await slackThread(OTHER_THREAD, "public");
     const ana = await linkSlackUser("ana@example.com", "U123");
     const { item } = await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
-      request: SHIP_REQUEST,
+      questions: [SHIP_QUESTION],
       conversation_ids: [OTHER_THREAD],
     });
     // Ana's first reply closed the item, but its delivery did not finish.
@@ -768,7 +753,7 @@ describe("Slack webhook: Inbox item cards", () => {
     // the other linked thread.
     expect((await postInDashboard(ana)).status).toBe(200);
     expect(
-      JSON.stringify(blocksOf(slackApiOutbox.calls("chat.update")[0])),
+      JSON.stringify(blocksOf(slackApiOutbox.calls("chat.update").at(-1))),
     ).toContain("ana@example.com replied in the thread");
     expect(
       queue.sentRecords().map((record) => record.conversationId),

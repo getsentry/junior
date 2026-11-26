@@ -90,7 +90,7 @@ export interface WebMessageInput {
 /**
  * A person's answer or dismiss in the Inbox, through
  * `POST /api/inbox-items/:id/actions`. The fixture first links `item` to the
- * web Conversation and assigns it to the person, as `addInboxItem` would.
+ * web Conversation and assigns it to the person, as `askUserQuestion` would.
  */
 export interface InboxItemActionInput {
   kind: "inbox_item_action";

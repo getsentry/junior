@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace, joinSpace, leaveSpace } from "@/chat/spaces/store";
@@ -165,7 +165,7 @@ describe("inbox item in a private Conversation", () => {
         rootConversationId: privateId,
         userId: ana.id,
       });
-    const add = createAddInboxItemTool(
+    const add = createAskUserQuestionTool(
       {
         conversationId: privateId,
         resolveActorIdentity: async () => ({
@@ -179,21 +179,17 @@ describe("inbox item in a private Conversation", () => {
     const ask = (assignees?: string[]) =>
       add.execute(
         add.prepareArguments({
-          kind: "action",
-          title: "Pick a rollout day",
-          body: "The deploy waits on a day.",
           ...(assignees ? { assignees } : undefined),
-          request: {
-            question: "Which day?",
-            fields: [
-              {
-                id: "day",
-                kind: "choice",
-                label: "Day",
-                options: [{ label: "Monday" }, { label: "Tuesday" }],
-              },
-            ],
-          },
+          questions: [
+            {
+              question: "Which day should the deploy roll out?",
+              header: "Day",
+              options: [
+                { label: "Monday", description: "Start of the week." },
+                { label: "Tuesday", description: "After the sync." },
+              ],
+            },
+          ],
         }),
         {} as any,
       );

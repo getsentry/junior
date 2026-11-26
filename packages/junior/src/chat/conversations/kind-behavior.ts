@@ -240,7 +240,7 @@ const LEAD_TOOLS = [
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
-  "addInboxItem",
+  "askUserQuestion",
   "updateInboxItem",
   "searchEventTypes",
   "watchEvents",

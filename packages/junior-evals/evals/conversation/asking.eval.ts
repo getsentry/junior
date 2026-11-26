@@ -10,16 +10,24 @@ import { test, type ToolCall } from "@junior-evals/fixture/test";
 
 const MAYA = person("UMAYA", "Maya");
 
-/** The `request` of each action item that the agent added. */
-function askedRequests(conversation: { toolCalls: ToolCall[] }) {
-  return completedToolCalls("addInboxItem", conversation)
-    .map((call) => call.input as { kind?: string; request?: unknown })
-    .filter((input) => input.kind === "action")
-    .map((input) => input.request);
+interface AskedQuestion {
+  header: string;
+  multiSelect?: boolean | null;
+  options: Array<{ description: string; label: string }>;
+  question: string;
+}
+
+/** The `questions` of each `askUserQuestion` call that the agent made. */
+function askedQuestions(conversation: {
+  toolCalls: ToolCall[];
+}): AskedQuestion[][] {
+  return completedToolCalls("askUserQuestion", conversation).map(
+    (call) => (call.input as { questions: AskedQuestion[] }).questions,
+  );
 }
 
 describe("Asking a Person", () => {
-  test("when the work needs facts that only the person knows, ask with an inbox item", async ({
+  test("when the work needs facts that only the person knows, ask with askUserQuestion", async ({
     run,
   }) => {
     const conversation = await run(
@@ -31,10 +39,35 @@ describe("Asking a Person", () => {
 
     // Only Maya knows the day she is back. The agent asks in the Inbox, not
     // in plain text.
-    expect(askedRequests(conversation)).not.toHaveLength(0);
+    expect(askedQuestions(conversation)).not.toHaveLength(0);
   });
 
-  test("when a question suggests an answer, link the sources for it and against it on the question", async ({
+  test("when the person must make several decisions, ask each as its own question in one call", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "Set up the on-call rotation for the payments team. I still have to decide two things: whether shifts are weekly or daily, and whether the rotation pages in Slack or in PagerDuty. Ask me.",
+        { author: MAYA },
+      ),
+    );
+
+    // One call holds both decisions, each with its own question and
+    // choices, so each answer maps to its question.
+    const asks = askedQuestions(conversation);
+    expect(asks).toHaveLength(1);
+    const [questions] = asks;
+    expect(questions!.length).toBeGreaterThanOrEqual(2);
+    for (const question of questions!) {
+      expect(question.options.length).toBeGreaterThanOrEqual(2);
+      // The runtime adds a free-text answer, so the agent lists no Other.
+      expect(
+        question.options.some((option) => /^other\b/i.test(option.label)),
+      ).toBe(false);
+    }
+  });
+
+  test("when a question suggests an answer, put that choice first and mark it recommended", async ({
     run,
   }) => {
     const conversation = await run(
@@ -48,30 +81,16 @@ describe("Asking a Person", () => {
       ),
     );
 
-    const asks = completedToolCalls("addInboxItem", conversation)
-      .map(
-        (call) =>
-          call.input as {
-            kind?: string;
-            request?: {
-              related?: Array<{ url?: string | null }> | null;
-              fields: Array<{ options?: Array<{ recommended?: boolean }> }>;
-            };
-          },
-      )
-      .filter((input) => input.kind === "action");
+    const asks = askedQuestions(conversation);
     expect(asks).toHaveLength(1);
-    const [ask] = asks;
+    // The suggested choice comes first and says so.
+    const [[question]] = asks as [[AskedQuestion]];
+    expect(question.options[0]?.label).toMatch(/\(Recommended\)$/);
     expect(
-      ask!.request?.fields.some((field) =>
-        field.options?.some((option) => option.recommended),
+      question.options.filter((option) =>
+        option.label.endsWith("(Recommended)"),
       ),
-    ).toBe(true);
-    // Whichever answer it suggests, one source supports it and the other
-    // argues against it, so the question links both.
-    const urls = (ask!.request?.related ?? []).map((entry) => entry.url ?? "");
-    expect(urls.some((url) => url.includes("/canary/payments-v42"))).toBe(true);
-    expect(urls.some((url) => url.includes("/checkout-p95"))).toBe(true);
+    ).toHaveLength(1);
   });
 
   test("when a scope choice does not block the work, choose the conventional option and state it without an item", async ({
@@ -86,7 +105,7 @@ describe("Asking a Person", () => {
 
     // The delimiter, header, and quoting are scope choices with a
     // conventional default. They do not need the person.
-    expect(toolCallsOf("addInboxItem", conversation)).toHaveLength(0);
+    expect(toolCallsOf("askUserQuestion", conversation)).toHaveLength(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
@@ -102,7 +121,7 @@ describe("Asking a Person", () => {
     );
   });
 
-  test("when an Automation run needs the creator's decision, add an action item and finish the run", async ({
+  test("when an Automation run needs the creator's decision, ask it and finish the run", async ({
     run,
   }) => {
     await insertScheduledAutomation({
@@ -116,12 +135,12 @@ describe("Asking a Person", () => {
 
     const delivery = await run(heartbeat());
 
-    expect(askedRequests(delivery)).not.toHaveLength(0);
+    expect(askedQuestions(delivery)).not.toHaveLength(0);
     // The card is the answer, so the run posts nothing else.
     expect(toolCallsOf("noReply", delivery)).not.toHaveLength(0);
   });
 
-  test("when a child agent is blocked on input that only the person has, the parent adds an action item and does not ask in text", async ({
+  test("when a child agent is blocked on input that only the person has, the parent asks with askUserQuestion and not in text", async ({
     run,
   }) => {
     const conversation = await run(
@@ -136,7 +155,7 @@ describe("Asking a Person", () => {
     // Its result starts the second Turn. The parent asks in the Inbox.
     const resultTurn = conversation.turns[1];
     expect(resultTurn).toBeDefined();
-    expect(askedRequests(resultTurn!)).not.toHaveLength(0);
+    expect(askedQuestions(resultTurn!)).not.toHaveLength(0);
     for (const reply of resultTurn!.replies) {
       expect(reply.text).not.toContain("?");
     }

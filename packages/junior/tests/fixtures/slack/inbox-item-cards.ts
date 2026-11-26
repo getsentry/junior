@@ -1,4 +1,4 @@
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
@@ -28,17 +28,27 @@ export const OTHER_THREAD = "slack:C456:1712345.0009";
 // The Slack API mock gives every posted message this ts.
 export const CARD_TS = "1700000000.100";
 
-export const SHIP_REQUEST = {
+export const SHIP_QUESTION = {
   question: "Ship release 1.2.3?",
-  fields: [
-    {
-      id: "decision",
-      kind: "choice",
-      label: "Decision",
-      options: [{ label: "Ship it", recommended: true }, { label: "Hold" }],
-    },
+  header: "Decision",
+  options: [
+    { label: "Ship it (Recommended)", description: "The checks passed." },
+    { label: "Hold", description: "Wait for the next train." },
   ],
 };
+
+/** `SHIP_QUESTION` with other choices, for `updateInboxItem`. */
+export function shipQuestions(labels: string[]) {
+  return [
+    {
+      ...SHIP_QUESTION,
+      options: labels.map((label) => ({
+        label,
+        description: `Pick ${label}.`,
+      })),
+    },
+  ];
+}
 
 export async function slackThread(
   conversationId: string,
@@ -66,12 +76,16 @@ export async function slackThread(
   });
 }
 
+/**
+ * Ask a question as `user`'s agent. `conversation_ids` links more
+ * Conversations after the ask, with `updateInboxItem`, as an agent does.
+ */
 export async function addItem(
   user: User,
-  input: Record<string, unknown>,
+  { conversation_ids, ...input }: Record<string, unknown>,
   conversationId = THREAD,
 ) {
-  const tool = createAddInboxItemTool(
+  const tool = createAskUserQuestionTool(
     {
       conversationId,
       resolveActorIdentity: async () => ({
@@ -82,9 +96,20 @@ export async function addItem(
     },
     createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
-  return (await (tool as any).execute(input, {})) as {
+  const added = (await (tool as any).execute(
+    (tool as any).prepareArguments(input),
+    {},
+  )) as {
     item: { assignees: string[]; id: string; subject: { id: string } };
   };
+  if (conversation_ids) {
+    await updateItem(
+      user,
+      { id: added.item.id, conversation_ids },
+      conversationId,
+    );
+  }
+  return added;
 }
 
 export async function updateItem(

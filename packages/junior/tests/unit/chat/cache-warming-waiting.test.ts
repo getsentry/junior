@@ -149,7 +149,7 @@ describe("cache warming of idle periods that wait on other work", () => {
       // Another Turn asked an Inbox item.
       await endTurn(true, conversationId, {
         ...context,
-        messages: [...context.messages, toolCall("addInboxItem")],
+        messages: [...context.messages, toolCall("askUserQuestion")],
       });
       vi.setSystemTime(Date.now() + 3 * MINUTE);
       await endTurn(true, conversationId);

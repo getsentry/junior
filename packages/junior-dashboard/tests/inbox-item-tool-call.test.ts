@@ -5,30 +5,28 @@ import { inboxItemIdFromToolCall } from "../src/client/inbox/inboxItemFormat";
 const output = JSON.stringify({ created: true, item: { id: "item-1" } });
 
 describe("inboxItemIdFromToolCall", () => {
-  it("finds the item that addInboxItem added, directly or through executeTool", () => {
+  it("finds the item that askUserQuestion added, directly or through executeTool", () => {
     expect(
       inboxItemIdFromToolCall({
-        name: "addInboxItem",
+        name: "askUserQuestion",
         output,
         status: "completed",
       }),
     ).toBe("item-1");
     expect(
       inboxItemIdFromToolCall({
-        input: { tool_name: "addInboxItem", arguments: {} },
+        input: { tool_name: "askUserQuestion", arguments: {} },
         name: "executeTool",
         output,
         status: "completed",
       }),
     ).toBe("item-1");
-    // Transcripts from before the rename have the old tool name.
-    expect(
-      inboxItemIdFromToolCall({
-        name: "addReviewItem",
-        output,
-        status: "completed",
-      }),
-    ).toBe("item-1");
+    // Transcripts from before the renames have an old tool name.
+    for (const name of ["addInboxItem", "addReviewItem"]) {
+      expect(
+        inboxItemIdFromToolCall({ name, output, status: "completed" }),
+      ).toBe("item-1");
+    }
   });
 
   it("ignores other tools, unfinished calls, and hidden results", () => {
@@ -42,13 +40,13 @@ describe("inboxItemIdFromToolCall", () => {
     ).toBeUndefined();
     expect(
       inboxItemIdFromToolCall({
-        name: "addInboxItem",
+        name: "askUserQuestion",
         output,
         status: "running",
       }),
     ).toBeUndefined();
     expect(
-      inboxItemIdFromToolCall({ name: "addInboxItem", status: "completed" }),
+      inboxItemIdFromToolCall({ name: "askUserQuestion", status: "completed" }),
     ).toBeUndefined();
   });
 });

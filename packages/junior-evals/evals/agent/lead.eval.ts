@@ -176,7 +176,7 @@ describe("Lead", () => {
     expect(
       completedToolCalls("startAgent", conversation).length,
     ).toBeGreaterThan(0);
-    expect(toolCallsOf("addInboxItem", conversation)).toEqual([]);
+    expect(toolCallsOf("askUserQuestion", conversation)).toEqual([]);
   });
 
   // The Lead has no provider tools, so a child reads the pull request. The

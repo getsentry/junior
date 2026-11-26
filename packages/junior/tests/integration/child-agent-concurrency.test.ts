@@ -1,5 +1,5 @@
 import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import { messageChildAgent, spawnChildAgent } from "@/chat/child-agents/create";
@@ -700,32 +700,34 @@ describe("child agent identity and concurrency", () => {
         "alice@example.com",
       )) as User;
       // The child opened the item, so it is the only linked Conversation.
-      const added = (await (
-        createAddInboxItemTool(
-          {
-            conversationId: child.childConversationId,
-            resolveActorIdentity: async () => undefined,
-            source: { kind: "scheduled_automation" },
-          },
-          createSlackInboxItemToolServices(() => harness.queue),
-        ) as any
-      ).execute(
+      const tool = createAskUserQuestionTool(
         {
-          kind: "action",
-          title: "Pick an owner",
-          body: "The bug has no owner.",
-          assignees: ["alice@example.com"],
-          request: {
-            question: "Who should own the login bug?",
-            fields: [{ id: "owner", kind: "text", label: "Owner" }],
-          },
+          conversationId: child.childConversationId,
+          resolveActorIdentity: async () => undefined,
+          source: { kind: "scheduled_automation" },
         },
+        createSlackInboxItemToolServices(() => harness.queue),
+      ) as any;
+      const added = (await tool.execute(
+        tool.prepareArguments({
+          assignees: ["alice@example.com"],
+          questions: [
+            {
+              question: "Who should own the login bug?",
+              header: "Owner",
+              options: [
+                { label: "Bob", description: "He wrote the login form." },
+                { label: "Cy", description: "She owns auth." },
+              ],
+            },
+          ],
+        }),
         {},
       )) as { item: { id: string } };
       const id = added.item.id;
       await actOnInboxItem({
         action: "submit",
-        answer: { requestId: id, values: { owner: ["Bob"] } },
+        answer: { requestId: id, values: { q1: ["Bob"] } },
         delivery: { queue: harness.queue, show: async () => {} },
         id,
         user: alice,
@@ -739,8 +741,8 @@ describe("child agent identity and concurrency", () => {
       expect(requests[1]!.instruction.text).toBe(
         [
           `<inbox-item-answer id="${id}">`,
-          "Question: Who should own the login bug?",
-          "Owner (owner): Bob",
+          "Question q1 (Owner): Who should own the login bug?",
+          "Answer: Bob",
           "</inbox-item-answer>",
         ].join("\n"),
       );

@@ -1,4 +1,4 @@
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
@@ -26,7 +26,6 @@ import {
 import { juniorIdentities } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
-import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
 import {
@@ -34,7 +33,6 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const CLI_CONVERSATION_ID = "local:cli:inbox-items";
 
@@ -78,17 +76,37 @@ async function slackConversation(conversationId: string): Promise<void> {
   });
 }
 
-async function addItem(input: Record<string, unknown>): Promise<string> {
-  const tool = createAddInboxItemTool(
-    {
-      conversationId: "slack:CPUB:1.000001",
-      resolveActorIdentity: async () => undefined,
-      source: { kind: "scheduled_automation" },
-    },
-    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+// Store an item of a Conversation's agent, as these API cases read it: a
+// question with any stored request, or a notice from before
+// `askUserQuestion`. The tool cases are in `inbox-item-tools.test.ts`.
+async function addItem(input: {
+  assignees: string[];
+  body: string;
+  conversation_ids?: string[];
+  kind: "action" | "notice";
+  request?: UserInputRequest;
+  title: string;
+}): Promise<string> {
+  const owner = "slack:CPUB:1.000001";
+  const everyone = input.assignees.includes("everyone");
+  const assigneeUserIds = await Promise.all(
+    input.assignees
+      .filter((assignee) => assignee !== "everyone")
+      .map(async (email) => (await user(email)).id),
   );
-  const result = await (tool as any).execute(input, {});
-  return result.item.id;
+  const item = await insertInboxItem(getDb(), {
+    assignedToEveryone: everyone,
+    assigneeUserIds,
+    body: input.body,
+    conversationIds: [owner, ...(input.conversation_ids ?? [])],
+    kind: input.kind,
+    nowMs: Date.now(),
+    owner: { id: owner, kind: "conversation" },
+    ...(input.request ? { request: input.request } : undefined),
+    subject: { id: `ask:${randomUUID()}`, kind: "question" },
+    title: input.title,
+  });
+  return item!.id;
 }
 
 function api(fixture: ConversationFixture, viewer: User) {

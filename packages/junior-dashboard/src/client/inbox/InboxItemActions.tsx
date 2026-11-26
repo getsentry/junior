@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
+  buttonUserInputField,
   inboxItemQuestion,
   type InboxItemActionBody,
   type InboxItemPayload,
@@ -194,6 +195,14 @@ export function InboxItemActions(props: {
   );
 
   const question = inboxItemQuestion(item.request);
+  // One question answered with one click has its buttons, not a form
+  // field, so the card shows its question here.
+  const questionText = question
+    ? (question.question ??
+      (buttonUserInputField(question)
+        ? question.fields[0]?.description
+        : undefined))
+    : undefined;
   return (
     <div className="grid gap-3">
       {/* A notice asks nothing, but its related links say what it is
@@ -202,13 +211,18 @@ export function InboxItemActions(props: {
       {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
           {/* The question comes first and in full, then what Junior said
-              around it. */}
-          <section aria-label="Question" className="grid gap-1">
-            <span className="text-xs text-dashboard-text-muted">Question</span>
-            <div className="font-medium [&_p]:my-0">
-              <DisplayText mentions={item.mentions} text={question.question} />
-            </div>
-          </section>
+              around it. Questions that each have their own choices show
+              in the form instead. */}
+          {questionText ? (
+            <section aria-label="Question" className="grid gap-1">
+              <span className="text-xs text-dashboard-text-muted">
+                Question
+              </span>
+              <div className="font-medium [&_p]:my-0">
+                <DisplayText mentions={item.mentions} text={questionText} />
+              </div>
+            </section>
+          ) : null}
           {props.context}
           <InboxItemRelated item={item} />
           <UserInputForm

@@ -18,12 +18,13 @@ import {
 } from "@/db/schema";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { ask } from "../fixtures/questions";
 
 type Context = Pick<
   ToolRuntimeContext,
@@ -48,7 +49,7 @@ const services = createSlackInboxItemToolServices(() => queue);
 
 function tools(context: Context) {
   return {
-    add: createAddInboxItemTool(context, services),
+    add: createAskUserQuestionTool(context, services),
     search: createSearchInboxItemsTool(context, services),
     update: createUpdateInboxItemTool(context, services),
   };
@@ -82,16 +83,12 @@ async function conversation(
   });
 }
 
-const REQUEST = {
-  question: "Approve or reject this entry?",
-  fields: [
-    {
-      id: "decision",
-      kind: "choice",
-      label: "Decision",
-      options: [{ label: "Approve" }, { label: "Reject" }],
-    },
-    { id: "reason", kind: "text", label: "Reason" },
+const QUESTION = {
+  question: "Approve or reject the acme entry?",
+  header: "Decision",
+  options: [
+    { label: "Approve (Recommended)", description: "Its license is fine." },
+    { label: "Reject", description: "Its license is not Fair Source." },
   ],
 };
 
@@ -130,32 +127,26 @@ describe("inbox item tools", () => {
     const first = tools(automationRun("slack:CPUB:1.000001", "turn-1"));
     const second = tools(automationRun("slack:CPUB:1.000002", "turn-2"));
     const add = {
-      kind: "action",
-      title: "Review acme entry",
-      body: "The acme entry changed its license.",
       assignees: ["ana@example.com", "ben@example.com"],
-      request: REQUEST,
+      questions: [QUESTION],
     };
 
-    await expect(
-      execute(first.add, { ...add, request: undefined }),
-    ).rejects.toThrow(
-      "An action item needs a `request` with a `question` and `fields`.",
+    await expect(execute(first.add, { ...add, questions: [] })).rejects.toThrow(
+      "questions",
     );
-    const recommendBoth = {
-      ...REQUEST,
-      fields: [
-        {
-          ...REQUEST.fields[0],
-          options: [
-            { label: "Approve", recommended: true },
-            { label: "Reject", recommended: true },
-          ],
-        },
-      ],
-    };
     await expect(
-      execute(first.add, { ...add, request: recommendBoth }),
+      execute(first.add, {
+        ...add,
+        questions: [
+          {
+            ...QUESTION,
+            options: QUESTION.options.map((option) => ({
+              ...option,
+              label: `${option.label.replace(" (Recommended)", "")} (Recommended)`,
+            })),
+          },
+        ],
+      }),
     ).rejects.toThrow("can recommend only one option");
     const added = await execute(first.add, add, "call-1");
     // A Turn replays a call that committed before its result was saved, and
@@ -167,47 +158,61 @@ describe("inbox item tools", () => {
       id: expect.stringMatching(/^ask:/),
       kind: "question",
     });
+    // Each question is its own field, and nothing is asked above them.
+    expect(added.item).toMatchObject({
+      kind: "action",
+      title: "Approve or reject the acme entry?",
+    });
+    expect(added.item.request).toEqual({
+      fields: [
+        {
+          id: "q1",
+          kind: "choice",
+          label: "Decision",
+          description: "Approve or reject the acme entry?",
+          options: [
+            {
+              label: "Approve",
+              description: "Its license is fine.",
+              recommended: true,
+            },
+            { label: "Reject", description: "Its license is not Fair Source." },
+          ],
+        },
+      ],
+    });
     const again = await execute(second.update, {
       id: added.item.id,
-      title: "Review acme entry again",
+      questions: [{ ...QUESTION, question: "Approve the acme entry again?" }],
       assignees: ["ana@example.com"],
     });
     expect(again.item).toMatchObject({
       id: added.item.id,
-      title: "Review acme entry again",
+      title: "Approve the acme entry again?",
       assignees: ["ana@example.com"],
       visibility: "public",
     });
     expect(await legacyCopy(added.item.id)).toMatchObject({
-      title: "Review acme entry again",
+      title: "Approve the acme entry again?",
     });
     // A later run changes the choices of the question by its id.
     const changed = await execute(second.update, {
       id: added.item.id,
-      request: {
-        ...REQUEST,
-        fields: [
-          {
-            ...REQUEST.fields[0],
-            options: [{ label: "Approve" }, { label: "Hold" }],
-          },
-        ],
-      },
-    });
-    expect(changed.item.request.fields[0].options).toEqual([
-      { label: "Approve" },
-      { label: "Hold" },
-    ]);
-    await expect(
-      execute(second.update, {
-        id: added.item.id,
-        request: {
-          related: [{ label: "Spec", url: "https://example.com/spec" }],
+      questions: [
+        {
+          ...QUESTION,
+          options: [
+            { label: "Approve", description: "Its license is fine." },
+            { label: "Hold", description: "Wait for legal." },
+          ],
         },
-      }),
-    ).rejects.toThrow(
-      "An action item needs a `request` with a `question` and `fields`.",
-    );
+      ],
+    });
+    expect(
+      changed.item.request.fields[0].options.map(
+        (option: { label: string }) => option.label,
+      ),
+    ).toEqual(["Approve", "Hold"]);
     // The item points to the Turn that asked it, not the one that changed it.
     expect((await getInboxItem(getDb(), added.item.id))?.addedByTurnId).toBe(
       "turn-1",
@@ -283,9 +288,7 @@ describe("inbox item tools", () => {
       source: { kind: "slack" } as any,
     });
     const notice = {
-      kind: "notice",
-      title: "Rotate the key",
-      body: "The deploy key expires on Friday.",
+      questions: ask("Rotate the key"),
     };
 
     await expect(
@@ -295,13 +298,6 @@ describe("inbox item tools", () => {
     await expect(
       execute(owner.add, { ...notice, assignees: ["ben@example.com"] }),
     ).rejects.toThrow("only to people in its Conversation");
-    await expect(
-      execute(owner.add, {
-        ...notice,
-        assignees: ["ana@example.com"],
-        conversation_ids: ["slack:CPUB:1.000002"],
-      }),
-    ).rejects.toThrow("links only to the Conversation that added it");
     const added = await execute(owner.add, {
       ...notice,
       assignees: ["ana@example.com"],
@@ -329,7 +325,10 @@ describe("inbox item tools", () => {
     });
     expect((await execute(anaInPublic.search, {})).count).toBe(0);
     await expect(
-      execute(anaInPublic.update, { id: added.item.id, title: "Seen" }),
+      execute(anaInPublic.update, {
+        id: added.item.id,
+        questions: ask("Seen"),
+      }),
     ).rejects.toThrow("is not found");
 
     // Ben is not assigned and his Conversation is not linked.
@@ -340,7 +339,7 @@ describe("inbox item tools", () => {
     });
     expect((await execute(other.search, {})).count).toBe(0);
     await expect(
-      execute(other.update, { id: added.item.id, title: "Mine now" }),
+      execute(other.update, { id: added.item.id, questions: ask("Mine now") }),
     ).rejects.toThrow("is not found");
     // A private Conversation cannot write into a public item, because other
     // Conversations read that item.
@@ -349,13 +348,15 @@ describe("inbox item tools", () => {
       assignees: ["everyone"],
     });
     await expect(
-      execute(owner.update, { id: shared.item.id, body: "Private detail." }),
+      execute(owner.update, {
+        id: shared.item.id,
+        questions: ask("Private detail."),
+      }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
     // Nor can he link a private Conversation that he cannot see.
     await expect(
-      execute(other.add, {
-        ...notice,
-        assignees: ["ben@example.com"],
+      execute(other.update, {
+        id: shared.item.id,
         conversation_ids: ["slack:CPRIV:1.000001"],
       }),
     ).rejects.toThrow("Conversation slack:CPRIV:1.000001 is not found.");
@@ -415,9 +416,7 @@ describe("inbox item tools", () => {
         executionId: `run-${conversationId}`,
       });
     const notice = {
-      kind: "notice",
-      title: "Digest needs a look",
-      body: "Two entries changed.",
+      questions: ask("Digest needs a look"),
       assignees: ["ana@example.com"],
     };
 
@@ -446,7 +445,7 @@ describe("inbox item tools", () => {
     // Ana took part only in the first run, which added the item.
     const again = await execute(run("slack:DRUN:1.000002").update, {
       id: added.item.id,
-      body: "Three entries changed.",
+      questions: ask("Three entries changed."),
     });
     expect(again.item).toMatchObject({
       body: "Three entries changed.",
@@ -465,7 +464,7 @@ describe("inbox item tools", () => {
     await expect(
       execute(run("slack:DRUN:1.000002").update, {
         id: shared.item.id,
-        body: "Private detail.",
+        questions: ask("Private detail."),
       }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
   });
@@ -496,14 +495,9 @@ describe("inbox item tools", () => {
         resolveActorIdentity: asActor(undefined),
         source: { kind: "event" } as any,
       });
-    const ask = {
-      kind: "action",
-      title: "Close the tracking issue?",
-      body: "The pull request merged.",
-      request: REQUEST,
-    };
+    const question = { questions: ask("Close the tracking issue?") };
 
-    const added = await execute(eventTurn("local:web:shared").add, ask);
+    const added = await execute(eventTurn("local:web:shared").add, question);
     expect(added.item).toMatchObject({ visibility: "private" });
     expect([...added.item.assignees].sort()).toEqual([ana.email, ben.email]);
 
@@ -513,16 +507,16 @@ describe("inbox item tools", () => {
       .update(juniorConversationParticipants)
       .set({ unsubscribedAt: new Date("2026-10-01T12:10:00.000Z") })
       .where(eq(juniorConversationParticipants.userId, ana.id));
-    const left = await execute(eventTurn("local:web:shared").add, ask);
+    const left = await execute(eventTurn("local:web:shared").add, question);
     expect(left.item.assignees).toEqual([ben.email]);
 
     // With no Participant, no person would see the item.
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
     await expect(
-      execute(eventTurn("slack:CPUB:1.000001").add, ask),
-    ).rejects.toThrow("Only people act on items");
+      execute(eventTurn("slack:CPUB:1.000001").add, question),
+    ).rejects.toThrow("Only people answer questions");
     const everyone = await execute(eventTurn("slack:CPUB:1.000001").add, {
-      ...ask,
+      ...question,
       assignees: ["everyone"],
     });
     expect(everyone.item.assignees).toEqual(["everyone"]);
@@ -547,8 +541,8 @@ describe("inbox item tools", () => {
     const before = await getDb()
       .select({ id: juniorInboxItems.id })
       .from(juniorInboxItems);
-    await expect(execute(appTurn.add, ask)).rejects.toThrow(
-      "Only people act on items",
+    await expect(execute(appTurn.add, question)).rejects.toThrow(
+      "Only people answer questions",
     );
     expect(
       await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
@@ -561,10 +555,11 @@ describe("inbox item tools", () => {
     await user("ana@example.com");
     const agent = tools(automationRun("slack:CPUB:1.000001"));
     const added = await execute(agent.add, {
-      kind: "notice",
-      title: "Pull request needs review",
-      body: "It waits on a reviewer.",
+      questions: ask("Pull request needs review"),
       assignees: ["everyone"],
+    });
+    await execute(agent.update, {
+      id: added.item.id,
       conversation_ids: ["slack:CPUB:1.000002"],
     });
 
@@ -631,16 +626,18 @@ describe("inbox item tools", () => {
       }),
     };
     const added = await execute(agent.add, {
-      kind: "action",
-      title: "Approve the entry?",
-      body: "It waits on a decision.",
+      questions: ask("Approve the entry?"),
       assignees: [ana.email],
-      conversation_ids: ["slack:CPUB:1.000002"],
-      request: REQUEST,
     });
+    await execute(agent.update, {
+      id: added.item.id,
+      conversation_ids: ["slack:CPUB:1.000002"],
+    });
+    // Only the shows after the person's answer count.
+    shown.length = 0;
     await actOnInboxItem({
       action: "submit",
-      answer: { requestId: added.item.id, values: { decision: ["Approve"] } },
+      answer: { requestId: added.item.id, values: { q1: ["Yes"] } },
       delivery: { queue, show: async () => {} },
       id: added.item.id,
       user: ana,
@@ -655,7 +652,7 @@ describe("inbox item tools", () => {
       );
     const answered = await getInboxItem(getDb(), added.item.id);
     expect(await legacyCopy(added.item.id)).toMatchObject({
-      answer: { values: { decision: ["Approve"] } },
+      answer: { values: { q1: ["Yes"] } },
     });
     const before = await pending();
 
@@ -669,7 +666,7 @@ describe("inbox item tools", () => {
     expect(done.item).toMatchObject({
       status: "done",
       closed_by: ana.email,
-      answer: { values: { decision: ["Approve"] } },
+      answer: { values: { q1: ["Yes"] } },
     });
     expect(done.item).not.toHaveProperty("close_reason");
     const dismissed = await execute(agent.update, {
@@ -684,7 +681,7 @@ describe("inbox item tools", () => {
 
     // An edit of a closed item still fails.
     await expect(
-      execute(agent.update, { id: added.item.id, body: "New body." }),
+      execute(agent.update, { id: added.item.id, questions: ask("New body.") }),
     ).rejects.toThrow("is already closed");
     // A Conversation that cannot change the item still gets that error.
     await conversation("slack:CPRIV:1.000001", "CPRIV", "private");
@@ -707,9 +704,7 @@ describe("inbox item tools", () => {
     const ana = await user("ana@example.com");
     const agent = tools(automationRun("slack:CPUB:1.000001"));
     const notice = {
-      kind: "notice",
-      title: "Digest failed",
-      body: "The last run failed.",
+      questions: ask("Digest failed"),
       assignees: ["everyone"],
     };
     // An alert that core added for an Automation of a public channel.

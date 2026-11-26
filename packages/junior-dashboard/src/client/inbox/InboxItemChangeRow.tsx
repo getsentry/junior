@@ -12,6 +12,7 @@ import {
   inboxItemQuestion,
   type InboxItemChangeRecord,
   type InboxItemPayload,
+  userInputQuestionText,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
@@ -75,7 +76,7 @@ function InboxItemPreview(props: {
           <InboxItemObjects conversationId={itemConversationId(props.item)}>
             <DisplayText
               mentions={props.item.mentions}
-              text={request?.question ?? props.item.body}
+              text={request ? userInputQuestionText(request) : props.item.body}
             />
           </InboxItemObjects>
           {request && answer ? (

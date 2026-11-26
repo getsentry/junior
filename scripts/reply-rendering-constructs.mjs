@@ -354,7 +354,7 @@ export const CONSTRUCTS = [
         "the title, body, and question as text, with a dashboard link to answer; no answer fields",
         at(
           "packages/junior/src/api/mcp/inbox-item.ts",
-          "question: question.question",
+          "question: userInputQuestionText(question)",
         ),
       ),
       acp: unsupported(

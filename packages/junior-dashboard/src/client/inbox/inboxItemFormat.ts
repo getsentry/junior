@@ -71,9 +71,12 @@ export function inboxItemTitleText(item: InboxItemPayload): string {
   return displayPlainText(item.title, item.mentions);
 }
 
-// Transcripts from before Review items became Inbox items have the old tool
-// name.
-const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
+// Transcripts from before `askUserQuestion` have an old tool name.
+const ASK_TOOL_NAMES = new Set([
+  "askUserQuestion",
+  "addInboxItem",
+  "addReviewItem",
+]);
 const executeToolInputSchema = z.object({ tool_name: z.string() });
 const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
 
@@ -92,7 +95,7 @@ function addedItemId(output: unknown): string | undefined {
 
 /**
  * Return the id of the Inbox item that one completed tool call added. The
- * agent calls `addInboxItem` directly or through `executeTool`. Returns
+ * agent calls `askUserQuestion` directly or through `executeTool`. Returns
  * undefined when the transcript hides the tool result.
  */
 export function inboxItemIdFromToolCall(call: {
@@ -106,7 +109,7 @@ export function inboxItemIdFromToolCall(call: {
     call.name === "executeTool"
       ? executeToolInputSchema.safeParse(call.input).data?.tool_name
       : call.name;
-  if (!toolName || !ADD_INBOX_ITEM_TOOL_NAMES.has(toolName)) return undefined;
+  if (!toolName || !ASK_TOOL_NAMES.has(toolName)) return undefined;
   return addedItemId(call.output);
 }
 
