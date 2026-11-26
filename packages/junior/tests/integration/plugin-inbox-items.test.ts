@@ -375,18 +375,21 @@ describe("plugin inbox items", () => {
       status: "done",
     });
 
-    // Two events that add the item at once both keep their asks.
+    // Events that add the item at once all keep their asks.
+    const dee = await person("dee@example.com");
+    await participant("slack:C1:1.000001", dee.user);
+    const all = [ana.identityId, bo.identityId, dee.identityId];
     await Promise.all(
-      [ana, bo].map((asked) =>
+      [ana, bo, dee].map((asked) =>
         items.upsert({
           ...NOTICE,
           askedIdentityIds: [asked.identityId],
-          assigneeIdentityIds: both,
+          assigneeIdentityIds: all,
         }),
       ),
     );
     expect((await assignees()).sort()).toEqual(
-      [ana.user.id, bo.user.id].sort(),
+      [ana.user.id, bo.user.id, dee.user.id].sort(),
     );
   });
 

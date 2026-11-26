@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
@@ -23,7 +24,11 @@ import {
   type InboxItemContent,
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
-import { pluginSubjectKind, subjectKindLabel } from "./subjects";
+import {
+  pluginSubjectKind,
+  subjectKindLabel,
+  type InboxItemSubject,
+} from "./subjects";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
@@ -148,18 +153,15 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginInboxItems {
   const { conversationId, show } = args;
-  // `retry` is false after a concurrent upsert added the item first.
-  const upsert = async (
+  /**
+   * Write one notice, and return the item it changed and whether the
+   * Conversation now waits on it.
+   */
+  const write = async (
+    db: JuniorDatabase,
     notice: PluginReviewNotice,
-    retry: boolean,
-  ): Promise<void> => {
-    const subject = pluginItemSubject(args.plugin, notice.subject);
-    if (!subjectKindLabel(subject.kind, getPlugins())) {
-      throw new Error(
-        `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
-      );
-    }
-    const db = getDb();
+    subject: InboxItemSubject,
+  ): Promise<{ itemId: string; waitText?: string } | undefined> => {
     const existing = await getOpenInboxItemBySubject(db, subject);
     if (existing) requireOwner(existing, conversationId);
     const [withAsk, asked] = await Promise.all([
@@ -181,7 +183,7 @@ export function createPluginInboxItems(args: {
     // knows, such as a person with no linked account, stays open with no
     // assignees.
     if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
-      if (!existing) return;
+      if (!existing) return undefined;
       const itemId = await closePluginInboxItem(db, {
         conversationId,
         plugin: args.plugin,
@@ -189,8 +191,7 @@ export function createPluginInboxItems(args: {
         status: "done",
         subject: notice.subject,
       });
-      if (itemId) await show(itemId);
-      return;
+      return itemId ? { itemId } : undefined;
     }
     const content: InboxItemContent = {
       assignedToEveryone: false,
@@ -208,7 +209,7 @@ export function createPluginInboxItems(args: {
     // A plugin may show the same item on each event. One with no change
     // and no new ask writes nothing and shows nothing.
     if (existing && askedNow.size === 0 && sameContent(existing, content)) {
-      return;
+      return undefined;
     }
     let itemId: string;
     // False when the item closed after the read above. A closed item does
@@ -241,35 +242,52 @@ export function createPluginInboxItems(args: {
         owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
       });
-      // Undefined means a concurrent upsert added the item first. Apply
-      // this change to that item, so the people this event asks join it.
-      if (!item) {
-        if (retry) await upsert(notice, false);
-        return;
-      }
+      // Undefined means another writer added the item first.
+      if (!item) return undefined;
       itemId = item.id;
     }
-    await show(itemId);
     // An action item means the Conversation waits on a person, also when
-    // an update makes a notice an action. The Event key is the item, so a
-    // later update of the same action does not report it again.
-    if (open && content.kind === "action") {
-      await publishAgentUpdate(
-        conversationId,
-        { type: "waiting", inboxItemId: itemId },
-        {
-          queue: getVercelConversationWorkQueue(),
-          update: async () => ({
-            status: "waiting",
-            text: inboxItemQuestion(content.request)?.question ?? content.body,
-          }),
-        },
-      );
-    }
+    // an update makes a notice an action.
+    return open && content.kind === "action"
+      ? {
+          itemId,
+          waitText:
+            inboxItemQuestion(content.request)?.question ?? content.body,
+        }
+      : { itemId };
   };
   return {
     async upsert(notice) {
-      await upsert(notice, true);
+      const subject = pluginItemSubject(args.plugin, notice.subject);
+      if (!subjectKindLabel(subject.kind, getPlugins())) {
+        throw new Error(
+          `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
+        );
+      }
+      // Upserts of one subject run one at a time. Each one then reads the
+      // assignees that the one before it wrote, so none drops another's
+      // ask, and a second add of the item updates the first.
+      const changed = await getDb().transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`junior:inbox-item-subject:${subject.kind}:${subject.id}`}))`,
+        );
+        return await write(tx, notice, subject);
+      });
+      if (!changed) return;
+      await show(changed.itemId);
+      // The Event key is the item, so a later update of the same action
+      // does not report it again.
+      const { waitText } = changed;
+      if (waitText !== undefined) {
+        await publishAgentUpdate(
+          conversationId,
+          { type: "waiting", inboxItemId: changed.itemId },
+          {
+            queue: getVercelConversationWorkQueue(),
+            update: async () => ({ status: "waiting", text: waitText }),
+          },
+        );
+      }
     },
     async close(input) {
       const itemId = await closePluginInboxItem(getDb(), {
