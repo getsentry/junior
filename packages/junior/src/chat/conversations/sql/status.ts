@@ -10,6 +10,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
+import type { EndedTurn } from "@/chat/conversations/turn-update";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
   inboxItemNeedsInput,
@@ -111,9 +112,9 @@ export function conversationTurnFailedSql(
  */
 export function conversationLastTurnOutcomeSql(
   conversation: Pick<ConversationStatusColumns, "conversationId">,
-): SQL<string | null> {
+): SQL<EndedTurn["outcome"] | "failed" | null> {
   return sql<
-    string | null
+    EndedTurn["outcome"] | "failed" | null
   >`(select case when ${juniorConversationEvents.type} = 'turn_failed' then 'failed' else ${juniorConversationEvents.payload}->>'outcome' end from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, conversation.conversationId),
     inArray(juniorConversationEvents.type, ["turn_completed", "turn_failed"]),

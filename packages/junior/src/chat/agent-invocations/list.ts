@@ -13,6 +13,7 @@ import {
   conversationLastTurnOutcomeSql,
   conversationTurnFailedSql,
 } from "@/chat/conversations/sql/status";
+import { TURN_OUTCOME_STATUSES } from "@/chat/conversations/turn-update";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import {
@@ -26,17 +27,9 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
-import type { ChildAgent, ChildAgentResult } from "./types";
+import type { ChildAgent } from "./types";
 
 const childConversationKindSchema = z.enum(["thread", "task"]);
-
-// How a child's newest finished Turn ended, as its result.
-const TURN_OUTCOME_RESULTS: Partial<Record<string, ChildAgentResult>> = {
-  blocked: "blocked",
-  failed: "failed",
-  no_reply: "completed",
-  success: "completed",
-};
 
 /** Bound the child agents that one listing reads. */
 const CHILD_AGENT_LIST_LIMIT = 200;
@@ -49,7 +42,8 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * listed. A child is `running` while a Turn or mailbox input that answers its
  * parent is open, and is `failed` when its last Turn failed, also when the
  * Turn ended with a model error and execution went back to idle.
- * `lastResult` is how its newest finished Turn that was not stopped ended.
+ * `lastResult` is how its newest finished Turn that was not stopped ended:
+ * the status that `readTurnUpdate` gives it, or `failed`.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -109,7 +103,13 @@ export async function listChildAgents(
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
         ));
-      const lastResult = TURN_OUTCOME_RESULTS[row.lastTurnOutcome ?? ""];
+      const outcome = row.lastTurnOutcome;
+      const lastResult =
+        outcome === "failed"
+          ? "failed"
+          : outcome
+            ? TURN_OUTCOME_STATUSES[outcome]
+            : undefined;
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         ...(row.archivedAt

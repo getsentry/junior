@@ -526,7 +526,7 @@ describe("child agent task work", () => {
       ],
       terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
-      lastResult: "completed" as const,
+      lastResult: "done" as const,
       parentMessages: [
         expect.stringMatching(
           /status="done">\n[\s\S]*\nBot comment needs no change\.\n/,
@@ -541,7 +541,7 @@ describe("child agent task work", () => {
       outputs: [nothingChanged],
       terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
-      lastResult: "completed" as const,
+      lastResult: "done" as const,
       parentMessages: [
         expect.stringMatching(/status="done">\n[\s\S]*\nLost reply\.\n/),
       ],
@@ -552,7 +552,7 @@ describe("child agent task work", () => {
       outputs: [finalText],
       terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
-      lastResult: "completed" as const,
+      lastResult: "done" as const,
       parentMessages: [
         expect.stringMatching(
           /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,
@@ -565,7 +565,7 @@ describe("child agent task work", () => {
       outputs: [finalText],
       terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
-      lastResult: "completed" as const,
+      lastResult: "done" as const,
       parentMessages: [
         expect.stringMatching(
           /status="done">\n[\s\S]*\nDraft summary for the parent\.\n/,

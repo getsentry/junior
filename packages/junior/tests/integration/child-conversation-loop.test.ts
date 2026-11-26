@@ -570,25 +570,25 @@ describe("child Turns on the Conversation loop", () => {
       end: "final text",
       openWork: "none",
       sent: "agent-result",
-      lastResult: "completed",
+      lastResult: "done",
     },
     {
       end: "final text",
       openWork: "helper",
       sent: "agent-message",
-      lastResult: "completed",
+      lastResult: "done",
     },
     {
       end: "noReply",
       openWork: "none",
       sent: "agent-result",
-      lastResult: "completed",
+      lastResult: "done",
     },
     {
       end: "noReply",
       openWork: "Watch",
       sent: "agent-result",
-      lastResult: "completed",
+      lastResult: "done",
     },
     {
       end: "blocked",
@@ -853,7 +853,7 @@ describe("child Turns on the Conversation loop", () => {
       const { agents } = (await createListAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
-      expect(agents[0]?.last_result).toBe("completed");
+      expect(agents[0]?.last_result).toBe("done");
     } finally {
       await harness.close();
     }

@@ -3,6 +3,7 @@ import * as z from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
+import type { AgentUpdateStatus } from "./agent-update";
 import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
 
 const exactStringSchema = z
@@ -59,9 +60,15 @@ export type ChildAgentSender = {
 type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
 
-/** How a finished task of a child agent ended. A stop is not a result. */
-export const CHILD_AGENT_RESULTS = ["completed", "blocked", "failed"] as const;
-export type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
+/**
+ * How a finished Turn of a child agent ended: the status of its agent
+ * update. A stop is not a result.
+ */
+export const CHILD_AGENT_RESULTS = [
+  "done",
+  "blocked",
+  "failed",
+] as const satisfies readonly AgentUpdateStatus[];
 
 /** Current state of one child agent, read from its Turns and mailbox. */
 export type ChildAgent = {
@@ -72,8 +79,8 @@ export type ChildAgent = {
   /** Why the child is blocked, failed, or stopped. */
   errorMessage?: string;
   kind: ChildAgentKind;
-  /** How the newest task that finished without a stop ended. */
-  lastResult?: ChildAgentResult;
+  /** How the newest Turn that finished without a stop ended. */
+  lastResult?: (typeof CHILD_AGENT_RESULTS)[number];
   status: AgentInvocationStatus;
   /** Latest task that the parent gave the child. */
   task: string;
