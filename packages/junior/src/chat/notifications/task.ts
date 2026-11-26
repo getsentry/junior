@@ -9,6 +9,7 @@ import { juniorConversations, juniorIdentities } from "@/db/schema";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationEventStore } from "@/chat/db";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import {
   clearInboxItemDeliveries,
   recordRepeatInboxItemPush,
@@ -91,13 +92,13 @@ async function readConversationTitle(
 }
 
 type SkipReason =
-  | "event"
   | "has_location"
   | "no_dashboard"
   | "no_reply"
   | "no_user"
   | "not_configured"
   | "outside_hours"
+  | "provider_event"
   | "read"
   | "slack_paused"
   | "waiting";
@@ -118,13 +119,20 @@ function skip(reason: SkipReason): void {
  *
  * Only Conversations without a Location qualify. A Conversation with a
  * Location, such as a Slack thread, already notifies people there. A Turn
- * that an Event started, such as a Watch Event, adds no notice: an Event
- * goes to the agent and takes no attention.
+ * that a provider Event started, such as a pull request review, adds no
+ * notice: the Event goes to the agent and takes no attention. A core Event,
+ * such as a child agent's update, still does: its reply can be the result
+ * that the starter waits for.
  */
 async function notifyReply(context: PluginTaskContext): Promise<void> {
   const run = await context.run.load();
   if (run.locationId) return skip("has_location");
-  if (run.source.kind === "event") return skip("event");
+  if (
+    run.source.kind === "event" &&
+    run.source.namespace !== CORE_EVENT_NAMESPACE
+  ) {
+    return skip("provider_event");
+  }
   const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
   const db = context.db as JuniorDatabase;

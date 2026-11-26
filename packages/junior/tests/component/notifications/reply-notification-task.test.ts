@@ -556,7 +556,7 @@ describe("reply notification task", () => {
     expect(decrypted).toHaveLength(3);
   });
 
-  it("adds no reply notice when an item waits on the starter or an Event started the Turn, and closes it when they act on an item", async () => {
+  it("adds no reply notice when an item waits on the starter or a provider Event started the Turn, and closes it when they act on an item", async () => {
     const api = await viewerApi();
     await api(
       "POST",
@@ -587,8 +587,8 @@ describe("reply notification task", () => {
     expect(notice?.status).toBe("open");
     expect(pushes).toHaveLength(1);
 
-    // A Watch Event's Turn, such as a review on the pull request, keeps the
-    // notice as it was and pushes nothing.
+    // A provider Event's Turn, such as a review on the pull request, keeps
+    // the notice as it was and pushes nothing.
     await turn(
       "The review asks for a test.",
       createEventSource({
@@ -607,6 +607,26 @@ describe("reply notification task", () => {
     ]);
     expect(pushes).toHaveLength(1);
 
+    // A child agent's update is a core Event. Its reply can be the result
+    // that the starter waits for, so it updates the notice and pushes.
+    await turn(
+      "The child agent finished the fix.",
+      createEventSource({
+        eventKey: "update-1",
+        eventType: "agent.update",
+        identifier: "local:web:child",
+        namespace: "junior",
+      }),
+    );
+    expect(await replyNotices(conversationId)).toEqual([
+      expect.objectContaining({
+        body: "The child agent finished the fix.",
+        id: notice!.id,
+        status: "open",
+      }),
+    ]);
+    expect(pushes).toHaveLength(2);
+
     // The starter's dismiss of an item in the Conversation closes the notice.
     await actOnItem(await addQuestion(conversationId, user!.id), "dismiss");
     expect((await replyNotices(conversationId))[0]).toMatchObject({
@@ -617,7 +637,7 @@ describe("reply notification task", () => {
     await turn("The deploy finished.");
     const [, second] = await replyNotices(conversationId);
     expect(second?.status).toBe("open");
-    expect(pushes).toHaveLength(2);
+    expect(pushes).toHaveLength(3);
 
     // A reply while a question waits on the starter adds no notice and no
     // push, and closes the open notice: the question has their attention.
@@ -632,7 +652,7 @@ describe("reply notification task", () => {
       ["done", "Item handled"],
       ["done", "Item waits on you"],
     ]);
-    expect(pushes).toHaveLength(2);
+    expect(pushes).toHaveLength(3);
   });
 
   it("does not push outside the user's working hours", async () => {
