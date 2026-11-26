@@ -55,6 +55,30 @@ export function useAnimatedHeight(
   }, [ref, layout]);
 }
 
+// The sheet's close motion is 450ms. A sheet that stays longer goes with its
+// row.
+const SHEET_CLOSE_LIMIT_MS = 600;
+
+// A row's sheet portals out of the row, so the row waits until the sheet
+// finishes its close motion. A row that goes first takes the sheet with it.
+function sheetGone(sheet: Element | null): Promise<void> {
+  if (!sheet || reducedMotion()) return Promise.resolve();
+  const start = performance.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (
+        !sheet.isConnected ||
+        performance.now() - start > SHEET_CLOSE_LIMIT_MS
+      ) {
+        resolve();
+      } else {
+        requestAnimationFrame(check);
+      }
+    };
+    requestAnimationFrame(check);
+  });
+}
+
 /**
  * Close a card's height and fade it, so the rows below close the gap. It
  * resolves once the card is shut, at once under reduced motion. The card
@@ -160,12 +184,21 @@ export function useLeaveRow(
     );
     const opened =
       wasOpen && leaving(wasOpen) ? (advance ? next : "") : undefined;
+    // A phone shows the open row in a sheet, which closes first.
+    const sheet =
+      opened === ""
+        ? document.querySelector(
+            `[data-inbox-sheet="${CSS.escape(expanded.current)}"]`,
+          )
+        : null;
     if (opened !== undefined) setExpandedKey(opened);
-    void leaveCard(card).then(() => {
-      // The row goes now, before its shut card shows again.
-      flushSync(release);
-      if (card.isConnected) restoreCard(card);
-    });
+    void sheetGone(sheet)
+      .then(() => leaveCard(card))
+      .then(() => {
+        // The row goes now, before its shut card shows again.
+        flushSync(release);
+        if (card.isConnected) restoreCard(card);
+      });
     return opened;
   };
 }

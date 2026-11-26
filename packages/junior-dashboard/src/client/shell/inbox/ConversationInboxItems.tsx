@@ -38,6 +38,7 @@ export function ConversationInboxItems(props: {
   // transcript.
   const items = linked.filter((item) => !item.snoozedByViewer);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const mobile = useMobileLayout();
   const shown = items.length > 0;
   useEffect(() => {
     if (props.highlight && shown) {
@@ -63,7 +64,14 @@ export function ConversationInboxItems(props: {
           itemKey={(item) => item.id}
           items={items}
           renderItem={(item) => (
-            <InboxItemRow defaultExpanded={props.highlight} item={item} />
+            <InboxItemRow
+              // A phone opens an item in a sheet, so it opens one only when
+              // the list has one item. The section's ring marks the rest.
+              defaultExpanded={
+                props.highlight && (!mobile || items.length === 1)
+              }
+              item={item}
+            />
           )}
         />
         <LoadMorePagination

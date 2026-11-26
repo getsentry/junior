@@ -329,6 +329,9 @@ export function InboxItemAskRow(props: {
   // where its form has the room it needs.
   const mobile = useMobileLayout();
   const [sheet, setSheet] = useState(false);
+  // A desktop shows the form in place, so a resize past a phone's width
+  // closes the sheet.
+  if (sheet && !mobile) setSheet(false);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
@@ -430,7 +433,7 @@ export function InboxItemAskRow(props: {
           item={item}
         />
       ) : null}
-      {sheet ? (
+      {sheet && mobile ? (
         <InboxItemSheet
           context={waiting ? <InboxItemTurnMessage item={item} /> : undefined}
           item={item}
