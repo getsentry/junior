@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig, getSlackReactionConfig } from "@/chat/config";
+import { useConfig } from "../fixtures/config";
 
 const originalBotConfig = { ...botConfig };
 
-afterEach(() => {
-  Object.assign(botConfig, originalBotConfig);
+beforeEach(() => {
+  useConfig();
 });
 
 describe("createApp model config", () => {

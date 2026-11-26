@@ -2,7 +2,7 @@ import type { PluginArtifacts } from "@sentry/junior-plugin-api";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { publishImage, unpublishArtifact } from "@/chat/artifacts/store";
 import { getSqlExecutor } from "@/chat/db";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 
 /**
  * Give plugin tools the conversation's public artifacts.
@@ -14,7 +14,7 @@ export function createPluginArtifacts(
   storage: AttachmentStorage | undefined,
   conversationId: string,
 ): PluginArtifacts | undefined {
-  const publicBaseUrl = resolveBaseUrl()?.trim();
+  const publicBaseUrl = getChatConfig().deployment.baseUrl;
   if (!storage || !publicBaseUrl) return undefined;
   return {
     async publishImage({ body, expiresInMs }) {

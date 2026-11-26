@@ -621,7 +621,7 @@ export async function requireInboxItemLinks(args: {
 /**
  * Check who an agent assigns a private item to. It cannot go to Everyone
  * yet: the old visibility check stays for the release before this one
- * (migration `20261126034025_inbox_item_owners`), and a later release lets
+ * (migration `20261126154025_inbox_item_owners`), and a later release lets
  * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
  * Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that

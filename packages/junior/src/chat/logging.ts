@@ -159,7 +159,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
 }
 
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
-const deploymentLogAttributes = getDeploymentTelemetryAttributes();
+const deploymentLogAttributes = getDeploymentTelemetryAttributes(process.env);
 type ConsoleTextStyle = Parameters<typeof styleText>[0];
 const LOGTAPE_BODY_KEY = "__logtape_body";
 const ROOT_LOGGER_CATEGORY = ["junior"] as const;

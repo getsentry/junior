@@ -1,4 +1,4 @@
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
@@ -57,7 +57,7 @@ function jsonError(message: string, status: number): Response {
 }
 
 function forwardUrl(credentialToken: string): string {
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
