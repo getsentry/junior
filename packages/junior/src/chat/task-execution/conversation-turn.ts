@@ -19,7 +19,7 @@ import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
   commitParentMessageFork,
-  isParentMessageAuthor,
+  isSavedParentMessage,
 } from "@/chat/child-agents/parent-message";
 import { parentResultActor } from "@/chat/child-agents/parent-result";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
@@ -206,7 +206,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
-    // A parent agent's task or message. On resume, its saved author says so.
+    // A parent agent's task or message. On resume, its saved Message says so.
     let fromParent =
       resolved.kind === "mailbox" &&
       resolved.batch.every((entry) => readParentMessage(entry.message));
@@ -277,7 +277,10 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
-      fromParent = isParentMessageAuthor(userMessage.author);
+      fromParent = isSavedParentMessage({
+        authorUserId: userMessage.author?.userId,
+        fromParentAgent: userMessage.meta?.fromParentAgent,
+      });
       fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
@@ -490,6 +493,7 @@ export function createConversationTurnWorker(
               meta: {
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
+                ...(fromParent ? { fromParentAgent: true } : undefined),
                 replied: false,
                 ...(requestText ? { requestText } : undefined),
                 ...eventMeta,

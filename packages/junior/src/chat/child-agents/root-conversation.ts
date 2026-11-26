@@ -30,7 +30,7 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { isParentMessageAuthor } from "./parent-message";
+import { isSavedParentMessage } from "./parent-message";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -111,9 +111,11 @@ function messageLabel(
   // In a Run that an agent started, a parent message is the instruction.
   if (
     !actor &&
-    isParentMessageAuthor(
-      messageAuthorSchema.safeParse(data.meta?.["author"]).data,
-    )
+    isSavedParentMessage({
+      authorUserId: messageAuthorSchema.safeParse(data.meta?.["author"]).data
+        ?.userId,
+      fromParentAgent: data.meta?.["fromParentAgent"],
+    })
   ) {
     return "user";
   }

@@ -1,6 +1,6 @@
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { and, desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -30,7 +30,8 @@ import { readParentMessage, type ParentMessage } from "./parent-message-input";
 /**
  * Return the author id of every parent message from one parent. It matches
  * no other input, so a parent message never shares a Turn with another
- * sender's input.
+ * sender's input. The id is opaque: `fromParentAgent` on the saved Message
+ * marks a parent message.
  */
 function parentMessageAuthorId(parentConversationId: string): string {
   return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
@@ -277,15 +278,32 @@ export function parentMessageAuthor(parentConversationId: string) {
 
 /**
  * Return whether a saved transcript Message is a parent message, by its
- * author. Only the root Turn code saves one, after its sender check.
+ * stored `fromParentAgent` field. Only the root Turn code saves one, after
+ * its sender check.
  */
-export function isParentMessageAuthor(
-  author: { userId?: unknown } | undefined,
-): boolean {
+export function isSavedParentMessage(message: {
+  authorUserId: unknown;
+  fromParentAgent: unknown;
+}): boolean {
   return (
-    typeof author?.userId === "string" &&
-    author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
+    message.fromParentAgent === true ||
+    // Legacy read: Messages saved before `fromParentAgent` existed mark a
+    // parent message only by this author id prefix. `savedParentMessageSql`
+    // reads it the same way. Read the prefix nowhere else.
+    // TODO: Remove this read and the one in `savedParentMessageSql` when no
+    // saved Message has the prefix without `fromParentAgent`. Retention
+    // purges a tree once its last activity is older than
+    // `CONTENT_RETENTION_MS` (90 days public, 14 days private), so check for
+    // such rows no earlier than 90 days after this field shipped. A tree that
+    // stays active keeps its old Messages.
+    (typeof message.authorUserId === "string" &&
+      message.authorUserId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX))
   );
+}
+
+/** `isSavedParentMessage` as a SQL condition on a saved Message payload. */
+function savedParentMessageSql(payload: SQLWrapper): SQL {
+  return sql`(${payload}->'meta'->'fromParentAgent' = 'true'::jsonb or ${payload}->'meta'->'author'->>'userId' like ${`${PARENT_MESSAGE_AUTHOR_PREFIX}%`})`;
 }
 
 /**
@@ -304,10 +322,7 @@ export async function readLastParentMessageAtMs(
       and(
         eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "message"),
-        like(
-          sql`${payload}->'meta'->'author'->>'userId'`,
-          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
-        ),
+        savedParentMessageSql(payload),
       ),
     )
     .orderBy(desc(juniorConversationEvents.createdAt))
