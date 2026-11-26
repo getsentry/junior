@@ -5,6 +5,7 @@ import {
   parseTurnReasoningLevel,
   TURN_REASONING_LEVELS,
 } from "@/chat/reasoning-level";
+import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -42,8 +43,8 @@ const MAX_EVENT_AUTOMATION_RUNS = 10;
 /** Length of the rolling window for the Event automation run limit. */
 const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 export const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
-export const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
-export const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
+const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
+const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
 export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_S3_REGION = "us-east-1";
@@ -89,7 +90,7 @@ const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 /** Longest agent turn the function duration allows, after the teardown buffer. */
-export function resolveMaxTurnTimeoutMs(
+function resolveMaxTurnTimeoutMs(
   functionMaxDurationSeconds: number,
 ): number {
   const budgetSeconds =
@@ -98,7 +99,7 @@ export function resolveMaxTurnTimeoutMs(
 }
 
 /** When conversation work yields, so it stops before the request deadline. */
-export function resolveConversationWorkSoftYieldAfterMs(
+function resolveConversationWorkSoftYieldAfterMs(
   functionMaxDurationSeconds: number,
 ): number {
   return Math.max(
@@ -121,13 +122,92 @@ function isEncryptionKeyMaterial(material: string): boolean {
   );
 }
 
+// A check that only createApp options reach. Its message names the option,
+// so it stands alone without a field path or env var.
+function optionCheck(message: string) {
+  return { message, params: { option: true } };
+}
+
 const nonEmptyString = z.string().trim().min(1);
+// Env values are never empty, so only an option reaches the empty check.
+function modelId(option: string) {
+  return z
+    .string()
+    .trim()
+    .refine((id) => id.length > 0, {
+      ...optionCheck(`${option} must not be empty`),
+      // An empty id skips the gateway check.
+      abort: true,
+    });
+}
 // `resolveGatewayModel` throws its own error for an unknown id, and that error
 // leaves `safeParse` unchanged.
-const gatewayModelId = nonEmptyString.refine((id) =>
-  Boolean(resolveGatewayModel(id)),
-);
+function gatewayModelId(option: string) {
+  return modelId(option).refine((id) => Boolean(resolveGatewayModel(id)));
+}
 const positiveInt = z.number().int().positive();
+
+function positiveLimit(name: string) {
+  return z
+    .number()
+    .refine(
+      (value) => Number.isSafeInteger(value) && value > 0,
+      optionCheck(`limits.${name} must be a positive integer`),
+    );
+}
+
+/**
+ * Limits from `createApp({ limits })`. `derive` applies them over the bot
+ * settings, so they win over env, and the turn timeout is only capped by the
+ * function duration.
+ */
+const limitsSchema = z.strictObject({
+  contextWindowTokens: positiveLimit("contextWindowTokens").optional(),
+  maxAgentDepth: z
+    .number()
+    .refine(
+      (value) => Number.isSafeInteger(value) && value >= 0,
+      optionCheck("limits.maxAgentDepth must be a non-negative integer"),
+    )
+    .optional(),
+  maxConsecutiveAutomatedTurns: positiveLimit(
+    "maxConsecutiveAutomatedTurns",
+  ).optional(),
+  eventAutomationRunLimit: z
+    .strictObject({
+      maxRuns: positiveLimit("eventAutomationRunLimit.maxRuns").optional(),
+      windowMs: positiveLimit("eventAutomationRunLimit.windowMs").optional(),
+    })
+    .optional(),
+  maxSlicesPerTurn: positiveLimit("maxSlicesPerTurn").optional(),
+  maxToolCallsPerTurn: positiveLimit("maxToolCallsPerTurn").optional(),
+  maxTurnCostUsd: positiveLimit("maxTurnCostUsd").optional(),
+  turnTimeoutMs: positiveLimit("turnTimeoutMs").optional(),
+});
+
+// Only createApp options set the reaction emojis. A blank one keeps the
+// default.
+function reactionEmoji(option: string, defaultEmoji: string) {
+  return z
+    .string()
+    .transform((value, ctx) => {
+      if (!value.trim()) {
+        return defaultEmoji;
+      }
+      const normalized = normalizeSlackEmojiName(value);
+      if (normalized) {
+        return normalized;
+      }
+      ctx.addIssue({
+        code: "custom",
+        ...optionCheck(
+          `${option} must be a valid Slack emoji name (for example "eyes" or ":white_check_mark:")`,
+        ),
+      });
+      return z.NEVER;
+    })
+    .default(defaultEmoji);
+}
 
 const s3StorageSchema = z.strictObject({
   accessKeyId: nonEmptyString,
@@ -176,21 +256,40 @@ const encryptionSchema = z
   );
 
 const botSchema = z.strictObject({
-  modelId: gatewayModelId.default(DEFAULT_MODEL_ID),
-  fastModelId: gatewayModelId.default(DEFAULT_FAST_MODEL_ID),
-  guardianModelId: gatewayModelId.default(DEFAULT_GUARDIAN_MODEL_ID),
-  webSearchModelId: gatewayModelId.default(DEFAULT_WEB_SEARCH_MODEL_ID),
-  refusalFallbackModelId: gatewayModelId.optional(),
+  modelId: gatewayModelId("modelId").default(DEFAULT_MODEL_ID),
+  fastModelId: gatewayModelId("fastModelId").default(DEFAULT_FAST_MODEL_ID),
+  guardianModelId: gatewayModelId("guardianModelId").default(
+    DEFAULT_GUARDIAN_MODEL_ID,
+  ),
+  webSearchModelId: gatewayModelId("webSearchModelId").default(
+    DEFAULT_WEB_SEARCH_MODEL_ID,
+  ),
+  refusalFallbackModelId: gatewayModelId("refusalFallbackModelId").optional(),
   // Null turns vision off. Unset uses the default model.
-  visionModelId: gatewayModelId.nullable().default(DEFAULT_VISION_MODEL_ID),
-  decisionModelId: nonEmptyString.default(DEFAULT_DECISION_MODEL_ID),
-  embeddingModelId: nonEmptyString.default(DEFAULT_EMBEDDING_MODEL_ID),
-  rerankingModelId: nonEmptyString.default(DEFAULT_RERANKING_MODEL_ID),
-  imageGenerationModelId: nonEmptyString.default(
+  visionModelId: gatewayModelId("visionModelId")
+    .nullable()
+    .default(DEFAULT_VISION_MODEL_ID),
+  decisionModelId: modelId("decisionModelId").default(
+    DEFAULT_DECISION_MODEL_ID,
+  ),
+  embeddingModelId: modelId("embeddingModelId").default(
+    DEFAULT_EMBEDDING_MODEL_ID,
+  ),
+  rerankingModelId: modelId("rerankingModelId").default(
+    DEFAULT_RERANKING_MODEL_ID,
+  ),
+  imageGenerationModelId: modelId("imageGenerationModelId").default(
     DEFAULT_IMAGE_GENERATION_MODEL_ID,
   ),
-  transcriptionModelId: nonEmptyString.default(DEFAULT_TRANSCRIPTION_MODEL_ID),
-  userName: z.string().trim().min(1).default("junior"),
+  transcriptionModelId: modelId("transcriptionModelId").default(
+    DEFAULT_TRANSCRIPTION_MODEL_ID,
+  ),
+  // The build's `juniorNitro({ botName })` is the option.
+  userName: z
+    .string()
+    .trim()
+    .refine((name) => name.length > 0, optionCheck("botName must not be empty"))
+    .default("junior"),
   contextWindowTokens: positiveInt.default(DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS),
   reasoningLevel: z.enum(TURN_REASONING_LEVELS).default("high"),
   loadingMessages: z
@@ -229,6 +328,7 @@ const configObjectSchema = z.strictObject({
   functionMaxDurationSeconds: z
     .number()
     .default(DEFAULT_FUNCTION_MAX_DURATION_SECONDS),
+  limits: limitsSchema.optional(),
   /** Kill switch for prompt cache warming. Defaults to true. */
   cacheWarmingEnabled: z.boolean().default(true),
   /**
@@ -256,12 +356,14 @@ const configObjectSchema = z.strictObject({
       botToken: z.string().optional(),
       clientId: z.string().optional(),
       clientSecret: z.string().optional(),
-      completedReactionEmoji: z
-        .string()
-        .default(DEFAULT_COMPLETED_REACTION_EMOJI),
-      processingReactionEmoji: z
-        .string()
-        .default(DEFAULT_PROCESSING_REACTION_EMOJI),
+      completedReactionEmoji: reactionEmoji(
+        "completedReactionEmoji",
+        DEFAULT_COMPLETED_REACTION_EMOJI,
+      ),
+      processingReactionEmoji: reactionEmoji(
+        "processingReactionEmoji",
+        DEFAULT_PROCESSING_REACTION_EMOJI,
+      ),
       signingSecret: z.string().optional(),
     })
     .prefault({}),
@@ -296,19 +398,41 @@ function defaultSqlDriver(databaseUrl: string): "neon" | "postgres" {
   }
 }
 
-function derive(config: z.output<typeof configObjectSchema>) {
+function derive({
+  limits = {},
+  ...config
+}: z.output<typeof configObjectSchema>) {
   const { bot, functionMaxDurationSeconds, sql } = config;
+  const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   return {
     ...config,
     bot: {
       ...bot,
-      turnTimeoutMs: Math.max(
-        MIN_AGENT_TURN_TIMEOUT_MS,
-        Math.min(
-          bot.turnTimeoutMs ?? DEFAULT_AGENT_TURN_TIMEOUT_MS,
-          resolveMaxTurnTimeoutMs(functionMaxDurationSeconds),
-        ),
-      ),
+      contextWindowTokens:
+        limits.contextWindowTokens ?? bot.contextWindowTokens,
+      maxAgentDepth: limits.maxAgentDepth ?? bot.maxAgentDepth,
+      maxConsecutiveAutomatedTurns:
+        limits.maxConsecutiveAutomatedTurns ?? bot.maxConsecutiveAutomatedTurns,
+      maxEventAutomationRuns:
+        limits.eventAutomationRunLimit?.maxRuns ?? bot.maxEventAutomationRuns,
+      eventAutomationRunWindowMs:
+        limits.eventAutomationRunLimit?.windowMs ??
+        bot.eventAutomationRunWindowMs,
+      maxSlicesPerTurn: limits.maxSlicesPerTurn ?? bot.maxSlicesPerTurn,
+      maxToolCallsPerTurn:
+        limits.maxToolCallsPerTurn ?? bot.maxToolCallsPerTurn,
+      maxTurnCostUsd: limits.maxTurnCostUsd ?? bot.maxTurnCostUsd,
+      // A turn timeout limit is not raised to the minimum, only capped.
+      turnTimeoutMs:
+        limits.turnTimeoutMs === undefined
+          ? Math.max(
+              MIN_AGENT_TURN_TIMEOUT_MS,
+              Math.min(
+                bot.turnTimeoutMs ?? DEFAULT_AGENT_TURN_TIMEOUT_MS,
+                maxTurnTimeoutMs,
+              ),
+            )
+          : Math.min(limits.turnTimeoutMs, maxTurnTimeoutMs),
       visionModelId: bot.visionModelId ?? undefined,
     },
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
@@ -710,6 +834,9 @@ function envNameFor(path: readonly PropertyKey[]): string | undefined {
 }
 
 function formatIssue(input: unknown, issue: z.core.$ZodIssue): string {
+  if (issue.code === "custom" && issue.params?.["option"] === true) {
+    return issue.message;
+  }
   const path = issue.path.map(String).join(".");
   const envName = envNameFor(issue.path);
   if (
