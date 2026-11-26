@@ -197,7 +197,6 @@ const CHILD_AGENT_RUN_RULES = [
   "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. No person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
   `- Your final text is your reply. When the Turn ends, the parent gets it as your result and decides what to do with it. When nothing changed, such as after a watch event that needs no action, say so in one line. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
-  "- When the work waits on CI or another outside event, watch it and end the Turn with a one-line status. The Event starts your next Turn, and that reply also goes to the parent.",
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
   `- ${SLACK_MENTION_FORMAT_RULE}`,
 ];
@@ -649,7 +648,7 @@ function buildOutputSection(
       "- Start with the result, not internal process narration.",
       RESULT_REPORTING_RULE,
       "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
-      "- Reply with text only when the task is finished or waits on a watched Event.",
+      "- Reply with text only when the task is finished or waits on a watched Event, such as CI. That Event starts your next Turn.",
     ]);
   }
   // A Lead ends a Turn with no reply when nothing changed for the members,

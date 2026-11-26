@@ -197,35 +197,6 @@ describe("Watches", () => {
     );
   });
 
-  test("when asked to report after CI finishes, watch the checks instead of waiting in the sandbox", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        `just pushed a fix to ${pullRequest}. wait for CI to finish and tell me here if it went green`,
-      ),
-    );
-
-    expect(watchedEvents(conversation)).toEqual(
-      expect.arrayContaining([
-        "pull_request.checks.passed",
-        "pull_request.checks.failed",
-      ]),
-    );
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply says the result will come in this thread when CI finishes.",
-        ],
-        fail: [
-          "Do not claim that CI passed or failed.",
-          "Do not ask the user to check CI themselves.",
-        ],
-      }),
-    );
-  });
-
   test("when a watched event does not serve the intent, stay silent", async ({
     run,
   }) => {

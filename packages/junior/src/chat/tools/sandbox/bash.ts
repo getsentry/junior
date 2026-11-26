@@ -1,10 +1,11 @@
 import * as z from "zod";
-import {
-  hasLongSleep,
-  LONG_SLEEP_MESSAGE,
-} from "@/chat/tool-support/sandbox/long-sleep";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+
+// Agents waited on CI and background work with `sleep 240; check`, which
+// blocks the Turn for the whole guess. Short sleeps in wait loops are fine.
+const hasLongSleep = (command: string) =>
+  [...command.matchAll(/\bsleep\s+(\d+)/g)].some(([, s]) => Number(s) > 30);
 
 export const bashToolDefinition = zodToolDefinition({
   annotations: {
@@ -22,7 +23,10 @@ export const bashToolDefinition = zodToolDefinition({
     command: z
       .string()
       .min(1)
-      .refine((command) => !hasLongSleep(command), LONG_SLEEP_MESSAGE)
+      .refine(
+        (command) => !hasLongSleep(command),
+        "sleep over 30 seconds is not allowed. Wait for the thing itself: `wait <pid>` or an `until` loop for a process you started, watchEvents and then end the Turn for CI, or watchTimer for a delay.",
+      )
       .describe("Bash command to run inside the sandbox."),
     cwd: z
       .string()
