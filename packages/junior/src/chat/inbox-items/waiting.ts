@@ -92,6 +92,24 @@ export function waitingConversationIdsQuery(
 }
 
 /**
+ * Return whether a root Conversation waits on a User, as
+ * `listWaitingConversations` decides it.
+ */
+export async function isConversationWaitingOnUser(
+  db: JuniorDatabase,
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  const items = waitingItemsQuery(db, userId).as("waiting_items");
+  const rows = await db
+    .select({ conversationId: items.conversationId })
+    .from(items)
+    .where(eq(items.conversationId, conversationId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * List the root Conversations that wait on a User: each root or one of its
  * child conversations is linked to, or owns a To-do's, open item that needs
  * the User now (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.

@@ -106,10 +106,12 @@ how the dashboard groups and acts on its rows.
   Only the person whose snooze woke sees it. It goes when they open the
   item from the Inbox, act on it, or snooze it again. A Wake that they
   pick, and a trigger that resolves the item, show nothing.
-- A reply in a dashboard Conversation is a notice for its starter. One
-  notice per Conversation holds the latest reply, and it closes when the
-  starter reads it. A Slack thread already tells people, so a Slack reply
-  adds no notice.
+- A reply in a dashboard Conversation is a notice for its starter,
+  unless an open action in that Conversation already waits on them or a
+  provider Event, such as a pull request review, started the Turn. The
+  notice closes when the starter reads the reply or answers an item in
+  that Conversation. A Slack thread already tells people, so a Slack
+  reply adds no notice.
 - Slack and the dashboard ask for the same things. The dashboard can show
   more detail, but not more asks.
 - A push goes to each User assigned to an open action, once per item. A
