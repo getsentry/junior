@@ -1,7 +1,7 @@
 import type { KnownBlock, PlainTextElement } from "@slack/types";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
-import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
+import { getPluginSlackConversationLink } from "@/chat/plugins/hooks/routes";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 

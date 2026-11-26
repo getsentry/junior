@@ -13,7 +13,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,

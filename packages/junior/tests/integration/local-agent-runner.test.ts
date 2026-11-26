@@ -26,7 +26,7 @@ import {
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -534,7 +534,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     setPlugins([
       defineJuniorPlugin({
         manifest: {

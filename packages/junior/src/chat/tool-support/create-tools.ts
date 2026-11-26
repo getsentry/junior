@@ -107,7 +107,7 @@ import type {
   ToolState,
 } from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";

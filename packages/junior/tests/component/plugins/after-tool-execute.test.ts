@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
-import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";

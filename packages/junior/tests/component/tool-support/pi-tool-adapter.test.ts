@@ -12,7 +12,7 @@ import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
-import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { PluginHookRunner } from "@/chat/plugins/hooks/runner";
 
 const { handleToolExecutionError } = vi.hoisted(() => ({
   handleToolExecutionError: vi.fn((error: unknown) => {

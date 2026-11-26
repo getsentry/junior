@@ -3,6 +3,10 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
+import {
+  mockReceivedAgentMessage,
+  mockSentAgentMessage,
+} from "./agent-messages";
 import { NOW_MS } from "./fixtures";
 
 type MockEventData = ConversationReportEvent["data"];
@@ -62,6 +66,8 @@ export function mockLeadEvents(
     id: string;
     input: MockEventData & { type: "message" };
     reply: string;
+    /** Messages to Conversations that the Lead started. */
+    sends?: { text: string; to: MockStart }[];
     starts?: MockStart[];
     watches?: MockStart[];
   }) => {
@@ -156,6 +162,19 @@ export function mockLeadEvents(
         ],
       });
     }
+    for (const [index, send] of (args.sends ?? []).entries()) {
+      const [sending, sent] = mockSentAgentMessage({
+        toolCallId: `${args.id}-send-${index}`,
+        startedAt: new Date(step()).toISOString(),
+        startedSeq: events.length,
+        to: send.to.conversationId,
+        text: send.text,
+        // A message to another top-level agent waits in its mailbox.
+        result: { conversationId: send.to.conversationId, delivery: "queued" },
+      });
+      push(at, sending);
+      push(step(), sent);
+    }
     push(step(), {
       type: "message",
       messageId: `${args.id}-reply`,
@@ -215,8 +234,29 @@ export function mockLeadEvents(
     },
     reply:
       "Started both and watching them. I'll report back here when one needs you or finishes.",
+    sends: [
+      {
+        to: triage,
+        text: "Checkout got slow again this morning. Can last night's cause explain it? Reply here.",
+      },
+    ],
     starts: [latency, sentaur],
     watches: [latency, sentaur],
+  });
+  // The morning triage answers the Lead with a message of its own.
+  turn({
+    atMs: NOW_MS - 50 * MINUTE_MS,
+    id: "mock-lead-triage-message",
+    input: mockReceivedAgentMessage({
+      messageId: "mock-lead-triage-message-input",
+      sender: {
+        conversationId: triage.conversationId,
+        source: "top_level_agent",
+      },
+      text: "No. Last night's spike came from the cache eviction bug, and its fix shipped at 2 AM. This morning's rise is only in the EU region, so it has another cause.",
+    }),
+    reply:
+      "Last night's cause is fixed, so this morning's EU-only rise is new. The latency investigation is on it.",
   });
   // Routine updates that no reply follows. They fold into one row.
   for (const [n, minutesAgo] of [42, 38].entries()) {

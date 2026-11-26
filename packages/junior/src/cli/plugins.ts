@@ -15,7 +15,7 @@ import type {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins, validatePlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import { coreRegistrations } from "@/chat/plugins/core-registrations";
 import {
   validatePluginEgressCredentialHooks,

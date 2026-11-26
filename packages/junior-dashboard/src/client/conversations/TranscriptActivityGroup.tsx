@@ -13,6 +13,7 @@ import {
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
+import { isReceivedAgentMessage, isSentAgentMessage } from "./agentMessage";
 import type { TranscriptViewMessage } from "../types";
 import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -41,7 +42,8 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "message") {
     return isAgentInvocationResultMessage(entry.message);
   }
-  return true;
+  // A message to another agent stays in view, like a message from one.
+  return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
 }
 
 /**
@@ -49,7 +51,7 @@ export function isCollapsibleActivityEntry(
  * Event messages that started its Turn, and each Event message whose Turn
  * ended without a reply. Event messages wait for the next reply; a message
  * from a person clears them. Watch Events are left out: the routine rule
- * decides those.
+ * decides those. Messages from other agents are left out too.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -60,7 +62,10 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
-      if (isWatchEventMessage(message)) continue;
+      // A message from another agent stays in view, like a message to one.
+      if (isWatchEventMessage(message) || isReceivedAgentMessage(message)) {
+        continue;
+      }
       if (message.noReply) {
         keys.add(entry.key);
         continue;
