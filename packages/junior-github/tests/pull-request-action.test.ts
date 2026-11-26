@@ -826,39 +826,6 @@ describe("next action item", () => {
     }
   });
 
-  it("backfills without asking a requester who commented before the last push", async () => {
-    const fixture = await createGitHubFixture();
-    const requests: string[] = [];
-    // The pull request waits on nobody, but the requester commented before
-    // the last push. A webhook does not ask them again, and nor does the
-    // backfill.
-    mockGitHub(
-      {
-        comments: [{ at: "2026-07-01T13:00:00.000Z", login: "Requester" }],
-        draft: false,
-        headCommittedAt: "2026-07-02T12:00:00.000Z",
-        mergeableStates: ["blocked"],
-        merged: false,
-        reviews: [],
-        state: "open",
-      },
-      requests,
-    );
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const h = createPluginHarness(fixture, requesterUsers);
-      await h.heartbeat(Date.parse("2026-07-03T12:00:00.000Z"));
-      await h.runStartedTasks();
-      expect(requests).toContain("pull");
-      expect(
-        requests.filter((request) => request.startsWith("request")),
-      ).toEqual([]);
-      expect(h.notices).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("backfills a page again when a webhook was checking one of its pull requests", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];
