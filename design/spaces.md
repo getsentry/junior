@@ -94,9 +94,9 @@ Only these sit on top of the tree:
 - Each Space in the sidebar shows what its Threads need from the member, the
   first that applies: a Thread needs them, one failed, or one works. A Space
   with none of these shows nothing.
-- The Threads panel beside the Lead groups the Space's Threads by what they
-  need from the viewer, in this order: needs you, working, waiting, done.
-  Done starts collapsed.
+- The Threads panel beside the Lead lists the Space's Threads in one list,
+  in order of what they need from the viewer: needs you, working, waiting,
+  done. It shows no group headings or counts.
 
 ## Gaps
 

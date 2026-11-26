@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Archive,
-  ChevronRight,
   Circle,
   CircleAlert,
   CircleCheck,
@@ -19,11 +18,6 @@ import {
 
 import type { StatusChipTone } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../components/ui/collapsible";
 import { Spinner } from "../components/ui/spinner";
 import { formatConversationCostTotal, formatUsageTotal } from "../format";
 import { revalidatedJsonQuery } from "../revalidation";
@@ -31,12 +25,8 @@ import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { ConversationStateIcon } from "./ConversationStateIcon";
 import { FeedThreads } from "./feedThreads";
-import { cn, dashboardDisclosureChevronClass } from "../styles";
-import {
-  attentionGroups,
-  type Attention,
-  type AttentionGroup,
-} from "./conversationSections";
+import { cn } from "../styles";
+import { attentionSort, type Attention } from "./conversationSections";
 import {
   DetailsCard,
   DetailsList,
@@ -91,17 +81,6 @@ export function useConversationChildAgents(
   });
 }
 
-const GROUP_LABELS: Record<AttentionGroup, string> = {
-  done: "Done",
-  needs_you: "Needs you",
-  waiting: "Waiting",
-  working: "Working",
-};
-
-// The heading sits on the row inset, like the rows of `DetailsList`.
-const GROUP_HEADING_CLASS =
-  "-mx-1.5 my-0 flex items-center gap-1 px-1.5 pt-1 pb-2 font-sans text-xs font-medium text-dashboard-text-muted";
-
 /**
  * Read a child's attention from its tree state, run status, and last result.
  * A failed or blocked child needs the viewer, like a failed latest Turn on a
@@ -127,26 +106,14 @@ function childAgentAttention(agent: ConversationChildAgent): Attention {
 }
 
 /**
- * List the Threads of one Conversation in `attentionGroups` order, each
- * group under its label and count. Done starts collapsed: it needs nothing,
- * and it grows the most. Each row opens the Thread page. Archived Threads
- * stay hidden until the reader asks for them.
+ * List the Threads of one Conversation in `attentionSort` order, with no
+ * group headings. Each row opens the Thread page. Archived Threads stay
+ * hidden until the reader asks for them.
  */
 export function ConversationThreads(props: {
   threads: readonly ConversationChildAgent[];
 }) {
-  const {
-    action,
-    items: threads,
-    showArchived,
-  } = useShowArchived(props.threads);
-  const [doneOpen, setDoneOpen] = useState(false);
-  const [archivedShown, setArchivedShown] = useState(showArchived);
-  // Archived Threads sit under Done, so showing them opens it.
-  if (archivedShown !== showArchived) {
-    setArchivedShown(showArchived);
-    if (showArchived) setDoneOpen(true);
-  }
+  const { action, items: threads } = useShowArchived(props.threads);
   return (
     <DetailsCard
       action={action}
@@ -155,53 +122,7 @@ export function ConversationThreads(props: {
       title="Threads"
     >
       {threads.length > 0 ? (
-        <div className="grid gap-2">
-          {attentionGroups(threads, childAgentAttention).map(
-            ({ group, rows }) => {
-              const label = `${GROUP_LABELS[group]} · ${rows.length}`;
-              if (group !== "done") {
-                return (
-                  <section aria-label={GROUP_LABELS[group]} key={group}>
-                    <h4 className={GROUP_HEADING_CLASS}>{label}</h4>
-                    <ThreadRows threads={rows} />
-                  </section>
-                );
-              }
-              return (
-                <Collapsible
-                  key={group}
-                  onOpenChange={setDoneOpen}
-                  open={doneOpen}
-                  render={<section aria-label="Done" />}
-                >
-                  <h4 className="m-0">
-                    <CollapsibleTrigger
-                      render={
-                        <Button
-                          className={cn(
-                            GROUP_HEADING_CLASS,
-                            "group rounded-md hover:text-dashboard-text",
-                          )}
-                          size="bare"
-                          variant="ghost"
-                        />
-                      }
-                    >
-                      {label}
-                      <ChevronRight
-                        aria-hidden="true"
-                        className={dashboardDisclosureChevronClass}
-                      />
-                    </CollapsibleTrigger>
-                  </h4>
-                  <CollapsibleContent>
-                    <ThreadRows threads={rows} />
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            },
-          )}
-        </div>
+        <ThreadRows threads={attentionSort(threads, childAgentAttention)} />
       ) : (
         <p className="m-0">Every Thread is archived.</p>
       )}
