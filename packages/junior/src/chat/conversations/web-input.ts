@@ -35,7 +35,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isTopLevel } from "@/chat/conversations/kind-behavior";
+import { isThread, isTopLevel } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -148,7 +148,7 @@ export function acceptsWebMessages(
     "conversationId" | "destination" | "kind" | "parentConversationId"
   >,
 ): boolean {
-  if (!isTopLevel(conversation)) return conversation.kind === "thread";
+  if (!isTopLevel(conversation)) return isThread(conversation);
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (

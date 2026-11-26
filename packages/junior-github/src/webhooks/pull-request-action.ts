@@ -54,11 +54,14 @@
  * item. So each ready pull request that the requester has not seen has an
  * item or a pending review request, also one opened before the requester
  * linked GitHub. Pushes do not ask a requester who reviewed or commented
- * again, so a webhook asks only one who has not. A comment-only review is
- * not an answer: GitHub drops the ask on it, but the ask stays open
- * (`askStaysOpen`), so the item keeps asking and Junior does not ask again
- * on GitHub. A requester who removed their own review request is not asked
- * again until someone else asks them.
+ * again, so a webhook asks only one who has not. A requester's comment-only
+ * review, such as a reply in a review thread, is not an answer: Junior
+ * handles it like a change request (`requesterFeedback`). The item closes
+ * and the pull request is not ready to merge while Junior acts, and the
+ * review-again flow asks again once Junior marks its comments and the
+ * checks pass. A comment after the requester approves, with no ask since,
+ * leaves the approval in place. A requester who removed their own review
+ * request is not asked again until someone else asks them.
  *
  * GitHub does not send a failed webhook again, so when GitHub fails the
  * read for a while, such as when the installation is out of GraphQL rate
@@ -94,10 +97,10 @@ import { GitHubRequestError } from "../credential-support.js";
 import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
-  askStaysOpen,
   inLimbo,
   latestActivity,
   nextAction,
+  requesterFeedback,
   sameLogin,
   timeOf,
 } from "./pull-request-next-action.js";
@@ -331,6 +334,7 @@ async function askHeldReview(
   },
   target: GitHubPullRequestTarget,
   state: GitHubPullRequestMergeState,
+  requesterLogin: string | undefined,
 ): Promise<{ reason: GitHubReviewAskReason; reviewer: string } | undefined> {
   const held = await readHeldGitHubReviewAsk(args.state, target);
   if (!held) return undefined;
@@ -351,6 +355,7 @@ async function askHeldReview(
     await loadReviewAgainReader(args.env, target.repositoryFullName),
     {
       botUserId,
+      isRequester: async () => sameLogin(held.reviewer, requesterLogin),
       marked: held.marked,
       name,
       number: target.number,
@@ -490,7 +495,7 @@ async function syncOne(
       requesterLogin,
     );
     const activity = latestActivity(state.activity, requesterLogin);
-    const asked = await askHeldReview(args, target, state);
+    const asked = await askHeldReview(args, target, state, requesterLogin);
     const ask = await askReason(args.state, target, {
       asked,
       requesterAt: activity.requesterAt,
@@ -502,7 +507,7 @@ async function syncOne(
       {
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
         askedAgain: asked !== undefined && reason !== undefined,
-        askOpen: askStaysOpen(activity),
+        feedback: requesterFeedback(state, activity),
         login: requesterLogin,
       },
       previous,

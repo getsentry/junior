@@ -275,18 +275,23 @@ const LEAD: TurnBehavior = {
   },
 };
 
-/** Return the behavior of one Turn. */
+/**
+ * Return the behavior of one Turn. A `thread` with a parent runs like a
+ * top-level `thread`, and also reports to its parent.
+ */
 export function turnBehavior(args: {
   kind: ConversationKind;
+  hasParent: boolean;
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
-    case "root":
+    case "thread":
+      if (args.hasParent) {
+        return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+      }
       return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
-    case "thread":
-      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
       if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
@@ -335,11 +340,13 @@ export function canMoveToSpace(
 }
 
 /**
- * Return whether a Conversation of this kind copies its root's visibility.
- * A root takes the visibility of its Destination or Space.
+ * Return whether a Conversation copies its root's visibility: it has a
+ * parent. A root takes the visibility of its Destination or Space.
  */
-export function copiesRootVisibility(kind: ConversationKind): boolean {
-  return !isTopLevelKind(kind);
+export function copiesRootVisibility(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !isTopLevel(conversation);
 }
 
 /**
@@ -357,9 +364,31 @@ export function isTopLevel(
   return !conversation.parentConversationId;
 }
 
-/** Return whether a Conversation of this kind has no parent. */
-export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation" || kind === "lead";
+/**
+ * Return whether a Conversation of this kind may have this parent edge. A
+ * `thread` may have a parent, a Task must, and an Automation run or a Lead
+ * never does.
+ */
+export function kindAllowsParent(
+  kind: ConversationKind,
+  hasParent: boolean,
+): boolean {
+  switch (kind) {
+    case "thread":
+      return true;
+    case "task":
+      return hasParent;
+    case "automation":
+    case "lead":
+      return !hasParent;
+  }
+}
+
+/** Return whether a Conversation is a child Thread: a `thread` with a parent. */
+export function isThread(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): boolean {
+  return conversation.kind === "thread" && !isTopLevel(conversation);
 }
 
 /**

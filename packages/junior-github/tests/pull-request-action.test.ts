@@ -570,6 +570,14 @@ describe("next action item", () => {
         upsert("You approved #946. Mark it ready for review."),
       );
 
+      // A comment after the approval does not undo it: the item stays.
+      const count = calls.length;
+      github.reviews.push({ state: "COMMENTED", user: { login: "requester" } });
+      await webhook.handler(
+        reviewSubmitted("commented", { login: "requester" }),
+      );
+      expect(calls).toHaveLength(count);
+
       // GitHub asks them again before they mark it ready. Once it is
       // ready, the same item says only that GitHub asks for the review.
       github.requestedReviewers = ["requester"];

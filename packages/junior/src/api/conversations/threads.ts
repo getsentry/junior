@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { isThread } from "@/chat/conversations/kind-behavior";
 import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
@@ -30,7 +31,7 @@ function findThreadPlacement(
       return placement ?? ancestor.conversationId;
     }
     if (ancestor.archivedAt) return undefined;
-    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
+    if (isThread(ancestor)) placement ??= ancestor.conversationId;
   }
   return undefined;
 }
@@ -53,7 +54,9 @@ export async function readFeedThreadRecords(
     .where(
       and(
         inArray(juniorConversations.rootConversationId, rootIds),
+        // A child Thread: a `thread` with a parent.
         eq(juniorConversations.kind, "thread"),
+        isNotNull(juniorConversations.parentConversationId),
         isNull(juniorConversations.archivedAt),
       ),
     )

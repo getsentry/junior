@@ -24,7 +24,8 @@ import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
 
 const ROOT_TURN_TOOLS = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

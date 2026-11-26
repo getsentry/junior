@@ -4,7 +4,7 @@ ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_kind" text;--> statement-br
 -- subject kind and id now name the item. New code still gets a dedupe key,
 -- and the other old columns and checks stay, so the release before this
 -- one can still read and write every row after a rollback
--- (20261125223025_inbox_item_owners). A later release drops them.
+-- (20261126011025_inbox_item_owners). A later release drops them.
 -- A GitHub pull request has one item for all of its asks, and its id is
 -- GitHub's id of the pull request, read from the code change records by the
 -- repository and number in the old key, or else by the number and the owner
@@ -14,7 +14,7 @@ ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_kind" text;--> statement-br
 -- old subject link, in `subject_url` or else in `subject_id`, becomes its
 -- first evidence link. A notice keeps no request, so its link stays in
 -- `subject_url`, and its question reads it from there
--- (20261125222259_inbox_questions).
+-- (20261126010259_inbox_questions).
 -- `automation_id` needs no copy:
 -- the run of the owner Conversation names the same Automation.
 --

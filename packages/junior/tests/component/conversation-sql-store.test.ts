@@ -194,7 +194,7 @@ describe("conversation SQL store", () => {
 
       await expect(
         store.get({ conversationId: "kind-root" }),
-      ).resolves.toMatchObject({ kind: "root" });
+      ).resolves.toMatchObject({ kind: "thread" });
       await expect(
         store.get({ conversationId: "agent:kind-task" }),
       ).resolves.toMatchObject({ kind: "task" });
@@ -219,8 +219,8 @@ describe("conversation SQL store", () => {
           .insert(juniorConversations)
           .values({
             ...row,
-            conversationId: "agent:kind-root-child",
-            kind: "root",
+            conversationId: "agent:kind-lead-child",
+            kind: "lead",
             parentConversationId: "kind-root",
           }),
       ).rejects.toMatchObject({

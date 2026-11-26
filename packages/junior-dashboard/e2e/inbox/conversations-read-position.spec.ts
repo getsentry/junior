@@ -442,7 +442,7 @@ test.describe("new UI", () => {
       cumulativeDurationMs: 1_000,
       displayTitle: "Far behind",
       isParticipant: true,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
