@@ -22,15 +22,18 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 
 - A child agent is an ordinary Conversation. Its behavior depends only on
   whether it is a `task` and on who sent the Turn. A child that is not a
-  `task` behaves like any Conversation that has a parent. Its kind and its
-  parent never change.
+  `task` behaves like any Conversation that has a parent. Its kind never
+  changes. Its parent changes only when a person moves it into, out of, or
+  between Spaces.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. `startAgent` and `messageAgent`
   pass the current Turn's Actor to the child, and the child's result
   carries its Turn's Actor back.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
-- Only a root delivers to its Location. A Thread shows its Turns to people.
+- Only a Conversation that has its own Location delivers to it: a root, or
+  a Conversation that moved into a Space. Other children show their Turns
+  to people.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, the parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop. While
@@ -40,8 +43,9 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
   that the child sees when it next runs, and it cannot start a child.
 - A parent never sees a running child as done. Each result names the
   siblings that did not report yet.
-- A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
-  levels of child agents can start their own. The default is 1, so a
+- A parent other than a Lead has at most 8 active child agents. Only
+  `limits.maxAgentDepth` levels of child agents can start their own. The
+  children of a Lead count as roots for this limit. The default is 1, so a
   root's child can start children. With 0, only a root can.
 - A message id is an opaque key. Who sent a message, and what it means,
   come from its stored fields.

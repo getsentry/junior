@@ -35,9 +35,10 @@ child agents add to this is in `./child-agents.md`.
 
 ## Rules
 
-- A team is an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. A team sets who manages an agent, not who
-  can read it. Access comes from `../policies/conversation-access.md`.
+- A team is an agent and its child agents. A Lead's team is every
+  Conversation in its Space (`./spaces.md`). A team sets who manages an
+  agent, not who can read it. Access comes from
+  `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
 - Archiving a Conversation stops it and its child agents.
@@ -71,20 +72,12 @@ child agents add to this is in `./child-agents.md`.
 
 ## Gaps
 
-- A Lead starts and finds agents with `startConversation` and
-  `searchConversations`. Every other agent uses `startAgent` and
-  `listAgents`. This breaks "one toolset".
 - A child agent cannot ask a person. It reports blocked, and its parent
   asks and passes on the answer. This breaks "the agent that needs a person
   asks that person".
 - An Inbox answer goes, as the person, to every Conversation that the item
   links, not only to the agent that asked. This breaks "no agent passes on
   a question or an answer for another agent".
-- A Lead asks people in its reply, not with an Inbox item. This breaks
-  "one contract" and `./inbox.md`.
-- A root that a Lead starts stores no link to the Lead, and the Lead's task
-  counts as a person's message. So the Lead cannot stop or archive it. This
-  breaks "an agent manages only its team".
 - Few agent tool results say the next step for a working agent, so agents
   can poll. This breaks "push, not poll".
 - A parent cannot make the updates of its child agents quiet. This breaks
