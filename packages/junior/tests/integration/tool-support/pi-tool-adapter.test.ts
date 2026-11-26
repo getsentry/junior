@@ -8,7 +8,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
@@ -43,7 +43,8 @@ function runtimeContext() {
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
     workspace: {} as any,

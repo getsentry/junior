@@ -4,8 +4,11 @@
  *
  * Only an explicit signal asks again: Junior marks every comment of the
  * reviewer's latest change request addressed or declined with the feedback
- * tool. Pushes, base-branch syncs, comments, and replies never ask on their
- * own. The ask also waits until the required checks of the head commit pass.
+ * tool. For the requester, a comment-only review counts as a change request
+ * (`webhooks/pull-request-next-action.ts`), so their comment-only reviews
+ * after their latest decision count too. Pushes, base-branch syncs,
+ * comments, and replies never ask on their own. The ask also waits until
+ * the required checks of the head commit pass.
  * GitHub sends no webhook for a reaction, so the feedback tool reads this
  * when it marks a comment. When the checks have not passed yet, it saves a
  * held ask, and the check suite webhook reads this again.
@@ -100,6 +103,19 @@ const requiredChecksReadSchema = z.object({
   }),
 });
 
+const feedbackReviewSchema = reactorsSchema.extend({
+  body: z.string(),
+  comments: z.object({
+    nodes: z.array(
+      reactorsSchema.extend({ databaseId: z.number().nullable() }).nullable(),
+    ),
+    totalCount: z.number(),
+  }),
+  databaseId: z.number().nullable(),
+  state: z.string(),
+  submittedAt: z.string().nullable(),
+});
+
 const reviewAgainSchema = z.object({
   data: z.object({
     repository: z.object({
@@ -118,21 +134,17 @@ const reviewAgainSchema = z.object({
               .nullable(),
           ),
         }),
-        reviews: z.object({
+        decision: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
+        reviews: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
+        timelineItems: z.object({
           nodes: z.array(
-            reactorsSchema
-              .extend({
-                body: z.string(),
-                comments: z.object({
-                  nodes: z.array(
-                    reactorsSchema
-                      .extend({ databaseId: z.number().nullable() })
-                      .nullable(),
-                  ),
-                  totalCount: z.number(),
-                }),
-                databaseId: z.number().nullable(),
-                state: z.string(),
+            z
+              .object({
+                createdAt: z.string().optional(),
+                requestedReviewer: z
+                  .object({ login: z.string().optional() })
+                  .nullable()
+                  .optional(),
               })
               .nullable(),
           ),
@@ -219,6 +231,47 @@ function requiredChecksPass(
   return true;
 }
 
+type FeedbackReview = z.output<typeof feedbackReviewSchema>;
+
+/**
+ * Return the reviews whose comments Junior must mark before it asks again,
+ * oldest first, or undefined when there is no feedback to answer. The
+ * feedback is the reviewer's latest change request. For the requester
+ * (`commentsCount`), it also takes their comment-only reviews after their
+ * latest approval or change request. After an approval, only the
+ * comment-only reviews after a later ask count, so a comment on an
+ * approved pull request does not ask again. For others, a comment-only
+ * review is left out, so a reply to Junior does not hide their change
+ * request. `decided` is read on its own, so a long discussion does not
+ * hide an approval. A long discussion can push older comments out of
+ * `comments`. Junior answers each comment as it comes, so it asks once the
+ * comments it reads are marked, and the discussion does not stall.
+ */
+async function feedbackReviews(
+  decided: FeedbackReview | undefined,
+  comments: FeedbackReview[],
+  askedAt: number,
+  commentsCount: () => Promise<boolean>,
+): Promise<FeedbackReview[] | undefined> {
+  // A dismissed review resets the decision, as an approval stands, so only
+  // comments after a later ask count (`requesterFeedback`).
+  const decidedAt =
+    decided?.state === "APPROVED" || decided?.state === "DISMISSED"
+      ? Date.parse(decided.submittedAt ?? "")
+      : undefined;
+  const since = Date.parse(decided?.submittedAt ?? "");
+  const feedback = comments.filter((review) => {
+    const at = Date.parse(review.submittedAt ?? "");
+    if (decided && !(at > since)) return false;
+    return decidedAt === undefined || (askedAt > decidedAt && at > askedAt);
+  });
+  const changeRequest = decided?.state === "CHANGES_REQUESTED";
+  if (feedback.length > 0 && (await commentsCount())) {
+    return changeRequest ? [decided, ...feedback] : feedback;
+  }
+  return changeRequest ? [decided] : undefined;
+}
+
 /**
  * Read whether `reviewer`'s latest change request on a pull request is
  * ready for their review again. The comments of a change request are its
@@ -229,6 +282,12 @@ export async function readReviewAgainReadiness(
   read: GitHubRead,
   target: {
     botUserId: number;
+    /**
+     * Whether the reviewer is the requester, whose comment-only reviews count
+     * as a change request. Read only when the reviewer's latest review is
+     * comment-only.
+     */
+    isRequester?: (() => Promise<boolean>) | undefined;
     /**
      * The comment that the caller just marked. It counts as marked, because
      * GitHub's GraphQL read can lag behind a reaction that was just added.
@@ -255,25 +314,43 @@ export async function readReviewAgainReadiness(
   const requested = pull.reviewRequests.nodes.some(
     (request) => request?.requestedReviewer?.login?.toLowerCase() === lower,
   );
-  const review = pull.reviews.nodes[0];
-  if (requested || review?.state !== "CHANGES_REQUESTED") return "none";
-  const comments = review.comments.nodes.filter((comment) => comment !== null);
-  // A comment past the first 100 cannot be read, so it counts as open.
-  if (comments.length < review.comments.totalCount) return "none";
+  if (requested) return "none";
+  const askedAt = Math.max(
+    Number.NEGATIVE_INFINITY,
+    ...pull.timelineItems.nodes.flatMap((item) =>
+      item?.createdAt && item.requestedReviewer?.login?.toLowerCase() === lower
+        ? [Date.parse(item.createdAt)]
+        : [],
+    ),
+  );
+  const reviews = await feedbackReviews(
+    pull.decision.nodes[0] ?? undefined,
+    pull.reviews.nodes.filter((review) => review !== null),
+    askedAt,
+    async () => (await target.isRequester?.()) ?? false,
+  );
+  if (!reviews) return "none";
   const { marked } = target;
   const justMarked = (id: number | null, kind: "review" | "review_body") =>
     marked?.kind === kind && marked.id === id;
-  const bodyMarked =
-    justMarked(review.databaseId, "review_body") ||
-    markedBy(review, target.botUserId);
-  const bodyCounts = review.body.trim() !== "" || comments.length === 0;
-  if (bodyCounts && !bodyMarked) return "none";
-  const commentsMarked = comments.every(
-    (comment) =>
-      justMarked(comment.databaseId, "review") ||
-      markedBy(comment, target.botUserId),
-  );
-  if (!commentsMarked) return "none";
+  for (const review of reviews) {
+    const comments = review.comments.nodes.filter(
+      (comment) => comment !== null,
+    );
+    // A comment past the first 100 cannot be read, so it counts as open.
+    if (comments.length < review.comments.totalCount) return "none";
+    const bodyMarked =
+      justMarked(review.databaseId, "review_body") ||
+      markedBy(review, target.botUserId);
+    const bodyCounts = review.body.trim() !== "" || comments.length === 0;
+    if (bodyCounts && !bodyMarked) return "none";
+    const commentsMarked = comments.every(
+      (comment) =>
+        justMarked(comment.databaseId, "review") ||
+        markedBy(comment, target.botUserId),
+    );
+    if (!commentsMarked) return "none";
+  }
   return (await readRequiredChecksPass(read, target, pull))
     ? "ready"
     : "checks";
@@ -400,11 +477,11 @@ export async function dropHeldGitHubReviewAsk(
 }
 
 /**
- * Why Junior asked a reviewer again: `handled` when the last comment was
- * marked and the checks already passed, `checks` when passing checks
- * released a held ask.
+ * Why Junior asked a reviewer: `handled` when the last comment was marked
+ * and the checks already passed, `checks` when passing checks released a
+ * held ask, `question` when a Junior comment asked the requester.
  */
-export type GitHubReviewAskReason = "checks" | "handled";
+export type GitHubReviewAskReason = "checks" | "handled" | "question";
 
 // The tool asks on GitHub, and GitHub's review request webhook shows the
 // item. The mark only needs to outlive that delivery.
@@ -412,10 +489,12 @@ const ASKED_TTL_MS = 60 * 60 * 1000;
 
 const askedSchema = z.object({
   at: z.iso.datetime(),
+  // Unset means `handled`.
+  reason: z.enum(["handled", "question"]).optional(),
   reviewer: z.string().min(1),
 });
 
-/** A review that the feedback tool asked for, until the item shows it. */
+/** A review that a Junior tool asked for, until the item shows it. */
 export type GitHubReviewAsked = z.output<typeof askedSchema>;
 
 function askedKey(target: {
@@ -425,7 +504,7 @@ function askedKey(target: {
   return `pull-request-review-asked:${target.repositoryFullName.toLowerCase()}#${target.number}`;
 }
 
-/** Record that the feedback tool asked `reviewer` again on one pull request. */
+/** Record that a Junior tool asked `reviewer` on one pull request. */
 export async function markGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
@@ -434,7 +513,7 @@ export async function markGitHubReviewAsked(
   await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
 }
 
-/** Return the review that the feedback tool asked for on one pull request. */
+/** Return the review that a Junior tool asked for on one pull request. */
 export async function readGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
@@ -443,7 +522,7 @@ export async function readGitHubReviewAsked(
   return saved.success ? saved.data : undefined;
 }
 
-/** Drop the record of a review that the feedback tool asked for. */
+/** Drop the record of a review that a Junior tool asked for. */
 export async function dropGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },

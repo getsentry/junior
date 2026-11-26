@@ -8,8 +8,8 @@ const growth = async (filePath, base, head) =>
     await parseBaseline(filePath, head),
   );
 
-const CHILD = "packages/junior/src/chat/agent-invocations/child-message.ts";
-const STORE = "packages/junior/src/chat/agent-invocations/store.ts";
+const CHILD = "packages/junior/src/chat/child-agents/child-message.ts";
+const STORE = "packages/junior/src/chat/child-agents/store.ts";
 
 // getsentry/junior#3226 added a file and raised a count to pass the check.
 test("fails when a rule allows more violations than at the base", async () => {

@@ -18,7 +18,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -427,7 +427,7 @@ describe("plugin heartbeat", () => {
       getConversationStore().get({
         conversationId: getDispatchConversationId({ id: result.id }),
       }),
-    ).resolves.toMatchObject({ kind: "root", title: "Nightly sync" });
+    ).resolves.toMatchObject({ kind: "thread", title: "Nightly sync" });
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {

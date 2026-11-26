@@ -271,7 +271,7 @@ export async function appendVisibleHistory(
 /** Create a child conversation under a recorded root for reporting tests. */
 export async function createChild(args: {
   childConversationId: string;
-  /** Defaults to a Task. */
+  /** Defaults to a Task. `thread` makes a Thread. */
   kind?: "task" | "thread";
   parentConversationId: string;
 }): Promise<void> {

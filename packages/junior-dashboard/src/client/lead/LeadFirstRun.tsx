@@ -5,7 +5,7 @@ import { LeadMark } from "./LeadMark";
 
 const FEATURES = [
   {
-    about: "Each request becomes its own conversation that runs as you.",
+    about: "Each request becomes its own Thread that runs as you.",
     title: "Starts work",
   },
   {
@@ -21,7 +21,7 @@ const FEATURES = [
 const PROMPTS = [
   "Find out why checkout got slow this morning",
   "What's waiting on me?",
-  "Tell the billing migration conversation to skip the dry run",
+  "Tell the billing migration Thread to skip the dry run",
 ];
 
 /** The Lead's reply box placeholder. */

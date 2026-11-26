@@ -147,7 +147,9 @@ describe("limbo review ask", () => {
   }>([
     { asks: true, github: {}, name: "waits on nobody" },
     {
-      asks: true,
+      // The v2 backfill asks as a webhook does, so it does not ask a
+      // requester who acted before the last push again.
+      asks: false,
       github: {
         comments: [{ at: "2026-07-02T11:00:00.000Z", login: "Requester" }],
       },
@@ -210,7 +212,7 @@ describe("limbo review ask", () => {
       name: "another person removed the requester's review request",
     },
     {
-      asks: true,
+      asks: false,
       github: {
         reviews: [
           {
@@ -220,7 +222,7 @@ describe("limbo review ask", () => {
           },
         ],
       },
-      name: "the requester left only a comment-only review after the last push",
+      name: "the requester left a comment-only review, so Junior acts next",
     },
     {
       asks: false,
@@ -236,8 +238,25 @@ describe("limbo review ask", () => {
           },
         ],
       },
-      item: true,
-      name: "a comment-only review keeps the requester's ask open",
+      name: "a comment-only review answers no ask, but Junior acts next",
+    },
+    {
+      asks: false,
+      github: {
+        reviews: [
+          {
+            state: "DISMISSED",
+            submitted_at: "2026-07-02T10:00:00.000Z",
+            user: { login: "Requester" },
+          },
+          {
+            state: "COMMENTED",
+            submitted_at: "2026-07-02T11:00:00.000Z",
+            user: { login: "Requester" },
+          },
+        ],
+      },
+      name: "a push dismissed the requester's approval after their comment",
     },
   ])(
     "backfill asks the requester's review in limbo: $name",

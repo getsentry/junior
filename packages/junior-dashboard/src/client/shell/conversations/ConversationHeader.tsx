@@ -100,6 +100,8 @@ export function ConversationHeader(
 function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The reader closed details. A resize can also close them. */
+  detailsClosedByReader?: boolean | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -163,11 +165,31 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // The element that last took focus. A layout switch can hide it with CSS,
+  // and then focus also falls to the body, but details did not take it.
+  const lastFocusRef = useRef<Element | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      lastFocusRef.current =
+        event.target instanceof Element ? event.target : null;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // Closing details removes their focused close button, and focus falls to
+  // the body. Return it to the button that opens them. Not when a resize
+  // closes them, and not when the last focused element is still on the
+  // page: a resize can also hide another focused element, and the focus
+  // that falls from it stays on the body.
+  const detailsClosedByReader = props.detailsClosedByReader;
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
-      document.activeElement === document.body
+      detailsClosedByReader &&
+      document.activeElement === document.body &&
+      !lastFocusRef.current?.isConnected
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current
@@ -175,7 +197,7 @@ function ConversationTitleHeader(props: {
       trigger?.focus({ preventScroll: true });
     }
     wasDetailsOpen.current = detailsOpen;
-  }, [detailsOpen]);
+  }, [detailsOpen, detailsClosedByReader]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;

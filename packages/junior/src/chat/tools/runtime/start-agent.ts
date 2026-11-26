@@ -1,19 +1,16 @@
 import * as z from "zod";
 import {
   AgentDepthLimitError,
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
   AgentStoppedError,
-} from "@/chat/agent-invocations/errors";
+} from "@/chat/child-agents/errors";
 import {
   agentNameSchema,
   CHILD_AGENT_KINDS,
   PARENT_AGENT_TARGET,
-} from "@/chat/agent-invocations/types";
-import {
-  AGENT_TYPES,
-  formatAgentTypes,
-} from "@/chat/agent-invocations/agent-types";
+} from "@/chat/child-agents/types";
+import { AGENT_TYPES, formatAgentTypes } from "@/chat/child-agents/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
@@ -71,7 +68,7 @@ const childInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "thread: one work item, about one issue or code change, that people open, message, and steer. A request for a thread means this, not a Slack thread. task (default): background work that only you message.",
+        "thread: a work item that people open, message, and steer. A request for a thread means this, not a Slack thread. task (default): background work that only you message.",
       ),
     agent_type: z
       .enum(AGENT_TYPES)
@@ -98,7 +95,7 @@ const childInputSchema = z
 /** Static definition of `startAgent`. */
 export const startAgentToolDefinition = zodToolDefinition({
   description:
-    "Start an asynchronous child agent with its own sandbox and tool budget. Its result arrives in a later turn. A Thread is one work item that people own and message. A Task is work that you delegate: use Tasks to run independent work in parallel and to keep long investigations out of your context. Delegate a Task for each independent track that needs real investigation, such as several repos, services, or sites (start every track in the same message). Do work that fits in a handful of tool calls yourself.",
+    "Start an asynchronous child agent with its own sandbox and tool budget. Its result arrives in a later turn. A Thread is a work item that people own and message. A Task is work that you delegate: use Tasks to run independent work in parallel and to keep long investigations out of your context. Delegate a Task for each independent track that needs real investigation, such as several repos, services, or sites (start every track in the same message).",
   exposure: "modelOnly",
   // Action review judges the actions that the task names.
   approvalMode: "auto",
@@ -159,7 +156,7 @@ export function createStartAgentTool(
             { cause: error },
           );
         }
-        if (error instanceof AgentInvocationLimitError) {
+        if (error instanceof ChildAgentLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before you start more.`,
             { cause: error },

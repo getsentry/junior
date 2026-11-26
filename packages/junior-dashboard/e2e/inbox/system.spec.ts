@@ -93,8 +93,11 @@ test.describe("new UI", () => {
       page.getByRole("heading", { name: "Model spend", exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
+    const cacheDisplay = page.getByRole("group", {
+      name: "Cache chart display",
+    });
     await expect(
-      page.getByRole("button", { name: "Percent", exact: true }),
+      cacheDisplay.getByRole("button", { name: "Percent", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByRole("group", { name: "Reporting period" }),
@@ -102,11 +105,20 @@ test.describe("new UI", () => {
     await expect(page.getByRole("combobox")).toHaveCount(0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-share");
-    await page.getByRole("button", { name: "Tokens", exact: true }).click();
+    await cacheDisplay
+      .getByRole("button", { name: "Tokens", exact: true })
+      .click();
     await expect(page.getByLabel("Input cache tokens per day")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Tokens", exact: true }),
+      cacheDisplay.getByRole("button", { name: "Tokens", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByRole("group", { name: "Spend by Actor display" })
+      .getByRole("button", { name: "Percent", exact: true })
+      .click();
+    await expect(
+      page.getByLabel("Daily share of model spend by Actor"),
+    ).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-tokens", { view: "desktop" });
     await page.getByRole("button", { name: "24h", exact: true }).click();
@@ -124,10 +136,9 @@ test.describe("new UI", () => {
     await expect(
       page.getByText(/They do not show individual calls/),
     ).toBeVisible();
-    await page.evaluate(() => window.scrollTo(0, 0));
-    // The scroll moves a chart under the pointer from the click above, and
-    // its tooltip shows only when a hover lands before the shot.
+    // The scroll would move a chart under the pointer and show its tooltip.
     await page.mouse.move(-1, -1);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-missing", { view: "desktop" });
     await page.getByRole("button", { name: "30d", exact: true }).click();
     await expect(largestWrites).toContainText("190k");

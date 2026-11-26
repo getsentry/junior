@@ -1,5 +1,103 @@
 # Changelog
 
+## 0.316.0
+
+Junior expands everyday capabilities, improves reliability and guidance, clarifies documentation, and tightens testing and configuration controls for more predictable operation.
+
+### New Features ✨
+
+Agents, conversations, dashboard membership, GitHub inboxes, Spaces, iOS search, and people’s Inbox items gain broader capabilities.
+
+#### Agents
+
+- Merge the root kind into thread by @dcramer with @sentry-junior in [#4377](https://github.com/getsentry/junior/pull/4377)
+- Send every child update to the parent by @dcramer with @sentry-junior in [#4289](https://github.com/getsentry/junior/pull/4289)
+
+#### Conversations
+
+- Invite and Leave for private Conversations by @dcramer with @sentry-junior in [#4354](https://github.com/getsentry/junior/pull/4354)
+- Store visibility on every Conversation by @dcramer with @sentry-junior in [#4335](https://github.com/getsentry/junior/pull/4335)
+
+#### Dashboard
+
+- Add people with one typeahead picker by @dcramer with @sentry-junior in [#4367](https://github.com/getsentry/junior/pull/4367)
+- Tell apart Spaces whose names share a prefix by @dcramer with @sentry-junior in [#4365](https://github.com/getsentry/junior/pull/4365)
+
+#### GitHub
+
+- Say when a PR comment asks the requester a question by @BYK with @sentry-junior in [#4357](https://github.com/getsentry/junior/pull/4357)
+- Keep a review ask on ready Junior PRs until the requester answers by @BYK with @sentry-junior in [#4317](https://github.com/getsentry/junior/pull/4317)
+- Backfill next actions and ask for reviews on Junior PRs in limbo by @BYK with @sentry-junior in [#4310](https://github.com/getsentry/junior/pull/4310)
+- Give each Conversation an hourly Sandbox GraphQL budget by @BYK with @sentry-junior in [#4322](https://github.com/getsentry/junior/pull/4322)
+- Ask the requester in the Inbox to review a held draft by @BYK with @sentry-junior in [#4306](https://github.com/getsentry/junior/pull/4306)
+
+#### Spaces
+
+- Mark a Space in the pane while one of its Conversations is open by @dcramer with @sentry-junior in [#4375](https://github.com/getsentry/junior/pull/4375)
+- Show a roll-up status on each Space in the pane by @dcramer with @sentry-junior in [#4366](https://github.com/getsentry/junior/pull/4366)
+- Edit a Space's name and description in the dashboard by @dcramer with @sentry-junior in [#4372](https://github.com/getsentry/junior/pull/4372)
+- Let a person ask Junior to move a Conversation between Spaces by @dcramer with @sentry-junior in [#4282](https://github.com/getsentry/junior/pull/4282)
+
+#### Other
+
+- (ios) Support iPhone Duo by @armcknight with @sentry-junior in [#4174](https://github.com/getsentry/junior/pull/4174)
+- (search) Record the nearest meaning candidates on the search span by @BYK with @sentry-junior in [#4302](https://github.com/getsentry/junior/pull/4302)
+- (steering) Leave work for a person as an item, not only text by @BYK with @sentry-junior in [#3970](https://github.com/getsentry/junior/pull/3970)
+
+### Bug Fixes 🐛
+
+Dashboard navigation, review handling, image requests, agent guidance, and private-Space exits now behave more reliably.
+
+#### Dashboard
+
+- Remove the versions SSE stream by @BYK with @sentry-junior in [#4381](https://github.com/getsentry/junior/pull/4381)
+- Keep the last search match in view when the search clears by @BYK with @sentry-junior in [#4358](https://github.com/getsentry/junior/pull/4358)
+- Leave follow on every jump to a row by @sentry-junior in [#4336](https://github.com/getsentry/junior/pull/4336)
+
+#### GitHub
+
+- Handle the requester's comment-only review like a change request by @BYK with @sentry-junior in [#4398](https://github.com/getsentry/junior/pull/4398)
+- Sync a PR's next action again after GitHub fails the read by @BYK with @sentry-junior in [#4316](https://github.com/getsentry/junior/pull/4316)
+
+#### Images
+
+- Scale an image down until its lossy data fits by @sentry-junior in [#4389](https://github.com/getsentry/junior/pull/4389)
+- Fit every image in a model request to provider limits by @dcramer with @sentry-junior in [#4387](https://github.com/getsentry/junior/pull/4387)
+
+#### Other
+
+- (agents) Stop startAgent text from sending one work item to a Thread by @dcramer with @sentry-junior in [#4363](https://github.com/getsentry/junior/pull/4363)
+- (db) Merge the migration leaves from #4377 and #4120 by @dcramer with @sentry-junior in [#4404](https://github.com/getsentry/junior/pull/4404)
+- (guardian) Let a Lead start work for a concern a member raises by @dcramer with @sentry-junior in [#4362](https://github.com/getsentry/junior/pull/4362)
+- (spaces) Leave a Conversation's page when its private Space is left by @sentry-junior in [#4383](https://github.com/getsentry/junior/pull/4383)
+
+### Documentation 📚
+
+#### Design
+
+- Rewrite Guardian intent for the redesign by @dcramer with @sentry-junior in [#4139](https://github.com/getsentry/junior/pull/4139)
+- State that a child agent always reports how a Turn ended by @dcramer with @sentry-junior in [#4385](https://github.com/getsentry/junior/pull/4385)
+- Record the 2026-11-25 audit gaps by @dcramer with @sentry-junior in [#4345](https://github.com/getsentry/junior/pull/4345)
+
+### Internal Changes 🔧
+
+Testing becomes more deterministic while configuration, conversation status reads, and migration validation gain stricter controls.
+
+#### Dashboard
+
+- Stop e2e tests from forwarding routes and ignoring route errors by @dcramer with @sentry-junior in [#4382](https://github.com/getsentry/junior/pull/4382)
+- Wait out Suspense reveals and lazy chunks before a screenshot by @sentry-junior in [#4364](https://github.com/getsentry/junior/pull/4364)
+- Wait for the outline and jump mark in the long transcript shot by @BYK with @sentry-junior in [#4361](https://github.com/getsentry/junior/pull/4361)
+- Compare screenshots with the main that was built by @sentry-junior in [#4337](https://github.com/getsentry/junior/pull/4337)
+- Wait for the outline to settle before the memory jump shot by @BYK with @sentry-junior in [#4359](https://github.com/getsentry/junior/pull/4359)
+- Stop e2e tests from hiding races they cause by @dcramer with @sentry-junior in [#4360](https://github.com/getsentry/junior/pull/4360)
+
+#### Other
+
+- (configuration) Change channel and Space configuration with one tool by @dcramer with @sentry-junior in [#4287](https://github.com/getsentry/junior/pull/4287)
+- (conversations) Read status with fewer event scans by @sentry-junior in [#4120](https://github.com/getsentry/junior/pull/4120)
+- (migrations) Require a drop or rename to name the release that stopped using it by @BYK with @sentry-junior in [#4371](https://github.com/getsentry/junior/pull/4371)
+
 ## 0.315.0
 
 Junior now builds safer platform prompts, expands shared Spaces and integrations, fixes cross-surface failures, clarifies operation and access rules, and updates compatibility and data migrations.

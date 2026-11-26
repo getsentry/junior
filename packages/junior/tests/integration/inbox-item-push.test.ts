@@ -38,7 +38,7 @@ import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
@@ -732,6 +732,11 @@ describe("inbox item push", () => {
       200,
     );
     await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
-    expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
+    // Her dismiss in the Conversation also closes its reply notice.
+    expect((await getInboxItem(getDb(), notice))?.status).toBe("done");
+    expect(pushes[5]?.["close"]).toEqual(
+      expect.arrayContaining([notice, next.item.id, acme]),
+    );
+    expect(pushes[5]?.["close"]).toHaveLength(3);
   });
 });

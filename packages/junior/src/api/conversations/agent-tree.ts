@@ -1,5 +1,5 @@
 import { mapBounded } from "@/chat/fan-out";
-import { getChildAgentLabel } from "@/chat/agent-invocations/store";
+import { getChildAgentLabel } from "@/chat/child-agents/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationKind } from "@/chat/conversations/store";
@@ -72,7 +72,7 @@ export async function readConversationAgentTree(
       });
       return {
         conversationId: id,
-        kind: "root" as const,
+        kind: root.kind,
         label: summary.displayTitle,
       };
     }

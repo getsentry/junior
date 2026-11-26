@@ -8,7 +8,6 @@ export const spaceMemberSchema = z
     displayName: z.string().nullable(),
     /** Junior API path of the member's profile photo. */
     avatarUrl: z.string().nullable(),
-    joinedAt: z.iso.datetime(),
   })
   .strict();
 

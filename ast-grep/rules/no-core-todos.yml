@@ -1,0 +1,40 @@
+# Core does not know To-dos exist. The To-do feature lives in
+# `packages/junior/src/chat/todos/` as a core registration, and reaches the
+# agent only through plugin hooks. `core-registrations.ts` lists every core
+# registration, and the database schema lists every table. The Inbox,
+# Search, and the dashboard API show To-dos to people, so they compose with
+# the feature. In the Slack List tools, "todo" is Slack's own term.
+id: no-core-todos
+language: TypeScript
+severity: error
+message: Core must not import or name To-dos. Put To-do code in packages/junior/src/chat/todos/, and reach the agent through a plugin hook of its registration.
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  - packages/junior/src/chat/todos/**
+  - packages/junior/src/chat/plugins/core-registrations.ts
+  - packages/junior/src/db/schema.ts
+  - packages/junior/src/db/schema/**
+  - packages/junior/src/chat/inbox-items/**
+  - packages/junior/src/chat/inbox-snoozes/**
+  - packages/junior/src/chat/omni-search/**
+  - packages/junior/src/api/**
+  - packages/junior/src/chat/slack/tool-support/list/**
+  - packages/junior/src/chat/slack/tools/list/**
+rule:
+  any:
+    - all:
+        - any:
+            - kind: identifier
+            - kind: property_identifier
+            - kind: shorthand_property_identifier
+            - kind: shorthand_property_identifier_pattern
+            - kind: type_identifier
+        - regex: (?i)todo
+    - all:
+        - kind: string_fragment
+        - regex: (?i)to-?do
+    # Comments keep `TODO(name)` notes, so only these spellings count.
+    - all:
+        - kind: comment
+        - regex: To-do|to-do|Todo|\btodos?\b

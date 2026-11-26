@@ -14,7 +14,7 @@ export type ConversationDisplayState =
 /**
  * Pick one state for a Conversation row. When more than one applies:
  * `needs_you` > `working` > `watching` > `pinned`. A `done` tree shows
- * nothing. A row without a tree state, such as a Thread row, works while
+ * nothing. A row without a tree state works while
  * its own Turn is queued or running.
  */
 export function conversationDisplayState(

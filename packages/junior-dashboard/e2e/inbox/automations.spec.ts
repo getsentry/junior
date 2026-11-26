@@ -52,7 +52,7 @@ test.describe("new UI", () => {
             conversationId,
             cumulativeDurationMs: 1_000,
             displayTitle: "Automation card",
-            kind: "root",
+            kind: "thread",
             eventHistory: { status: "available" },
             events: [
               {

@@ -1,6 +1,7 @@
-// `pnpm dev` entry. Runs `dev-server.mjs` inside one `sentry local run`, so
-// Nitro and every restart of it report to one Sentry Local server on port
-// 8969. The wrapper sets `SENTRY_SPOTLIGHT` for its
+// `pnpm dev` entry. Runs `dev-server.mjs` inside one
+// `sentry local run --session junior`, so Nitro and every restart of it report
+// to the `junior` session of the Sentry Local daemon. The session stays
+// queryable after `pnpm dev` exits. The wrapper sets `SENTRY_SPOTLIGHT` for its
 // child. When it is already set, for example under another
 // `sentry local run`, this runs the dev server directly.
 import { spawn } from "node:child_process";
@@ -31,8 +32,8 @@ if (env.SENTRY_SPOTLIGHT?.trim()) {
       "local",
       "run",
       ...(openLocalUi ? ["--open"] : []),
-      "--port",
-      "8969",
+      "--session",
+      "junior",
       "--",
       process.execPath,
       devServer,

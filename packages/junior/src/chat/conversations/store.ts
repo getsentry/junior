@@ -4,6 +4,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentStatus } from "@/chat/conversations/agent-status";
 
 export type ConversationSource =
   | "api"
@@ -16,33 +17,23 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root, an Automation run, and a
- * Lead have no parent. A Thread is a child that people can message. A Task
- * is a child that only its parent messages. A Conversation never changes
- * kind.
+ * What a Conversation is. An Automation run and a Lead have no parent. A Task
+ * is a child that only its parent messages. A `thread` is one that people
+ * can message, with or without a parent. A Conversation never changes kind.
  */
-export type ConversationKind =
-  | "root"
-  | "automation"
-  | "lead"
-  | "thread"
-  | "task";
+export type ConversationKind = "thread" | "automation" | "lead" | "task";
 
 /** The kind of a Conversation that has no parent. */
-export type TopLevelConversationKind = Exclude<
-  ConversationKind,
-  ChildConversationKind
->;
+export type TopLevelConversationKind = Exclude<ConversationKind, "task">;
 
 /** The kind of a Conversation that has a parent. */
-export type ChildConversationKind = "thread" | "task";
+export type ChildConversationKind = Extract<
+  ConversationKind,
+  "thread" | "task"
+>;
 
-export type ConversationStatus =
-  | "paused"
-  | "failed"
-  | "idle"
-  | "pending"
-  | "running";
+/** Conversation execution status. */
+export type ConversationStatus = Exclude<AgentStatus, "stopped">;
 
 /** Cumulative duration and usage that one Run reported. */
 export interface ConversationRunMetrics {
@@ -85,15 +76,28 @@ export interface Conversation {
   /** Immutable kind. Set when the Conversation is created. */
   kind: ConversationKind;
   lastActivityAtMs: number;
-  /** Immutable parent Conversation. */
+  /**
+   * Parent Conversation. Only `setConversationSpace` changes it: a
+   * Conversation in a Space is a child of the Space's Lead.
+   */
   parentConversationId?: string;
-  /** Immutable root of the Conversation tree, read from storage. */
+  /**
+   * Top-level Conversation of this work, read from storage: itself when it
+   * has no parent or its parent is a Lead. Its child agents keep it when it
+   * moves.
+   */
   rootConversationId?: string;
   /**
-   * Space of a root. A child has none: it is in the Space of its root. Only
-   * a create and `setConversationSpace` write it.
+   * Space of a Lead, or of a Lead's child, read from its Lead. Other
+   * Conversations have none: a child agent is in the Space of its root. Only
+   * a Lead stores it.
    */
   spaceId?: string;
+  /**
+   * Set on a child whose Location is its own, not a copy of its parent's,
+   * such as a Slack Conversation that moved into a Space.
+   */
+  ownLocation?: true;
   /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.
@@ -225,7 +229,7 @@ export interface ConversationStore {
     sessionSource?: Source;
     title?: string;
     /**
-     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * Kind of a new Conversation. Default `thread`. An existing Conversation
      * keeps its kind.
      */
     kind?: TopLevelConversationKind;

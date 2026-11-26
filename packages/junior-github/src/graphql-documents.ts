@@ -189,7 +189,7 @@ export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
 
 /**
  * Read whether GitHub asks one person to review a pull request, and their
- * latest submitted review. A pending review is not submitted.
+ * latest 20 submitted reviews. A pending review is not submitted.
  */
 export const PULL_REQUEST_REVIEWER = githubGraphql(`
   query PullRequestReviewer($owner: String!, $name: String!, $number: Int!, $login: String!) {
@@ -198,7 +198,7 @@ export const PULL_REQUEST_REVIEWER = githubGraphql(`
         reviewRequests(first: 100) {
           nodes { requestedReviewer { __typename ... on User { login } } }
         }
-        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+        reviews(last: 20, author: $login, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
           nodes { state }
         }
       }
@@ -333,9 +333,12 @@ export const PULL_REQUEST_REQUIRED_CHECKS = githubGraphql(`
 
 /**
  * Read what decides whether a reviewer's change request is ready for their
- * review again: whether GitHub asks them, their latest review with the
- * reactors of its body and each of its comments, the checks of the head
- * commit, and the branch protection's required checks of the base branch.
+ * review again: whether GitHub asks them, when GitHub last asked people for
+ * a review, their latest approval or change request and their latest 20
+ * comment-only reviews with the reactors of each body and comment, the
+ * checks of the head commit, and the branch protection's required checks
+ * of the base branch. The decision is read on its own, so a long
+ * discussion does not push it out of view.
  */
 export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
   query PullRequestReviewAgain($owner: String!, $name: String!, $number: Int!, $reviewer: String!) {
@@ -346,17 +349,19 @@ export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
         reviewRequests(first: 100) {
           nodes { requestedReviewer { __typename ... on User { login } } }
         }
-        reviews(last: 1, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+        timelineItems(last: 100, itemTypes: [REVIEW_REQUESTED_EVENT]) {
           nodes {
-            databaseId
-            state
-            body
-            ...FeedbackReactors
-            comments(first: 100) {
-              totalCount
-              nodes { databaseId ...FeedbackReactors }
+            ... on ReviewRequestedEvent {
+              createdAt
+              requestedReviewer { __typename ... on User { login } }
             }
           }
+        }
+        decision: reviews(last: 1, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+          nodes { ...FeedbackReview }
+        }
+        reviews(last: 20, author: $reviewer, states: [COMMENTED]) {
+          nodes { ...FeedbackReview }
         }
         commits(last: 1) {
           nodes {
@@ -375,6 +380,18 @@ export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
           }
         }
       }
+    }
+  }
+
+  fragment FeedbackReview on PullRequestReview {
+    databaseId
+    state
+    submittedAt
+    body
+    ...FeedbackReactors
+    comments(first: 100) {
+      totalCount
+      nodes { databaseId ...FeedbackReactors }
     }
   }
 

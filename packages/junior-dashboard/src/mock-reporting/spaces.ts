@@ -216,6 +216,18 @@ export function filterMockConversationsBySpace(
   };
 }
 
+/** A mock row's tree state. A row with none reads one from its own status. */
+export function mockTreeState(row: ConversationFeed["conversations"][number]) {
+  return (
+    row.treeState ??
+    (row.status === "needs_input"
+      ? "needs_you"
+      : row.turnActive || row.status === "working"
+        ? "working"
+        : "done")
+  );
+}
+
 /**
  * Label a detail with the Space of its root. A child is in its root's, and
  * a Lead is in its own.
@@ -289,7 +301,10 @@ export function addMockConversationSpaceRoute(
     const conversation = readMockConversationDetail(conversationId, 1);
     if (!conversation?.isParticipant)
       return errorResponse("Conversation not found.", 404);
-    if (conversation.kind !== "root" && conversation.kind !== "automation")
+    if (
+      (conversation.kind !== "thread" && conversation.kind !== "automation") ||
+      conversation.parentConversationId
+    )
       return errorResponse(
         "Only a top-level conversation moves. A child is in the Space of its root.",
         409,
@@ -331,7 +346,7 @@ const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 
 /**
  * Roll up the state of a Space's active feed rows, as the API's Space list
- * does. A mock row with no tree state reads one from its own status.
+ * does.
  */
 function spaceState(
   spaceId: string,
@@ -341,15 +356,7 @@ function spaceState(
       !row.archivedAt &&
       mockConversationSpaces.get(row.conversationId) === spaceId,
   );
-  const states = rows.map(
-    (row) =>
-      row.treeState ??
-      (row.status === "needs_input"
-        ? "needs_you"
-        : row.turnActive || row.status === "working"
-          ? "working"
-          : "done"),
-  );
+  const states = rows.map(mockTreeState);
   return {
     latestTurnFailed: rows.some((row) => row.latestTurnFailed),
     treeState:
@@ -374,7 +381,6 @@ function view(space: MockSpace): SpaceReport {
 function members(space: MockSpace, viewer: User) {
   const others = space.others.map((member) => ({
     ...member,
-    joinedAt: space.createdAt,
     userId: `mock-user:${member.email}`,
   }));
   return space.viewerMember
@@ -383,7 +389,6 @@ function members(space: MockSpace, viewer: User) {
           avatarUrl: null,
           displayName: viewer.displayName ?? null,
           email: viewer.email,
-          joinedAt: space.createdAt,
           userId: viewer.id,
         },
         ...others,

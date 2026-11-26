@@ -1,0 +1,38 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7fa7b36c-167a-4f6b-8b90-a14c8028e3a5",
+  "prevIds": ["3b9b0905-bde7-4127-8ac0-cb005dd77b4f"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_user_message_time_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_user_message_time_idx",
+        "n|idx|public.junior_conversation_events_user_message_time_idx",
+        "e|idx|public.junior_conversation_events_user_message_time_idx",
+        "n|rel|public.junior_conversation_events_user_message_time_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "e|col|public.junior_conversation_events.conversation_id",
+        "e|col|public.junior_conversation_events.created_at",
+        "e|col|public.junior_conversation_events.seq"
+      ],
+      "sharedWrites": []
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_conversation_events_user_message_time_idx\"]"
+    }
+  ]
+}

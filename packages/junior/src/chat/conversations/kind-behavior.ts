@@ -11,9 +11,9 @@ import type { StaticToolName } from "@/chat/tool-support/registry";
  * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
  * when spawnAgent is available. `children_and_parent`: the same, but
  * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn. `lead`: only messageAgent, to other top-level agents.
+ * to spawn.
  */
-export type AgentTools = "children" | "children_and_parent" | "lead";
+export type AgentTools = "children" | "children_and_parent";
 
 /**
  * What one Turn does that depends on the Conversation kind and on who opened
@@ -226,18 +226,23 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   relatedConversations: false,
 };
 
-// A Lead finds, starts, and steers its person's other Conversations, and
-// never does their work. So it gets only the tools for that, and no sandbox,
-// skills, MCP, provider, or child-agent tools. Automation tools stay out
-// until a Lead can pick a Slack Destination for one. `updateInboxItem` stays
-// out: a Lead is private and adds no items, so it can change none.
+// A Lead finds, starts, and steers the Space's other Conversations, its
+// child agents, and never does their work. So it gets only the tools for
+// that and its questions to members, and no sandbox, skills, MCP, plugin,
+// or provider tools. A child reads provider state for it. Automation tools
+// stay out until a Lead can pick a Slack Destination for one.
 const LEAD_TOOLS = [
-  "startConversation",
+  "startAgent",
   "messageAgent",
+  "listAgents",
+  "stopAgent",
+  "archiveAgent",
   "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
+  "addInboxItem",
+  "updateInboxItem",
   "searchEventTypes",
   "watchEvents",
   "watchTimer",
@@ -246,11 +251,14 @@ const LEAD_TOOLS = [
   "systemTime",
   "updateUserCustomization",
   "setConfiguration",
+  "listSpaces",
+  "moveConversationToSpace",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
 // The tools a Lead uses on most Turns to find and follow its person's work.
 const LEAD_DIRECT_TOOLS = [
+  "listAgents",
   "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
@@ -268,31 +276,43 @@ const LEAD: TurnBehavior = {
   conversationMetadata: false,
   tools: {
     ...ROOT.tools,
-    agents: "lead",
     subscriptions: false,
     only: LEAD_TOOLS,
     direct: LEAD_DIRECT_TOOLS,
   },
 };
 
-/** Return the behavior of one Turn. */
+// A Lead Turn that no person sent, such as a Watch Event or another agent's
+// message. It lists the Lead's tools, so the Lead keeps one tool list, but
+// it changes no settings: only a person's request does.
+const LEAD_RUNTIME_TURN: TurnBehavior = {
+  ...LEAD,
+  tools: { ...LEAD.tools, settings: false },
+};
+
+/**
+ * Return the behavior of one Turn. A `thread` with a parent runs like a
+ * top-level `thread`, and also reports to its parent.
+ */
 export function turnBehavior(args: {
   kind: ConversationKind;
+  hasParent: boolean;
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
-    case "root":
+    case "thread":
+      if (args.hasParent) {
+        return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+      }
       return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
-    case "thread":
-      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
       if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
-      return LEAD;
+      return args.personInput ? LEAD : LEAD_RUNTIME_TURN;
   }
 }
 
@@ -325,21 +345,66 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a person can put a Conversation in a Space. A child is in
- * the Space of its root, and a Lead never moves.
+ * Return whether a person can put a Conversation in a Space: a top-level
+ * `thread`. A child agent is in the Space of its tree, and a Lead, an
+ * Automation run, or a Task never moves.
  */
 export function canMoveToSpace(
-  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+  conversation: Pick<
+    Conversation,
+    "kind" | "parentConversationId" | "rootConversationId" | "spaceId"
+  >,
 ): boolean {
-  return isTopLevel(conversation) && conversation.kind !== "lead";
+  return conversation.kind === "thread" && isTopLevelWork(conversation);
 }
 
 /**
- * Return whether a Conversation of this kind copies its root's visibility.
- * A root takes the visibility of its Destination or Space.
+ * Return whether a Conversation copies its root's visibility: it has a
+ * parent. A root takes the visibility of its Destination or Space.
  */
-export function copiesRootVisibility(kind: ConversationKind): boolean {
-  return !isTopLevelKind(kind);
+export function copiesRootVisibility(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !isTopLevel(conversation);
+}
+
+/**
+ * Return whether a parent of this kind has a cap on its active child agents.
+ * A Lead's children are its Space's Conversations, so a Lead has none.
+ */
+export function capsActiveChildren(
+  kind: ConversationKind | undefined,
+): boolean {
+  return kind !== "lead";
+}
+
+/**
+ * Return whether the children of a parent of this kind are top-level work:
+ * a Lead's children are its Space's Conversations. They count as roots for
+ * `limits.maxAgentDepth`, and each gets its own Destination.
+ */
+export function childrenAreTopLevel(
+  kind: ConversationKind | null | undefined,
+): boolean {
+  return kind === "lead";
+}
+
+/**
+ * Return whether a parent of this kind gets a reminder with a child's status
+ * update that it can end the Turn with no reply. A Lead's members read each
+ * reply that it posts.
+ */
+export function remindsNoReplyForChildStatus(
+  kind: ConversationKind | undefined,
+): boolean {
+  return kind === "lead";
+}
+
+/** Return whether a Conversation of this kind stores its Space: a Lead. */
+export function storesSpace(
+  kind: ConversationKind | null | undefined,
+): boolean {
+  return kind === "lead";
 }
 
 /**
@@ -350,6 +415,49 @@ export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
   return kind === "lead";
 }
 
+/**
+ * Return whether a Conversation is top-level work: it has no parent, or it
+ * is a Lead's child. Top-level lists show it, and its child
+ * agents move with it.
+ */
+export function isTopLevelWork(
+  conversation: Pick<
+    Conversation,
+    "parentConversationId" | "rootConversationId" | "spaceId"
+  >,
+): boolean {
+  // A Space's Lead is the root of its Space, so a Lead's child is a direct
+  // child of a root that has a Space.
+  return (
+    isTopLevel(conversation) ||
+    (conversation.spaceId !== undefined &&
+      conversation.parentConversationId === conversation.rootConversationId)
+  );
+}
+
+/**
+ * Return whether a Conversation delivers to its Location: it has no parent,
+ * or its Location is its own, such as a Slack Conversation in a Space.
+ */
+export function ownsLocation(
+  conversation: Pick<Conversation, "ownLocation" | "parentConversationId">,
+): boolean {
+  return isTopLevel(conversation) || conversation.ownLocation === true;
+}
+
+/**
+ * Return whether a write may keep a stored parent that is not its own. A
+ * move into, out of, or between Spaces changes the parent only between no
+ * parent and a Lead, so a write from before the move keeps the stored one.
+ */
+export function keepsStoredParent(
+  stored: { id: string | null; isLead: boolean },
+  incoming: { id: string | undefined; isLead: boolean },
+): boolean {
+  if (stored.id === (incoming.id ?? null)) return true;
+  return (!stored.id || stored.isLead) && (!incoming.id || incoming.isLead);
+}
+
 /** Return whether a Conversation has no parent. */
 export function isTopLevel(
   conversation: Pick<Conversation, "parentConversationId">,
@@ -357,9 +465,31 @@ export function isTopLevel(
   return !conversation.parentConversationId;
 }
 
-/** Return whether a Conversation of this kind has no parent. */
-export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation" || kind === "lead";
+/**
+ * Return whether a Conversation of this kind may have this parent edge. A
+ * `thread` may have a parent, a Task must, and an Automation run or a Lead
+ * never does.
+ */
+export function kindAllowsParent(
+  kind: ConversationKind,
+  hasParent: boolean,
+): boolean {
+  switch (kind) {
+    case "thread":
+      return true;
+    case "task":
+      return hasParent;
+    case "automation":
+    case "lead":
+      return !hasParent;
+  }
+}
+
+/** Return whether a Conversation is a child Thread: a `thread` with a parent. */
+export function isThread(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): boolean {
+  return conversation.kind === "thread" && !isTopLevel(conversation);
 }
 
 /**

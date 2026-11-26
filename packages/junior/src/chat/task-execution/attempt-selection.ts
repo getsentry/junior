@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Actor } from "@sentry/junior-plugin-api";
 import { isUserActor } from "@/chat/actor";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnRecord } from "./checkpoint";

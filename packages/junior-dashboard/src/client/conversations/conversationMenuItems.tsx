@@ -176,7 +176,8 @@ export function useConversationMenuItems(
   // is private, so it never moves out.
   if (
     actions.moveToSpace &&
-    (conversation?.kind === "root" || conversation?.kind === "automation") &&
+    (conversation?.kind === "thread" || conversation?.kind === "automation") &&
+    !conversation.parentConversationId &&
     conversation.visibility === "public"
   ) {
     actItems.push({

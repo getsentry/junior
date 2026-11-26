@@ -1,7 +1,7 @@
 /** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import * as z from "zod";
-import { notInheritedByForkChild } from "@/chat/agent-invocations/fork-history";
+import { notInheritedByForkChild } from "@/chat/child-agents/fork-history";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 import {
   readSubtreeEventWatermarks,

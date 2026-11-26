@@ -8,7 +8,7 @@ import {
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
 import { nextDetailVersion } from "./sql/detail-version";
-import { withConversationEventLock } from "./sql/event-lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import {
   createConversationId,
   recordWebConversationActivity,

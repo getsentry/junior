@@ -5,7 +5,6 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -21,7 +20,6 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
@@ -32,7 +30,7 @@ import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -68,6 +66,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
@@ -108,7 +107,7 @@ import type {
   ToolState,
 } from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -211,11 +210,6 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updateTodos: (run) =>
-    createUpdateTodosTool(
-      run.context,
-      run.inboxItemServices().findMentionedUserId,
-    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
   submitFeedback: (run) => createSubmitFeedbackTool(run.context),
@@ -268,6 +262,7 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  listSpaces: (run) => createListSpacesTool(run.context),
   moveConversationToSpace: (run) =>
     createMoveConversationToSpaceTool(run.context),
   // The Turn keeps the tool listed, so its tool list stays the same, but only
@@ -399,7 +394,6 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
-  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];

@@ -16,18 +16,18 @@ export function sameLogin(a: string, b: string | undefined): boolean {
 
 /**
  * When GitHub last asked the requester for a review, when the requester last
- * commented or reviewed, and when they last removed their own review
- * request. A comment-only review neither approves nor requests changes, so
- * `actedAt` leaves it out and `commentedAt` holds it. `decidedAt` holds
- * only the reviews that answer an ask.
+ * commented or reviewed, their latest submitted review and their latest
+ * review that is not comment-only, and when they last removed their own
+ * review request. `actedAt` leaves out a comment-only
+ * review, which neither approves nor requests changes.
  */
 export interface LatestActivity {
   actedAt?: Date;
   askedAt?: Date;
-  commentedAt?: Date;
-  decidedAt?: Date;
+  decided?: { at: Date; state: string };
   removedAt?: Date;
   requesterAt?: Date;
+  review?: { at: Date; state: string };
 }
 
 /** Read the requester's latest activity from a pull request's activity. */
@@ -36,7 +36,10 @@ export function latestActivity(
   requesterLogin: string | undefined,
 ): LatestActivity {
   const latest: LatestActivity = {};
-  const keep = (key: keyof LatestActivity, at: Date) => {
+  const keep = (
+    key: Exclude<keyof LatestActivity, "decided" | "review">,
+    at: Date,
+  ) => {
     const saved = latest[key];
     if (!saved || at > saved) latest[key] = at;
   };
@@ -46,9 +49,17 @@ export function latestActivity(
     else if (entry.kind === "reviewRequestRemoved") keep("removedAt", entry.at);
     else {
       keep("requesterAt", entry.at);
-      keep(entry.review === "COMMENTED" ? "commentedAt" : "actedAt", entry.at);
-      if (entry.review && entry.review !== "COMMENTED") {
-        keep("decidedAt", entry.at);
+      if (entry.review !== "COMMENTED") keep("actedAt", entry.at);
+      const review = entry.review && { at: entry.at, state: entry.review };
+      if (review && (!latest.review || review.at > latest.review.at)) {
+        latest.review = review;
+      }
+      if (
+        review &&
+        review.state !== "COMMENTED" &&
+        (!latest.decided || review.at > latest.decided.at)
+      ) {
+        latest.decided = review;
       }
     }
   }
@@ -56,19 +67,28 @@ export function latestActivity(
 }
 
 /**
- * Whether the requester's review ask stays open after GitHub dropped it. A
- * comment-only review is neither yes nor no, so it does not answer the ask,
- * though GitHub drops the request on any review. An approval, a change
- * request, or the requester removing their own request ends the ask.
+ * Whether the requester's latest review waits for Junior's answer: a change
+ * request, or a comment-only review, which Junior handles like a change
+ * request. After the requester approves, only a comment-only review after
+ * a later ask counts, so a comment on an approved pull request leaves it
+ * ready to merge. A dismissed review, such as an approval that a push
+ * reset, works the same way: a comment since it waits for a new ask, so a
+ * ready pull request is in limbo and Junior asks. A draft cannot merge, so
+ * it is left out.
  */
-export function askStaysOpen(activity: LatestActivity): boolean {
+export function requesterFeedback(
+  state: GitHubPullRequestMergeState,
+  activity: LatestActivity,
+): boolean {
+  const { decided, review } = activity;
+  if (state.draft || !review) return false;
+  if (review.state === "CHANGES_REQUESTED") return true;
+  if (review.state !== "COMMENTED") return false;
+  if (decided?.state !== "APPROVED" && decided?.state !== "DISMISSED") {
+    return true;
+  }
   const askedAt = timeOf(activity.askedAt);
-  return (
-    activity.askedAt !== undefined &&
-    timeOf(activity.commentedAt) > askedAt &&
-    timeOf(activity.decidedAt) < askedAt &&
-    timeOf(activity.removedAt) < askedAt
-  );
+  return askedAt > decided.at.getTime() && review.at.getTime() > askedAt;
 }
 
 /** A time in milliseconds. A missing time is older than every time. */
@@ -85,20 +105,27 @@ export function nextAction(
   requester: {
     actedLast: boolean;
     askedAgain: boolean;
-    askOpen: boolean;
+    /** `requesterFeedback`: the requester waits for Junior's answer. */
+    feedback: boolean;
     login: string | undefined;
+    /**
+     * GitHub lets the requester merge on the repository. Without it, a
+     * person with write access merges, so the requester gets no merge ask.
+     */
+    mergeAccess: boolean;
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to. A pending
   // review request comes first, even where GitHub requires no review. So
-  // does a review ask that a comment-only review keeps open.
+  // does the requester's feedback, because Junior acts next.
   const canMerge =
+    requester.mergeAccess &&
     !state.draft &&
     !state.autoMerge &&
     !state.reviewPending &&
-    !requester.askOpen;
+    !requester.feedback;
   if (
     canMerge &&
     state.mergeableState === "clean" &&
@@ -111,10 +138,12 @@ export function nextAction(
   if (canMerge && !state.mergeableState && saved === "merge") return undefined;
   const review = state.draft ? "review_draft" : "review";
   if (requester.askedAgain) return { action: review };
-  const requested = isRequested(state, requester.login) || requester.askOpen;
-  // A reply to the change request ends the review that Junior asked for,
-  // though GitHub still asks for it, because Junior acts next.
-  if (requested && (!requester.actedLast || !state.changesRequested)) {
+  // A reply to the requester's feedback ends the review that Junior asked
+  // for, though GitHub still asks for it, because Junior acts next.
+  if (
+    isRequested(state, requester.login) &&
+    (!requester.actedLast || !requester.feedback)
+  ) {
     return { action: review };
   }
   // The requester approved the draft, so the step left is to mark it ready.
@@ -136,9 +165,9 @@ function isRequested(
 /**
  * Whether a pull request whose action is none is in limbo: it waits on
  * nobody, so Junior asks for the requester's review on GitHub. It is open,
- * not a draft, and auto-merge is off. No review ask for the requester is
- * open, on GitHub or kept open by a comment-only review. The requester has
- * not commented or reviewed since the last push, other than a comment-only
+ * not a draft, and auto-merge is off. GitHub does not ask the requester
+ * for a review, and the requester's feedback does not wait for Junior. The
+ * requester has not reviewed since the last push, other than a comment-only
  * review. No reviewer approved it, so it does not wait only on others, and
  * no reviewer requests changes, so Junior does not act next. Junior does
  * not ask when the requester removed their own review request and no one
@@ -154,8 +183,7 @@ export function inLimbo(
     !state.draft &&
     !state.autoMerge &&
     !isRequested(state, login) &&
-    !askStaysOpen(activity) &&
-    !state.changesRequested &&
+    !requesterFeedback(state, activity) &&
     timeOf(activity.removedAt) <= timeOf(activity.askedAt) &&
     timeOf(activity.actedAt) <= timeOf(state.headCommittedAt) &&
     state.reviewOutcome === undefined

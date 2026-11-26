@@ -11,11 +11,12 @@ import {
 import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 const noopSandbox = {} as any;
@@ -360,6 +361,7 @@ describe("Slack tool registration", () => {
         parentConversationId: "slack:C12345:1700000000.000",
         turnTools: turnBehavior({
           kind: "task",
+          hasParent: true,
           personInput: false,
         }).tools,
       },
@@ -443,20 +445,37 @@ describe("agent tool binding", () => {
     };
   }
 
-  // A root always spawns. A child spawns only when maxAgentDepth is above 0,
-  // and it can always message its parent. A root's messageAgent rejects
-  // `parent` when it is called, as the root has no parent agent.
+  // A root always spawns. A Lead's child counts as a root. Any other child
+  // spawns only when maxAgentDepth is above 0, and it can always message its
+  // parent. A root's messageAgent rejects `parent` when it is called, as the
+  // root has no parent agent.
   it.each([
-    { agents: "children", maxAgentDepth: 0, spawns: true },
-    { agents: "children_and_parent", maxAgentDepth: 0, spawns: false },
-    { agents: "children_and_parent", maxAgentDepth: 1, spawns: true },
+    { agents: "children", maxAgentDepth: 0, topLevelWork: true, spawns: true },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 0,
+      topLevelWork: false,
+      spawns: false,
+    },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 0,
+      topLevelWork: true,
+      spawns: true,
+    },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 1,
+      topLevelWork: false,
+      spawns: true,
+    },
   ] as const)(
-    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth: $spawns",
-    async ({ agents, maxAgentDepth, spawns }) => {
+    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth, top-level $topLevelWork: $spawns",
+    async ({ agents, maxAgentDepth, topLevelWork, spawns }) => {
       await createApp({ limits: { maxAgentDepth } });
       const { environment, messageAgent, run, spawnAgent } = agentRun();
 
-      expect(bindAgentTools(run, agents)).toEqual(
+      expect(bindAgentTools(run, agents, topLevelWork)).toEqual(
         spawns ? { spawnAgent, messageAgent } : { messageAgent },
       );
       expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);

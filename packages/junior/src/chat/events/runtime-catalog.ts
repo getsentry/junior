@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   CORE_EVENT_NAMESPACE,
   eventCatalogEntry,

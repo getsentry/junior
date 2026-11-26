@@ -1,0 +1,2 @@
+-- Two migrations merged to main in parallel. This migration joins their
+-- snapshots into one leaf. It changes no schema.

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
 import { ingestEvent } from "@/chat/events/ingest";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
@@ -19,7 +19,8 @@ import {
 import { seedLinkedPerson } from "../../fixtures/slack-user";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

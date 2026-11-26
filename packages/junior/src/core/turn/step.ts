@@ -14,7 +14,11 @@ import {
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
-import type { ToolDefinition, ToolResult } from "@/core/tool";
+import type {
+  ToolExecutionHooks,
+  ToolDefinition,
+  ToolResult,
+} from "@/core/tool";
 
 /**
  * The model request of a step: the system prompt, the messages with the new
@@ -37,6 +41,7 @@ export type StepInput<T> = {
    */
   request: () => Promise<StepRequest<T>>;
   tools: ToolDefinition[];
+  hooks?: ToolExecutionHooks;
   client: ModelClient;
   /** The Conversation id, which keeps its model requests in one session. */
   session: string;
@@ -172,9 +177,40 @@ async function runToolCalls(
   pending: PendingToolCalls,
   input: StepInput<unknown>,
 ): Promise<StepResult> {
+  const hooks = input.hooks ?? {};
+  const checked = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One hook call per call of one model message, as the batch runs.
+    pending.calls.map(async (call) => {
+      const check = checkToolCall(call, pending.truncated, input);
+      if ("run" in check || !hooks.beforeCall) {
+        return check;
+      }
+      const result = await hooks.beforeCall(check.call, input.signal);
+      return result ? replaced(check, result) : check;
+    }),
+  );
+  // A Turn stopped during beforeCall must reach no later hook or tool.
+  if (input.signal.aborted) {
+    throw input.signal.reason;
+  }
+  const ready = checked.flatMap((check) =>
+    "run" in check ? [] : [check.call],
+  );
+  const batchResults =
+    hooks.beforeBatch && ready.length > 0
+      ? await hooks.beforeBatch(ready, input.signal)
+      : new Map<string, ToolResult>();
+  // A Turn stopped during beforeBatch must start no tool.
+  if (input.signal.aborted) {
+    throw input.signal.reason;
+  }
+  const allowed = checked.map((check) => {
+    const result = batchResults.get(check.call.id);
+    return result && !("run" in check) ? replaced(check, result) : check;
+  });
   const results = await Promise.all(
     // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
-    pending.calls.map((call) => runToolCall(call, pending.truncated, input)),
+    allowed.map((check) => runToolCall(check, hooks, input)),
   );
   // An aborted tool returns an error result. Those results must not reach the
   // history, so the step throws as it does for an aborted model request.
@@ -197,17 +233,33 @@ type ToolCallStatus =
   | "invalid_arguments"
   | "replay_skipped"
   | "truncated"
-  | "dangling_skipped";
+  | "dangling_skipped"
+  | "replaced";
 
 type ToolCallRun = { status: ToolCallStatus; result: ToolResult };
 
 type ToolCallOutcome = { call: ToolCall; result: ToolResult };
 
+/** A call that is ready to run, or the result that it gets without running. */
+type CheckedToolCall = ReadyToolCall | { call: ToolCall; run: ToolCallRun };
+
+/** A call that passed core's checks. `call.arguments` are the validated ones. */
+type ReadyToolCall = { call: ToolCall; tool: ToolDefinition; args: JsonObject };
+
+/** A call that a before hook stopped: it does not run, and gets `result`. */
+function replaced(
+  { call }: ReadyToolCall,
+  result: ToolResult,
+): CheckedToolCall {
+  return { call, run: { status: "replaced", result } };
+}
+
 function runToolCall(
-  call: ToolCall,
-  truncated: boolean,
+  check: CheckedToolCall,
+  { afterCall }: ToolExecutionHooks,
   input: StepInput<unknown>,
 ): Promise<ToolCallOutcome> {
+  const { call } = check;
   return withSpan(
     "gen_ai.execute_tool",
     {
@@ -217,49 +269,67 @@ function runToolCall(
       "gen_ai.tool.type": "function",
     },
     async (span) => {
-      const { status, result } = await executeToolCall(call, truncated, input);
+      const { status, result } =
+        "run" in check ? check.run : await executeToolCall(check, input);
       span.setAttribute("app.tool_call.outcome", status);
-      return { call, result };
+      return {
+        call,
+        result: afterCall
+          ? await afterCall(call, result, input.signal)
+          : result,
+      };
     },
   );
 }
 
-async function executeToolCall(
+/** Finds the call's tool and checks its arguments, without running it. */
+function checkToolCall(
   call: ToolCall,
   truncated: boolean,
   input: StepInput<unknown>,
-): Promise<ToolCallRun> {
+): CheckedToolCall {
+  const skip = (run: ToolCallRun): CheckedToolCall => ({ call, run });
   if (input.skipDanglingToolCalls) {
-    return danglingRun(call, input);
+    return skip(danglingRun(call, input));
   }
   if (truncated) {
-    return errorRun(
-      "truncated",
-      `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
+    return skip(
+      errorRun(
+        "truncated",
+        `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
+      ),
     );
   }
   const tool = input.tools.find((candidate) => candidate.name === call.name);
   if (!tool) {
-    return errorRun("not_found", `Tool ${call.name} not found`);
+    return skip(errorRun("not_found", `Tool ${call.name} not found`));
   }
   if (input.replay && tool.replay === "never") {
-    return errorRun(
-      "replay_skipped",
-      "This call was interrupted before its result was saved, so it may have run. Check its effect before you call it again.",
+    return skip(
+      errorRun(
+        "replay_skipped",
+        "This call was interrupted before its result was saved, so it may have run. Check its effect before you call it again.",
+      ),
     );
   }
   let args: unknown;
   try {
     args = validateToolArguments(tool, call);
   } catch (error) {
-    return errorRun("invalid_arguments", errorText(error));
+    return skip(errorRun("invalid_arguments", errorText(error)));
   }
   if (!isJsonObject(args)) {
-    return errorRun(
-      "invalid_arguments",
-      "Tool arguments must be a JSON object",
+    return skip(
+      errorRun("invalid_arguments", "Tool arguments must be a JSON object"),
     );
   }
+  return { call: { ...call, arguments: args }, tool, args };
+}
+
+async function executeToolCall(
+  { call, tool, args }: ReadyToolCall,
+  input: StepInput<unknown>,
+): Promise<ToolCallRun> {
   // A throw from the tool is a result the model can react to.
   try {
     const result = await tool.execute(args, {

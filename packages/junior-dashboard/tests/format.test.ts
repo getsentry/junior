@@ -50,7 +50,7 @@ function transcript(
 ): ConversationTranscript {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -132,7 +132,7 @@ describe("dashboard conversation formatting", () => {
   it("formats conversation duration from cumulative execution time", () => {
     const [conversation] = buildConversations([
       {
-        kind: "root",
+        kind: "thread",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 7_000,
         displayTitle: "Conversation",
@@ -152,7 +152,7 @@ describe("dashboard conversation formatting", () => {
   it("omits conversation runtime when no execution time is recorded", () => {
     const [conversation] = buildConversations([
       {
-        kind: "root",
+        kind: "thread",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
@@ -290,15 +290,15 @@ describe("dashboard conversation formatting", () => {
     expect(summarizeTurns(conversation)).toBeUndefined();
   });
 
-  it("labels agent invocation input without the conversation actor", () => {
+  it("labels parent agent input without the conversation actor", () => {
     // Alice started the child agent, but its parent agent wrote the input.
     const conversation = transcript(
       [
         event(0, {
           type: "message",
-          messageId: "agent-invocation:invocation-1:input",
+          messageId: "parent-message-1",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           text: "audit",
         }),
       ],
@@ -330,7 +330,7 @@ describe("dashboard conversation formatting", () => {
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 0,
       isParticipant: false,
-      kind: "root" as const,
+      kind: "thread" as const,
       lastProgressAt: "2026-06-01T10:05:00.000Z",
       startedAt: "2026-06-01T10:00:00.000Z",
       status: "done" as const,
@@ -359,7 +359,7 @@ describe("dashboard conversation formatting", () => {
     );
     expect(
       conversationActorLabel({
-        kind: "root",
+        kind: "thread",
         id: "1",
         cumulativeDurationMs: 0,
         displayTitle: "x",

@@ -37,7 +37,7 @@ async function readConversationEventRows(
     conversationId: string;
     direction: "backward" | "forward";
     limit: number;
-    subagentInvocationIds?: string[];
+    subagentMarkerIds?: string[];
     toolCallIds?: string[];
     types?: ConversationEvent["data"]["type"][];
   },
@@ -71,11 +71,11 @@ async function readConversationEventRows(
           juniorConversationEvents.type,
           args.types ?? [...conversationReportSourceEventTypes],
         ),
-        args.subagentInvocationIds === undefined
+        args.subagentMarkerIds === undefined
           ? undefined
           : inArray(
               sql<string>`${juniorConversationEvents.payload}->>'subagentInvocationId'`,
-              args.subagentInvocationIds,
+              args.subagentMarkerIds,
             ),
         args.toolCallIds === undefined
           ? undefined
@@ -155,6 +155,7 @@ async function readThreadIds(
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
+        // Every id is a child, so a `thread` is a child Thread.
         eq(juniorConversations.kind, "thread"),
       ),
     );
@@ -203,7 +204,7 @@ async function projectConversationEvents(
 ): Promise<ConversationReportEvent[]> {
   const events = args.events.sort((left, right) => left.seq - right.seq);
   const firstSeq = events[0]?.seq;
-  const endedInvocationIds = [
+  const endedMarkerIds = [
     ...new Set(
       events.flatMap((event) =>
         event.data.type === "subagent_ended"
@@ -237,13 +238,13 @@ async function projectConversationEvents(
             limit: 1,
             types: ["assistant_message"],
           }),
-      endedInvocationIds.length === 0
+      endedMarkerIds.length === 0
         ? []
         : readConversationEventRows(executor, {
             conversationId: args.conversationId,
             direction: "forward",
-            limit: endedInvocationIds.length,
-            subagentInvocationIds: endedInvocationIds,
+            limit: endedMarkerIds.length,
+            subagentMarkerIds: endedMarkerIds,
             types: ["subagent_started"],
           }),
       toolResultIds.length === 0

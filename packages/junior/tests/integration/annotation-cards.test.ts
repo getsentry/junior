@@ -9,7 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, expect, it } from "vitest";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   createPluginAnnotations,
   listConversationAnnotations,

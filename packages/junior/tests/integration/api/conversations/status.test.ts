@@ -5,13 +5,20 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { setConversationSpace } from "@/chat/spaces/conversations";
+import { createSpace } from "@/chat/spaces/store";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
-import { recordAuthorizationRequested } from "@/chat/conversations/projection";
+import {
+  recordAuthorizationCompleted,
+  recordAuthorizationRequested,
+} from "@/chat/conversations/projection";
 import { juniorConversations, juniorInboxItems } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import {
   closeConversationFixture,
   webTestActor,
@@ -31,6 +38,11 @@ import {
   recordAnswer,
   addItem,
 } from "../../../fixtures/conversation-status";
+import {
+  recordTurnCompletion,
+  recordTurnFailure,
+  recordTurnStart,
+} from "../../../fixtures/turn-start";
 
 describe("conversation status", () => {
   afterEach(async () => {
@@ -152,6 +164,60 @@ describe("conversation status", () => {
       provider: "notion",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+
+    // A connection or a later Turn ends the wait. Only the newest request
+    // can wait again.
+    const signIn = (authorizationId: string) => ({
+      actorId: SLACK_VIEWER.slackUserId,
+      authorizationId,
+      conversationId,
+      kind: "mcp" as const,
+      provider: "notion",
+    });
+    await recordAuthorizationCompleted(signIn("status-sign-in"));
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-again"),
+      delivery: "private_link_reused",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await recordTurnStart(conversationId, "status-sign-in-resumed");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // A Turn that ends, or fails, after the request also ends the wait. A
+    // failed Turn still needs input, so the feed's wait flag shows the end.
+    const awaitsSignIn = async () =>
+      (await fixture.feedRow(conversationId))?.awaitingAuthorization ?? false;
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-completed"),
+      delivery: "private_link_sent",
+    });
+    await expect(awaitsSignIn()).resolves.toBe(true);
+    await recordTurnCompletion(conversationId, "status-sign-in-resumed");
+    await expect(awaitsSignIn()).resolves.toBe(false);
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-failed"),
+      delivery: "private_link_sent",
+    });
+    await expect(awaitsSignIn()).resolves.toBe(true);
+    await recordTurnFailure(conversationId, "status-sign-in-failed-turn");
+    await expect(awaitsSignIn()).resolves.toBe(false);
+    await recordTurnStart(conversationId, "status-sign-in-retried");
+    await recordAuthorizationRequested({
+      ...signIn("status-sign-in-expires"),
+      delivery: "private_link_sent",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    // A request waits for one day.
+    vi.useFakeTimers({
+      now: Date.now() + 24 * 60 * 60 * 1000 + 1_000,
+      toFake: ["Date"],
+    });
+    try {
+      await expect(fixture.status(conversationId)).resolves.toBe("done");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("dates a sign-in wait with the app clock, not the database clock", async () => {
@@ -300,6 +366,51 @@ describe("conversation status", () => {
       Date.parse("2026-08-01T00:00:00.000Z"),
     );
     await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("waits on the person who started Space work, not the Space's creator", async () => {
+    const fixture = await createStatusFixture();
+    // Bob creates the Space, so its Lead, the root of all Space work, is his.
+    const bob = await resolveViewerUser("bob@example.com");
+    const space = await createSpace({
+      creator: bob!,
+      description: null,
+      name: "Release",
+      visibility: "public",
+    });
+    const lead = await getSpaceLead({ member: bob!, space });
+    const target = {
+      leadConversationId: lead.conversationId,
+      spaceId: space.id,
+    };
+
+    // The viewer starts a dashboard Conversation in the Space.
+    const dashboard = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-space-starter",
+    );
+    await expect(setConversationSpace(dashboard, target, null)).resolves.toBe(
+      undefined,
+    );
+    await recordAnswer(dashboard, 1);
+    await expect(fixture.status(dashboard)).resolves.toBe("needs_input");
+    await expect(fixture.tree(dashboard)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await recordStarterMessage(dashboard);
+    await expect(fixture.status(dashboard)).resolves.toBe("done");
+
+    // A Slack thread that moves into the Space still delivers to Slack, so
+    // an answer that Slack accepted is read.
+    const slack = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000270",
+    );
+    await expect(setConversationSpace(slack, target, null)).resolves.toBe(
+      undefined,
+    );
+    await recordAnswer(slack, 1, Date.now(), "slack");
+    await expect(fixture.status(slack)).resolves.toBe("done");
   });
 
   it("does not wait on a read when the root has no starter", async () => {

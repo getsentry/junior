@@ -14,7 +14,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorIdentities,
-  juniorSpaceMembers,
+  juniorConversations,
   juniorUsers,
 } from "@/db/schema";
 import { slackPersonPredicate } from "@/db/schema/identities";
@@ -155,14 +155,24 @@ function memberSql(
   userId: AnyColumn,
 ): SQL<boolean> {
   if (target.kind === "space") {
+    // A Space's members are the Participants of its Lead.
+    const lead = alias(juniorConversations, "user_search_space_lead");
     return sql<boolean>`${exists(
       db
-        .select({ userId: juniorSpaceMembers.userId })
-        .from(juniorSpaceMembers)
+        .select({ userId: juniorConversationParticipants.userId })
+        .from(juniorConversationParticipants)
+        .innerJoin(
+          lead,
+          eq(
+            lead.conversationId,
+            juniorConversationParticipants.rootConversationId,
+          ),
+        )
         .where(
           and(
-            eq(juniorSpaceMembers.spaceId, target.spaceId),
-            eq(juniorSpaceMembers.userId, userId),
+            eq(lead.kind, "lead"),
+            eq(lead.spaceId, target.spaceId),
+            eq(juniorConversationParticipants.userId, userId),
           ),
         ),
     )}`;

@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageMetadata, QueueClient } from "@vercel/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
-import {
-  getChatConfig,
-  resetRuntimeConfig,
-  restoreRuntimeConfig,
-  snapshotRuntimeConfig,
-} from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
 import {
   createVercelPluginTaskCallback,
   pluginTaskId,
@@ -24,6 +19,7 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
+import { useConfig } from "../fixtures/config";
 
 // Mock the SDK once for the file and import statically. Per-test
 // `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
@@ -267,14 +263,9 @@ describe("conversation work Vercel queue integration", () => {
 });
 
 describe("Turn step Vercel queue integration", () => {
-  const runtimeConfig = snapshotRuntimeConfig();
-  afterEach(() => {
-    restoreRuntimeConfig(runtimeConfig);
-  });
-
   it("uses the app's max duration in the visibility timeout", async () => {
-    // createApp sets the host's max duration after this module loads.
-    resetRuntimeConfig(600);
+    // createApp installs the host's max duration after this module loads.
+    useConfig({ functionMaxDurationSeconds: 600 });
 
     const chatConfig = getChatConfig();
     const engineCtx = createEngineContext(chatConfig);

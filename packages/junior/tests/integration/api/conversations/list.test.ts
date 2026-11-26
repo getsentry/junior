@@ -13,7 +13,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,
@@ -197,27 +197,33 @@ describe("conversation list API", () => {
       });
       await fixture.sql
         .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-follow-up",
+          createdAt: new Date(nowMs - 60_000),
+          kind: "user",
+          provider: "slack",
+          providerSubjectId: "U123456",
+          providerTenantId: "T123",
+          updatedAt: new Date(nowMs - 60_000),
+        });
+      await fixture.sql
+        .db()
         .insert(juniorConversationEvents)
         .values([
           {
+            actorIdentityId: "identity-follow-up",
             conversationId: finishedUpdatedId,
             createdAt: new Date(nowMs - 30_000),
             historyVersion: 0,
             payload: {
-              content: "Please follow up.",
-              provenance: {
-                authority: "instruction",
-                actor: {
-                  platform: "slack",
-                  teamId: "T123",
-                  userId: "U123456",
-                },
-              },
-              timestamp: nowMs - 30_000,
+              messageId: "follow-up-message",
+              role: "user",
+              text: "Please follow up.",
             },
             schemaVersion: 1,
             seq: 0,
-            type: "user_message",
+            type: "message",
           },
           {
             conversationId: finishedId,

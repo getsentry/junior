@@ -91,8 +91,8 @@ export async function unsetSpaceConfiguration(
 }
 
 /**
- * Return the id of the Space that a Conversation's root is in, if any. A
- * child is in the Space of its root.
+ * Return the id of the Space that a Conversation's root is in, if any. In a
+ * Space, the root is the Space's Lead.
  */
 export async function readConversationSpaceId(
   conversationId: string,
