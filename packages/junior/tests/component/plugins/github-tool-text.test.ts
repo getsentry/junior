@@ -43,7 +43,11 @@ describe("GitHub tool text", () => {
     });
     const sent: unknown[] = [];
     const tools = getPluginTools({
-      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      turnTools: turnBehavior({
+        kind: "thread",
+        hasParent: false,
+        personInput: true,
+      }).tools,
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       egress: {

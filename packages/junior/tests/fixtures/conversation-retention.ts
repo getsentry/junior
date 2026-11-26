@@ -64,7 +64,7 @@ export async function seedConversation(
       schemaVersion: 1,
       destinationId: args.destinationId ?? null,
       parentConversationId: args.parentConversationId ?? null,
-      kind: args.parentConversationId ? "task" : "root",
+      kind: args.parentConversationId ? "task" : "thread",
       title: args.title === undefined ? "A title" : args.title,
       channelName: args.channelName === undefined ? "eng" : args.channelName,
       actor: { platform: "slack", slackUserId: "U1", teamId: "T1" },
