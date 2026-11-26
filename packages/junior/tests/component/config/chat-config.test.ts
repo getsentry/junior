@@ -339,27 +339,23 @@ describe("chat config", () => {
     );
   });
 
-  it("reads the Google client and trusted origins for sign-in as given", () => {
+  it("reads the sign-in env vars as given, and leaves the lists unparsed", () => {
     const { signIn } = loadConfig({
       env: {
         ...BASE_ENV,
         GOOGLE_CLIENT_ID: " client-id ",
         GOOGLE_CLIENT_SECRET: "client-secret",
-        JUNIOR_DASHBOARD_TRUSTED_ORIGINS: '["https://a.example.com"]',
+        JUNIOR_ALLOWED_DOMAINS: "[1]",
+        JUNIOR_DASHBOARD_TRUSTED_ORIGINS: " https://a.example.com ",
       },
     });
 
     expect(signIn).toMatchObject({
+      allowedDomains: "[1]",
       googleClientId: " client-id ",
       googleClientSecret: "client-secret",
-      trustedOrigins: ["https://a.example.com"],
+      trustedOrigins: " https://a.example.com ",
     });
-    expect(loadConfig({ env: BASE_ENV }).signIn.trustedOrigins).toBeUndefined();
-    expect(() =>
-      loadConfig({
-        env: { ...BASE_ENV, JUNIOR_DASHBOARD_TRUSTED_ORIGINS: "[1]" },
-      }),
-    ).toThrow("JUNIOR_DASHBOARD_TRUSTED_ORIGINS must be a JSON string array");
   });
 
   it("requires dashboard sign-in unless JUNIOR_DASHBOARD_AUTH_REQUIRED is false", () => {
@@ -372,37 +368,6 @@ describe("chat config", () => {
     expect(required(" false ")).toBe(false);
     expect(required("FALSE")).toBe(true);
     expect(required("no")).toBe(true);
-  });
-
-  it("reads JUNIOR_ALLOWED_DOMAINS as a JSON array or comma separated values", () => {
-    const allowedDomains = (value: string) =>
-      loadConfig({ env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: value } }).signIn
-        .allowedDomains;
-
-    expect(allowedDomains('["Sentry.io", "example.com"]')).toEqual([
-      "sentry.io",
-      "example.com",
-    ]);
-    expect(allowedDomains(" sentry.io, example.com,SENTRY.io ")).toEqual([
-      "sentry.io",
-      "example.com",
-    ]);
-    expect(loadConfig({ env: BASE_ENV }).signIn.allowedDomains).toEqual([]);
-  });
-
-  it("prefers the createApp allowed domains over the env list", () => {
-    expect(
-      loadConfig({
-        env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: "example.com" },
-        options: { signIn: { allowedDomains: ["Sentry.io"] } },
-      }).signIn.allowedDomains,
-    ).toEqual(["sentry.io"]);
-  });
-
-  it("rejects an allowed domains env list that is not a JSON string array", () => {
-    expect(() =>
-      loadConfig({ env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: "[1]" } }),
-    ).toThrow("JUNIOR_ALLOWED_DOMAINS must be a JSON string array");
   });
 
   it("rejects the removed JUNIOR_DASHBOARD_GOOGLE_DOMAINS", () => {

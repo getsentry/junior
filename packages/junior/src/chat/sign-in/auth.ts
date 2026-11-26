@@ -22,6 +22,7 @@ import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { getChatConfig } from "@/chat/config";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { isAllowedDomain } from "@/chat/identities/trust";
+import { parseEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -135,7 +136,12 @@ export function resolveSignInAuthConfig(
     baseURL,
     sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
     trustedOrigins:
-      options.trustedOrigins ?? getChatConfig().signIn.trustedOrigins ?? [],
+      options.trustedOrigins ??
+      parseEnvList(
+        "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
+        getChatConfig().signIn.trustedOrigins,
+      ) ??
+      [],
   };
 }
 

@@ -22,28 +22,21 @@ export const secretsSchema = z
 export const signInSchema = z
   .strictObject({
     /**
-     * Domains that may use Junior. Slack authors must have a Slack profile
-     * email on one of them, and dashboard Google sign-ins must come from a
-     * Google Workspace account whose `hd` claim is one of them. Slack and the
-     * dashboard share one list. An empty list allows every domain.
-     * `chat/identities/trust` decides who matches.
+     * `JUNIOR_ALLOWED_DOMAINS` as set. `chat/sign-in/allowlist` parses it
+     * when `createApp` resolves the allowed domains.
      */
-    allowedDomains: z
-      .array(z.string())
-      .optional()
-      .transform((domains = []) => [
-        ...new Set(
-          domains.map((value) => value.trim().toLowerCase()).filter(Boolean),
-        ),
-      ]),
+    allowedDomains: z.string().optional(),
     /** Whether the dashboard requires sign-in when `dashboard.authRequired` is unset. */
     dashboardAuthRequired: z.boolean().default(true),
     googleClientId: z.string().optional(),
     googleClientSecret: z.string().optional(),
     /** Dashboard session secret, as given. */
     secret: z.string().optional(),
-    /** Trusted origins when `dashboard.trustedOrigins` is unset. */
-    trustedOrigins: z.array(z.string()).optional(),
+    /**
+     * `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` as set. Sign-in parses it when the
+     * dashboard does not set `trustedOrigins`.
+     */
+    trustedOrigins: z.string().optional(),
   })
   .prefault({});
 
@@ -55,22 +48,6 @@ export const webPushSchema = z
     subject: z.string().optional(),
   })
   .prefault({});
-
-// A list env var: a JSON string array or comma-separated values.
-function parseEnvList(env: Env, name: string): string[] | undefined {
-  const value = env[name]?.trim();
-  if (!value) return undefined;
-  if (!value.startsWith("[")) return value.split(",");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch (error) {
-    throw new Error(`${name} must be a JSON string array`, { cause: error });
-  }
-  const list = z.array(z.string()).safeParse(parsed);
-  if (!list.success) throw new Error(`${name} must be a JSON string array`);
-  return list.data;
-}
 
 /** Read the secrets, sign-in, and web push groups from env. */
 export function readAccessEnv(env: Env) {
@@ -88,7 +65,7 @@ export function readAccessEnv(env: Env) {
         env["JUNIOR_SCHEDULER_SECRET"]?.trim() || env["CRON_SECRET"]?.trim(),
     },
     signIn: {
-      allowedDomains: parseEnvList(env, "JUNIOR_ALLOWED_DOMAINS"),
+      allowedDomains: env["JUNIOR_ALLOWED_DOMAINS"],
       dashboardAuthRequired:
         env["JUNIOR_DASHBOARD_AUTH_REQUIRED"]?.trim() !== "false",
       googleClientId: env["GOOGLE_CLIENT_ID"],
@@ -97,7 +74,7 @@ export function readAccessEnv(env: Env) {
       // back to JUNIOR_SECRET. Changing either would change the signing key
       // for existing sessions.
       secret: env["BETTER_AUTH_SECRET"] ?? env["JUNIOR_SECRET"],
-      trustedOrigins: parseEnvList(env, "JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
+      trustedOrigins: env["JUNIOR_DASHBOARD_TRUSTED_ORIGINS"],
     },
     webPush: {
       privateKey: env["JUNIOR_WEB_PUSH_PRIVATE_KEY"]?.trim(),
