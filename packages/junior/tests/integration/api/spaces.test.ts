@@ -190,15 +190,18 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
 
-    // Invite on the Lead adds a member.
+    // A web Message adds nobody either. Bo joins the public Lead himself.
     const lead = await leadOf(bo, space.id);
-    const invited = await request(
-      ana,
-      "POST",
-      `/conversations/${encodeURIComponent(lead)}/invites`,
-      { userId: (await signedInViewer("spaces-api-bo@example.com")).id },
+    expect((await postMessage(bo, lead, "spaces-api-post")).status).toBe(200);
+    expect(await readByBo()).toMatchObject({ viewerIsMember: false });
+    expect(await detail(bo, lead)).toHaveProperty("subscribed", false);
+    const joined = await request(
+      bo,
+      "PATCH",
+      `/conversations/${encodeURIComponent(lead)}/subscription`,
+      { subscribed: true },
     );
-    expect(invited.status).toBe(200);
+    expect(joined.status).toBe(200);
     expect(await readByBo()).toMatchObject({
       memberCount: 2,
       viewerIsMember: true,

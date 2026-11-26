@@ -90,17 +90,17 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. Children inherit the Participants
+- **Participant**: a User who started a root Conversation, sent a Slack
+  Message in it or its children, joined it, or was invited to it. Children inherit the Participants
   of their root, so in a Space they are the Lead's. A Participant is active until they
   Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
 - **Invite**: a person subscribes someone to a Conversation's feed, with
-  the people picker of its Participants. In a public Conversation, a
-  dashboard or Slack Message that mentions them also does it, and access
-  stays the same, because anyone can already read it and join by posting.
+  the people picker of its Participants or by email. A mention does not
+  Invite. In a public Conversation, access stays the same, because anyone
+  can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
   access. A private Space and a Slack-backed private Conversation refuse it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join

@@ -45,6 +45,9 @@ export async function rootConversationIsArchived(
  * Upsert one linked user as a participant on a root conversation.
  * No-ops and returns false when the identity is missing, unlinked, or not a
  * user. `resubscribe` ends an unsubscribe: the user addressed Junior again.
+ * With `message`, only a Slack author is added: on the web and other
+ * surfaces a person joins explicitly, so their Message only updates a row
+ * that they already have.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -52,6 +55,7 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
+    message?: boolean;
     resubscribe?: boolean;
   },
 ): Promise<boolean> {
@@ -59,6 +63,7 @@ export async function recordConversationParticipant(
     .db()
     .select({
       kind: juniorIdentities.kind,
+      provider: juniorIdentities.provider,
       userId: juniorIdentities.userId,
     })
     .from(juniorIdentities)
@@ -73,9 +78,30 @@ export async function recordConversationParticipant(
     args.conversationId,
   );
   const at = new Date(args.atMs);
+  const set = {
+    lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, ${at})`,
+    ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
+  };
   // Each caller bumps the Conversation in the same transaction: event appends
   // carry the touch, and the root upsert sets `detailVersion`. The root needs
   // no bump, because its detail version sums its subtree.
+  if (args.message && identity.provider !== "slack") {
+    // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
+    await executor
+      .db()
+      .update(juniorConversationParticipants)
+      .set(set)
+      .where(
+        and(
+          eq(juniorConversationParticipants.userId, identity.userId),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+        ),
+      );
+    return true;
+  }
   // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
   await executor
     .db()
@@ -90,10 +116,7 @@ export async function recordConversationParticipant(
         juniorConversationParticipants.userId,
         juniorConversationParticipants.rootConversationId,
       ],
-      set: {
-        lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
-        ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
-      },
+      set,
     });
   return true;
 }

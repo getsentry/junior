@@ -321,6 +321,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
+        message: true,
         resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
       restores ||= isPerson && unarchives;
