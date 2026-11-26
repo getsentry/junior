@@ -21,6 +21,7 @@ import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
   completedToolCalls,
+  toolCallsOf,
 } from "@junior-evals/fixture/results";
 import {
   test,
