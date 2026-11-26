@@ -48,6 +48,7 @@ export async function run({ root, files, args }) {
       : undefined;
   };
   const codeFiles = new Set();
+  const parsed = new Set();
   for (const tablePath of files.filter((file) => TABLE.test(file))) {
     let table;
     try {
@@ -56,6 +57,7 @@ export async function run({ root, files, args }) {
       problems.push(`${tablePath}: ${error.message}`);
       continue;
     }
+    parsed.add(tablePath);
     problems.push(
       ...[
         ...analyzeTable(table),
@@ -72,11 +74,14 @@ export async function run({ root, files, args }) {
     if (update) fs.writeFileSync(path.join(root, table.code), code);
     else problems.push(`${table.code}: differs from ${tablePath}. ${FIX}`);
   }
-  // A generated file outlives its table when the table moves or goes.
+  // A generated file outlives its table when the table moves or goes. Its
+  // header names the table, so a table that fails to parse keeps its file.
   for (const file of files.filter((item) => GENERATED.test(item))) {
-    if (!codeFiles.has(file) && read(file).startsWith(CODE_HEADER_START)) {
-      problems.push(`${file}: no table generates it. Delete it.`);
-    }
+    const header = read(file).split("\n", 1)[0];
+    if (codeFiles.has(file) || !header.startsWith(CODE_HEADER_START)) continue;
+    const tablePath = header.slice(CODE_HEADER_START.length, -1);
+    if (files.includes(tablePath) && !parsed.has(tablePath)) continue;
+    problems.push(`${file}: no table generates it. Delete it.`);
   }
   return problems;
 }

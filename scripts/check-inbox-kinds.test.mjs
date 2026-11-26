@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { run } from "./check-inbox-kinds.mjs";
+import { CODE_HEADER_START } from "./inbox-kinds/render.mjs";
 import {
   designRuleIds,
   linkProblems,
@@ -205,5 +210,37 @@ test("rejects a rule that serves no design rule", () => {
   assert.throws(
     () => table({ state: STATE }, [rule("ended", [{ output: "keep" }], [])]),
     /serves/,
+  );
+});
+
+test("keeps the generated file of a table that fails to parse", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "inbox-kinds-"));
+  const write = (file, text) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  };
+  write("packages/x/src/broken-kind.yaml", "kind: [");
+  write(
+    "packages/x/src/broken.generated.ts",
+    `${CODE_HEADER_START}packages/x/src/broken-kind.yaml.\n`,
+  );
+  write(
+    "packages/x/src/gone.generated.ts",
+    `${CODE_HEADER_START}packages/x/src/gone-kind.yaml.\n`,
+  );
+  const problems = await run({
+    root,
+    files: [
+      "packages/x/src/broken-kind.yaml",
+      "packages/x/src/broken.generated.ts",
+      "packages/x/src/gone.generated.ts",
+    ],
+    args: [],
+  });
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /^packages\/x\/src\/broken-kind\.yaml: /);
+  assert.equal(
+    problems[1],
+    "packages/x/src/gone.generated.ts: no table generates it. Delete it.",
   );
 });
