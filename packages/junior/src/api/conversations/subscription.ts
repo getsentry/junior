@@ -209,8 +209,8 @@ export async function leaveConversation(
   if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  // Where the Conversation is public, or a Space or Slack channel decides
-  // who reads it, Leave only takes it out of the viewer's feed.
+  // Where the Conversation is public, or a Slack channel decides who reads
+  // it, Leave only takes it out of the viewer's feed.
   if (!leaveEndsAccess(access)) {
     const result = await updateConversationSubscription(
       viewer,
@@ -231,6 +231,23 @@ export async function leaveConversation(
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
     if (!root) throwApiError(404, "Conversation not found.");
+    // A private Space with no members has nobody who can read or restore
+    // it, so its last member stays, as `leaveSpace` does.
+    if (await isLeadConversation(db, rootConversationId)) {
+      const members = await db
+        .select({ userId: juniorConversationParticipants.userId })
+        .from(juniorConversationParticipants)
+        .where(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+        )
+        .limit(2);
+      if (members.length === 1) {
+        throwApiError(409, "The last member can't leave a private Space.");
+      }
+    }
     await db
       .delete(juniorConversationParticipants)
       .where(

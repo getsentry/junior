@@ -403,7 +403,13 @@ describe("Spaces API", () => {
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
 
-    // Leave by the last subscriber never archives the Space's work.
+    // Leave by the last subscriber never archives the Space's work, and it
+    // takes the Space's Conversations out of their feed, as on any root.
+    const anaFeed = async () =>
+      conversationFeedSchema
+        .parse(await (await request(ana, "GET", "/conversations")).json())
+        .conversations.map((row) => row.conversationId);
+    expect(await anaFeed()).toContain(inSpace);
     const left = await request(
       ana,
       "POST",
@@ -414,6 +420,7 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+    expect(await anaFeed()).not.toContain(inSpace);
   });
 
   it("finds and moves Conversations into, between, and out of Spaces with the agent tools", async () => {
@@ -660,6 +667,19 @@ describe("Spaces API", () => {
     expect(leaves.map((response) => response.status).sort()).toEqual([
       200, 409,
     ]);
+    // Leave on its work keeps the last member too.
+    const conversationLeaves = await Promise.all(
+      [ana, bo].map((app) =>
+        request(
+          app,
+          "POST",
+          `/conversations/${encodeURIComponent(inSpace)}/leave`,
+        ),
+      ),
+    );
+    expect(
+      conversationLeaves.map((response) => response.status).sort(),
+    ).toEqual([404, 409]);
   });
 
   it("keeps a Slack Conversation out of a private Space", async () => {

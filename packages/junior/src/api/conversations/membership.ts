@@ -9,6 +9,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -24,18 +25,20 @@ export type ConversationMember = { userId: string } | { email: string };
 
 /**
  * Select the person's participant row on the outer `juniorConversations`
- * root, with an optional extra condition.
+ * root, with an optional extra condition. `rootId` names the root to probe,
+ * the outer row itself by default.
  */
-function memberParticipantRow(member: ConversationMember, condition?: SQL) {
+function memberParticipantRow(
+  member: ConversationMember,
+  condition?: SQL,
+  rootId: SQLWrapper = juniorConversations.conversationId,
+) {
   const rows = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
-  const onRoot = eq(
-    juniorConversationParticipants.rootConversationId,
-    juniorConversations.conversationId,
-  );
+  const onRoot = eq(juniorConversationParticipants.rootConversationId, rootId);
   return "userId" in member
     ? rows.where(
         and(
@@ -143,9 +146,10 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
 }
 
 /**
- * True when the person has not unsubscribed from the conversation. The
- * active feed uses it, so a conversation that someone else carries on
- * leaves the feed of a person who left it.
+ * True when the person has not unsubscribed from the conversation's root.
+ * The active feed uses it, so a conversation that someone else carries on
+ * leaves the feed of a person who left it. A Lead's child in the feed
+ * checks the Lead, where Unsubscribe writes.
  */
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
@@ -158,6 +162,7 @@ export function conversationIsNotUnsubscribedRoot(
       memberParticipantRow(
         member,
         isNotNull(juniorConversationParticipants.unsubscribedAt),
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
       ),
     ),
   );
