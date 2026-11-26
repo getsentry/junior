@@ -19,6 +19,7 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
+import { canonicalJson, reviewWithAuthority } from "@/chat/guardian/authority";
 import type { Guardian } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
@@ -401,20 +402,6 @@ export function proposalTool(
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
 const MAX_CONSECUTIVE_REJECTIONS = 3;
 
-function canonicalJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonicalJson);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, canonicalJson(child)]),
-    );
-  }
-  return value;
-}
-
 function projectedRejection(
   proposal: ToolActionProposal,
   decision: ToolActionReviewDecision,
@@ -582,7 +569,11 @@ export function createToolActionReview(options: {
     );
     const result =
       proposals.length > 0
-        ? await options.guardian.review({ actions: proposals }, { signal })
+        ? await reviewWithAuthority(
+            options.guardian,
+            { actions: proposals },
+            { signal },
+          )
         : { actions: [], inboxItems: 0 };
     // The outcome of each action that has a proposal, in batch order.
     let next = 0;

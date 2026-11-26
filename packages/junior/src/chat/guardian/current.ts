@@ -2,8 +2,8 @@
  * The current Guardian behind the `Guardian` interface.
  *
  * It sends each proposal to the model reviewer and returns the reviewer's
- * decision unchanged. It reads none of the request's facts, because it
- * judges only the proposal. A review that cannot run stops the Run.
+ * decision unchanged. It reads no authority record, because it judges only
+ * the proposal. A review that cannot run stops the Run.
  */
 import { mapBounded } from "@/chat/fan-out";
 import type { Guardian, GuardianActionResult } from "@/chat/guardian/guardian";

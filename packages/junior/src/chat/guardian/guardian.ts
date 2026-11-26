@@ -6,45 +6,18 @@
  * its replacement both implement `Guardian`, and the Guardian design evals
  * measure either one through it.
  */
+import type { AuthorityRecord } from "@/chat/guardian/authority";
 import type {
   ToolActionDecision,
   ToolActionProposal,
   ToolActionReviewDecision,
 } from "@/chat/guardian/proposal";
 
-/**
- * Facts that core gives Guardian in addition to the proposal
- * (`facts-from-junior` in `design/guardian.md`). An implementation ignores
- * the facts that it does not use.
- */
-export interface GuardianFacts {
-  /**
-   * Lines of the person whose instruction the action serves that reach this
-   * Turn from somewhere else: from the Turn that started the work
-   * (`instruction`), or as a message from the person's linked account. A
-   * Conversation that an agent started or messaged gets none: its brief is
-   * its instruction (`brief-is-instruction`).
-   */
-  personLines?: Array<{
-    text: string;
-    via: "instruction" | "linked-account";
-  }>;
-  /** Exact actions that the person confirmed in an Inbox item. */
-  confirmed?: Array<{ tool: string; input: Record<string, unknown> }>;
-  /** Resources that the same instruction created, such as a pull request. */
-  createdByInstruction?: string[];
-  /**
-   * Who can read the destination of the action (`facts-from-junior`):
-   * people of the organization only, or anyone.
-   */
-  destinationReaders?: "organization" | "anyone";
-}
-
 /** One action, or the calls of one Code Mode batch, for Guardian. */
 export interface GuardianRequest {
   /** One action, or each call of one Code Mode batch, in order. */
   actions: ToolActionProposal[];
-  facts?: GuardianFacts;
+  authority?: AuthorityRecord;
 }
 
 /**

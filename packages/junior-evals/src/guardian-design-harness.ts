@@ -18,8 +18,15 @@ import {
 } from "vitest-evals";
 import { completeObject } from "@/chat/core-model";
 import { mapBounded } from "@/chat/fan-out";
+import {
+  actionHash,
+  reviewWithAuthority,
+  type AuthorityLineVia,
+  type AuthorityRecord,
+} from "@/chat/guardian/authority";
 import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { Guardian, GuardianRequest } from "@/chat/guardian/guardian";
+import { createLegacyGuardian } from "@/chat/guardian/legacy";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -52,11 +59,35 @@ export type GuardianOutcome =
 export type GuardianDecider = "rule" | "guardian" | "person";
 
 /**
+ * Facts of a case that core gives Guardian under the design
+ * (`facts-from-junior`). Arms that read an authority record get them as one.
+ */
+export interface GuardianDesignFacts {
+  /**
+   * Lines of the person whose instruction the action serves that reach the
+   * Run from somewhere else.
+   */
+  personLines?: Array<{ text: string; via: AuthorityLineVia }>;
+  /** Exact actions that the person confirmed in an Inbox item. */
+  confirmed?: Array<{ tool: string; input: Record<string, unknown> }>;
+  /** Resources that the same instruction created, such as a pull request. */
+  createdByInstruction?: string[];
+  /**
+   * Who can read the destination of the action (`facts-from-junior`):
+   * people of the organization only, or anyone.
+   */
+  destinationReaders?: AuthorityRecord["destinationReaders"];
+}
+
+/**
  * One planned action, or the calls of one Code Mode batch, for Guardian.
  * The proposal of a case is what core sends today. Its facts are what the
  * design adds.
  */
-export interface GuardianDesignRequest extends GuardianRequest {
+export interface GuardianDesignRequest {
+  /** One action, or each call of one Code Mode batch, in order. */
+  actions: GuardianRequest["actions"];
+  facts?: GuardianDesignFacts;
   /** The review model cannot answer, as in a provider outage. */
   reviewUnavailable?: boolean;
 }
@@ -74,8 +105,15 @@ export interface GuardianDesignResult {
   inboxItems: number;
 }
 
-/** Build one arm's Guardian for the review model of a request. */
-type GuardianArm = (modelId: string) => Guardian;
+/**
+ * One arm: its Guardian for the review model of a request, and whether it
+ * gets the authority record through the shared gate. `current` does not, so
+ * it stays the baseline of what core sends today.
+ */
+interface GuardianArm {
+  authority: boolean;
+  guardian: (modelId: string) => Guardian;
+}
 
 /** The facts that production gives for the installed plugins. */
 function destinationFacts() {
@@ -84,16 +122,45 @@ function destinationFacts() {
   );
 }
 
+function currentReviewer(modelId: string) {
+  return createGuardianActionReviewer({
+    completeObject,
+    destinationFacts: destinationFacts(),
+    modelId,
+  });
+}
+
 const ARMS: Record<string, GuardianArm> = {
-  current: (modelId) =>
-    createCurrentGuardian(
-      createGuardianActionReviewer({
-        completeObject,
-        destinationFacts: destinationFacts(),
-        modelId,
-      }),
-    ),
+  current: {
+    authority: false,
+    guardian: (modelId) => createCurrentGuardian(currentReviewer(modelId)),
+  },
+  legacy: {
+    authority: true,
+    guardian: (modelId) => createLegacyGuardian(currentReviewer(modelId)),
+  },
 };
+
+/**
+ * Turn the facts of a case into the authority record that core gives. A
+ * confirmed action gets the hash that core records with the person's answer.
+ */
+function designAuthority(request: GuardianDesignRequest): AuthorityRecord {
+  const facts = request.facts ?? {};
+  const credentialSubject =
+    request.actions[0]?.context.credential?.subject?.userId;
+  return {
+    lines: (facts.personLines ?? []).map(({ text, via }) => ({ text, via })),
+    confirmations: (facts.confirmed ?? []).map((confirmed, index) => ({
+      actionHash: actionHash({ ...confirmed, credentialSubject }),
+      answerId: `inbox_answer_${index + 1}`,
+    })),
+    created: (facts.createdByInstruction ?? []).map((ref) => ({ ref })),
+    ...(facts.destinationReaders
+      ? { destinationReaders: facts.destinationReaders }
+      : undefined),
+  };
+}
 
 function selectedArm(): { arm: GuardianArm; name: string } {
   const name = process.env["GUARDIAN_DESIGN_ARM"]?.trim() || "current";
@@ -112,21 +179,22 @@ async function runArm(
   request: GuardianDesignRequest,
   signal: AbortSignal,
 ): Promise<GuardianDesignResult> {
-  const { reviewUnavailable, ...guardianRequest } = request;
-  const guardian = arm(
+  const { reviewUnavailable, actions: proposals } = request;
+  const guardian = arm.guardian(
     reviewUnavailable ? UNAVAILABLE_MODEL_ID : resolveGuardianModelId(),
   );
   // A call that the gate does not send to Guardian runs.
-  const reviewed = await mapBounded(request.actions, (proposal) =>
+  const reviewed = await mapBounded(proposals, (proposal) =>
     gateReviews(proposal.tool, proposal.input),
   );
-  const result = await guardian.review(
-    {
-      ...guardianRequest,
-      actions: request.actions.filter((_, index) => reviewed[index]),
-    },
-    { signal },
-  );
+  const reviewedProposals = proposals.filter((_, index) => reviewed[index]);
+  const result = arm.authority
+    ? await reviewWithAuthority(
+        guardian,
+        { actions: reviewedProposals, authority: designAuthority(request) },
+        { signal },
+      )
+    : await guardian.review({ actions: reviewedProposals }, { signal });
   // A timed-out case is a broken eval run, not an outcome of the case.
   signal.throwIfAborted();
   const reviews = result.actions.values();
