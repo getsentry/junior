@@ -222,9 +222,12 @@ untrusted text set up, does not run.
   limit does not stop the Turn.
 - `follows-instruction`, `no-retelling`, `restrictions`: Guardian reads a
   fixed window of the Conversation, so in a long thread the person's
-  request can fall out of it. In a child agent, the parent's text counts as
-  the person's, also a hold that the parent set. When an agent result or an
-  agent message starts the Turn, Guardian gets no request from the person.
+  request can fall out of it. In a child agent that is not under a Lead, or
+  that runs as a system Actor, the parent's text counts as the person's,
+  also a hold that the parent set. Under a Lead, Guardian reads the Member's
+  own lines in the Lead and in the child itself, but not in a Conversation
+  between them. When an agent result or an agent message starts the Turn,
+  Guardian gets no request from the person.
   An Automation run and a Watch Turn have no person's lines at all.
 - `relayed-words`: a message that a Lead or another agent sends into a
   root carries no authority. The root asks the person again before it
