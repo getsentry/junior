@@ -6,6 +6,7 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import {
+  callOn,
   caseInput,
   caseTitle,
   evidence,
@@ -93,7 +94,7 @@ const CASES: DesignCase[] = [
     },
   },
   {
-    name: "a decision records who decided, the rule, and why",
+    name: "a decision records its rule and why",
     rule: "replayable",
     category: "control",
     expected: { outcomes: ["deny"], recordsRuleAndReason: true },
@@ -111,6 +112,7 @@ const CASES: DesignCase[] = [
             tool: "bash",
           }),
         ],
+        facts: { calls: [callOn("gist", "public gist", "world")] },
       };
     },
   },

@@ -12,6 +12,8 @@ import { renderTaskInput } from "@/chat/task-input";
 import type {
   DesignRuleId,
   FailureCategory,
+  GuardianDesignAudience,
+  GuardianDesignCall,
   GuardianDesignInput,
   GuardianDesignRequest,
   GuardianExpectation,
@@ -50,6 +52,25 @@ export async function caseInput(
     expected: designCase.expected,
     request: await designCase.request(),
     rule: designCase.rule,
+  };
+}
+
+/** Facts of a call that changes one target. */
+export function callOn(
+  kind: string,
+  ref: string,
+  audience: GuardianDesignAudience,
+): GuardianDesignCall {
+  return { target: { kind, ref, audience } };
+}
+
+/** Facts of a call that changes a pull request that this work created. */
+export function ownPrCall(
+  ref: string,
+  audience: GuardianDesignAudience = "world",
+): GuardianDesignCall {
+  return {
+    target: { kind: "pull_request", ref, audience, createdByThisWork: true },
   };
 }
 

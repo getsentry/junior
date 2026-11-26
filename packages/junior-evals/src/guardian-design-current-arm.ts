@@ -63,24 +63,18 @@ export const currentGuardianArm: GuardianArm = async (request, { signal }) => {
       // calls `onFatal`, which aborts the agent (`gate.ts` settle). The rest
       // of the Run does not happen.
       actions.push({ outcome: "run-stopped" });
-      return { actions, inboxItems: 0 };
+      return { actions };
     }
     const decision = review.value;
     if (!decision) {
-      actions.push({ decidedBy: "rule", outcome: "allow" });
+      actions.push({ outcome: "allow" });
       continue;
     }
     actions.push({
-      decidedBy: "guardian",
       outcome: decision.decision,
       reason: decision.reason,
       ...(decision.rule ? { rule: decision.rule } : undefined),
     });
   }
-  // Each ask is its own text to the agent, and nothing groups them, so each
-  // becomes its own Inbox item.
-  return {
-    actions,
-    inboxItems: actions.filter((action) => action.outcome === "ask").length,
-  };
+  return { actions };
 };
