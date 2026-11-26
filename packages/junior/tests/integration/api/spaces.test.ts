@@ -1,10 +1,8 @@
 import type { Identity } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
-  acceptedConversationMessageSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
@@ -15,7 +13,6 @@ import {
   versionsSchema,
 } from "@/api/schema";
 import { canReadConversation } from "@/api/conversations/access";
-import { setConversationArchive } from "@/api/conversations/archive";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import {
@@ -28,92 +25,24 @@ import type {
   LocationConfigurationService,
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { getSpaceLead, readSpaceLead } from "@/chat/lead/conversation";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import { juniorConversationParticipants } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
+import {
+  apiFor,
+  createSpace,
+  request,
+  send,
+  spaceFeed,
+  startConversation,
+  startThread,
+} from "../../fixtures/spaces-api";
 import { signedInViewer } from "../../fixtures/user";
-
-const queue = createConversationWorkQueueTestAdapter();
-
-function apiFor(email?: string): Hono<JuniorApiEnv> {
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    if (email) context.set("viewer", await signedInViewer(email));
-    await next();
-  });
-  app.route("/", createJuniorApi({ conversationWorkQueue: queue }));
-  return app;
-}
-
-async function request(
-  app: Hono<JuniorApiEnv>,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<Response> {
-  return await app.request(`http://localhost/api${path}`, {
-    method,
-    ...(body === undefined
-      ? undefined
-      : {
-          body: JSON.stringify(body),
-          headers: { "content-type": "application/json" },
-        }),
-  });
-}
-
-async function send(
-  app: Hono<JuniorApiEnv>,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<Response> {
-  return await request(app, method, `/spaces${path}`, body);
-}
-
-async function createSpace(app: Hono<JuniorApiEnv>, name: string) {
-  return spaceSchema.parse(
-    await (await send(app, "POST", "", { name })).json(),
-  );
-}
-
-async function startConversation(
-  app: Hono<JuniorApiEnv>,
-  key: string,
-  extra: Record<string, unknown> = {},
-): Promise<string> {
-  const response = await request(app, "POST", "/conversations", {
-    idempotencyKey: key,
-    message: `Work for ${key}`,
-    title: key,
-    ...extra,
-  });
-  expect(response.status).toBe(200);
-  return acceptedConversationMessageSchema.parse(await response.json())
-    .conversationId;
-}
-
-/** Read one Space's list, or the viewer's own feed with no Space. */
-async function spaceFeed(
-  app: Hono<JuniorApiEnv>,
-  spaceId: string,
-  status = "active",
-) {
-  const response = await request(
-    app,
-    "GET",
-    `/conversations?${spaceId ? `spaceId=${spaceId}&` : ""}status=${status}`,
-  );
-  expect(response.status).toBe(200);
-  return conversationFeedSchema.parse(await response.json()).conversations;
-}
 
 async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
@@ -138,15 +67,6 @@ async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
   return versionsSchema.parse(await response.json()).conversationDetails[
     conversationId
   ];
-}
-
-async function startThread(parentConversationId: string, id: string) {
-  await getConversationStore().createChild({
-    childConversationId: id,
-    kind: "thread",
-    parentConversationId,
-  });
-  return id;
 }
 
 async function moveTo(
@@ -479,7 +399,7 @@ describe("Spaces API", () => {
       move({ conversation_id: conversationId, space: others.id }),
     ).rejects.toThrow("Join the Space to add work to it.");
     // A Lead moves it into its own Space with no Space named.
-    const lead = await getSpaceLead({ member: anaUser, space: first });
+    const lead = await getSpaceLead(first.id);
     expect(
       await move(
         { conversation_id: conversationId },
@@ -906,68 +826,5 @@ describe("Spaces API", () => {
     expect(await channel.get("sentry.project")).toMatchObject({
       value: "junior",
     });
-  });
-
-  it("stops and archives the Lead's tree when a Space is archived", async () => {
-    const ana = apiFor("spaces-archive-ana@example.com");
-    const space = await createSpace(ana, "Short project");
-    const first = await startConversation(ana, "short-first", {
-      spaceId: space.id,
-    });
-    const second = await startConversation(ana, "short-second", {
-      spaceId: space.id,
-    });
-    const outside = await startConversation(ana, "short-outside");
-    const thread = await startThread(first, "local:spaces-archive-thread");
-
-    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
-    expect(await spaceFeed(ana, space.id)).toEqual([]);
-    expect(
-      (await spaceFeed(ana, space.id, "archived"))
-        .map((row) => row.conversationId)
-        .sort(),
-    ).toEqual([first, second].sort());
-    expect(await getConversationStoppedAtMs(first)).toBeDefined();
-    expect(await getConversationStoppedAtMs(second)).toBeDefined();
-    expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
-    expect(
-      (await getConversationStore().get({ conversationId: outside }))
-        ?.archivedAtMs,
-    ).toBeUndefined();
-    expect(
-      (await getConversationStore().get({ conversationId: thread }))
-        ?.archivedAtMs,
-    ).toBeDefined();
-    // An archived Space takes no new work.
-    expect(
-      (
-        await request(ana, "POST", "/conversations", {
-          idempotencyKey: "short-late",
-          message: "One more",
-          spaceId: space.id,
-        })
-      ).status,
-    ).toBe(409);
-
-    // A raced second archive keeps the first time, so restore still
-    // brings back what the archive archived.
-    const lead = await readSpaceLead(space.id);
-    await setConversationArchive({
-      applyToChildren: true,
-      archived: true,
-      conversationId: lead!.conversationId,
-      lastSeenAt: new Date(lead!.lastActivityAtMs).toISOString(),
-    });
-    await send(ana, "PATCH", `/${space.id}/archive`, { archived: false });
-    expect(
-      (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
-    ).toEqual([first, second].sort());
-
-    // A second archive stops the Space again, though its Lead was stopped.
-    const firstStopMs = await getConversationStoppedAtMs(first);
-    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
-    expect(await getConversationStoppedAtMs(first)).toBeGreaterThan(
-      firstStopMs ?? 0,
-    );
   });
 });

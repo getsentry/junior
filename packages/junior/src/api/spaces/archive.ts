@@ -1,11 +1,11 @@
 import { Hono } from "hono";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { writeLegacySpaceArchive } from "@/chat/spaces/store";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   setConversationArchive,
   stopArchivedWork,
 } from "../conversations/archive";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { readSpaceLead } from "@/chat/lead/conversation";
-import { throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import { archiveSpaceBodySchema } from "../schema/space";
 import { validateRequest } from "../validation";
@@ -34,18 +34,18 @@ export function createSpaceArchiveRoutes(options: {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
+      const { archived } = context.req.valid("json");
       const space = await requireMemberSpace(viewerUserId, spaceId);
-      const archived = context.req.valid("json").archived;
-      const lead = await readSpaceLead(spaceId);
-      if (!lead) throwApiError(404, "Space was not found.");
+      const lead = await getSpaceLead(spaceId);
       if (archived !== (space.archivedAt !== null)) {
+        // A Space archive applies whatever the Lead did since the page read
+        // it, so it does not check the Lead's activity.
         const result = await setConversationArchive(
           archived
             ? {
                 applyToChildren: true,
                 archived: true,
                 conversationId: lead.conversationId,
-                lastSeenAt: new Date(lead.lastActivityAtMs).toISOString(),
               }
             : {
                 applyToChildren: true,
@@ -54,9 +54,10 @@ export function createSpaceArchiveRoutes(options: {
                 userId: viewerUserId,
               },
         );
-        if (result.status === "conflict") {
-          throwApiError(409, "The Space received new activity.");
-        }
+        await writeLegacySpaceArchive(
+          spaceId,
+          result.status === "archived" ? new Date(result.archivedAt) : null,
+        );
       }
       // A retry after a failed stop finds the Space archived, so it stops
       // what is still running.

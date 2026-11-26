@@ -58,7 +58,7 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
         ? await readCachedUserByEmail(getDb(), email)
         : undefined;
       if (!person) throwApiError(404, "No person has that email.");
-      const lead = await getSpaceLead({ member: viewer, space });
+      const lead = await getSpaceLead(space.id);
       await joinSpace(lead.conversationId, person.user.id);
       return await spaceResponse(viewerUserId, spaceId);
     },
@@ -75,7 +75,7 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
       // An archived Space can be joined too, so a Space that every member
       // left stays restorable.
       const space = await requireSpace(viewerUserId, spaceId);
-      const lead = await getSpaceLead({ member: viewer, space });
+      const lead = await getSpaceLead(space.id);
       await joinSpace(lead.conversationId, viewerUserId);
       return await spaceResponse(viewerUserId, spaceId);
     },

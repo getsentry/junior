@@ -33,14 +33,15 @@ type ArchiveResult =
  * Archive or restore one Conversation, root or child, for everyone. Archive
  * refuses while any descendant is unarchived, unless `applyToChildren`
  * archives them too, and when the Conversation has activity after
- * `lastSeenAt`. Restore changes only this Conversation unless
+ * `lastSeenAt`. Without `lastSeenAt`, archive does not check activity.
+ * Restore changes only this Conversation unless
  * `applyToChildren` also restores the descendants archived with it, and it
  * refuses while an ancestor is archived. A restore of a root by `userId`
  * turns off auto-archive for that person.
  */
 export async function setConversationArchive(
   args: { applyToChildren: boolean; conversationId: string } & (
-    | { archived: true; lastSeenAt: string }
+    | { archived: true; lastSeenAt?: string }
     | { archived: false; userId: string }
   ),
 ): Promise<ArchiveResult> {
@@ -63,7 +64,10 @@ export async function setConversationArchive(
     const tree = await readConversationTrees(db, [rootConversationId]);
     const descendants = conversationDescendants(tree, args.conversationId);
     if (args.archived) {
-      if (target.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)) {
+      if (
+        args.lastSeenAt !== undefined &&
+        target.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)
+      ) {
         return { status: "conflict" as const };
       }
       const unarchived = descendants.filter((node) => !node.archivedAt);

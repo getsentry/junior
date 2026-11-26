@@ -131,9 +131,7 @@ export async function createConversationForViewer(
   }
   const visibility = space?.visibility ?? body.visibility;
   // Work in a Space starts as a child of its Lead.
-  const lead = space
-    ? await getSpaceLead({ member: viewer, space })
-    : undefined;
+  const lead = space ? await getSpaceLead(space.id) : undefined;
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(

@@ -7,7 +7,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 import { setMovedWorkVisibility } from "@/chat/conversations/sql/privacy";
-import { alias } from "drizzle-orm/pg-core";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -15,19 +14,13 @@ import {
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorSpaces,
-} from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 
 /** The id and name that label a Conversation's Space. */
 export interface SpaceRef {
   id: string;
   name: string;
 }
-
-const spaceLead = alias(juniorConversations, "space_lead");
 
 /** Read the id and name of each Space, by id. A missing id has no entry. */
 export async function readSpaceRefs(
@@ -36,11 +29,24 @@ export async function readSpaceRefs(
 ): Promise<Map<string, SpaceRef>> {
   const ids = [...new Set(spaceIds)];
   if (ids.length === 0) return new Map();
+  // A Space's name is its Lead's title.
   const rows = await db
-    .select({ id: juniorSpaces.id, name: juniorSpaces.name })
-    .from(juniorSpaces)
-    .where(inArray(juniorSpaces.id, ids));
-  return new Map(rows.map((row) => [row.id, row]));
+    .select({
+      id: juniorConversations.spaceId,
+      name: juniorConversations.title,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.kind, "lead"),
+        inArray(juniorConversations.spaceId, ids),
+      ),
+    );
+  return new Map(
+    rows.flatMap(({ id, name }) =>
+      id ? [[id, { id, name: name ?? "" }]] : [],
+    ),
+  );
 }
 
 /** Why `setConversationSpace` did not move a Conversation. */
@@ -82,7 +88,7 @@ export async function setConversationSpace(
   return await executor.transaction(async () => {
     const db = executor.db();
     // Lock the Conversation, so two moves of it run one after the other. A
-    // Space keeps its visibility, so the Spaces need no lock.
+    // Space keeps its Lead's visibility, so the Leads need no lock.
     const [root] = await db
       .select({
         locationId: juniorConversations.destinationId,
@@ -116,14 +122,14 @@ export async function setConversationSpace(
         ? // A Space is its Lead, so the Lead's visibility is the Space's.
           await db
             .select({
-              id: spaceLead.spaceId,
-              visibility: spaceLead.visibility,
+              id: juniorConversations.spaceId,
+              visibility: juniorConversations.visibility,
             })
-            .from(spaceLead)
+            .from(juniorConversations)
             .where(
               and(
-                eq(spaceLead.kind, "lead"),
-                inArray(spaceLead.spaceId, spaceIds),
+                eq(juniorConversations.kind, "lead"),
+                inArray(juniorConversations.spaceId, spaceIds),
               ),
             )
         : [];
