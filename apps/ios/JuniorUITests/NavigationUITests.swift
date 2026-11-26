@@ -36,9 +36,9 @@ final class NavigationUITests: XCTestCase {
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
   }
 
-  /// The whole OAuth flow: the browser sheet, the mock's consent, the
-  /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
-  /// relaunch. The drawer shows the changelog, and Sign out returns to Sign in.
+  /// The whole sign-in: the browser sheet, the mock's sign-in page, the
+  /// `junior-ios` redirect, the session and MCP token requests, and a Keychain
+  /// that survives a relaunch. The drawer shows the changelog, and Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
     let signIn = app.buttons["sign-in"]

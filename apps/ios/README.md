@@ -3,7 +3,7 @@
 A native SwiftUI client for Junior, laid out like the dashboard (the `classic`
 shell): Conversations, the Inbox, Automations, and the drawer, in dark and light
 themes. On a phone it has the mobile layout; on an iPad, each list shows beside
-the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
+the open item. It uses the MCP server (`/api/mcp`) and the dashboard API.
 
 ## Layout
 
@@ -19,8 +19,8 @@ the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
 `sendMessage`, …); their result types mirror the tool schemas in
 `packages/junior/src/api/mcp`. What MCP lacks (answering an Inbox item,
-changing an Automation, the event log) opens the dashboard in the in-app
-browser.
+changing an Automation, the event log) uses the dashboard API through
+`DashboardClient`, or opens the dashboard in the in-app browser.
 
 ## Run it
 
@@ -92,14 +92,16 @@ use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 ## Sign-in
 
-Sign-in is Junior's MCP OAuth flow: authorization code with PKCE, Google
-sign-in and the consent page in a browser sheet, and tokens in the Keychain
-(an access token lasts an hour; refresh tokens rotate; a sign-in lasts 30
-days). Every Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
-`packages/junior/src/api/mcp/oauth/client-metadata.ts`, so sign-in needs no
-hosted Client ID Metadata Document. The redirect goes to
+Sign-in opens `/_junior/client/sign-in/authorize` in a browser sheet: Google
+sign-in, then the user confirms the app. The redirect carries a one-time code
+(with PKCE) that `SessionSignInClient` trades for a 30-day session. The
+session calls the dashboard API and gets MCP tokens at `/api/client/mcp-token`.
+They refresh at the MCP token endpoint (an access token lasts an hour; refresh
+tokens rotate) and end with the session. Both are in the Keychain. Every
+Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
+`packages/junior/src/api/mcp/oauth/client-metadata.ts`. The redirect goes to
 `junior-ios://oauth/callback`, which only this client may use. A server that
-runs an older Junior rejects the app's client ID.
+runs an older Junior rejects the app's sign-in.
 
 ## Design sources
 

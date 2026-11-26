@@ -1,6 +1,7 @@
 // Serves the built dashboard with its mock reporting data, so the iOS app can
 // run against real API shapes without Slack, a database, or a sign-in. It
-// also serves a mock of the MCP server at `/api/mcp` and its OAuth endpoints.
+// also serves a mock of the MCP server at `/api/mcp` and its OAuth endpoints,
+// and the iOS app's sign-in.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
@@ -689,30 +690,142 @@ async function handleMcp(request) {
   return await handleMcpRpc(request, scopes);
 }
 
-/** Answer an MCP or OAuth path, or return undefined for the dashboard. */
+const IOS_CLIENT_ID = "https://junior.sentry.dev/clients/ios";
+const IOS_REDIRECT_URI = "junior-ios://oauth/callback";
+const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+// One-time codes from the app sign-in, and the sessions they gave.
+const sessionCodes = new Map();
+const sessions = new Map();
+
+// The real page asks for Google sign-in and for the user to confirm the app.
+// The mock confirms at once.
+function handleClientSignInAuthorize(request) {
+  const params = new URL(request.url).searchParams;
+  if (
+    params.get("client_id") !== IOS_CLIENT_ID ||
+    params.get("redirect_uri") !== IOS_REDIRECT_URI
+  ) {
+    return invalidClientPage("Only the iOS app can sign in here.");
+  }
+  const state = params.get("state") ?? undefined;
+  const challenge = params.get("code_challenge") ?? "";
+  if (
+    params.get("code_challenge_method") !== "S256" ||
+    !CODE_CHALLENGE_PATTERN.test(challenge)
+  ) {
+    return authorizationRedirect(
+      IOS_REDIRECT_URI,
+      {
+        error: "invalid_request",
+        error_description: "PKCE with S256 is required.",
+      },
+      state,
+    );
+  }
+  const code = randomBytes(32).toString("base64url");
+  sessionCodes.set(code, { challenge, expiresAtMs: Date.now() + CODE_TTL_MS });
+  return authorizationRedirect(IOS_REDIRECT_URI, { code }, state);
+}
+
+async function handleClientSignInToken(request) {
+  const form = new URLSearchParams(await request.text());
+  const record = sessionCodes.get(form.get("code") ?? "");
+  sessionCodes.delete(form.get("code") ?? "");
+  const verifier = form.get("code_verifier") ?? "";
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  if (
+    !record ||
+    record.expiresAtMs <= Date.now() ||
+    record.challenge !== challenge
+  ) {
+    return Response.json(
+      { error: "invalid_grant", error_description: "The code is not valid." },
+      { status: 400, headers: { "cache-control": "no-store" } },
+    );
+  }
+  // The mock dashboard accepts every request, so any token works there.
+  const token = `jr_ses_${randomBytes(32).toString("base64url")}`;
+  const expiresAtMs = Date.now() + SESSION_LIFETIME_MS;
+  sessions.set(token, { expiresAtMs, grantIds: [] });
+  return Response.json(
+    { expires_at: new Date(expiresAtMs).toISOString(), token },
+    { headers: { "cache-control": "no-store" } },
+  );
+}
+
+function bearerSession(request) {
+  const token = request.headers
+    .get("authorization")
+    ?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  const session = token ? sessions.get(token) : undefined;
+  return session && session.expiresAtMs > Date.now()
+    ? { session, token }
+    : undefined;
+}
+
+// A grant that ends with the session and is revoked with it.
+function handleClientMcpToken(request) {
+  const found = bearerSession(request);
+  if (!found) {
+    return tokenError("invalid_token", "Sign in again.", 401);
+  }
+  const grantId = randomUUID();
+  found.session.grantIds.push(grantId);
+  return issueTokens(grantId, {
+    clientId: IOS_CLIENT_ID,
+    expiresAtMs: Math.min(
+      Date.now() + GRANT_MAX_AGE_MS,
+      found.session.expiresAtMs,
+    ),
+    resource: urls.resource,
+    revoked: false,
+    scope: ALL_SCOPES,
+  });
+}
+
+function handleClientSignOut(request) {
+  const found = bearerSession(request);
+  if (found) {
+    sessions.delete(found.token);
+    for (const grantId of found.session.grantIds) revokeGrant(grantId);
+  }
+  return new Response(null, { status: 204 });
+}
+
+// The paths that the mock answers itself, and their methods. The built
+// dashboard app answers every other path.
+const MOCK_ROUTES = {
+  [RESOURCE_METADATA_PATH]: {
+    methods: ["GET"],
+    handle: () => Response.json(protectedResourceMetadata()),
+  },
+  [AUTHORIZATION_SERVER_METADATA_PATH]: {
+    methods: ["GET"],
+    handle: () => Response.json(authorizationServerMetadata()),
+  },
+  [AUTHORIZE_PATH]: { methods: ["GET"], handle: handleAuthorize },
+  [TOKEN_PATH]: { methods: ["POST"], handle: handleToken },
+  [MCP_PATH]: { methods: ["GET", "POST", "DELETE"], handle: handleMcp },
+  "/_junior/client/sign-in/authorize": {
+    methods: ["GET"],
+    handle: handleClientSignInAuthorize,
+  },
+  "/api/client/sign-in/token": {
+    methods: ["POST"],
+    handle: handleClientSignInToken,
+  },
+  "/api/client/mcp-token": { methods: ["POST"], handle: handleClientMcpToken },
+  "/api/client/sign-out": { methods: ["POST"], handle: handleClientSignOut },
+};
+
+/** Answer an MCP, OAuth, or iOS sign-in path, or return undefined for the dashboard. */
 function routeMcp(request) {
   const { pathname } = new URL(request.url);
-  const notFound = () => new Response("404 Not Found", { status: 404 });
-  switch (pathname) {
-    case RESOURCE_METADATA_PATH:
-      return request.method === "GET"
-        ? Response.json(protectedResourceMetadata())
-        : notFound();
-    case AUTHORIZATION_SERVER_METADATA_PATH:
-      return request.method === "GET"
-        ? Response.json(authorizationServerMetadata())
-        : notFound();
-    case AUTHORIZE_PATH:
-      return request.method === "GET" ? handleAuthorize(request) : notFound();
-    case TOKEN_PATH:
-      return request.method === "POST" ? handleToken(request) : notFound();
-    case MCP_PATH:
-      return ["GET", "POST", "DELETE"].includes(request.method)
-        ? handleMcp(request)
-        : notFound();
-    default:
-      return undefined;
-  }
+  if (!Object.hasOwn(MOCK_ROUTES, pathname)) return undefined;
+  const route = MOCK_ROUTES[pathname];
+  return route.methods.includes(request.method)
+    ? route.handle(request)
+    : new Response("404 Not Found", { status: 404 });
 }
 
 createServer((req, res) => {

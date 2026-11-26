@@ -29,9 +29,10 @@ enum Route: Hashable {
   case settings
 }
 
-/// App-wide state, shared by every window: the server and its sign-in, the
-/// Inbox count, and the refresh tick that tells screens to reload. The app uses only
-/// Junior's public API, the MCP server at `/api/mcp`.
+/// App-wide state, shared by every window: the server and its two sign-ins,
+/// the Inbox count, and the refresh tick that tells screens to reload. The app
+/// uses the MCP server at `/api/mcp`, and the dashboard API (`/api/*`) for
+/// what MCP does not cover.
 @MainActor
 @Observable
 final class AppModel {
@@ -41,6 +42,7 @@ final class AppModel {
 
   private(set) var server: JuniorServer
   private(set) var client: MCPClient
+  private(set) var dashboard: DashboardClient
   private(set) var signedIn: Bool
   var theme: ThemeChoice {
     didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
@@ -67,7 +69,8 @@ final class AppModel {
   let fixedNow: Date?
   let agentName = "Junior"
 
-  private let store = KeychainCredentialStore()
+  private let store = KeychainStore<OAuthCredentials>(account: "mcp-credentials")
+  private let sessionStore = KeychainStore<SessionCredentials>(account: "dashboard-session")
   private var ticking: Task<Void, Never>?
   private var lastInput = Date()
 
@@ -78,17 +81,26 @@ final class AppModel {
     #if DEBUG
       // Screenshots and UI tests start signed in to the mock server, or
       // signed out to run the sign-in flow.
-      if launch.signOut { store.save(nil) }
+      if launch.signOut {
+        store.save(nil)
+        sessionStore.save(nil)
+      }
       if let token = launch.accessToken {
         store.save(
           OAuthCredentials(
             server: server, clientID: Self.oauthClientID, tokenEndpoint: server.page("/api/mcp/oauth/token")!,
             accessToken: token, refreshToken: nil, expiresAt: .distantFuture, scope: nil))
+        sessionStore.save(SessionCredentials(server: server, token: token, expiresAt: .distantFuture))
       }
     #endif
     self.server = server
     self.client = Self.client(for: server, store: store)
-    self.signedIn = store.load()?.server == server
+    self.dashboard = Self.dashboard(for: server, store: sessionStore)
+    // An app with no live dashboard session, such as one that signed in before
+    // the session existed, signs in again.
+    let session = sessionStore.load()
+    self.signedIn =
+      store.load()?.server == server && session?.server == server && session.map { $0.expiresAt > Date() } == true
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
     self.changelogBadge = BundledChangelog.hasUnseen()
@@ -110,12 +122,26 @@ final class AppModel {
     }
   }
 
+  /// GET one dashboard API path. A call that finds the session gone shows
+  /// Sign in.
+  func get<Result: Decodable & Sendable>(
+    _ path: String, query: [URLQueryItem] = [], as type: Result.Type = Result.self
+  ) async throws -> Result {
+    do {
+      return try await dashboard.get(path, query: query, as: type)
+    } catch JuniorAPIError.signedOut {
+      signedIn = false
+      throw JuniorAPIError.signedOut
+    }
+  }
+
   /// Sign in to `baseURL` in the system browser sheet, then load the shell.
+  /// The session gets the MCP tokens.
   func signIn(to baseURL: URL) async throws {
     let server = JuniorServer(baseURL: baseURL)
-    let oauth = OAuthClient(server: server, clientID: Self.oauthClientID)
-    let credentials = try await BrowserSignIn().run(oauth)
-    await connect(server, credentials)
+    let (credentials, session) = try await BrowserSignIn().run(
+      OAuthClient(server: server, clientID: Self.oauthClientID), session: SessionSignInClient(server: server))
+    await connect(server, credentials, session)
   }
 
   /// Sign in to the built-in demo: mock data on this device, for people with
@@ -126,14 +152,19 @@ final class AppModel {
       server,
       OAuthCredentials(
         server: server, clientID: Self.oauthClientID, tokenEndpoint: server.page("/api/mcp/oauth/token")!,
-        accessToken: "demo", refreshToken: nil, expiresAt: .distantFuture, scope: nil))
+        accessToken: "demo", refreshToken: nil, expiresAt: .distantFuture, scope: nil),
+      SessionCredentials(server: server, token: "demo", expiresAt: .distantFuture))
   }
 
-  private func connect(_ server: JuniorServer, _ credentials: OAuthCredentials) async {
+  private func connect(
+    _ server: JuniorServer, _ credentials: OAuthCredentials, _ session: SessionCredentials
+  ) async {
     UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
     self.server = server
     client = Self.client(for: server, store: store)
+    dashboard = Self.dashboard(for: server, store: sessionStore)
     await client.signIn(credentials)
+    await dashboard.signIn(session)
     signedIn = true
     didWrite()
     await refreshShell()
@@ -146,9 +177,27 @@ final class AppModel {
       : MCPClient(server: server, store: store)
   }
 
+  /// The demo has no dashboard API, so its calls get a 404.
+  private static func dashboard(for server: JuniorServer, store: SessionStore) -> DashboardClient {
+    server.isDemo
+      ? DashboardClient(
+        server: server, store: store,
+        transport: { request in
+          (Data(), HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!)
+        })
+      : DashboardClient(server: server, store: store)
+  }
+
   func signOut() {
     let client = client
-    Task { await client.signOut() }
+    let dashboard = dashboard
+    let server = server
+    Task {
+      await client.signOut()
+      if let session = await dashboard.signOut(), !server.isDemo {
+        await SessionSignInClient(server: server).signOut(session)
+      }
+    }
     signedIn = false
     inboxCount = 0
     serverVersion = nil
@@ -212,17 +261,19 @@ final class AppModel {
   }
 }
 
-/// The sign-in, kept in the Keychain for this device only.
-struct KeychainCredentialStore: CredentialStore {
+/// One sign-in, kept in the Keychain for this device only.
+struct KeychainStore<Value: Codable & Sendable>: Sendable {
+  let account: String
+
   private var query: [String: Any] {
     [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: "io.sentry.junior",
-      kSecAttrAccount as String: "mcp-credentials",
+      kSecAttrAccount as String: account,
     ]
   }
 
-  func load() -> OAuthCredentials? {
+  func load() -> Value? {
     var request = query
     request[kSecReturnData as String] = true
     request[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -230,10 +281,10 @@ struct KeychainCredentialStore: CredentialStore {
     guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
       return nil
     }
-    return try? JSONDecoder().decode(OAuthCredentials.self, from: data)
+    return try? JSONDecoder().decode(Value.self, from: data)
   }
 
-  func save(_ credentials: OAuthCredentials?) {
+  func save(_ credentials: Value?) {
     SecItemDelete(query as CFDictionary)
     guard let credentials, let data = try? JSONEncoder().encode(credentials) else { return }
     var item = query
@@ -242,6 +293,9 @@ struct KeychainCredentialStore: CredentialStore {
     SecItemAdd(item as CFDictionary, nil)
   }
 }
+
+extension KeychainStore: CredentialStore where Value == OAuthCredentials {}
+extension KeychainStore: SessionStore where Value == SessionCredentials {}
 
 /// Launch arguments for development and screenshots:
 /// `-JuniorServer <url> -JuniorFixedNow <iso> -JuniorOpen <path> -JuniorTheme <dark|light>`,

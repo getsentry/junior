@@ -1,11 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// Every scope of Junior's MCP server. The app asks for all of them.
-public let mcpScopes = [
-  "conversations:read", "conversations:manage", "conversations:write", "inbox_items:read", "automations:read",
-]
-
 /// Tokens from Junior's MCP OAuth server. An access token lasts an hour, each
 /// refresh token works once, and a sign-in ends after 30 days.
 public struct OAuthCredentials: Codable, Equatable, Sendable {
@@ -34,19 +29,10 @@ public struct OAuthCredentials: Codable, Equatable, Sendable {
   public func isFresh(at now: Date = Date()) -> Bool { expiresAt.timeIntervalSince(now) > 60 }
 }
 
-/// One sign-in attempt: the authorization code flow with PKCE (RFC 7636).
-public struct OAuthSignIn: Sendable {
-  public let authorizeURL: URL
-  public let redirectURI: String
-  let state: String
-  let verifier: String
-  let issuer: String
-  let tokenEndpoint: URL
-}
-
-/// OAuth for one Junior. Junior registers no clients: `clientID` is the URL of
-/// the app's Client ID Metadata Document, which names the app and lists its
-/// redirect URIs.
+/// MCP tokens for one Junior. The app gets them with its sign-in session and
+/// refreshes them at the MCP token endpoint. Junior registers no clients:
+/// `clientID` is the app's Client ID Metadata Document URL, which every
+/// Junior knows.
 public struct OAuthClient: Sendable {
   public let server: JuniorServer
   public let clientID: String
@@ -58,57 +44,14 @@ public struct OAuthClient: Sendable {
     self.session = session
   }
 
-  private struct Metadata: Decodable {
-    var issuer: String
-    var authorization_endpoint: URL
-    var token_endpoint: URL
-  }
-
-  /// Start a sign-in that returns to `redirectURI` (a loopback URL).
-  public func begin(redirectURI: String) async throws -> OAuthSignIn {
-    let metadataURL = server.page("/.well-known/oauth-authorization-server")!
-    let (data, response) = try await load(URLRequest(url: metadataURL))
-    guard response.statusCode == 200, let metadata = try? JSONDecoder().decode(Metadata.self, from: data) else {
-      Log.oauth.error("Sign-in metadata got HTTP \(response.statusCode, privacy: .public)")
-      throw JuniorAPIError.signIn("This Junior has no MCP sign-in (\(response.statusCode)).")
-    }
-    let verifier = randomToken(bytes: 32)
-    let state = randomToken(bytes: 16)
-    var components = URLComponents(url: metadata.authorization_endpoint, resolvingAgainstBaseURL: false)!
-    components.queryItems = [
-      URLQueryItem(name: "response_type", value: "code"),
-      URLQueryItem(name: "client_id", value: clientID),
-      URLQueryItem(name: "redirect_uri", value: redirectURI),
-      URLQueryItem(name: "scope", value: mcpScopes.joined(separator: " ")),
-      URLQueryItem(name: "state", value: state),
-      URLQueryItem(name: "code_challenge", value: codeChallenge(verifier)),
-      URLQueryItem(name: "code_challenge_method", value: "S256"),
-      URLQueryItem(name: "resource", value: server.mcpURL.absoluteString),
-    ]
-    return OAuthSignIn(
-      authorizeURL: components.url!, redirectURI: redirectURI, state: state, verifier: verifier,
-      issuer: metadata.issuer, tokenEndpoint: metadata.token_endpoint)
-  }
-
-  /// Finish a sign-in with the URL that the browser returned to.
-  public func finish(_ signIn: OAuthSignIn, callback: URL) async throws -> OAuthCredentials {
-    let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
-    func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-    guard value("state") == signIn.state else { throw JuniorAPIError.signIn("The sign-in response did not match.") }
-    if let issuer = value("iss"), issuer != signIn.issuer {
-      throw JuniorAPIError.signIn("The sign-in response came from another server.")
-    }
-    if let error = value("error") {
-      throw JuniorAPIError.signIn(
-        error == "access_denied" ? "You did not allow access." : value("error_description") ?? error)
-    }
-    guard let code = value("code") else { throw JuniorAPIError.signIn("The sign-in response had no code.") }
-    return try await token(
-      endpoint: signIn.tokenEndpoint,
-      [
-        "grant_type": "authorization_code", "code": code, "code_verifier": signIn.verifier,
-        "redirect_uri": signIn.redirectURI,
-      ])
+  /// Get MCP tokens with the app's sign-in session. The grant ends with the
+  /// session, and its tokens refresh at the MCP token endpoint.
+  public func tokens(for session: SessionCredentials) async throws -> OAuthCredentials {
+    var request = URLRequest(url: server.page("/api/client/mcp-token")!)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    return try await send(request, grantType: "session", endpoint: server.page("/api/mcp/oauth/token")!)
   }
 
   /// Trade the refresh token for new tokens. Throws `.signedOut` when Junior
@@ -140,13 +83,18 @@ public struct OAuthClient: Sendable {
     request.httpBody = Data(
       form.sorted { $0.key < $1.key }.map { "\(formEncode($0.key))=\(formEncode($0.value))" }
         .joined(separator: "&").utf8)
+    return try await send(request, grantType: fields["grant_type"] ?? "token", endpoint: endpoint)
+  }
+
+  /// Send one token request. `endpoint` is where the tokens refresh.
+  private func send(_ request: URLRequest, grantType: String, endpoint: URL) async throws -> OAuthCredentials {
     let (data, response) = try await load(request)
     guard response.statusCode == 200 else {
       let error = try? JSONDecoder().decode(TokenError.self, from: data)
       Log.oauth.error(
-        "\(fields["grant_type"] ?? "token", privacy: .public) got HTTP \(response.statusCode, privacy: .public): \(error?.error ?? "no error code", privacy: .public)"
+        "\(grantType, privacy: .public) got HTTP \(response.statusCode, privacy: .public): \(error?.error ?? "no error code", privacy: .public)"
       )
-      if error?.error == "invalid_grant", fields["grant_type"] == "refresh_token" { throw JuniorAPIError.signedOut }
+      if error?.error == "invalid_grant", grantType == "refresh_token" { throw JuniorAPIError.signedOut }
       throw JuniorAPIError.signIn(error?.error_description ?? error?.error ?? "Junior returned \(response.statusCode).")
     }
     guard let tokens = try? JSONDecoder().decode(TokenResponse.self, from: data) else {
@@ -173,7 +121,7 @@ func codeChallenge(_ verifier: String) -> String {
   base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
 }
 
-private func randomToken(bytes count: Int) -> String {
+func randomToken(bytes count: Int) -> String {
   var generator = SystemRandomNumberGenerator()
   return base64URL(Data((0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) }))
 }
@@ -183,7 +131,7 @@ private func base64URL(_ data: Data) -> String {
     .replacingOccurrences(of: "=", with: "")
 }
 
-private func formEncode(_ value: String) -> String {
+func formEncode(_ value: String) -> String {
   value.addingPercentEncoding(
     withAllowedCharacters: CharacterSet(
       charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) ?? value
