@@ -90,7 +90,11 @@ async function createIssue(): Promise<string> {
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
-    turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+    turnTools: turnBehavior({
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+    }).tools,
     workspace: {} as never,
   })["github_createIssue"]!.execute!(
     {

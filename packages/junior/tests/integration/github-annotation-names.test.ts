@@ -165,7 +165,11 @@ async function runTool(
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
-    turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+    turnTools: turnBehavior({
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+    }).tools,
     workspace: {} as never,
   })[name]!.execute!(input, { toolCallId: name });
 }
