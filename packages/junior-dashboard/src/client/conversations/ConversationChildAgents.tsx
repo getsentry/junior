@@ -312,10 +312,10 @@ const statusIconToneClass: Record<StatusChipTone, string> = {
  */
 function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
   const { archivedAt, status, treeState, watching } = props.agent;
-  const settled = !archivedAt && status !== "failed" && status !== "blocked";
-  if (settled && treeState === "needs_you") {
+  if (!archivedAt && treeState === "needs_you") {
     return <ConversationStateIcon state="needs_you" />;
   }
+  const settled = !archivedAt && status !== "failed" && status !== "blocked";
   // A nested child can still work after this child's own run ended.
   if (settled && treeState === "working" && status !== "running") {
     return <ConversationStateIcon state="working" />;

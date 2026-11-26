@@ -88,6 +88,16 @@ describe("a Conversation's Threads", () => {
     );
   });
 
+  it("marks a failed Thread that waits on the viewer as waiting on you", () => {
+    const markup = render([
+      thread("Retry the export", 1, {
+        status: "failed",
+        treeState: "needs_you",
+      }),
+    ]);
+    expect(markup).toContain('aria-label="Waiting on you"');
+  });
+
   it("starts Done collapsed", () => {
     const markup = render(threads);
     expect(markup).toMatch(/<button[^>]*aria-expanded="false"[^>]*>Done · 1/);

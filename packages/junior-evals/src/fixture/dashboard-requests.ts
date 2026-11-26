@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
+  conversationDetailReportSchema,
   leadSchema,
   spaceSchema,
 } from "@/api/schema";
@@ -145,6 +146,29 @@ export async function createSpace(
     );
   }
   return spaceSchema.parse(await created.json());
+}
+
+/**
+ * Read the Space of a Conversation as `viewerEmail` sees it on its page, or
+ * null when it is in no Space.
+ */
+export async function readConversationSpace(
+  api: Hono<JuniorApiEnv>,
+  viewerEmail: string,
+  conversationId: string,
+): Promise<{ id: string; name: string } | null> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Conversation returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  return (
+    conversationDetailReportSchema.parse(await response.json()).space ?? null
+  );
 }
 
 /**

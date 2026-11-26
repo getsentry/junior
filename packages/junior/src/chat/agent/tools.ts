@@ -204,6 +204,8 @@ export function createPromptHookContext(args: {
 interface ToolWiringArgs {
   abortAgent: () => void;
   behavior: TurnBehavior;
+  /** A root or a Lead's child, which counts as a root for `maxAgentDepth`. */
+  topLevelWork: boolean;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
@@ -499,7 +501,7 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...bindTurnTools(args.run, args.behavior),
+    ...bindTurnTools(args.run, args.behavior, args.topLevelWork),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -771,6 +773,7 @@ export async function wireAgentTools(
 export function bindTurnTools(
   run: AgentRun,
   behavior: TurnBehavior,
+  topLevelWork: boolean,
 ): Pick<
   ToolRuntimeContext,
   "listedTools" | "messageAgent" | "spawnAgent" | "turnTools"
@@ -792,7 +795,7 @@ export function bindTurnTools(
         ? { ...behavior.tools, reply: false }
         : behavior.tools,
     listedTools,
-    ...bindAgentTools(run, listedTools.agents),
+    ...bindAgentTools(run, listedTools.agents, topLevelWork),
   };
 }
 
@@ -800,16 +803,17 @@ export function bindTurnTools(
 export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,
+  topLevelWork: boolean,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (!bindSpawnAgent) return {};
-  // The rule reads only the Turn behavior and the deployment, so a child gets
-  // the same tools on every path. Every child has depth 1 or more, so with
-  // maxAgentDepth 0 no child can spawn. With more, a child past the limit
-  // still sees startAgent, and the depth check in spawn.ts refuses it.
+  // The rule reads only the Turn behavior, the Conversation's place in its
+  // tree, and the deployment, so a child gets the same tools on every path.
+  // A Lead's child counts as a root. Every other child has depth 1 or more,
+  // so with maxAgentDepth 0 it cannot spawn. With more, a child past the
+  // limit still sees startAgent, and the depth check in spawn.ts refuses it.
   const canSpawn =
-    agents === "children" ||
-    (agents === "children_and_parent" && botConfig.maxAgentDepth > 0);
+    agents === "children" || topLevelWork || botConfig.maxAgentDepth > 0;
   const spawnAgent = canSpawn ? bindSpawnAgent(run) : undefined;
   // A child agent can always message its parent, even when it is too deep to
   // start child agents of its own.

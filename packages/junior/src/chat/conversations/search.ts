@@ -222,8 +222,8 @@ export async function searchConversations(
           .where(eq(requesterRoot.conversationId, requesterRootId)),
       ),
       // The Conversations of a private Space share one audience, the members.
-      // A private Space's roots have their own Destinations, so only this
-      // match reaches them.
+      // Space work can have other Destinations than the requester's root, so
+      // only this match reaches all of it.
       eq(
         rootSpaceIdSql(roots),
         db

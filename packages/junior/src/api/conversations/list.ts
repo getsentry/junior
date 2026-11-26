@@ -158,8 +158,8 @@ function conversationCodeRepositoryFilter(
 }
 
 /**
- * Keep the Lead's children in one Space with the status that the viewer may find. A
- * private Space shows its roots only to its members.
+ * Keep the Lead's children in one Space with the status that the viewer may
+ * find. A private Space shows its work only to its members.
  */
 function conversationSpaceFilter(
   spaceId: string,

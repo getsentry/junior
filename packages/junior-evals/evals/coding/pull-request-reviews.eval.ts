@@ -130,6 +130,46 @@ describe("Watches", () => {
     );
   });
 
+  test("when you agree with a change request but wait on the person who asked to confirm the text, mark it addressed", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `${pullRequest} adds design/lead.md, which lists each tool a lead agent has. A line in design/ changes only after I confirm its exact text.`,
+      ),
+    );
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // Reviewers read -1 as disagreement, so an agreement that waits on
+    // their confirmation is +1.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Maybe we should clarify the intent of the tools in design/lead.md so we don't have to maintain the exact list going forward.",
+          id: 9_005,
+          state: "changes_requested",
+          user: { login: requesterOnGitHub.login },
+        },
+        sender: { ...requesterOnGitHub, type: "User" },
+      }),
+    );
+
+    const statuses = toolCallsOf("github_updatePullRequestFeedback", delivery)
+      .map((call) => call.input as { comment_id?: number; status?: string })
+      .filter((mark) => mark.comment_id === 9_005)
+      .map((mark) => mark.status);
+    expect(statuses).toContain("addressed");
+    expect(statuses).not.toContain("declined");
+  });
+
   test.for([
     {
       asks: true,
