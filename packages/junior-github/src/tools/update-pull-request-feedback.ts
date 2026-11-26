@@ -73,7 +73,7 @@ const inputSchema = z
     status: z
       .enum(["addressed", "declined"])
       .describe(
-        'Feedback outcome. "addressed" (+1): you made the change or answered the question. "declined" (-1): you do not make the change now, such as when you push back, defer it, or leave the decision to the author.',
+        'Feedback outcome. "addressed" (+1): you made the change, answered it, or agree and wait on the reviewer to confirm or choose. "declined" (-1), which reviewers read as disagreement: you push back or defer the change to later work.',
       ),
   })
   .strict();
