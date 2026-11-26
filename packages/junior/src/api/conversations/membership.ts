@@ -26,16 +26,19 @@ export type ConversationMember = { userId: string } | { email: string };
  * Select the person's participant row on the outer `juniorConversations`
  * root, with an optional extra condition.
  */
-function memberParticipantRow(member: ConversationMember, condition?: SQL) {
+function memberParticipantRow(
+  member: ConversationMember,
+  condition?: SQL,
+  onRoot: SQL = eq(
+    juniorConversationParticipants.rootConversationId,
+    juniorConversations.conversationId,
+  ),
+) {
   const rows = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
-  const onRoot = eq(
-    juniorConversationParticipants.rootConversationId,
-    juniorConversations.conversationId,
-  );
   return "userId" in member
     ? rows.where(
         and(
@@ -118,9 +121,10 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
 }
 
 /**
- * True when the person has not unsubscribed from the conversation. The
- * active feed uses it, so a conversation that someone else carries on
- * leaves the feed of a person who left it.
+ * True when the person has not unsubscribed from the conversation, or from
+ * the root whose child it is. The active feed uses it, so a conversation
+ * that someone else carries on leaves the feed of a person who left it,
+ * with the Lead's Threads that top-level lists show.
  */
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
@@ -133,6 +137,16 @@ export function conversationIsNotUnsubscribedRoot(
       memberParticipantRow(
         member,
         isNotNull(juniorConversationParticipants.unsubscribedAt),
+        or(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            juniorConversations.parentConversationId,
+          ),
+        ),
       ),
     ),
   );

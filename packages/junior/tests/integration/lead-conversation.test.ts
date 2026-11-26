@@ -2,6 +2,7 @@ import { createWebSource, type User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
+import { updateConversationSubscription } from "@/api/conversations/subscription";
 import { bindMessageAgent } from "@/chat/child-agents/message";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
@@ -256,6 +257,18 @@ describe("Lead", () => {
     expect(
       feed.conversations.map((conversation) => conversation.conversationId),
     ).toEqual([conversationId]);
+
+    // A member's active feed shows the Lead's children until they
+    // unsubscribe from the Lead, as from any root. The Lead stays active.
+    const activeIds = async () =>
+      (await readConversationFeed({ viewer: ana })).conversations.map(
+        (conversation) => conversation.conversationId,
+      );
+    expect(await activeIds()).toContain(conversationId);
+    expect(
+      await updateConversationSubscription(ana, lead.conversationId, false),
+    ).toEqual({ archivedAt: null, subscribed: false });
+    expect(await activeIds()).not.toContain(conversationId);
   });
 
   it("moves a Conversation and its child agents into, between, and out of Spaces", async () => {

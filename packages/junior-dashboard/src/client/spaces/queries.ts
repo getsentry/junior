@@ -196,6 +196,7 @@ export function useLeaveSpace() {
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(leadId),
         }),
+        invalidateConversationFeeds(queryClient),
       ]);
     },
   });
