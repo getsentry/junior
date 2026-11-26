@@ -51,6 +51,8 @@ how the dashboard groups and acts on its rows.
   nothing takes the focus. A typed message still answers it.
 - While a waiting card is not in full view, a "N questions waiting" pill
   shows above the message box and goes to the oldest such card.
+- When a Space's details are a closed sheet, its Lead page shows
+  'N need you' above the message box.
 - A question card has one layout in the Inbox and the transcript: the
   question under its "Question" label, then the last message of the Turn
   that asked it (about 12 lines, then Show more), then the form. The card

@@ -62,6 +62,9 @@ not need a home stays a one-off Conversation.
   member, the first that applies: a Conversation needs them, one failed, or
   one works. A Space with none of these shows nothing. Its Conversations
   still show in In flight, so each one stays one click away.
+- A Space's details list the open asks in its Threads that need the
+  viewer, one line each, stacked by root as the Inbox does. A click opens
+  the ask's card.
 - Any member can archive a Space.
 - Configuration resolves in this order: an explicit target in the request,
   then the Space, then the Slack channel, then the install-wide defaults.
