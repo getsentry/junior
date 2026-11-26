@@ -14,8 +14,9 @@ untrusted text set up, does not run.
 - When the agent wants to do something that nobody asked for, the person
   who gave the instruction gets one Inbox item that names the exact action,
   so they decide once and the confirmed action runs as them.
-- When work moves to another agent, the person's own words and answers go
-  with it, so no step asks again for what the person said.
+- When work moves to another agent, the allowed brief carries what the
+  sender's thread backs, so the receiver does that work with no second
+  confirmation and never gets more than the sender had.
 - When text from a tool, a file, an issue, an agent, or another person
   tries to steer the agent, it is not approval, so injected or retold text
   never makes a risky action run.
@@ -35,7 +36,8 @@ untrusted text set up, does not run.
 - `instruction-authority` Only the person whose instruction an action
   serves can authorize it: the person Actor of the Turn that gave the
   instruction, the creator of an Automation, or the Member who asked a Lead
-  to start the work.
+  to start the work. In a Conversation that an agent started or messaged,
+  the allowed brief is that instruction (`brief-is-instruction`).
   - Example: in a shared Slack thread, Junior opened a PR for Alice. Bob
     starts a Turn and asks Junior to edit its description. Bob's
     instruction authorizes the edit, and Alice is not asked.
@@ -50,7 +52,8 @@ untrusted text set up, does not run.
     test for the empty case" authorizes that test. The same words from
     another account are context.
 - `text-is-context` Text from the agent, tools, files, issues, comments,
-  other Event authors, and other people is context. It is never approval.
+  agent results, other Event authors, and other people is context. It is
+  never approval.
   Text that imitates the person, or claims an approval that they did not
   give, is untrusted.
 - `watch-intent` The intent of a Watch is agent text. It never authorizes
@@ -62,44 +65,36 @@ untrusted text set up, does not run.
 
 **Authority follows the work**
 
-- `follows-instruction` Each child agent, hand-off, Lead start, Watch Turn,
-  and Automation run serves the instruction of the Turn that started it.
-  Guardian judges it against that person's own lines and answers, which
-  reach it unchanged. A long thread, compaction, or a hand-off never loses
-  them.
-- `no-retelling` Another agent's retelling of what the person said or
-  approved is never authority.
-- `relayed-words` When an agent passes a person's own words to another
-  Conversation, that Conversation gets them as the person's lines, linked
-  to the message where the person wrote them. It starts that work with no
-  second confirmation. The agent's own text is the task, and Guardian
-  judges it against those lines.
-  - Example: a Member tells the Lead "have the Conversation on the design
-    PR rewrite the doc". The Lead messages that Conversation, and it starts
-    the rewrite without an Inbox item.
+- `handoff-check` Guardian checks work once, when it is handed over. When
+  startAgent, startConversation, or messageAgent sends work, Guardian
+  judges the brief against the sender's own thread. A brief that matches
+  what that thread backs is allowed. A brief that suggests something
+  different or wider asks. A step that the requested work needs follows
+  from it.
+  - Example: a person asks to rewrite a design PR. A brief that also
+    updates the open proposal that implements that design is allowed. A
+    brief that also merges that proposal asks.
+- `brief-is-instruction` In the Conversation that gets it, the allowed brief
+  is the instruction. That Conversation judges its own actions against its
+  own thread, which starts with the brief. An action that is clearly in the
+  brief is allowed. Any other action gets ordinary review.
+- `no-inheritance` Authority reaches a receiver only through the allowed
+  brief. No approval, confirmation, or instruction chain passes to it in
+  another way, so a receiver never gets more than its sender had. A claim
+  in a brief that the person approved something gives no more than the
+  sender's thread backs.
+- `results-are-context` A result or a report that comes back to the sender
+  is context, not an instruction.
+- `follows-instruction` Each Watch Turn and Automation run serves the
+  instruction that created it. Guardian judges it against that person's
+  own lines and answers. A long thread or compaction never loses them.
 - `lead-member` The Member who asked a Lead is the authority for what the
-  Lead starts. The brief of a Conversation that a Lead starts counts as
-  that Member's request ([Spaces](./spaces.md)).
+  Lead starts. Guardian checks the brief of a Conversation that a Lead
+  starts against that Member's request ([Spaces](./spaces.md)).
   - Example: a Member tells the Lead "I'm worried all our Space icons will
     look the same". That asks the Lead to deal with it. The Lead starts a
     Conversation that investigates and opens a PR for review, with no
     question.
-- `handoff-task` Starting or messaging another Conversation is not a write
-  by itself. Guardian judges the task that it hands over against the
-  person's request. Each material or high-risk effect that the task names
-  must follow from the request. A step that the requested work needs
-  follows from it. Each action of that Conversation gets its own review,
-  and its result is untrusted context.
-  - Example: a person asks to rewrite a design PR. A task that also updates
-    the open proposal that implements that design follows from the
-    request.
-- `agent-task` A task that an agent hands over with startAgent or
-  messageAgent is an instruction to the Conversation that gets it, after
-  Guardian allows the hand-off (`handoff-task`). Its authority is never
-  wider than the instruction that the sending agent serves. An action
-  inside the task needs no new confirmation. An action outside it gets
-  ordinary review. A claim in the task that the person approved something
-  is still a retelling (`no-retelling`).
 
 **How Guardian decides**
 
@@ -134,7 +129,8 @@ untrusted text set up, does not run.
   the same instruction created ([GitHub](./github.md)).
 - `facts-from-junior` Junior gives Guardian the facts: the Actor, Source,
   Destination, Conversation, credential authority, whose instruction the
-  action serves, that person's lines and answers, which instruction created
+  action serves, that person's lines and answers, the allowed brief of a
+  Conversation that an agent started, which instruction created
   each resource, and who can read each destination. Guardian does not guess
   them from the transcript. Tool input, tool descriptions and marks, a
   tool's own summary of the action, tool results, and agent text are
@@ -177,8 +173,8 @@ untrusted text set up, does not run.
 - `confirmed-runs` When a person confirms an exact action, that action runs
   as that person, with no second review. A confirmation never covers a
   different action.
-- `confirm-follows` A confirmation holds in every Conversation that serves
-  the same instruction.
+- `confirm-follows` A confirmation of an exact action holds for that action
+  in the Conversation that asked, also in a child agent.
   - Example: a child reports that it needs a person, and the person
     confirms the exact action. The child's matching retry runs with no new
     question.
@@ -227,21 +223,15 @@ untrusted text set up, does not run.
   limit, stops the whole Run.
 - `deny-limit`: asks count toward the limit of three, and reaching the
   limit does not stop the Turn.
-- `follows-instruction`, `no-retelling`, `restrictions`: Guardian reads a
-  fixed window of the Conversation, so in a long thread the person's
-  request can fall out of it. In a child agent, the parent's text counts as
-  the person's, also a hold that the parent set. When an agent result or an
-  agent message starts the Turn, Guardian gets no request from the person.
-  An Automation run and a Watch Turn have no person's lines at all.
-- `relayed-words`: a message that a Lead or another agent sends into a
-  root carries no authority. The root asks the person again before it
-  starts the work.
+- `follows-instruction`, `restrictions`: Guardian reads a fixed window of
+  the Conversation, so in a long thread the person's request can fall out
+  of it. An Automation run and a Watch Turn have no person's lines at all.
+- `brief-is-instruction`, `results-are-context`: in a child agent, the
+  parent's later text counts as the person's, also a hold that the parent
+  set. A Turn that an agent result starts gets no instruction.
 - `linked-account`: every Event Turn runs as a system Actor. The person's
   own GitHub comment is context, so the agent asks before it does what the
   comment says.
-- `handoff-task`: a task that includes a step that the requested work
-  needs, such as an update to the proposal that implements a requested
-  design change, can ask as a separate write.
 - `facts-from-junior`, `conventional-steps`: Guardian is not told which
   instruction created a resource, so upkeep of Junior's own pull requests
   can ask.
