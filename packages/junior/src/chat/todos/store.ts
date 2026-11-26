@@ -1,6 +1,6 @@
 /**
  * Durable To-dos of a Conversation. The list's own agent changes them with
- * `updateTodos`; a person can change a status in the dashboard. A child
+ * `todos_updateTodos`; a person can change a status in the dashboard. A child
  * agent can close the To-dos assigned to it, and a read closes the rest
  * once the child's result has reached this Conversation. Each
  * change takes a new version from one global sequence, so the next Turn can
@@ -30,6 +30,7 @@ import {
   type ClosedTodoStatus,
   type Todo,
   type TodoStatus,
+  UPDATE_TODOS_TOOL_NAME,
 } from "./types";
 
 const TODOS_LOCK_PREFIX = "junior:todos";
@@ -79,7 +80,7 @@ function requireKnownIds(rows: Map<number, TodoRow>, ids: number[]) {
   const unknown = ids.filter((id) => !rows.has(id));
   if (unknown.length > 0) {
     throw new ToolInputError(
-      `No To-do has id ${unknown.map(todoRef).join(", ")}. Call updateTodos with no changes to list the open To-dos.`,
+      `No To-do has id ${unknown.map(todoRef).join(", ")}. Call ${UPDATE_TODOS_TOOL_NAME} with no changes to list the open To-dos.`,
     );
   }
 }
