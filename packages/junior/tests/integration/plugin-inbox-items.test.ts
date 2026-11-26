@@ -374,6 +374,20 @@ describe("plugin inbox items", () => {
       closeReason: "Nobody on the item has an ask now.",
       status: "done",
     });
+
+    // Two events that add the item at once both keep their asks.
+    await Promise.all(
+      [ana, bo].map((asked) =>
+        items.upsert({
+          ...NOTICE,
+          askedIdentityIds: [asked.identityId],
+          assigneeIdentityIds: both,
+        }),
+      ),
+    );
+    expect((await assignees()).sort()).toEqual(
+      [ana.user.id, bo.user.id].sort(),
+    );
   });
 
   it("saves a chip and an item close together or not at all", async () => {

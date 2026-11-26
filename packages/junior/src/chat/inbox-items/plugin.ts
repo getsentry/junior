@@ -148,119 +148,128 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginInboxItems {
   const { conversationId, show } = args;
-  return {
-    async upsert(notice: PluginReviewNotice) {
-      const subject = pluginItemSubject(args.plugin, notice.subject);
-      if (!subjectKindLabel(subject.kind, getPlugins())) {
-        throw new Error(
-          `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
-        );
-      }
-      const db = getDb();
-      const existing = await getOpenInboxItemBySubject(db, subject);
-      if (existing) requireOwner(existing, conversationId);
-      const [withAsk, asked] = await Promise.all([
-        assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
-        assigneeUsers(db, notice.askedIdentityIds, conversationId),
-      ]);
-      // A person joins only with the event that gives them an ask. The
-      // others with an ask stay only when they are on the item already, so
-      // a person who left does not come back until a new ask.
-      const current = new Set(
-        existing?.assignees.map((assignee) => assignee.userId),
+  // `retry` is false after a concurrent upsert added the item first.
+  const upsert = async (
+    notice: PluginReviewNotice,
+    retry: boolean,
+  ): Promise<void> => {
+    const subject = pluginItemSubject(args.plugin, notice.subject);
+    if (!subjectKindLabel(subject.kind, getPlugins())) {
+      throw new Error(
+        `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
       );
-      const askedNow = new Set(asked.map((user) => user.userId));
-      const userIds = withAsk
-        .map((user) => user.userId)
-        .filter((userId) => askedNow.has(userId) || current.has(userId));
-      // The item closes when nobody is left: everyone with an ask left it,
-      // or everyone who was on it no longer has one. One for nobody Junior
-      // knows, such as a person with no linked account, stays open with no
-      // assignees.
-      if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
-        if (!existing) return;
-        const itemId = await closePluginInboxItem(db, {
-          conversationId,
-          plugin: args.plugin,
-          reason: NOBODY_LEFT_REASON,
-          status: "done",
-          subject: notice.subject,
-        });
-        if (itemId) await show(itemId);
-        return;
-      }
-      const content: InboxItemContent = {
-        assignedToEveryone: false,
-        assigneeUserIds: userIds,
-        body: notice.body,
-        conversationIds: [
-          ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
-        ],
-        // An item that waits on its assignees is an action: it needs them.
-        kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
-        title: notice.title,
-        subject,
-        ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
-      };
-      // A plugin may show the same item on each event. One with no change
-      // and no new ask writes nothing and shows nothing.
-      if (existing && askedNow.size === 0 && sameContent(existing, content)) {
-        return;
-      }
-      let itemId: string;
-      // False when the item closed after the read above. A closed item does
-      // not make the Conversation wait.
-      let open = true;
-      if (existing) {
-        open = await updateInboxItemContent(db, {
-          ...content,
-          id: existing.id,
-          nowMs: Date.now(),
-        });
-        itemId = existing.id;
-        if (open) {
-          const kept = new Set(userIds);
-          await leaveInboxItem(db, {
-            itemId,
-            nowMs: Date.now(),
-            userIds: [...current].filter((userId) => !kept.has(userId)),
-          });
-          // A new ask on the same item pushes it to that person again, also
-          // to a person who left it and now joins again.
-          await resetInboxItemPushes(db, {
-            itemId,
-            userIds: userIds.filter((userId) => askedNow.has(userId)),
-          });
-        }
-      } else {
-        const item = await insertInboxItem(db, {
-          ...content,
-          owner: { id: conversationId, kind: "conversation" },
-          nowMs: Date.now(),
-        });
-        // Undefined means a concurrent upsert added the item first.
-        if (!item) return;
-        itemId = item.id;
-      }
-      await show(itemId);
-      // An action item means the Conversation waits on a person, also when
-      // an update makes a notice an action. The Event key is the item, so a
-      // later update of the same action does not report it again.
-      if (open && content.kind === "action") {
-        await publishAgentUpdate(
-          conversationId,
-          { type: "waiting", inboxItemId: itemId },
-          {
-            queue: getVercelConversationWorkQueue(),
-            update: async () => ({
-              status: "waiting",
-              text:
-                inboxItemQuestion(content.request)?.question ?? content.body,
-            }),
-          },
-        );
-      }
+    }
+    const db = getDb();
+    const existing = await getOpenInboxItemBySubject(db, subject);
+    if (existing) requireOwner(existing, conversationId);
+    const [withAsk, asked] = await Promise.all([
+      assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
+      assigneeUsers(db, notice.askedIdentityIds, conversationId),
+    ]);
+    // A person joins only with the event that gives them an ask. The
+    // others with an ask stay only when they are on the item already, so
+    // a person who left does not come back until a new ask.
+    const current = new Set(
+      existing?.assignees.map((assignee) => assignee.userId),
+    );
+    const askedNow = new Set(asked.map((user) => user.userId));
+    const userIds = withAsk
+      .map((user) => user.userId)
+      .filter((userId) => askedNow.has(userId) || current.has(userId));
+    // The item closes when nobody is left: everyone with an ask left it,
+    // or everyone who was on it no longer has one. One for nobody Junior
+    // knows, such as a person with no linked account, stays open with no
+    // assignees.
+    if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
+      if (!existing) return;
+      const itemId = await closePluginInboxItem(db, {
+        conversationId,
+        plugin: args.plugin,
+        reason: NOBODY_LEFT_REASON,
+        status: "done",
+        subject: notice.subject,
+      });
+      if (itemId) await show(itemId);
       return;
+    }
+    const content: InboxItemContent = {
+      assignedToEveryone: false,
+      assigneeUserIds: userIds,
+      body: notice.body,
+      conversationIds: [
+        ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
+      ],
+      // An item that waits on its assignees is an action: it needs them.
+      kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
+      title: notice.title,
+      subject,
+      ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
+    };
+    // A plugin may show the same item on each event. One with no change
+    // and no new ask writes nothing and shows nothing.
+    if (existing && askedNow.size === 0 && sameContent(existing, content)) {
+      return;
+    }
+    let itemId: string;
+    // False when the item closed after the read above. A closed item does
+    // not make the Conversation wait.
+    let open = true;
+    if (existing) {
+      open = await updateInboxItemContent(db, {
+        ...content,
+        id: existing.id,
+        nowMs: Date.now(),
+      });
+      itemId = existing.id;
+      if (open) {
+        const kept = new Set(userIds);
+        await leaveInboxItem(db, {
+          itemId,
+          nowMs: Date.now(),
+          userIds: [...current].filter((userId) => !kept.has(userId)),
+        });
+        // A new ask on the same item pushes it to that person again, also
+        // to a person who left it and now joins again.
+        await resetInboxItemPushes(db, {
+          itemId,
+          userIds: userIds.filter((userId) => askedNow.has(userId)),
+        });
+      }
+    } else {
+      const item = await insertInboxItem(db, {
+        ...content,
+        owner: { id: conversationId, kind: "conversation" },
+        nowMs: Date.now(),
+      });
+      // Undefined means a concurrent upsert added the item first. Apply
+      // this change to that item, so the people this event asks join it.
+      if (!item) {
+        if (retry) await upsert(notice, false);
+        return;
+      }
+      itemId = item.id;
+    }
+    await show(itemId);
+    // An action item means the Conversation waits on a person, also when
+    // an update makes a notice an action. The Event key is the item, so a
+    // later update of the same action does not report it again.
+    if (open && content.kind === "action") {
+      await publishAgentUpdate(
+        conversationId,
+        { type: "waiting", inboxItemId: itemId },
+        {
+          queue: getVercelConversationWorkQueue(),
+          update: async () => ({
+            status: "waiting",
+            text: inboxItemQuestion(content.request)?.question ?? content.body,
+          }),
+        },
+      );
+    }
+  };
+  return {
+    async upsert(notice) {
+      await upsert(notice, true);
     },
     async close(input) {
       const itemId = await closePluginInboxItem(getDb(), {
