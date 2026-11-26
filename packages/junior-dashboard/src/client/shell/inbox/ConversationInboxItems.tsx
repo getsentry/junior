@@ -89,14 +89,19 @@ function InboxItemRow(props: {
   defaultExpanded: boolean;
   item: InboxItemPayload;
 }) {
-  const [expanded, setExpanded] = useState(props.defaultExpanded);
-  // A phone opens the item in a sheet, not in place.
+  // A phone opens the item in a sheet, not in place. The two states stay
+  // apart, so rows open in place do not each open a sheet on a resize.
   const mobile = useMobileLayout();
+  const [expanded, setExpanded] = useState(props.defaultExpanded && !mobile);
+  const [sheet, setSheet] = useState(props.defaultExpanded && mobile);
+  if (sheet && !mobile) setSheet(false);
   const kind = inboxItemKind(props.item);
   // Details can already be open when a sidebar review chip highlights it.
   useEffect(() => {
-    if (props.defaultExpanded) setExpanded(true);
-  }, [props.defaultExpanded]);
+    if (!props.defaultExpanded) return;
+    if (mobile) setSheet(true);
+    else setExpanded(true);
+  }, [mobile, props.defaultExpanded]);
   const row = (
     <DetailsRow
       disclosure={!mobile}
@@ -116,7 +121,7 @@ function InboxItemRow(props: {
           />
         </span>
       }
-      onClick={mobile ? () => setExpanded(true) : undefined}
+      onClick={mobile ? () => setSheet(true) : undefined}
       title={inboxItemTitleText(props.item)}
     />
   );
@@ -124,11 +129,8 @@ function InboxItemRow(props: {
     return (
       <>
         {row}
-        {expanded ? (
-          <InboxItemSheet
-            item={props.item}
-            onClose={() => setExpanded(false)}
-          />
+        {sheet ? (
+          <InboxItemSheet item={props.item} onClose={() => setSheet(false)} />
         ) : null}
       </>
     );
