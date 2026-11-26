@@ -14,9 +14,11 @@ const repositoryMoveSchema = z.object({
   changes: z.object({
     owner: z
       .object({
+        // GitHub sends the side that the repository did not belong to as
+        // null.
         from: z.object({
-          organization: login.optional(),
-          user: login.optional(),
+          organization: login.nullish(),
+          user: login.nullish(),
         }),
       })
       .optional(),

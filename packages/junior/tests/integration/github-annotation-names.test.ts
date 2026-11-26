@@ -1,7 +1,7 @@
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
 import { asc, eq } from "drizzle-orm";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createApp, defineJuniorPlugins } from "@/app";
@@ -309,6 +309,53 @@ describe("GitHub Annotations without GitHub's id of their object", () => {
     ]);
   });
 
+  it("follow a chain of renames, so each issue stays on its own repository", async () => {
+    // `getsentry/ant` is now `getsentry/bee`, and the repository that was
+    // `getsentry/bee` is now `getsentry/cat`.
+    const ant = await conversation("slack:C123:ant-issue");
+    const bee = await conversation("slack:C123:bee-issue");
+    for (const [id, repo] of [
+      [ant, "getsentry/ant"],
+      [bee, "getsentry/bee"],
+    ] as const) {
+      await saveLegacyAnnotation(id, {
+        key: `${repo}#5`,
+        kind: "object",
+        objectType: "task",
+        url: `https://github.com/${repo}/issues/5`,
+      });
+    }
+    // The later rename is found last, so the moves run in the wrong order
+    // unless they are ordered.
+    for (const [from, to, id, wait] of [
+      ["getsentry/ant", "getsentry/bee", 5_000, 0],
+      ["getsentry/bee", "getsentry/cat", 6_000, 50],
+    ] as const) {
+      mswServer.use(
+        http.get(`${API}/repos/${from}/issues/5`, async () => {
+          await delay(wait);
+          return HttpResponse.json({
+            html_url: `https://github.com/${to}/issues/5`,
+            id,
+            number: 5,
+          });
+        }),
+        http.get(`${API}/repos/${from}`, () =>
+          HttpResponse.json({ full_name: to, id: id / 1000 }),
+        ),
+      );
+    }
+
+    await heartbeat();
+
+    expect(await annotationsOf(ant)).toEqual([
+      expect.objectContaining({ key: "getsentry/bee#5", subjectId: "5000" }),
+    ]);
+    expect(await annotationsOf(bee)).toEqual([
+      expect.objectContaining({ key: "getsentry/cat#5", subjectId: "6000" }),
+    ]);
+  });
+
   it("sweep once an Annotation that has GitHub's id, so a rename before this release finds it by the new name", async () => {
     const issue = await conversation("slack:C123:renamed-named-issue");
     await saveLegacyAnnotation(issue, {
@@ -512,7 +559,7 @@ describe("a GitHub issue of a renamed repository", () => {
     }
   }
 
-  it("is found by the new name and link after the rename webhook", async () => {
+  it("is found by the new name and link after the rename and transfer webhooks", async () => {
     await createIssue();
 
     await sendGitHubWebhook(app, "repository", {
@@ -555,6 +602,27 @@ describe("a GitHub issue of a renamed repository", () => {
         slackParentConversationId,
       ]);
     }
+
+    // GitHub sends the side that the repository did not belong to as null.
+    await sendGitHubWebhook(app, "repository", {
+      action: "transferred",
+      changes: {
+        owner: { from: { organization: { login: "getsentry" }, user: null } },
+      },
+      repository: {
+        full_name: "sentry-labs/junior-next",
+        id: 2001,
+        name: "junior-next",
+        owner: { login: "sentry-labs" },
+      },
+    });
+
+    expect(await annotationsOf(slackParentConversationId)).toEqual([
+      expect.objectContaining({
+        key: "sentry-labs/junior-next#4254",
+        url: "https://github.com/sentry-labs/junior-next/issues/4254",
+      }),
+    ]);
   });
 
   it("keeps one Annotation when a tool changes the issue by its new name", async () => {
