@@ -32,8 +32,8 @@ import {
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { startLocationThread } from "@/chat/conversations/sql/location";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import {
-  historyItemFromPiMessage,
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,

@@ -1,8 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { encodeHistoryPayload } from "@/chat/conversations/history-payload";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { encodeEventPayload } from "@/chat/conversations/sql/history";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { slackIdFromText } from "./slack/factories/ids";
@@ -22,7 +22,7 @@ export async function insertLegacyEvent(
   conversationId: string,
   args: {
     createdAtMs: number;
-    data: Parameters<typeof encodeHistoryPayload>[0];
+    data: Parameters<typeof encodeEventPayload>[0];
     replacesHistory?: boolean;
   },
 ): Promise<void> {
@@ -37,7 +37,7 @@ export async function insertLegacyEvent(
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
   const historyVersion = cursor?.historyVersion ?? 0;
-  const encoded = encodeHistoryPayload(args.data);
+  const encoded = encodeEventPayload(args.data);
   await getDb()
     .insert(juniorConversationEvents)
     .values({

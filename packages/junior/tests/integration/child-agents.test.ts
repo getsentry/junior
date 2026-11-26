@@ -26,7 +26,7 @@ import {
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import {
   countAutomatedTurn,
   getAutomatedTurnLimitState,
