@@ -375,17 +375,22 @@ export function InboxItemAskRow(props: {
           {mobile ? (
             // The button covers the whole record, so a tap anywhere on it
             // opens the sheet.
+            // The title truncates in its own span: a clipped button would
+            // clip its cover too.
             <button
               aria-haspopup="dialog"
               className={cn(
-                QUOTE_TITLE_CLASS,
-                "after:absolute after:inset-0 after:rounded-[inherit]",
-                item.status === "dismissed" && "text-dashboard-text-muted",
+                "flex min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left font-medium underline decoration-dashboard-border-heavy underline-offset-2 after:absolute after:inset-0 after:rounded-[inherit] hover:decoration-current focus-visible:outline-dashboard-focus",
+                item.status === "dismissed"
+                  ? "text-dashboard-text-muted"
+                  : "text-dashboard-text",
               )}
               onClick={() => setSheet(true)}
               type="button"
             >
-              <InboxItemTitle item={item} />
+              <span className="min-w-0 truncate">
+                <InboxItemTitle item={item} />
+              </span>
             </button>
           ) : (
             <InboxItemPreview

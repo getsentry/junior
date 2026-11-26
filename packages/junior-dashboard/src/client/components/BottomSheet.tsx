@@ -52,7 +52,9 @@ export function BottomSheet(props: BottomSheetProps) {
  * A `BottomSheet` for an open state that its owner keeps, such as a list's
  * open row on a phone. It shows while `open`, and through its motion once
  * `open` turns false. `onDismiss` runs when the reader shuts it while it is
- * still open, so the owner can close its state.
+ * still open, so the owner can close its state. When `open` turns true
+ * again during the motion, as when a failed action restores its row, a new
+ * sheet opens once the old one is shut.
  */
 export function ToggleSheet(
   props: Omit<BottomSheetProps, "onClose" | "open"> & {
@@ -62,16 +64,26 @@ export function ToggleSheet(
 ) {
   const { onDismiss, open, ...sheet } = props;
   const [shown, setShown] = useState(false);
-  if (open && !shown) setShown(true);
+  // Each opening gets its own sheet, since a shutting sheet cannot reopen.
+  const [opening, setOpening] = useState(0);
+  // Whether the owner shut this sheet, not the reader.
+  const [ownerShut, setOwnerShut] = useState(false);
+  if (open && !shown) {
+    setShown(true);
+    setOpening(opening + 1);
+  }
+  if (!open && shown && !ownerShut) setOwnerShut(true);
   if (!shown) return null;
   return (
     <BottomSheet
       {...sheet}
+      key={opening}
       onClose={() => {
         setShown(false);
-        if (open) onDismiss();
+        setOwnerShut(false);
+        if (!ownerShut) onDismiss();
       }}
-      open={open}
+      open={open && !ownerShut}
     />
   );
 }

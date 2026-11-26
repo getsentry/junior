@@ -6,7 +6,8 @@ import { expect, type Locator } from "@playwright/test";
  */
 export async function openAsk(record: Locator, phone: boolean) {
   if (!phone) return record;
-  await record.click();
+  // A tap on the record's corner, away from its title, opens it too.
+  await record.click({ position: { x: 4, y: 4 } });
   const sheet = record.page().getByRole("dialog");
   await expect(sheet).toBeVisible();
   return sheet;
