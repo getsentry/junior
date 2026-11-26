@@ -93,10 +93,10 @@ person, and each person may only Leave on their own. A Slack-backed one
 follows its channel instead. This rule never lets one Conversation read
 another.
 
-In a private Space, membership decides instead. Every member may read each
-of its Conversations and join one by posting. A person who is not a member
-may not read or act on them, even as a participant, and gets "not found"
-for the Space. A member adds people to it.
+In a private Space, membership decides instead. Its members are the
+Participants of its Lead, and each may read and post in its Conversations.
+A person who is not a member may not read or act on them and gets "not
+found" for the Space. A member adds people to it.
 
 ## Surfaces
 

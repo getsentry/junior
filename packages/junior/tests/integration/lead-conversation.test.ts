@@ -49,14 +49,14 @@ function readRunsAgentRunner() {
   };
 }
 
-/** Create a Space with `member` in it, and make its Lead. */
+/** Create a Space with `member` in it, and read its Lead. */
 async function spaceLead(
   member: User,
   name = "Deploys",
   visibility: "private" | "public" = "public",
 ) {
   const space = await createSpace({
-    creatorUserId: member.id,
+    creator: member,
     description: null,
     visibility,
     name,
@@ -146,13 +146,13 @@ describe("Lead", () => {
   it("keeps one public Lead for each Space, named for the Space", async () => {
     const ana = await signedInViewer("lead-ana@example.com");
     const space = await createSpace({
-      creatorUserId: ana.id,
+      creator: ana,
       description: null,
       visibility: "public",
       name: "Billing migration",
     });
 
-    // Two first requests at once still make one Lead.
+    // Creating the Space made its Lead, so two reads at once return it.
     const [first, second] = await Promise.all([
       getSpaceLead({ member: ana, space }),
       getSpaceLead({ member: ana, space }),

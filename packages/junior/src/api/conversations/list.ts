@@ -39,9 +39,9 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
-  readPrivateSpaceMemberships,
 } from "./access";
 import {
+  conversationIdsWithParticipantUser,
   conversationPinnedForUser,
   conversationIsMemberRoot,
   rootSpaceReadableBy,
@@ -736,14 +736,31 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
-  // This reads only when a row is in a private Space.
-  const memberSpaceIds = options.viewer
-    ? await readPrivateSpaceMemberships(db, accessRows, options.viewer.id)
-    : new Set<string>();
+  // A Lead's child has the Lead as its root. This reads only when a row is
+  // one, since other feed rows are their own roots.
+  const leadRootIds = [
+    ...new Set(
+      accessRows.flatMap((row) =>
+        row.storedRootConversationId &&
+        row.storedRootConversationId !== row.conversationId
+          ? [row.storedRootConversationId]
+          : [],
+      ),
+    ),
+  ];
+  const leadParticipantIds =
+    options.viewer && leadRootIds.length > 0
+      ? await conversationIdsWithParticipantUser(
+          db,
+          leadRootIds,
+          options.viewer.id,
+        )
+      : new Set<string>();
   const accessByConversation = conversationAccessFromRows(
     accessRows,
-    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
-    memberSpaceIds,
+    options.viewer
+      ? new Set([...participantsByRoot.keys(), ...leadParticipantIds])
+      : new Set(),
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
