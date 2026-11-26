@@ -628,7 +628,11 @@ export function ConversationPage(props: {
   const sidePanel = (
     <>
       {detailsShown && lead && spaceId ? (
-        <SpaceDetailsPanel onClose={closeDetails} spaceId={spaceId} />
+        <SpaceDetailsPanel
+          leadId={conversationId}
+          onClose={closeDetails}
+          spaceId={spaceId}
+        />
       ) : detailsShown && !lead ? (
         <ConversationDetailsPanel
           conversation={conversation}
