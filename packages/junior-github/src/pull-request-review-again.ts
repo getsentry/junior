@@ -103,6 +103,19 @@ const requiredChecksReadSchema = z.object({
   }),
 });
 
+const feedbackReviewSchema = reactorsSchema.extend({
+  body: z.string(),
+  comments: z.object({
+    nodes: z.array(
+      reactorsSchema.extend({ databaseId: z.number().nullable() }).nullable(),
+    ),
+    totalCount: z.number(),
+  }),
+  databaseId: z.number().nullable(),
+  state: z.string(),
+  submittedAt: z.string().nullable(),
+});
+
 const reviewAgainSchema = z.object({
   data: z.object({
     repository: z.object({
@@ -121,26 +134,8 @@ const reviewAgainSchema = z.object({
               .nullable(),
           ),
         }),
-        reviews: z.object({
-          nodes: z.array(
-            reactorsSchema
-              .extend({
-                body: z.string(),
-                comments: z.object({
-                  nodes: z.array(
-                    reactorsSchema
-                      .extend({ databaseId: z.number().nullable() })
-                      .nullable(),
-                  ),
-                  totalCount: z.number(),
-                }),
-                databaseId: z.number().nullable(),
-                state: z.string(),
-                submittedAt: z.string().nullable(),
-              })
-              .nullable(),
-          ),
-        }),
+        decision: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
+        reviews: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
         timelineItems: z.object({
           nodes: z.array(
             z
@@ -236,11 +231,7 @@ function requiredChecksPass(
   return true;
 }
 
-type FeedbackReview = NonNullable<
-  z.output<
-    typeof reviewAgainSchema
-  >["data"]["repository"]["pullRequest"]["reviews"]["nodes"][number]
->;
+type FeedbackReview = z.output<typeof feedbackReviewSchema>;
 
 /**
  * Return the reviews whose comments Junior must mark before it asks again,
@@ -251,36 +242,32 @@ type FeedbackReview = NonNullable<
  * comment-only reviews after a later ask count, so a comment on an
  * approved pull request does not ask again. For others, a comment-only
  * review is left out, so a reply to Junior does not hide their change
- * request. A long discussion can push the decision and older comments out
- * of the reviews read. Junior answers each comment as it comes, so it asks
- * once the comments it reads are marked, and the discussion does not stall.
+ * request. `decided` is read on its own, so a long discussion does not
+ * hide an approval. A long discussion can push older comments out of
+ * `comments`. Junior answers each comment as it comes, so it asks once the
+ * comments it reads are marked, and the discussion does not stall.
  */
 async function feedbackReviews(
-  reviews: FeedbackReview[],
+  decided: FeedbackReview | undefined,
+  comments: FeedbackReview[],
   askedAt: number,
   commentsCount: () => Promise<boolean>,
 ): Promise<FeedbackReview[] | undefined> {
-  let decidedIndex = reviews.length - 1;
-  while (decidedIndex >= 0 && reviews[decidedIndex]?.state === "COMMENTED") {
-    decidedIndex -= 1;
-  }
-  const decided = reviews[decidedIndex];
   // A dismissed review resets the decision, as an approval stands, so only
   // comments after a later ask count (`requesterFeedback`).
   const decidedAt =
     decided?.state === "APPROVED" || decided?.state === "DISMISSED"
       ? Date.parse(decided.submittedAt ?? "")
       : undefined;
-  const comments = reviews
-    .slice(decidedIndex + 1)
-    .filter(
-      (review) =>
-        decidedAt === undefined ||
-        (askedAt > decidedAt && Date.parse(review.submittedAt ?? "") > askedAt),
-    );
+  const since = Date.parse(decided?.submittedAt ?? "");
+  const feedback = comments.filter((review) => {
+    const at = Date.parse(review.submittedAt ?? "");
+    if (decided && !(at > since)) return false;
+    return decidedAt === undefined || (askedAt > decidedAt && at > askedAt);
+  });
   const changeRequest = decided?.state === "CHANGES_REQUESTED";
-  if (comments.length > 0 && (await commentsCount())) {
-    return changeRequest ? [decided, ...comments] : comments;
+  if (feedback.length > 0 && (await commentsCount())) {
+    return changeRequest ? [decided, ...feedback] : feedback;
   }
   return changeRequest ? [decided] : undefined;
 }
@@ -337,6 +324,7 @@ export async function readReviewAgainReadiness(
     ),
   );
   const reviews = await feedbackReviews(
+    pull.decision.nodes[0] ?? undefined,
     pull.reviews.nodes.filter((review) => review !== null),
     askedAt,
     async () => (await target.isRequester?.()) ?? false,

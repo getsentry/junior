@@ -306,6 +306,28 @@ describe("review again after a comment-only review", () => {
       expect(
         requests.filter((request) => request.startsWith("request")),
       ).toEqual(["request Requester"]);
+
+      // An approval before the same discussion stands, though the
+      // discussion is longer than the page of comments that GitHub returns.
+      requests.length = 0;
+      github.requestedReviewers = [];
+      github.reviews.unshift({
+        state: "APPROVED",
+        submitted_at: "2026-07-02T09:30:00Z",
+        user: { login: "Requester" },
+      });
+      github.reviewRequests = [
+        { at: "2026-07-02T09:00:00Z", login: "Requester" },
+      ];
+      await markFeedback(
+        state,
+        { id: ids.at(-1) ?? 0, kind: "review" },
+        "addressed",
+        fixture,
+      );
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual([]);
     } finally {
       await fixture.close();
     }
