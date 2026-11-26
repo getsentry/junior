@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JuniorSqlExecutor } from "@/db/db";
-import { DEFAULT_SQL_STATEMENT_TIMEOUT_MS } from "@/config";
+import { DEFAULT_SQL_STATEMENT_TIMEOUT_MS } from "@/config/sql";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";

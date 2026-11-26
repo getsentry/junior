@@ -9,7 +9,7 @@ import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/hear
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getChatConfig } from "@/chat/config";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
