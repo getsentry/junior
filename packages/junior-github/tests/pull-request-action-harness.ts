@@ -217,6 +217,11 @@ export interface GitHubState {
   laggingFeedback?: string[];
   /** GitHub rejects review requests, such as during an outage. */
   rejectReviewRequests?: boolean;
+  /**
+   * Each user's base role on the repository, by login. A user who is not
+   * listed has write access, so they can merge.
+   */
+  permissions?: Record<string, "admin" | "none" | "read" | "write">;
   /** The checks of the head commit. */
   checks?: Array<{ conclusion: string | null; name: string; status: string }>;
   /** The checks that a ruleset of the base branch requires. */
@@ -434,6 +439,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         const { content } = (await request.json()) as { content: string };
         (github.feedback ??= {})[`comment:${String(params["id"])}`] = content;
         return HttpResponse.json({ content, id: 1 }, { status: 201 });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+      ({ params }) => {
+        const login = String(params["login"]);
+        requests.push(`permission ${login}`);
+        const permission = github.permissions?.[login] ?? "write";
+        return HttpResponse.json({ permission, role_name: permission });
       },
     ),
     http.get(
@@ -705,10 +719,12 @@ export function route(
       };
     },
   };
-  // These webhooks use no Conversation dispatch or cache.
+  // These webhooks use no Conversation dispatch.
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  // The requester's repository access stays cached across webhooks.
+  const cached = new Map<string, unknown>();
   const annotations: PluginConversationAnnotations = {
     forConversation() {
       return {
@@ -745,7 +761,10 @@ export function route(
       async update() {},
       delete: unused,
       get: unused,
-      getOrLoad: unused,
+      async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+        if (!cached.has(key)) cached.set(key, (await load()).value);
+        return cached.get(key) as T;
+      },
     },
     inboxItems,
     state,
