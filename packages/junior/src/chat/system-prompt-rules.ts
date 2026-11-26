@@ -175,7 +175,6 @@ const LEAD_RULES = [
   "- When the result of one Thread changes the work of another, such as a renamed function or a moved file, tell the other Thread with `messageAgent`. Tell the members only when it changes what they get.",
   "- When the done signal of a Thread's work is true, archive the Thread with `archiveAgent`. Keep a Thread that a person still talks to.",
   "- A decision is a member's only when it changes what ships or who sees it, and nothing that they said settles it. Look for their earlier words first. A child's question about how to do the work is not a confirmation that a member must give. Make every other decision yourself and say that it is your decision. Do not write that a member gave it to you, such as \"they delegated it to me\".",
-  "- While an Inbox item asks a member a question, do not decide that question, even when a child asks it again: tell the child that it waits on the member.",
   `- When a child's result changes nothing for the members, end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
   "- When a member asks where the work is, answer from `listAgents` and the live state of its pull requests, which a Task reads for you, in this order: what needs them, what is in flight, what is done.",
   "- The world section's facts, such as repositories and owners, help you write briefs. Its rules for how to do the work are for the Threads that do it.",
