@@ -42,6 +42,14 @@ const run = {
   check_suite_id: 42,
   pull_requests: [pullRequest],
 };
+// The reviews that the review Watch evals send for this PR, by id, with the
+// login that wrote each one.
+const reviewers = new Map([
+  [9_002, "octo-reviewer"],
+  [9_003, "octo-requester"],
+  [9_004, "octo-requester"],
+  [9_005, "octo-requester"],
+]);
 const job = {
   ...check,
   run_id: 1,
@@ -147,6 +155,24 @@ export async function interceptTestGitHubChecksHttp(
     return undefined;
   }
   if (request.method !== "GET") return undefined;
+  const reviewId = url.pathname.match(
+    new RegExp(`^${api}/pulls/691/reviews/(\\d+)$`),
+  )?.[1];
+  if (reviewId) {
+    const login = reviewers.get(Number(reviewId));
+    return login
+      ? Response.json({
+          id: Number(reviewId),
+          node_id: `PRR_eval${reviewId}`,
+          user: { login, type: "User" },
+        })
+      : Response.json({ message: "Not Found" }, { status: 404 });
+  }
+  // The PR has reviews but no inline review comments, so GitHub finds no
+  // review comment for a review id.
+  if (url.pathname.startsWith(`${api}/pulls/comments/`)) {
+    return Response.json({ message: "Not Found" }, { status: 404 });
+  }
   // oxlint-disable-next-line junior/no-value-switch -- A fake server routes by URL path, not by type.
   switch (url.pathname) {
     // GitHub's issue endpoint also returns pull requests. Title generation

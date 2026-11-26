@@ -66,6 +66,18 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
   );
   expect(logs).toContain(checks.check_runs[0].output.summary);
 
+  // The feedback tool and webhook read a review by id. The PR has no inline
+  // review comments, so a review id is not a review comment.
+  const review = await fetch(`${api}/pulls/691/reviews/9003`).then((response) =>
+    response.json(),
+  );
+  expect(review).toMatchObject({
+    id: 9_003,
+    node_id: expect.any(String),
+    user: { login: "octo-requester" },
+  });
+  expect((await fetch(`${api}/pulls/comments/9004`)).status).toBe(404);
+
   // Unspecified paths fail at the fixture edge; they cannot reach live GitHub.
   const unknown = new URL(`${api}/actions/runs/999`);
   expect(
