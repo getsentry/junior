@@ -1,4 +1,8 @@
 import {
+  historyReplacementSchema,
+  type HistoryReplacement,
+} from "@/core/history/items";
+import {
   and,
   asc,
   desc,
@@ -14,14 +18,12 @@ import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
   decodeStoredConversationEvent,
-  historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
   type ConversationEventPage,
   type ConversationEventQuery,
   type ConversationEventStore,
   type ConversationEventData,
-  type HistoryReplacement,
   type HistoryReplacementResult,
   type KnownConversationEventType,
   type MessageHistory,
@@ -39,7 +41,7 @@ import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
-import { withConversationEventLock } from "./event-lock";
+import { withConversationEventLock } from "@/core/history/lock";
 import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
