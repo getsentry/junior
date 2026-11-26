@@ -7,8 +7,8 @@ import { defineJuniorPlugins } from "@/plugins";
 import {
   createConversationWorkHarness,
   createConversationWorkQueueTestAdapter,
-  runTestHeartbeat,
 } from "../../../../fixtures/conversation-work";
+import { createPluginTaskSendTestAdapter } from "../../../../fixtures/plugin-task-queue";
 import { finishRun } from "../../../../fixtures/thread-input";
 import {
   connectMcpTools,
@@ -79,20 +79,24 @@ describe("createConversation MCP tool", () => {
     const docUrl = "https://docs.test/d/1";
     const steeredUrl = "https://docs.test/d/2";
     let steered = false;
-    const work = await createConversationWorkHarness({
-      run: async (run) => {
-        if (!steered) {
-          steered = true;
-          await call("sendMessage", {
-            conversationId: run.conversationId,
-            delivery: "interrupt",
-            message: `Also ${steeredUrl}`,
-          });
-          await run.durability?.drainSteeringMessages?.(async () => {});
-        }
-        return await finishRun(run);
+    const tasks = createPluginTaskSendTestAdapter();
+    const work = await createConversationWorkHarness(
+      {
+        run: async (run) => {
+          if (!steered) {
+            steered = true;
+            await call("sendMessage", {
+              conversationId: run.conversationId,
+              delivery: "interrupt",
+              message: `Also ${steeredUrl}`,
+            });
+            await run.durability?.drainSteeringMessages?.(async () => {});
+          }
+          return await finishRun(run);
+        },
       },
-    });
+      { sendPluginTask: tasks.send },
+    );
     const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
       conversationWorkQueue: () => work.queue,
       plugins: defineJuniorPlugins([
@@ -126,7 +130,11 @@ describe("createConversation MCP tool", () => {
     ).structuredContent as { conversationId: string };
     await work.process(work.queue.takeMessageFor(conversationId));
 
-    await runTestHeartbeat(work.queue, Date.now());
+    // The Turn start and the steered Message each sent an attach task.
+    expect(
+      tasks.sent().filter(({ message }) => message.plugin === "sent-links"),
+    ).toHaveLength(2);
+    await tasks.deliver();
     const links = await listConversationAnnotations(getDb(), conversationId);
     expect(
       links

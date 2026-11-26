@@ -4,10 +4,16 @@
  * the time of each delivery, as the queue's delay and backoff would.
  */
 import type { createApp } from "@/app";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import type {
   PluginTaskQueueMessage,
   PluginTaskSendOptions,
 } from "@/chat/plugins/task-queue";
+import {
+  processPluginTask,
+  type SendPluginTask,
+} from "@/chat/plugins/task-runner";
+import { createConversationWorkQueueTestAdapter } from "./conversation-work";
 
 type PluginTaskQueueOption = NonNullable<
   NonNullable<Parameters<typeof createApp>[0]>["pluginTaskQueue"]
@@ -60,4 +66,27 @@ export function createPluginTaskQueueTestAdapter() {
       return due.length;
     },
   };
+}
+
+/**
+ * Create the queue for code that takes a `SendPluginTask`, such as
+ * `createConversationWorkHarness`. The production task runner consumes it.
+ */
+export function createPluginTaskSendTestAdapter() {
+  const tasks = createPluginTaskQueueTestAdapter();
+  // Conversations that the tasks' Events wake.
+  const wakes = createConversationWorkQueueTestAdapter();
+  const queue = tasks.pluginTaskQueue(
+    async (message, delivery) =>
+      await processPluginTask(message, {
+        deliveryCount: delivery?.deliveryCount,
+        events: createEventAppPublisher({
+          conversationWork: () => ({ queue: wakes }),
+        }),
+        sendPluginTask: send,
+      }),
+  );
+  const send: SendPluginTask = async (message, options) =>
+    await queue.send(message, options);
+  return { deliver: tasks.deliver, send, sent: tasks.sent };
 }

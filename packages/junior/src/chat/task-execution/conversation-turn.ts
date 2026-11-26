@@ -117,6 +117,8 @@ import {
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
+import { startSentLinksAttach } from "@/chat/conversations/sent-links";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   type eventBatchMessageMeta,
@@ -176,8 +178,14 @@ function turnAnswerText(reply: AgentRunResult): TurnAnswerText | undefined {
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
   deliverMessage?: DeliverMessage,
-  updates?: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
+  updates?: {
+    queue: ConversationWorkQueue;
+    /** Starts the attach of the links that a Turn's input sends. */
+    sendPluginTask?: SendPluginTask | undefined;
+    state?: StateAdapter | undefined;
+  },
 ) {
+  const sendPluginTask = updates?.sendPluginTask;
   const lifecycle = updates
     ? new ConversationTurnLifecycleService(getConversationEventStore(), {
         state: updates.state,
@@ -512,6 +520,12 @@ export function createConversationTurnWorker(
             threadContextThroughSeq: latestConversationMessageSeq(conversation),
             turnId,
           });
+          if (sendPluginTask) {
+            await startSentLinksAttach(sendPluginTask, {
+              conversationId: context.conversationId,
+              key: turnId,
+            });
+          }
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
@@ -679,6 +693,7 @@ export function createConversationTurnWorker(
                         author,
                         context,
                         conversation,
+                        sendPluginTask,
                         turnId,
                       }),
                     }

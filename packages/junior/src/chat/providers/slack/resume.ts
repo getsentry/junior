@@ -6,6 +6,7 @@
  * authorization pause notices use `sendSlackReply` so the footer stays
  * consistent.
  */
+import { startSentLinksAttach } from "@/chat/conversations/sent-links";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
@@ -667,6 +668,10 @@ async function resumeSlackTurnInContext(
         createdAtMs: Date.now(),
         inputMessageIds: [...new Set(runArgs.inputMessageIds)],
         surface: "slack",
+      });
+      await startSentLinksAttach(runArgs.sendPluginTask, {
+        conversationId: runArgs.conversationId,
+        key: runArgs.turnId,
       });
     }
     const outcome = await runArgs.executeTurn(run, async (result) => {

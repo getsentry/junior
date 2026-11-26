@@ -10,6 +10,7 @@ import { memoryRegistration } from "@/chat/memory/registration";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
 import { relatedConversationsRegistration } from "@/chat/related-conversations/registration";
+import { sentLinksRegistration } from "@/chat/conversations/sent-links";
 import { todosRegistration } from "@/chat/todos/registration";
 
 /** Return whether a core feature owns this registration name. */
@@ -21,6 +22,7 @@ export function isCoreRegistrationName(name: string): boolean {
     memoryRegistration(),
     notificationsTaskRegistration,
     relatedConversationsRegistration,
+    sentLinksRegistration,
     todosRegistration,
   ].some((registration) => registration.manifest.name === name);
 }
@@ -35,15 +37,16 @@ export function apiRoutePrefix(name: string): string {
 
 /**
  * Return enabled core registrations: event search, Memory, related
- * Conversations, To-dos, and reply notifications. Event search always stores
- * lexemes, which cost no provider call. It embeds events only when event
- * embeddings are enabled.
+ * Conversations, sent links, To-dos, and reply notifications. Event search
+ * always stores lexemes, which cost no provider call. It embeds events only
+ * when event embeddings are enabled.
  */
 export function coreRegistrations(): PluginRegistration[] {
   return [
     eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
     memoryRegistration(),
     relatedConversationsRegistration,
+    sentLinksRegistration,
     todosRegistration,
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];

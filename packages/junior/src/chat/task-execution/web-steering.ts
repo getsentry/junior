@@ -20,6 +20,7 @@ import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { loadInboxItemInput } from "@/chat/inbox-items/prompt-input";
 import { webConversationMessage } from "@/chat/task-execution/mailbox-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 async function steeringMessageFromWeb(
@@ -54,9 +55,11 @@ export function createWebSteeringDrain(args: {
   author: ConversationAuthor;
   context: ConversationWorkerContext;
   conversation: ThreadConversationState;
+  /** Starts the attach of the steered Messages' links. */
+  sendPluginTask?: SendPluginTask | undefined;
   turnId: string;
 }) {
-  const { actor, author, context, conversation, turnId } = args;
+  const { actor, author, context, conversation, sendPluginTask, turnId } = args;
   return async (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ): Promise<AgentSteeringMessage[]> => {
@@ -84,6 +87,7 @@ export function createWebSteeringDrain(args: {
         conversationId: context.conversationId,
       });
       await queueSteeredLinks(
+        sendPluginTask,
         context.conversationId,
         joining.map((message) => message.inboundMessageId),
       );

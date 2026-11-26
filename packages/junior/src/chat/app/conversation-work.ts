@@ -115,7 +115,11 @@ export function createConversationWork(
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
-    { queue: options.queue, state: options.state },
+    {
+      queue: options.queue,
+      sendPluginTask: options.sendPluginTask,
+      state: options.state,
+    },
   );
   const runWithStopCascade = async (
     context: ConversationWorkerContext,

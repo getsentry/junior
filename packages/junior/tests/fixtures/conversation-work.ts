@@ -1,4 +1,5 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
@@ -474,7 +475,11 @@ export type ConversationWorkSlackHarness = {
  */
 export async function createConversationWorkHarness(
   agentRunner: AgentRunner,
-  options: { services?: JuniorRuntimeServiceOverrides } = {},
+  options: {
+    /** Where Turns send plugin tasks. Defaults to the Vercel queue. */
+    sendPluginTask?: SendPluginTask;
+    services?: JuniorRuntimeServiceOverrides;
+  } = {},
 ) {
   const state = getStateAdapter();
   await state.connect();
@@ -496,7 +501,7 @@ export async function createConversationWorkHarness(
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
-    sendPluginTask: sendVercelPluginTask,
+    sendPluginTask: options.sendPluginTask ?? sendVercelPluginTask,
     ...(options.services ? { services: options.services } : undefined),
     state,
   });

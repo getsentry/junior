@@ -30,6 +30,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { linkSlackUser } from "../../fixtures/slack-user";
+import { createPluginTaskSendTestAdapter } from "../../fixtures/plugin-task-queue";
 import { finishRun } from "../../fixtures/thread-input";
 import { signedInViewer } from "../../fixtures/user";
 
@@ -309,10 +310,12 @@ describe("attach a linked object", () => {
     expect(await nextTurnNotes("task-turn", taskId)).toEqual([]);
   });
 
-  it("attaches the links of a Slack mention as its author on the next heartbeat", async () => {
-    const work = await createConversationWorkHarness({
-      run: async (run) => await finishRun(run),
-    });
+  it("attaches the links of a Slack mention as its author when its Turn starts", async () => {
+    const tasks = createPluginTaskSendTestAdapter();
+    const work = await createConversationWorkHarness(
+      { run: async (run) => await finishRun(run) },
+      { sendPluginTask: tasks.send },
+    );
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
@@ -332,7 +335,11 @@ describe("attach a linked object", () => {
       await listConversationAnnotations(getDb(), SLACK_CONVERSATION_ID),
     ).toEqual([]);
 
-    await runTestHeartbeat(work.queue, Date.now());
+    // The Turn start sent the attach task, so no heartbeat runs first.
+    expect(
+      tasks.sent().filter(({ message }) => message.plugin === "sent-links"),
+    ).toHaveLength(1);
+    await tasks.deliver();
     const annotations = await listConversationAnnotations(
       getDb(),
       SLACK_CONVERSATION_ID,

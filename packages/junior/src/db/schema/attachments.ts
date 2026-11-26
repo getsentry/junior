@@ -100,7 +100,7 @@ export const juniorMessageAttachments = pgTable(
       name: "junior_message_attachments_pk",
       columns: [table.conversationId, table.seq, table.attachmentId],
     }),
-    // The heartbeat reads only the due links, which are few.
+    // Attach runs read only the due links, which are few.
     index("junior_message_attachments_attach_due_idx")
       .on(table.attachDueAt)
       .where(sql`${table.attachDueAt} IS NOT NULL`),

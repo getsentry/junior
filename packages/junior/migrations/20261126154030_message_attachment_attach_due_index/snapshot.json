@@ -2,8 +2,8 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "717d620e-4918-4c2a-a287-4cd2678f6b0a",
-  "prevIds": ["ea997711-00a4-4903-8b84-e619c988fdc7"],
+  "id": "1f63cbc2-e1a4-4ed2-bbb6-e959eb2bc9c5",
+  "prevIds": ["a8a3dad6-a652-4ad7-839f-98402b2d04ad"],
   "footprints": [
     {
       "statementType": "create_index",

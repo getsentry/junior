@@ -152,7 +152,10 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
-import { queueSteeredLinks } from "@/chat/conversations/sent-links";
+import {
+  queueSteeredLinks,
+  startSentLinksAttach,
+} from "@/chat/conversations/sent-links";
 import {
   deliversFinalText,
   postsRunNotices,
@@ -693,6 +696,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             ),
             turnId,
           });
+          await startSentLinksAttach(deps.sendPluginTask, {
+            conversationId,
+            key: turnId,
+          });
         }
         if (conversationId) {
           const turnStartedAtMs = message.metadata.dateSent.getTime();
@@ -1081,6 +1088,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                     });
                     // Untagged Messages are thread context, not input.
                     await queueSteeredLinks(
+                      deps.sendPluginTask,
                       conversationId,
                       queuedMessages
                         .filter((queued) => queued.explicitMention)
