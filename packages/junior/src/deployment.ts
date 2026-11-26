@@ -28,37 +28,40 @@ export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =
  */
 export const SERVICE_INSTANCE_ID = randomUUID();
 
+type Env = Record<string, string | undefined>;
+
 function toOptionalTrimmed(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 }
 
-/** Resolve the deployment version used for release and telemetry correlation. */
-export function getDeploymentServiceVersion(): string | undefined {
-  const configuredRelease = toOptionalTrimmed(process.env["SENTRY_RELEASE"]);
+/**
+ * Resolve the deployment version used for release and telemetry correlation.
+ * Telemetry and build code call it before config loads, so it takes env.
+ */
+export function getDeploymentServiceVersion(env: Env): string | undefined {
+  const configuredRelease = toOptionalTrimmed(env["SENTRY_RELEASE"]);
   if (configuredRelease) {
     return configuredRelease;
   }
 
-  const deploymentRevision = toOptionalTrimmed(
-    process.env["VERCEL_GIT_COMMIT_SHA"],
-  );
+  const deploymentRevision = toOptionalTrimmed(env["VERCEL_GIT_COMMIT_SHA"]);
   return deploymentRevision
     ? `${JUNIOR_VERSION}+${deploymentRevision}`
     : undefined;
 }
 
-/** Vercel deployment that runs this process. Unset outside Vercel. */
-export function getDeploymentId(): string | undefined {
-  return toOptionalTrimmed(process.env["VERCEL_DEPLOYMENT_ID"]);
-}
-
-/** Resolve deployment-scoped telemetry attributes from host environment. */
-export function getDeploymentTelemetryAttributes(): Record<string, string> {
+/**
+ * Resolve deployment-scoped telemetry attributes. Telemetry starts before
+ * config loads, so it takes env.
+ */
+export function getDeploymentTelemetryAttributes(
+  env: Env,
+): Record<string, string> {
   const attributes: Record<string, string> = {};
-  const serviceVersion = getDeploymentServiceVersion();
-  const deploymentId = getDeploymentId();
-  const region = toOptionalTrimmed(process.env["VERCEL_REGION"]);
+  const serviceVersion = getDeploymentServiceVersion(env);
+  const deploymentId = toOptionalTrimmed(env["VERCEL_DEPLOYMENT_ID"]);
+  const region = toOptionalTrimmed(env["VERCEL_REGION"]);
   attributes["app.junior.version"] = JUNIOR_VERSION;
   attributes["service.instance.id"] = SERVICE_INSTANCE_ID;
   if (region) {

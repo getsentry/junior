@@ -29,6 +29,7 @@ export function endedReason(
 export function closeReason(
   state: GitHubPullRequestMergeState,
   previous: GitHubPullRequestAction,
+  mergeAccess: boolean | undefined,
 ): CloseReason {
   const ended = endedReason(state.state);
   if (ended) return ended;
@@ -37,6 +38,12 @@ export function closeReason(
   }
   if (state.autoMerge) {
     return { reason: "Auto-merge is on.", status: "dismissed" };
+  }
+  if (mergeAccess === false) {
+    return {
+      reason: "Only a person with write access can merge it.",
+      status: "dismissed",
+    };
   }
   return {
     reason: "The pull request is no longer ready to merge.",

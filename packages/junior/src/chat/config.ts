@@ -1,16 +1,4 @@
-import {
-  DEFAULT_COMPLETED_REACTION_EMOJI,
-  DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
-  DEFAULT_PROCESSING_REACTION_EMOJI,
-  loadConfig,
-  resolveConversationWorkSoftYieldAfterMs,
-  resolveMaxTurnTimeoutMs,
-  type JuniorConfig,
-} from "@/config";
-import { resolveBotName } from "@/chat/bot-name";
-import { toOptionalTrimmed } from "@/chat/optional-string";
-import { resolveGatewayModel } from "@/chat/pi/client";
-import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import { loadConfig, type JuniorConfig } from "@/config";
 
 export interface BotModelConfig {
   /** Model that runs every agent Turn. */
@@ -41,53 +29,6 @@ export type ChatConfig = JuniorConfig;
 export type BotConfig = ChatConfig["bot"];
 export type SqlDriver = ChatConfig["sql"]["driver"];
 
-function resolveFunctionMaxDurationSeconds(
-  functionMaxDurationSeconds?: number,
-): number {
-  return functionMaxDurationSeconds ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-}
-
-function validateGatewayModelId(raw: string | undefined): string | undefined {
-  const trimmed = toOptionalTrimmed(raw);
-  if (trimmed === undefined) return undefined;
-  resolveGatewayModel(trimmed);
-  return trimmed;
-}
-
-function validateEmbeddingModelId(raw: string | undefined): string | undefined {
-  return toOptionalTrimmed(raw);
-}
-
-function requireModelId(
-  configName: keyof BotModelConfig,
-  raw: string,
-  validate: (value: string | undefined) => string | undefined,
-): string {
-  const modelId = validate(raw);
-  if (!modelId) {
-    throw new Error(`${configName} must not be empty`);
-  }
-  return modelId;
-}
-
-function parseReactionEmoji(
-  envName: string,
-  rawValue: string | undefined,
-  defaultEmoji: string,
-): string {
-  const trimmed = toOptionalTrimmed(rawValue);
-  if (trimmed === undefined) {
-    return defaultEmoji;
-  }
-  const normalized = normalizeSlackEmojiName(trimmed);
-  if (!normalized) {
-    throw new Error(
-      `${envName} must be a valid Slack emoji name (for example "eyes" or ":white_check_mark:")`,
-    );
-  }
-  return normalized;
-}
-
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -95,9 +36,6 @@ export function readChatConfig(
 ): ChatConfig {
   return loadConfig({ env, options: { functionMaxDurationSeconds } });
 }
-
-/** Chat configuration parsed once at module load from the process environment. */
-const chatConfig: ChatConfig = readChatConfig(process.env);
 
 /** Limits a host can set with `createApp({ limits })`. */
 export interface RuntimeLimits {
@@ -128,153 +66,73 @@ export interface RuntimeLimits {
   turnTimeoutMs?: number;
 }
 
-/** Runtime config that one app sets and a later app must not inherit. */
-export interface RuntimeConfigSnapshot {
-  bot: BotConfig;
-  completedReactionEmoji: string;
-  conversationWorkSoftYieldAfterMs: number;
-  functionMaxDurationSeconds: number;
-  processingReactionEmoji: string;
-}
+let installed: ChatConfig | undefined;
 
-/** Copy the runtime config so a failed app setup can restore it. */
-export function snapshotRuntimeConfig(): RuntimeConfigSnapshot {
-  return {
-    bot: { ...chatConfig.bot },
-    completedReactionEmoji: chatConfig.slack.completedReactionEmoji,
-    conversationWorkSoftYieldAfterMs:
-      chatConfig.conversationWorkSoftYieldAfterMs,
-    functionMaxDurationSeconds: chatConfig.functionMaxDurationSeconds,
-    processingReactionEmoji: chatConfig.slack.processingReactionEmoji,
-  };
-}
-
-/** Replace the runtime config with a snapshot. */
-export function restoreRuntimeConfig(snapshot: RuntimeConfigSnapshot): void {
-  replaceBotConfig(snapshot.bot);
-  chatConfig.functionMaxDurationSeconds = snapshot.functionMaxDurationSeconds;
-  chatConfig.conversationWorkSoftYieldAfterMs =
-    snapshot.conversationWorkSoftYieldAfterMs;
-  chatConfig.slack.completedReactionEmoji = snapshot.completedReactionEmoji;
-  chatConfig.slack.processingReactionEmoji = snapshot.processingReactionEmoji;
+/**
+ * Return the config that createApp installed. Without one, such as in the
+ * CLI, load it from `process.env` on the first read and keep it.
+ */
+export function getChatConfig(): ChatConfig {
+  installed ??= loadConfig({ env: process.env });
+  return installed;
 }
 
 /**
- * Reset bot, limit, and Slack settings to the environment defaults and apply
- * the host execution budget. Each app calls this before it applies options.
+ * Install the config that createApp resolved. Returns the previous config,
+ * so a failed startup can install it again. `undefined` loads from env again
+ * on the next read.
  */
-export function resetRuntimeConfig(functionMaxDurationSeconds?: number): void {
-  const resolved = resolveFunctionMaxDurationSeconds(
-    functionMaxDurationSeconds,
-  );
-  chatConfig.functionMaxDurationSeconds = resolved;
-  chatConfig.conversationWorkSoftYieldAfterMs =
-    resolveConversationWorkSoftYieldAfterMs(resolved);
-  replaceBotConfig(readChatConfig(process.env, resolved).bot);
-  chatConfig.slack.completedReactionEmoji = DEFAULT_COMPLETED_REACTION_EMOJI;
-  chatConfig.slack.processingReactionEmoji = DEFAULT_PROCESSING_REACTION_EMOJI;
+export function installChatConfig(
+  config: ChatConfig | undefined,
+): ChatConfig | undefined {
+  const previous = installed;
+  installed = config;
+  return previous;
 }
 
-// Readers hold `botConfig`, so replace its fields instead of the object.
-function replaceBotConfig(next: BotConfig): void {
-  for (const key of Object.keys(chatConfig.bot)) {
-    delete (chatConfig.bot as Partial<BotConfig>)[key as keyof BotConfig];
-  }
-  Object.assign(chatConfig.bot, next);
+function isBotConfigKey(
+  bot: BotConfig,
+  key: string | symbol,
+): key is keyof BotConfig {
+  return Object.hasOwn(bot, key);
 }
 
-function requirePositiveLimit(name: string, value: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`limits.${name} must be a positive integer`);
-  }
-  return value;
-}
-
-/** Apply limits from createApp(). Unset limits keep their defaults. */
-export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
-  const bot = chatConfig.bot;
-  if (limits?.contextWindowTokens !== undefined) {
-    bot.contextWindowTokens = requirePositiveLimit(
-      "contextWindowTokens",
-      limits.contextWindowTokens,
-    );
-  }
-  if (limits?.maxAgentDepth !== undefined) {
-    if (
-      !Number.isSafeInteger(limits.maxAgentDepth) ||
-      limits.maxAgentDepth < 0
-    ) {
-      throw new Error("limits.maxAgentDepth must be a non-negative integer");
-    }
-    bot.maxAgentDepth = limits.maxAgentDepth;
-  }
-  if (limits?.maxConsecutiveAutomatedTurns !== undefined) {
-    bot.maxConsecutiveAutomatedTurns = requirePositiveLimit(
-      "maxConsecutiveAutomatedTurns",
-      limits.maxConsecutiveAutomatedTurns,
-    );
-  }
-  const runLimit = limits?.eventAutomationRunLimit;
-  if (runLimit?.maxRuns !== undefined) {
-    bot.maxEventAutomationRuns = requirePositiveLimit(
-      "eventAutomationRunLimit.maxRuns",
-      runLimit.maxRuns,
-    );
-  }
-  if (runLimit?.windowMs !== undefined) {
-    bot.eventAutomationRunWindowMs = requirePositiveLimit(
-      "eventAutomationRunLimit.windowMs",
-      runLimit.windowMs,
-    );
-  }
-  if (limits?.maxSlicesPerTurn !== undefined) {
-    bot.maxSlicesPerTurn = requirePositiveLimit(
-      "maxSlicesPerTurn",
-      limits.maxSlicesPerTurn,
-    );
-  }
-  if (limits?.maxToolCallsPerTurn !== undefined) {
-    bot.maxToolCallsPerTurn = requirePositiveLimit(
-      "maxToolCallsPerTurn",
-      limits.maxToolCallsPerTurn,
-    );
-  }
-  if (limits?.maxTurnCostUsd !== undefined) {
-    bot.maxTurnCostUsd = requirePositiveLimit(
-      "maxTurnCostUsd",
-      limits.maxTurnCostUsd,
-    );
-  }
-  if (limits?.turnTimeoutMs !== undefined) {
-    bot.turnTimeoutMs = Math.min(
-      requirePositiveLimit("turnTimeoutMs", limits.turnTimeoutMs),
-      resolveMaxTurnTimeoutMs(chatConfig.functionMaxDurationSeconds),
-    );
-  }
-}
-
-/** Return the chat configuration (parsed once at startup). */
-export function getChatConfig(): ChatConfig {
-  return chatConfig;
-}
-
-/** Bot configuration derived from environment at module load. */
-export const botConfig: BotConfig = chatConfig.bot;
+/**
+ * Bot settings of the current config. Readers keep this object, so it
+ * forwards every read and write to `getChatConfig().bot`.
+ *
+ * Temporary: callers read `botConfig` as a plain property, so lazy loading
+ * needs a read trap. Remove this Proxy once config is passed in explicitly.
+ */
+export const botConfig: BotConfig = new Proxy({} as BotConfig, {
+  defineProperty: (_, key, descriptor) =>
+    Reflect.defineProperty(getChatConfig().bot, key, descriptor),
+  deleteProperty: (_, key) => Reflect.deleteProperty(getChatConfig().bot, key),
+  get: (_, key) => {
+    const bot = getChatConfig().bot;
+    return isBotConfigKey(bot, key) ? bot[key] : undefined;
+  },
+  getOwnPropertyDescriptor: (_, key) =>
+    Reflect.getOwnPropertyDescriptor(getChatConfig().bot, key),
+  has: (_, key) => Reflect.has(getChatConfig().bot, key),
+  ownKeys: () => Reflect.ownKeys(getChatConfig().bot),
+  set: (_, key, value) => Reflect.set(getChatConfig().bot, key, value),
+});
 
 export function getSlackBotToken(): string | undefined {
-  return chatConfig.slack.botToken;
+  return getChatConfig().slack.botToken;
 }
 
 export function getSlackSigningSecret(): string | undefined {
-  return chatConfig.slack.signingSecret;
+  return getChatConfig().slack.signingSecret;
 }
 
 export function getSlackClientId(): string | undefined {
-  return chatConfig.slack.clientId;
+  return getChatConfig().slack.clientId;
 }
 
 export function getSlackClientSecret(): string | undefined {
-  return chatConfig.slack.clientSecret;
+  return getChatConfig().slack.clientSecret;
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +146,7 @@ export interface RuntimeMetadata {
 /** Return runtime metadata (version from deploy environment). */
 export function getRuntimeMetadata(): RuntimeMetadata {
   return {
-    version: toOptionalTrimmed(process.env["VERCEL_GIT_COMMIT_SHA"]),
+    version: getChatConfig().deployment.commitSha,
   };
 }
 
@@ -297,121 +155,10 @@ export interface SlackReactionConfig {
   processingReactionEmoji: string;
 }
 
-/** Apply model overrides from createApp(). */
-export function setBotModelConfig(config: BotModelConfig): void {
-  if (config.modelId !== undefined) {
-    botConfig.modelId = requireModelId(
-      "modelId",
-      config.modelId,
-      validateGatewayModelId,
-    );
-  }
-  if (config.decisionModelId !== undefined) {
-    botConfig.decisionModelId = requireModelId(
-      "decisionModelId",
-      config.decisionModelId,
-      toOptionalTrimmed,
-    );
-  }
-  if (config.embeddingModelId !== undefined) {
-    botConfig.embeddingModelId = requireModelId(
-      "embeddingModelId",
-      config.embeddingModelId,
-      validateEmbeddingModelId,
-    );
-  }
-  if (config.fastModelId !== undefined) {
-    botConfig.fastModelId = requireModelId(
-      "fastModelId",
-      config.fastModelId,
-      validateGatewayModelId,
-    );
-  }
-  if (config.guardianModelId !== undefined) {
-    botConfig.guardianModelId = requireModelId(
-      "guardianModelId",
-      config.guardianModelId,
-      validateGatewayModelId,
-    );
-  }
-  if (config.rerankingModelId !== undefined) {
-    botConfig.rerankingModelId = requireModelId(
-      "rerankingModelId",
-      config.rerankingModelId,
-      toOptionalTrimmed,
-    );
-  }
-  if (config.imageGenerationModelId !== undefined) {
-    botConfig.imageGenerationModelId = requireModelId(
-      "imageGenerationModelId",
-      config.imageGenerationModelId,
-      validateEmbeddingModelId,
-    );
-  }
-  if (config.transcriptionModelId !== undefined) {
-    botConfig.transcriptionModelId = requireModelId(
-      "transcriptionModelId",
-      config.transcriptionModelId,
-      toOptionalTrimmed,
-    );
-  }
-  if (config.visionModelId !== undefined) {
-    botConfig.visionModelId = requireModelId(
-      "visionModelId",
-      config.visionModelId,
-      validateGatewayModelId,
-    );
-  }
-  if (config.refusalFallbackModelId !== undefined) {
-    botConfig.refusalFallbackModelId = requireModelId(
-      "refusalFallbackModelId",
-      config.refusalFallbackModelId,
-      validateGatewayModelId,
-    );
-  }
-  if (config.webSearchModelId !== undefined) {
-    botConfig.webSearchModelId = requireModelId(
-      "webSearchModelId",
-      config.webSearchModelId,
-      validateGatewayModelId,
-    );
-  }
-}
-
-/**
- * Apply the bot name that a `juniorNitro()` build resolved, so the runtime
- * and the built system prompt use the same name. Without a build, the name
- * stays `JUNIOR_BOT_NAME`, then `junior`.
- */
-export function setBotName(name: string | undefined): void {
-  if (name === undefined) return;
-  botConfig.userName = resolveBotName(name, process.env);
-}
-
 /** Return the current Slack reaction emoji config. */
 export function getSlackReactionConfig(): SlackReactionConfig {
   return {
-    completedReactionEmoji: chatConfig.slack.completedReactionEmoji,
-    processingReactionEmoji: chatConfig.slack.processingReactionEmoji,
+    completedReactionEmoji: getChatConfig().slack.completedReactionEmoji,
+    processingReactionEmoji: getChatConfig().slack.processingReactionEmoji,
   };
-}
-
-/** Apply Slack reaction emoji overrides from createApp() options, validating names. */
-export function setSlackReactionConfig(
-  overrides: Partial<SlackReactionConfig>,
-): void {
-  if (overrides.processingReactionEmoji !== undefined) {
-    chatConfig.slack.processingReactionEmoji = parseReactionEmoji(
-      "processingReactionEmoji",
-      overrides.processingReactionEmoji,
-      chatConfig.slack.processingReactionEmoji,
-    );
-  }
-  if (overrides.completedReactionEmoji !== undefined) {
-    chatConfig.slack.completedReactionEmoji = parseReactionEmoji(
-      "completedReactionEmoji",
-      overrides.completedReactionEmoji,
-      chatConfig.slack.completedReactionEmoji,
-    );
-  }
 }

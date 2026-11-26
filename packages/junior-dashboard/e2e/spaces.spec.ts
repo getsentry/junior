@@ -54,9 +54,7 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
-  // Both of its Threads are done, so they show once Done opens.
   const threads = details.getByRole("region", { exact: true, name: "Threads" });
-  await threads.getByRole("button", { name: "Done · 2" }).click();
   await expect(
     threads.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -198,7 +196,6 @@ test("another Space's page does not show the last Space's Threads", async ({
   const billingRow = details.getByRole("link", {
     name: /Plan the billing migration/,
   });
-  await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(billingRow).toBeVisible();
 
   // Hold the next Lead's Threads, so the page shows them loading.
@@ -222,8 +219,6 @@ test("another Space's page does not show the last Space's Threads", async ({
   await expect(details.getByRole("img", { name: /^Riley Park/ })).toBeVisible();
   await expect(billingRow).toHaveCount(0);
   release();
-  // Its one Thread is done, so it shows once Done opens.
-  await details.getByRole("button", { name: "Done · 1" }).click();
   await expect(
     details.getByRole("link", { name: /SDK changelog summary 8/ }),
   ).toBeVisible();

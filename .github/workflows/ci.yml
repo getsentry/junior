@@ -15,6 +15,9 @@ on:
       - core-next
   pull_request:
     branches: [main, core-next]
+  # A merge queue tests each pull request merged with the ones ahead of it.
+  # Path filters match everything here, so every path-gated job runs.
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -701,8 +704,9 @@ jobs:
           min-severity: medium
           version: 1.32.0
 
-  # Pull requests only: path filters return true on every push, and ios.yml
-  # runs on its own for pushes to main that change apps/ios.
+  # Pull requests only: path filters return true on every push and merge
+  # queue run, and ios.yml runs on its own for pushes to main that change
+  # apps/ios.
   ios:
     name: ios
     needs: changes

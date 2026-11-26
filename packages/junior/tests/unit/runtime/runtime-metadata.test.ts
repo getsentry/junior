@@ -1,22 +1,26 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getRuntimeMetadata } from "@/chat/config";
+import { useConfig } from "../../fixtures/config";
 
 describe("getRuntimeMetadata", () => {
   afterEach(() => {
-    delete process.env["VERCEL_GIT_COMMIT_SHA"];
+    vi.unstubAllEnvs();
   });
 
   it("returns version from VERCEL_GIT_COMMIT_SHA", () => {
-    process.env["VERCEL_GIT_COMMIT_SHA"] = "abc123";
+    useConfig({ deployment: { commitSha: "abc123" } });
     expect(getRuntimeMetadata()).toEqual({ version: "abc123" });
   });
 
   it("omits version when VERCEL_GIT_COMMIT_SHA is missing", () => {
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", undefined);
+    useConfig();
     expect(getRuntimeMetadata()).toEqual({ version: undefined });
   });
 
   it("treats blank VERCEL_GIT_COMMIT_SHA as missing", () => {
-    process.env["VERCEL_GIT_COMMIT_SHA"] = "   ";
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "   ");
+    useConfig();
     expect(getRuntimeMetadata()).toEqual({ version: undefined });
   });
 });

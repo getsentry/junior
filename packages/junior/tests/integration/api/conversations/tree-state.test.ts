@@ -288,7 +288,7 @@ describe("conversation tree state", () => {
     });
   });
 
-  it("needs the starter only for the Conversation's own wait on them", async () => {
+  it("needs the starter for a wait on them anywhere in the tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordDashboardRoot(
       fixture.conversationStore,
@@ -300,11 +300,24 @@ describe("conversation tree state", () => {
       kind: "thread",
       parentConversationId: conversationId,
     });
-    // A Thread's unread answer waits on the starter in the Thread only.
+    // A Thread's unread answer waits on the starter, so its parent needs
+    // them too, until they read it.
     await recordAnswer(threadId, 1);
     await expect(fixture.tree(threadId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    const read = await fixture.request(
+      `${detailPath(threadId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(threadId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
     await recordAnswer(conversationId, 1);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({

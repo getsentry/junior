@@ -1,3 +1,4 @@
+import { type HistoryReplacement } from "@/core/history/items";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { describe, expect, it } from "vitest";
 import type {
@@ -5,7 +6,6 @@ import type {
   ConversationEventPage,
   ConversationEventQuery,
   ConversationEventStore,
-  HistoryReplacement,
   HistoryReplacementResult,
   MessageHistory,
   NewConversationEvent,

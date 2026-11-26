@@ -15,7 +15,7 @@ import {
   juniorTurns,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
-import { withConversationEventLock } from "./event-lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { deleteMessageLinks } from "./message-links";
 import { withConversationMutationLock } from "./store";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";

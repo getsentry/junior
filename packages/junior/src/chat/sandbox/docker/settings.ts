@@ -1,8 +1,9 @@
 import os from "node:os";
 import path from "node:path";
+import { getChatConfig } from "@/chat/config";
 
-// Module overview: local settings of the Docker sandbox provider. They come
-// from env vars, so the provider needs no new chat config fields.
+// Module overview: local settings of the Docker sandbox provider, from the
+// sandbox config group.
 
 /** Label on every container, network, and image that this provider owns. */
 export const DOCKER_SANDBOX_LABEL = "dev.junior.sandbox";
@@ -12,7 +13,7 @@ export const DOCKER_SANDBOX_LABEL = "dev.junior.sandbox";
  * `JUNIOR_DOCKER_SANDBOX_DIR` overrides the default.
  */
 export function dockerSandboxDir(): string {
-  const configured = process.env["JUNIOR_DOCKER_SANDBOX_DIR"]?.trim();
+  const configured = getChatConfig().sandbox.docker.dir;
   if (configured) return configured;
   return path.join(os.homedir(), ".cache", "junior", "docker-sandbox");
 }
@@ -25,7 +26,5 @@ export function dockerSandboxDir(): string {
  * verify the certificates that this proxy shows.
  */
 export function dockerSandboxExtraCaFile(): string | undefined {
-  return (
-    process.env["JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS"]?.trim() || undefined
-  );
+  return getChatConfig().sandbox.docker.extraCaCertsFile;
 }

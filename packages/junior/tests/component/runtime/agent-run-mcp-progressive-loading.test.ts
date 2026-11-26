@@ -403,7 +403,6 @@ vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
   ) => await deliverPrivateMessageMock(input),
   deliverPrivateMessage: deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
-  resolveBaseUrl: () => "https://junior.example.com",
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({

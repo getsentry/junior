@@ -1,21 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const ORIGINAL_ENV = { ...process.env };
-
-function setOrDelete(key: string, value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[key];
-  } else {
-    process.env[key] = value;
-  }
-}
+import { describe, expect, it } from "vitest";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/vercel/credentials";
+import { useConfig } from "../../fixtures/config";
 
 describe("getVercelSandboxCredentials decision matrix", () => {
-  afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    vi.resetModules();
-  });
-
   it.each([
     {
       token: "tk",
@@ -37,13 +24,15 @@ describe("getVercelSandboxCredentials decision matrix", () => {
     { token: "tk", teamId: "tm", projectId: "  ", expected: undefined },
   ])(
     "token=$token teamId=$teamId projectId=$projectId",
-    async ({ token, teamId, projectId, expected }) => {
-      setOrDelete("VERCEL_TOKEN", token);
-      setOrDelete("VERCEL_TEAM_ID", teamId);
-      setOrDelete("VERCEL_PROJECT_ID", projectId);
-      vi.resetModules();
-      const { getVercelSandboxCredentials } =
-        await import("@/chat/sandbox/vercel/credentials");
+    ({ token, teamId, projectId, expected }) => {
+      useConfig(
+        {},
+        {
+          VERCEL_TOKEN: token,
+          VERCEL_TEAM_ID: teamId,
+          VERCEL_PROJECT_ID: projectId,
+        },
+      );
       expect(getVercelSandboxCredentials()).toEqual(expected);
     },
   );

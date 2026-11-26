@@ -4,6 +4,7 @@ import {
   type ObjectIconName,
   type ObjectLinkFilter,
 } from "@sentry/junior-plugin-api";
+import { getChatConfig } from "@/chat/config";
 export interface DashboardConversationLinkOptions {
   basePath?: string;
   baseURL?: string;
@@ -40,22 +41,10 @@ function normalizeDashboardPath(
 function resolveDashboardBaseURL(
   config: DashboardConversationLinkOptions,
 ): string {
-  const explicit = config.baseURL ?? process.env["JUNIOR_BASE_URL"];
-  if (explicit?.trim()) {
-    return stripTrailingSlashes(withHttps(explicit.trim()));
-  }
-
-  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
-  if (vercelProd) {
-    return stripTrailingSlashes(withHttps(vercelProd));
-  }
-
-  const vercelUrl = process.env["VERCEL_URL"]?.trim();
-  if (vercelUrl) {
-    return stripTrailingSlashes(withHttps(vercelUrl));
-  }
-
-  return "http://localhost:3000";
+  const baseUrl = config.baseURL?.trim() || getChatConfig().deployment.baseUrl;
+  return baseUrl
+    ? stripTrailingSlashes(withHttps(baseUrl))
+    : "http://localhost:3000";
 }
 
 /** Configure core dashboard links. */

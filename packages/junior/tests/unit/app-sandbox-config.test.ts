@@ -4,13 +4,9 @@ import {
   isExperimentalFeatureEnabled,
   setExperimentalFeatures,
 } from "@/chat/experimental";
-import {
-  getSandboxResources,
-  setSandboxResourceConfig,
-} from "@/chat/sandbox/resources";
+import { getSandboxResources } from "@/chat/sandbox/resources";
 
 afterEach(() => {
-  setSandboxResourceConfig(undefined);
   setExperimentalFeatures(undefined);
 });
 
