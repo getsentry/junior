@@ -55,10 +55,8 @@ describe("Lead", () => {
     ).toBeGreaterThan(0);
   });
 
-  // `searchConversations` is a catalog tool, but the Lead rules name it like
-  // a tool in the list, so the model can call it directly. That call fails,
-  // and its result names the `executeTool` call to make. The case measures
-  // whether the search still runs.
+  // `listAgents` lists the team without a filter, and searches with one.
+  // The case measures whether the Lead searches for work outside its team.
   test("when a person asks their Lead about work they started, it searches their Conversations", async ({
     run,
   }) => {
@@ -72,7 +70,11 @@ describe("Lead", () => {
     );
 
     expect(
-      completedToolCalls("searchConversations", conversation).length,
+      completedToolCalls("listAgents", conversation).filter((call) =>
+        Object.values((call.input ?? {}) as Record<string, unknown>).some(
+          (value) => value != null,
+        ),
+      ).length,
     ).toBeGreaterThan(0);
     expect(conversation.replies.length).toBeGreaterThan(0);
     // A question about outside work does not ask to move it.
