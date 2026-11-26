@@ -13,6 +13,7 @@ import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters
 import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { passThroughHttpCache } from "./plugin-harness";
 
 const CONVERSATION_ID = "slack:C123:1712345.0001";
 const PULL_URL = "https://github.com/getsentry/junior/pull/946";
@@ -96,6 +97,7 @@ function route(
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
+    httpCache: passThroughHttpCache,
     // The ready webhook refreshes its cached pull request.
     cache: {
       async getOrLoad(_key, load) {

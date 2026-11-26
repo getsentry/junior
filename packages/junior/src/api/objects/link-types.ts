@@ -8,13 +8,23 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 
+/**
+ * How one card read uses caches. `now` asks the provider on each HTTP read,
+ * so a change of access counts at once. `onStale` gets the time that an
+ * entry served after its TTL was stored.
+ */
+export interface ObjectLinkRead {
+  now?: true;
+  onStale?(storedAtMs: number): void;
+}
+
 /** One link type of core or a plugin, with the viewer-scoped resolver. */
 export interface ObjectLinkType {
   /**
-   * False when the resolver reads a cache that its writes clear, so a
-   * change shows at once instead of after the card cache expires.
+   * True when the resolver reads no HTTP cache, so Junior keeps the card
+   * for each viewer and URL.
    */
-  cacheCards?: false;
+  cacheCards?: true;
   /**
    * Whether the viewer may see the object. Called before `resolve`, with
    * the URL's prefetch outcome in a page read.
@@ -23,6 +33,7 @@ export interface ObjectLinkType {
     viewer: User,
     url: URL,
     prefetched?: ObjectLinkPrefetchOutcome,
+    read?: ObjectLinkRead,
   ): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
   /** Name the object from its link, for a card that cannot read it. */
@@ -45,6 +56,7 @@ export interface ObjectLinkType {
     viewer: User,
     url: URL,
     prefetched?: ObjectLinkPrefetchOutcome,
+    read?: ObjectLinkRead,
   ): Promise<ObjectAnnotation | undefined>;
   /** Show the web page card when `canView` returns false. */
   webPageFallback?: true;

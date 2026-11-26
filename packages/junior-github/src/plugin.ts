@@ -137,6 +137,7 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { installationResponses } from "./installation-http-cache.js";
 
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
@@ -544,7 +545,9 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
-          responses: ctx.state,
+          responses: installationResponses(ctx.httpCache, () =>
+            readEnv(installationIdEnv),
+          ),
           tokens: new Map(),
         };
         return [
@@ -597,6 +600,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             inboxItems: ctx.inboxItems,
+            responses: installationEnv.responses,
             state: ctx.state,
             tasks: ctx.tasks,
             tokens: installationEnv.tokens,

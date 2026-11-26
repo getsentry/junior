@@ -15,6 +15,7 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
@@ -183,6 +184,8 @@ export function createGitHubWebhookRoute(args: {
   privateKeyEnv: string;
   events: EventPublisher;
   inboxItems: PluginConversationInboxItems;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses: GitHubResponses;
   state: PluginState;
   /** Starts the task that applies a failed pull request outcome again. */
   tasks: PluginTaskStarter;
@@ -363,7 +366,7 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
-              responses: args.state,
+              responses: args.responses,
               tokens: args.tokens,
             })
           : undefined;
@@ -467,7 +470,7 @@ export function createGitHubWebhookRoute(args: {
         appIdEnv: args.appIdEnv,
         installationIdEnv: args.installationIdEnv,
         privateKeyEnv: args.privateKeyEnv,
-        responses: args.state,
+        responses: args.responses,
         tokens: args.tokens,
       };
       await syncGitHubPullRequestActions({

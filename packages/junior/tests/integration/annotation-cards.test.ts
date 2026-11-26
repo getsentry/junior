@@ -99,7 +99,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       inboxSubjects: [{ kind: "change", label: "Change", owner: "annotation" }],
       objectLinks: [
         {
-          cacheCards: false,
           objectTypes: ["code_change"],
           filters: [{ host: "example.com", pathPattern: "/pull/*" }],
           canView: async () => true,

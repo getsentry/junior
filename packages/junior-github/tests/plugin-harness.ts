@@ -6,6 +6,7 @@ import type {
   EventPublisher,
   HeartbeatHookContext,
   ObjectSubject,
+  PluginHttpCache,
   PluginReviewNotice,
   PluginState,
   PluginTaskStartInput,
@@ -40,6 +41,14 @@ export function signedRequest(input: {
     body,
   });
 }
+
+/**
+ * Core owns the HTTP cache, so these reads go to GitHub as they are. Core
+ * integration tests cover the saved ETags.
+ */
+export const passThroughHttpCache: PluginHttpCache = {
+  fetch: async ({ send }) => await send({}),
+};
 
 /** Plugin state in memory, with expiry. */
 export function memoryState(): PluginState {
@@ -243,6 +252,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       annotations,
       cache,
       codeChanges,
+      httpCache: passThroughHttpCache,
       conversationChanges: conversationChangesThrough({
         batches: recorded.batches,
         inboxItems,

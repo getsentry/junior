@@ -15,6 +15,8 @@ const WRITE_MARK_TTL_MS = 60 * 60 * 1000;
 interface StoredEntry<T> {
   /** Set on `staleIfError` entries: after this time, the entry is stale. */
   freshUntilMs?: number;
+  /** When the entry was stored. An entry of an older release has none. */
+  storedAtMs?: number;
   value: T;
 }
 
@@ -31,7 +33,11 @@ async function storeEntry<T>(
   await state.set<StoredEntry<T>>(
     cacheKey,
     entry.staleIfError
-      ? { freshUntilMs: Date.now() + entry.ttlMs, value: entry.value }
+      ? {
+          freshUntilMs: Date.now() + entry.ttlMs,
+          storedAtMs: Date.now(),
+          value: entry.value,
+        }
       : { value: entry.value },
     entry.staleIfError ? entry.ttlMs + LAST_GOOD_MS : entry.ttlMs,
   );
@@ -70,11 +76,12 @@ export function cacheKeyPrefix(namespace: string): string {
  * Create a cache in the state adapter under `junior:cache:{namespace}:`.
  * Entries are wrapped, so `null` and `false` values are cache hits. A stale
  * `staleIfError` entry is returned when its reload throws, unless the caller
- * asked for `refresh`.
+ * asked for `refresh`. `onStale` then gets the time that it was stored.
  */
 export function createCache(
   state: StateAdapter,
   namespace: string,
+  hooks: { onStale?(storedAtMs: number): void } = {},
 ): PluginCache {
   const stateKey = (key: string) => {
     if (!key.trim()) throw new Error("Cache key is required");
@@ -138,8 +145,9 @@ export function createCache(
         return (await load()).value;
       } catch (error) {
         // Only a stale `staleIfError` entry is still here after its TTL.
-        if (hit) return hit.value;
-        throw error;
+        if (!hit) throw error;
+        if (hit.storedAtMs !== undefined) hooks.onStale?.(hit.storedAtMs);
+        return hit.value;
       }
     },
     async update<T>(
