@@ -47,7 +47,7 @@ export async function setConversationArchive(
     const [target] = await db
       .select({
         lastActivityAt: juniorConversations.lastActivityAt,
-        rootConversationId: juniorConversations.topLevelConversationId,
+        rootConversationId: juniorConversations.rootConversationId,
       })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, args.conversationId))

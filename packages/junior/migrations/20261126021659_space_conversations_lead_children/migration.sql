@@ -1,7 +1,7 @@
 -- A Space's Conversations are now children of its Lead, and only the Lead
--- stores `space_id`. The Lead is the tree root of every Conversation in its
+-- stores `space_id`. The Lead is the root of every Conversation in its
 -- Space, so `root_conversation_id` of each moved Conversation's work becomes
--- the Lead. `top_level_conversation_id` stays as it is.
+-- the Lead.
 
 -- A Space that has Conversations but no Lead yet gets one, as the first
 -- open of the Space would make it. Its first Actor is the Space's creator.
@@ -69,7 +69,6 @@ INSERT INTO "junior_conversations" (
   "execution_updated_at",
   "execution_status",
   "root_conversation_id",
-  "top_level_conversation_id",
   "kind",
   "space_id",
   "visibility"
@@ -90,7 +89,6 @@ SELECT
   now(),
   now(),
   'idle',
-  "conversation_id",
   "conversation_id",
   'lead',
   "space_id",
@@ -128,7 +126,7 @@ WHERE "lead"."kind" = 'lead'
   AND "lead"."space_id" = "member"."space_id"
   AND "member"."kind" IS DISTINCT FROM 'lead'
   AND "member"."parent_conversation_id" IS NULL
-  AND "work"."top_level_conversation_id" = "member"."conversation_id";
+  AND coalesce("work"."root_conversation_id", "work"."conversation_id") = "member"."conversation_id";
 --> statement-breakpoint
 
 -- Each such root becomes a child of the Space's Lead. A Lead's children are

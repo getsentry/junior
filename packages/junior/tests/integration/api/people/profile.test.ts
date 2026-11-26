@@ -122,7 +122,6 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
-          topLevelConversationId: rootConversationId,
           visibility: null,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));
@@ -133,7 +132,6 @@ describe("people profile API", () => {
           kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
-          topLevelConversationId: rootConversationId,
           visibility: null,
         })
         .where(
@@ -254,7 +252,7 @@ describe("people profile API", () => {
       await fixture.sql
         .db()
         .update(juniorConversations)
-        .set({ rootConversationId, topLevelConversationId: rootConversationId })
+        .set({ rootConversationId })
         .where(eq(juniorConversations.conversationId, malformedConversationId));
       await recordTurn(fixture, {
         actor: { email: "malformed@example.com", slackUserId: "U-malformed" },

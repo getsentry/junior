@@ -27,14 +27,14 @@ export type WaitingConversation = {
 // The root of a linked Conversation. An item that a child agent adds links
 // the child, and the feed lists only roots.
 const waitingRootId =
-  sql<string>`coalesce(${juniorConversations.topLevelConversationId}, ${juniorInboxItemConversations.conversationId})`.as(
+  sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItemConversations.conversationId})`.as(
     "waiting_root_id",
   );
 
 // The root of the Conversation that owns a To-do's item. The item links no
 // Conversation, so it waits on the person in its owner's tree.
 const waitingTodoRootId =
-  sql<string>`coalesce(${juniorConversations.topLevelConversationId}, ${juniorInboxItems.ownerId})`.as(
+  sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItems.ownerId})`.as(
     "waiting_root_id",
   );
 

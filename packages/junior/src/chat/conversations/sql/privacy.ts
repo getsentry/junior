@@ -1,10 +1,10 @@
-import { and, eq, isNull, type SQL } from "drizzle-orm";
-import { topLevelConversation } from "./listed";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { nextDetailVersion } from "./detail-version";
+import { conversationSubtree, conversationSubtreeColumns } from "./subtree";
 
 const privacyRoot = alias(juniorConversations, "privacy_root");
 
@@ -30,19 +30,16 @@ async function readRoot(
     .select({
       requestedConversationId: juniorConversations.conversationId,
       requestedParentConversationId: juniorConversations.parentConversationId,
-      requestedRootConversationId: juniorConversations.topLevelConversationId,
+      requestedRootConversationId: juniorConversations.rootConversationId,
       rootConversationId: privacyRoot.conversationId,
       rootDestinationId: privacyRoot.destinationId,
       rootParentConversationId: privacyRoot.parentConversationId,
-      rootRootConversationId: privacyRoot.topLevelConversationId,
+      rootRootConversationId: privacyRoot.rootConversationId,
     })
     .from(juniorConversations)
     .leftJoin(
       privacyRoot,
-      eq(
-        privacyRoot.conversationId,
-        juniorConversations.topLevelConversationId,
-      ),
+      eq(privacyRoot.conversationId, juniorConversations.rootConversationId),
     )
     .where(eq(juniorConversations.conversationId, conversationId));
   const row = rows[0];
@@ -115,7 +112,7 @@ export async function setConversationVisibility(
     .where(
       and(
         eq(juniorConversations.conversationId, rootConversationId),
-        topLevelConversation(),
+        isNull(juniorConversations.parentConversationId),
       ),
     );
   if (!root) return false;
@@ -123,8 +120,30 @@ export async function setConversationVisibility(
   await db
     .update(juniorConversations)
     .set({ visibility, detailVersion: nextDetailVersion })
-    .where(eq(juniorConversations.topLevelConversationId, rootConversationId));
+    .where(eq(juniorConversations.rootConversationId, rootConversationId));
   return true;
+}
+
+/**
+ * Set the visibility of one Conversation and its child agents, when they
+ * move into a private Space's tree. The caller moves them in the same
+ * transaction, so the whole tree keeps one value.
+ */
+export async function setMovedWorkVisibility(
+  executor: Pick<JuniorSqlDatabase, "db">,
+  conversationId: string,
+  visibility: ConversationPrivacy,
+): Promise<void> {
+  await executor
+    .db()
+    .update(juniorConversations)
+    .set({ visibility, detailVersion: nextDetailVersion })
+    .where(
+      inArray(
+        juniorConversations.conversationId,
+        sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`,
+      ),
+    );
 }
 
 /**
@@ -147,7 +166,7 @@ export async function fillMissingTreeVisibility(
     .set({ visibility, detailVersion: nextDetailVersion })
     .where(
       and(
-        eq(juniorConversations.topLevelConversationId, rootConversationId),
+        eq(juniorConversations.rootConversationId, rootConversationId),
         isNull(juniorConversations.visibility),
       ),
     );

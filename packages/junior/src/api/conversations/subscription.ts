@@ -437,5 +437,5 @@ async function hasSubscriber(
 }
 
 function inConversationTree(rootConversationId: string) {
-  return sql`(${eq(juniorConversations.conversationId, rootConversationId)} or ${eq(juniorConversations.topLevelConversationId, rootConversationId)})`;
+  return sql`(${eq(juniorConversations.conversationId, rootConversationId)} or ${eq(juniorConversations.rootConversationId, rootConversationId)})`;
 }

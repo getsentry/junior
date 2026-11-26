@@ -115,7 +115,7 @@ export async function readCodeChangeSearchFromSql(
         juniorConversations,
         eq(
           juniorConversations.conversationId,
-          sql`coalesce(${linked.topLevelConversationId}, ${linked.conversationId})`,
+          sql`coalesce(${linked.rootConversationId}, ${linked.conversationId})`,
         ),
       )
       .where(

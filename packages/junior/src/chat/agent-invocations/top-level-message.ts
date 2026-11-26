@@ -1,12 +1,11 @@
 /**
- * Agent messages between top-level agents: tree roots, such as a root or a
- * Lead's child, that are not in the same agent tree. A message wakes the target like any other Event.
+ * Agent messages between top-level agents: root Conversations that are not
+ * in the same agent tree. A message wakes the target like any other Event.
  * The target runs it as the event system Actor, so the sender's Actor and
  * credentials never reach the target.
  */
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
-import { isTopLevelWork } from "@/chat/conversations/kind-behavior";
 import {
   canAccessConversation,
   readConversationAccessFromSql,
@@ -55,12 +54,12 @@ async function requireTopLevelAgentAccess(args: {
     conversationStore.get({ conversationId: args.senderConversationId }),
     conversationStore.get({ conversationId: args.to }),
   ]);
-  if (senderConversation && !isTopLevelWork(senderConversation)) {
+  if (senderConversation?.parentConversationId) {
     throw new AgentMessageTargetError(
       `"${args.to}" is not "${PARENT_AGENT_TARGET}" or a child agent of this conversation`,
     );
   }
-  if (!target || !isTopLevelWork(target)) {
+  if (!target || target.parentConversationId) {
     throw notReachable;
   }
   const access = await readConversationAccessFromSql(getDb(), [

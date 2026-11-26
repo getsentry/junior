@@ -110,7 +110,7 @@ export function createArchiveAgentTool(conversationId: string) {
       const descendants = input.apply_to_children
         ? conversationDescendants(
             await readConversationTrees(getDb(), [
-              child.topLevelConversationId ?? childConversationId,
+              child.rootConversationId ?? childConversationId,
             ]),
             childConversationId,
           ).filter((node) => !node.archivedAt)

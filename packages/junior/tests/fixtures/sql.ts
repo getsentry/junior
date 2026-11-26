@@ -98,21 +98,14 @@ export function buildJuniorSqlConversation(
     overrides.conversationId ?? "slack:C123:1718123456.000000";
   if (
     overrides.parentConversationId &&
-    overrides.rootConversationId === undefined &&
-    overrides.topLevelConversationId === undefined
+    overrides.rootConversationId === undefined
   ) {
     throw new Error("Child conversation fixtures require rootConversationId");
   }
-  // Outside a Space, the tree root is also the top-level Conversation.
-  const treeConversationId =
-    overrides.rootConversationId ??
-    overrides.topLevelConversationId ??
-    conversationId;
 
   return {
     conversationId,
-    rootConversationId: treeConversationId,
-    topLevelConversationId: treeConversationId,
+    rootConversationId: conversationId,
     source: "slack",
     destination: {
       channelId: "C123",

@@ -118,7 +118,6 @@ async function treeRows(conversationIds: string[]) {
       parentConversationId: juniorConversations.parentConversationId,
       rootConversationId: juniorConversations.rootConversationId,
       spaceId: juniorConversations.spaceId,
-      topLevelConversationId: juniorConversations.topLevelConversationId,
       visibility: juniorConversations.visibility,
     })
     .from(juniorConversations)
@@ -204,7 +203,7 @@ describe("Lead", () => {
       parentConversationId: lead.conversationId,
       spaceId: space.id,
       title: "Image cleanup",
-      topLevelConversationId: started,
+      rootConversationId: lead.conversationId,
       visibility: "public",
     });
     // The Lead is the root of its Space's tree. Only the Lead stores the
@@ -232,7 +231,6 @@ describe("Lead", () => {
     expect((await treeRows([grandchild]))[grandchild]).toMatchObject({
       parentConversationId: started,
       rootConversationId: lead.conversationId,
-      topLevelConversationId: started,
     });
     await expect(
       startAgent(
@@ -264,7 +262,7 @@ describe("Lead", () => {
       actor: expect.objectContaining({ email: bo.email }),
       parentConversationId: lead.conversationId,
       spaceId: space.id,
-      topLevelConversationId: conversationId,
+      rootConversationId: lead.conversationId,
     });
     // The Space's top-level list shows its children.
     const feed = await readConversationFeed({ spaceId: space.id, viewer: ana });
@@ -309,12 +307,10 @@ describe("Lead", () => {
       [conversationId]: {
         parentConversationId: first.lead.conversationId,
         rootConversationId: first.lead.conversationId,
-        topLevelConversationId: conversationId,
       },
       [child]: {
         parentConversationId: conversationId,
         rootConversationId: first.lead.conversationId,
-        topLevelConversationId: conversationId,
       },
     });
     expect(
@@ -339,7 +335,6 @@ describe("Lead", () => {
       [conversationId]: {
         parentConversationId: null,
         rootConversationId: conversationId,
-        topLevelConversationId: conversationId,
       },
       [child]: {
         parentConversationId: conversationId,
