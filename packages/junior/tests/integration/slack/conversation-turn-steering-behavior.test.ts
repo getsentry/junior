@@ -19,7 +19,7 @@ import {
 import {
   expectChildAgentStopped,
   startRunningChildAgent,
-} from "../../fixtures/agent-invocations";
+} from "../../fixtures/child-agents";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";

@@ -118,6 +118,8 @@ export interface ToolActionProposal {
       };
     };
     destination: Destination;
+    /** Set when the Run is a Space's Lead. Core sets it from the Turn. */
+    lead?: true;
     source: Source;
     userIntent: string;
   };

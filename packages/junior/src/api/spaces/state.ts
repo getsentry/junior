@@ -1,5 +1,7 @@
-import { and, desc, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { readConversationTreeStates } from "../conversations/tree-state";
@@ -20,6 +22,8 @@ export type SpaceStateRead = {
   treeState: ConversationTreeState;
 };
 
+const spaceLead = alias(juniorConversations, "state_space_lead");
+
 const TREE_STATE_ORDER: readonly ConversationTreeState[] = [
   "needs_you",
   "working",
@@ -39,17 +43,32 @@ export async function readSpaceStates(
   viewerUserId: string,
 ): Promise<Map<string, SpaceStateRead>> {
   if (spaceIds.length === 0) return new Map();
+  // The Space's top-level Conversations are its Lead and the Lead's direct
+  // children. One read of `junior_conversations_space_lead_idx` finds the
+  // Leads, and the primary key and `junior_conversations_parent_idx` find
+  // the rows. The tree state of each one covers its own child agents.
+  const leads = db
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(
+      and(
+        eq(spaceLead.kind, "lead"),
+        inArray(spaceLead.spaceId, [...spaceIds]),
+      ),
+    );
   const roots = await db
     .select({
       conversationId: juniorConversations.conversationId,
-      spaceId: juniorConversations.spaceId,
+      spaceId: rootSpaceIdSql(juniorConversations),
       latestTurnFailed: conversationTurnFailedSql(juniorConversations),
     })
     .from(juniorConversations)
     .where(
       and(
-        inArray(juniorConversations.spaceId, [...spaceIds]),
-        isNull(juniorConversations.parentConversationId),
+        or(
+          inArray(juniorConversations.conversationId, leads),
+          inArray(juniorConversations.parentConversationId, leads),
+        ),
         isNull(juniorConversations.archivedAt),
         isNull(juniorConversations.quickQuestionAt),
         rootVisibleToViewer(viewerUserId),

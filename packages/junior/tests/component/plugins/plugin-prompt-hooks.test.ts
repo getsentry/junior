@@ -135,7 +135,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";

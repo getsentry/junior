@@ -20,8 +20,6 @@ export const fileLengthExceptions = {
     "Existing agent run lifecycle; split only at a clear lifecycle boundary.",
   "packages/junior/src/chat/logging.ts":
     "Existing logging module; split console, Sentry, and model usage concerns.",
-  "packages/junior/src/chat/plugins/agent-hooks.ts":
-    "Existing plugin hook runtime; split by hook phase.",
   "packages/junior/src/chat/plugins/manifest.ts":
     "Existing manifest parser; split parsing from validation.",
   "packages/junior/src/chat/providers/slack/turn.ts":

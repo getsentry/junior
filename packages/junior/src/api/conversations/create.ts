@@ -13,7 +13,6 @@ import {
   createAndEnqueueConversation,
   createConversationId,
 } from "@/chat/conversations/web-input";
-import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import {
@@ -36,6 +35,7 @@ import {
   canAddConversationMessages,
   readConversationAccessFromSql,
 } from "./access";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { requireSpaceForWork } from "./space";
 import { inviteMentionedPeople } from "./subscription";
 
@@ -95,7 +95,9 @@ export async function requireWebMessageConversation(
       "Only participants can add messages to a private conversation.",
     );
   }
-  if (messagesNeedSpaceMembership(conversation.kind) && conversation.spaceId) {
+  // Only members post in a Space, as in a Slack channel that a person
+  // joins before they post.
+  if (conversation.spaceId) {
     await requireSpaceForWork(viewer, conversation.spaceId);
   }
   return conversationId;
@@ -128,6 +130,10 @@ export async function createConversationForViewer(
     throwApiError(400, `A conversation in this Space is ${space.visibility}.`);
   }
   const visibility = space?.visibility ?? body.visibility;
+  // Work in a Space starts as a child of its Lead.
+  const lead = space
+    ? await getSpaceLead({ member: viewer, space })
+    : undefined;
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -151,7 +157,7 @@ export async function createConversationForViewer(
         uploads,
         ...(body.title ? { title: body.title } : undefined),
         ...(visibility ? { visibility } : undefined),
-        ...(space ? { spaceId: space.id } : undefined),
+        ...(lead ? { leadConversationId: lead.conversationId } : undefined),
       },
       {
         conversationStore: getConversationStore(),

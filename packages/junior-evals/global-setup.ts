@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";

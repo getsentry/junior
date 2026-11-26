@@ -1,8 +1,7 @@
 # Core does not know To-dos exist. The To-do feature lives in
 # `packages/junior/src/chat/todos/` as a core registration, and reaches the
 # agent only through plugin hooks. `core-registrations.ts` lists every core
-# registration, `core-system-prompts.ts` lists their prompt-only parts for the
-# build, and the database schema lists every table. The Inbox,
+# registration, and the database schema lists every table. The Inbox,
 # Search, and the dashboard API show To-dos to people, so they compose with
 # the feature. In the Slack List tools, "todo" is Slack's own term.
 id: no-core-todos
@@ -14,7 +13,6 @@ files:
 ignores:
   - packages/junior/src/chat/todos/**
   - packages/junior/src/chat/plugins/core-registrations.ts
-  - packages/junior/src/chat/plugins/core-system-prompts.ts
   - packages/junior/src/db/schema.ts
   - packages/junior/src/db/schema/**
   - packages/junior/src/chat/inbox-items/**

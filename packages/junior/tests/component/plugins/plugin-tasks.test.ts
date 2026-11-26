@@ -126,7 +126,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+  const { setPlugins } = await import("@/chat/plugins/hooks/registry");
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   setPlugins([]);
   await disconnectStateAdapter();
@@ -148,7 +148,7 @@ describe("plugin background tasks", () => {
     const runActor = { name: "plugin", platform: "system" } as const;
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
@@ -291,7 +291,7 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -404,7 +404,7 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -525,7 +525,7 @@ describe("plugin background tasks", () => {
     });
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
@@ -629,7 +629,7 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -705,7 +705,7 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -795,7 +795,7 @@ describe("plugin background tasks", () => {
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();
@@ -832,7 +832,7 @@ describe("plugin background tasks", () => {
   });
 
   it("attempts every plugin task send when one enqueue fails", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const attempted: PluginTaskQueueMessage[] = [];
@@ -890,7 +890,7 @@ describe("plugin background tasks", () => {
   });
 
   it("rejects task messages for unregistered plugin tasks", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();

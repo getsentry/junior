@@ -9,7 +9,7 @@ import * as z from "zod";
 import {
   REPORT_BLOCKED_TOOL_NAME,
   type BlockedReport,
-} from "@/chat/agent-invocations/blocked-report";
+} from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME, type NoReply } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import {

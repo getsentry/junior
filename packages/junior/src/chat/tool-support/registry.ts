@@ -15,7 +15,7 @@
 import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { deleteAutomationToolDefinition } from "@/chat/automations/tools/delete";
 import { runAutomationNowToolDefinition } from "@/chat/automations/tools/run-now";
 import { searchAutomationsToolDefinition } from "@/chat/automations/tools/search";
@@ -27,7 +27,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { hasEventCatalogEntries } from "@/chat/events/catalog";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
-import { getStaticPluginToolDefinitions } from "@/chat/plugins/agent-hooks";
+import { getStaticPluginToolDefinitions } from "@/chat/plugins/hooks/tools";
 import { slackCanvasEditToolDefinition } from "@/chat/slack/tools/canvas/edit";
 import { slackCanvasReadToolDefinition } from "@/chat/slack/tools/canvas/read";
 import { slackCanvasWriteToolDefinition } from "@/chat/slack/tools/canvas/write";
@@ -71,7 +71,6 @@ import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
 import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
-import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
@@ -133,8 +132,6 @@ const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
 const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents === "children" ||
   listedTools.agents === "children_and_parent";
-const isLead = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents === "lead";
 
 // Write tools exist when the deployment has a workspace provider, and their
 // text names those providers.
@@ -208,10 +205,10 @@ const CORE_TOOLS = {
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
-  // A Lead finds Conversations with searchConversations, and every other
-  // Turn with listAgents.
+  // Only a Turn whose `only` list names it lists it, such as a Lead's.
   searchConversations: {
-    when: isLead,
+    when: ({ listedTools }) =>
+      listedTools.only?.includes("searchConversations") === true,
     definition: ({ platform }) =>
       searchConversationsToolDefinition(
         platform === "slack" ? slackConversationSearchChannelFilter : undefined,
@@ -237,10 +234,7 @@ const CORE_TOOLS = {
     when: hasChildAgents,
     definition: () => archiveAgentToolDefinition,
   },
-  listAgents: {
-    when: (scope) => !isLead(scope),
-    definition: listAgentsToolDefinition,
-  },
+  listAgents: { definition: listAgentsToolDefinition },
   messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,
@@ -315,12 +309,6 @@ const CORE_TOOLS = {
   addInboxItem: always(addInboxItemToolDefinition),
   searchInboxItems: always(searchInboxItemsToolDefinition),
   updateInboxItem: always(updateInboxItemToolDefinition),
-  // Only a Turn whose `only` list names it lists it, such as a Lead's.
-  startConversation: {
-    when: ({ listedTools }) =>
-      listedTools.only?.includes("startConversation") === true,
-    definition: () => startConversationToolDefinition,
-  },
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;

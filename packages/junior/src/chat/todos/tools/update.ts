@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { findChildAgentConversationId } from "@/chat/agent-invocations/bindings";
+import { findChildAgentConversationId } from "@/chat/child-agents/bindings";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
 import {
@@ -42,7 +42,7 @@ const MAX_TODOS_PER_CALL = 50;
 const statusSchema = z
   .enum(TODO_STATUSES)
   .describe(
-    "in_progress marks work that has started. done and dropped close the To-do.",
+    "in_progress marks work that has started. Set done or dropped in the Turn that the work ends, such as when its pull request merges, or when a child agent's result says the work is finished, not only that its Turn ended.",
   );
 
 const assigneeSchema = z
@@ -321,7 +321,7 @@ export function createUpdateTodosTool(
       readOnlyHint: false,
     },
     description:
-      "Change your To-dos: the durable list of work that outlives this Turn, such as work queued for a later Turn, work for a child agent, or work for a person. They survive context compaction and sandbox resets. Do not add steps that you finish in this Turn. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Returns the To-dos that changed, or every open To-do when the call changes nothing.",
+      "Change your To-dos: the durable list of work that outlives this Turn, such as work queued for a later Turn, work for a child agent, or work for a person. They survive compaction and sandbox resets, so keep no backlog in a file. Do not add steps that you finish in this Turn, repeat To-dos in chat, or write their ids to people. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Returns the To-dos that changed, or every open To-do when the call changes nothing.",
     exposure: "direct",
     inputSchema: updateTodosInputSchema,
     outputSchema: updateTodosOutputSchema,

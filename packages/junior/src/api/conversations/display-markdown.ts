@@ -1,4 +1,4 @@
-import { applyPluginFormatMarkdown } from "@/chat/plugins/agent-hooks";
+import { applyPluginFormatMarkdown } from "@/chat/plugins/hooks/prompt";
 import { wrapBareSlackUserIds } from "@/chat/slack/mrkdwn";
 import type { ConversationReportEvent } from "../schema/conversation";
 
