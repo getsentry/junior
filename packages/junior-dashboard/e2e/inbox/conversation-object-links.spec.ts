@@ -69,10 +69,11 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
     );
     // A bare URL in a sentence is a plain link with the title, and no status.
-    const link = page.getByRole("link", {
-      name: "getsentry/junior#2201",
-      exact: true,
-    });
+    // The sidebar lists the same pull request by its title too.
+    const link = page
+      .getByRole("paragraph")
+      .filter({ hasText: "Opened the update pull request" })
+      .getByRole("link", { name: "getsentry/junior#2201", exact: true });
     await expect(link).toHaveAttribute(
       "href",
       "https://github.com/getsentry/junior/pull/2201",
