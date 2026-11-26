@@ -143,6 +143,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
+    inputs.viewer.requester &&
     inputs.viewer.merge_access &&
     !inputs.viewer.feedback &&
     inputs.viewer.shown === "merge"
@@ -156,6 +157,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
+    inputs.viewer.requester &&
     inputs.viewer.merge_access &&
     !inputs.viewer.asked_again &&
     !inputs.viewer.feedback
