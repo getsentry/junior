@@ -8,6 +8,7 @@
     "question": "Roll out payments-v42 to every region?",
     "assignees": ["Dashboard User"],
     "canAct": true,
+    "needsViewer": true,
     "conversationIds": ["internal:question-qa"],
     "createdAt": "2026-08-07T11:34:00.000Z",
     "updatedAt": "2026-08-07T11:34:00.000Z",
