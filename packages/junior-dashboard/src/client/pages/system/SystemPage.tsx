@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 
-import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
+import { getDashboardAgentName } from "../../agentName";
 import { useConversationStatsData, useSystemPluginsData } from "../../api";
 import { LoadingView } from "../../components/LoadingView";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -17,7 +17,12 @@ import { PluginPanels } from "./PluginPanels";
 import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
-import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+  systemOverviewDefaultRange,
+  systemOverviewDescription,
+} from "./SystemPageLayout";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
@@ -31,7 +36,7 @@ import {
  * redirecting paths that do not identify a page.
  */
 export function SystemPage(props: { coreData: DashboardCoreData }) {
-  const [range, setRange] = useState<TimeRangeDays>(30);
+  const [range, setRange] = useState<TimeRangeDays>(systemOverviewDefaultRange);
   const pathname = normalizeSystemPath(useLocation().pathname);
 
   if (pathname === "/system") {
@@ -126,7 +131,7 @@ function OverviewSystemPage(props: {
   return (
     <>
       <PageHeader
-        description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
+        description={systemOverviewDescription()}
         onRangeChange={props.onRangeChange}
         range={props.range}
         title="System"

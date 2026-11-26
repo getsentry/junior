@@ -37,7 +37,10 @@ import {
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
 import { juniorConversationEvents } from "@/db/schema";
-import { encodeHistoryPayload } from "../history-payload";
+import {
+  encodeAgentHistoryPayload,
+  isAgentHistoryData,
+} from "@/core/history/rows";
 import { restoreArchivedPath } from "./conversation-tree";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import {
@@ -108,6 +111,19 @@ function eventUnarchivesConversation(data: ConversationEventData): boolean {
   return true;
 }
 
+/**
+ * Encode event data as a row payload: core's types with core's encoding, the
+ * host's types as they are.
+ */
+export function encodeEventPayload(data: ConversationEventData): {
+  schemaVersion: number;
+  payload: Record<string, unknown>;
+} {
+  if (isAgentHistoryData(data)) return encodeAgentHistoryPayload(data);
+  const { type: _, ...payload } = data;
+  return { schemaVersion: 1, payload };
+}
+
 /** Validate and encode one event as a row for shared event storage. */
 function rowFromEvent(
   event: PersistedConversationEvent,
@@ -115,7 +131,7 @@ function rowFromEvent(
 ): NewEventRow {
   const stripped = stripPayloadAuthorIdentityId(event.data);
   const data = conversationEventDataSchema.parse(stripped);
-  const encoded = encodeHistoryPayload(data);
+  const encoded = encodeEventPayload(data);
   return {
     type: data.type,
     schemaVersion: encoded.schemaVersion,

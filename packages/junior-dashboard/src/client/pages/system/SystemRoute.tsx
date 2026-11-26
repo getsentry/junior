@@ -3,7 +3,10 @@ import { useLocation } from "react-router";
 
 import { useConversationStatsData } from "../../api";
 import type { DashboardCoreData } from "../../types";
-import { SystemRouteLoading } from "./SystemPageLayout";
+import {
+  SystemOverviewRouteLoading,
+  SystemRouteLoading,
+} from "./SystemPageLayout";
 import { normalizeSystemPath } from "./SystemPlugins";
 
 const SystemPage = lazy(() =>
@@ -20,17 +23,23 @@ export function SystemRoute(props: { coreData: DashboardCoreData }) {
     enabled: normalizeSystemPath(useLocation().pathname) === "/system",
   });
   return (
-    <Suspense
-      fallback={
-        <SystemRouteLoading
-          description="Runtime health, model usage, and loaded capabilities."
-          label="Loading system"
-          title="System"
-          variant="overview"
-        />
-      }
-    >
+    <Suspense fallback={<SystemRouteFallback />}>
       <SystemPage coreData={props.coreData} />
     </Suspense>
+  );
+}
+
+/** Hold the System page layout while its chunk or the dashboard data loads. */
+export function SystemRouteFallback() {
+  if (normalizeSystemPath(useLocation().pathname) === "/system") {
+    return <SystemOverviewRouteLoading />;
+  }
+  return (
+    <SystemRouteLoading
+      description="Runtime health, model usage, and loaded capabilities."
+      label="Loading system"
+      title="System"
+      variant="overview"
+    />
   );
 }

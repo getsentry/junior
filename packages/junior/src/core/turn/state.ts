@@ -74,8 +74,8 @@ import type {
 } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/conversation-events/lock";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
+import { appendAgentHistory } from "@/core/history/write";
 import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
@@ -531,39 +531,33 @@ export async function commitStep(
       if (rows.length === 0) {
         return undefined;
       }
-      await createSqlConversationEventStore(executor).append(
-        turn.conversationId,
-        [
-          ...prompt.map((entry, index) =>
-            entry.source === "input"
-              ? {
-                  data: historyItemFromPiMessage(
-                    entry.message,
-                    entry.provenance,
-                  ),
-                  idempotencyKey: inputEventKey(entry.inputId),
-                  createdAtMs: entry.message.timestamp,
-                }
-              : {
-                  data: historyItemFromPiMessage(
-                    entry.message,
-                    contextProvenance,
-                  ),
-                  idempotencyKey: promptEventKey(
-                    turn.turnId,
-                    turn.stepSeq,
-                    index,
-                  ),
-                  createdAtMs: entry.message.timestamp,
-                },
-          ),
-          ...step.messages.map((message, index) => ({
-            data: historyItemFromPiMessage(message, contextProvenance),
-            idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
-            createdAtMs: message.timestamp,
-          })),
-        ],
-      );
+      await appendAgentHistory(executor, turn.conversationId, [
+        ...prompt.map((entry, index) =>
+          entry.source === "input"
+            ? {
+                item: historyItemFromPiMessage(entry.message, entry.provenance),
+                idempotencyKey: inputEventKey(entry.inputId),
+                createdAtMs: entry.message.timestamp,
+              }
+            : {
+                item: historyItemFromPiMessage(
+                  entry.message,
+                  contextProvenance,
+                ),
+                idempotencyKey: promptEventKey(
+                  turn.turnId,
+                  turn.stepSeq,
+                  index,
+                ),
+                createdAtMs: entry.message.timestamp,
+              },
+        ),
+        ...step.messages.map((message, index) => ({
+          item: historyItemFromPiMessage(message, contextProvenance),
+          idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
+          createdAtMs: message.timestamp,
+        })),
+      ]);
       await recordReplies({ executor }, turn);
       return outcome;
     }),

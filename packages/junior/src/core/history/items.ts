@@ -1,7 +1,11 @@
 // Agent history items and History replacements: the event types that core
 // replays to the model. Every other event type is the host's.
 import * as z from "zod";
-import { conversationMessageProvenanceSchema } from "@/chat/conversations/provenance";
+import {
+  type ConversationMessageProvenance,
+  conversationMessageProvenanceSchema,
+} from "@/chat/conversations/provenance";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 
 const userMessageEventDataSchema = z
   .object({
@@ -115,6 +119,41 @@ export const historyReplacementDataSchema = z.discriminatedUnion("type", [
   legacyHandoffEventDataSchema,
 ]);
 
+/** The data of a History replacement event. */
+export type HistoryReplacementData = z.output<
+  typeof historyReplacementDataSchema
+>;
+
+// The schemas name the types, so a new item or replacement type is listed too.
+// oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is zod's object API field.
+const typeOf = <T extends string>(option: { shape: { type: { value: T } } }) =>
+  // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is zod's object API field.
+  option.shape.type.value;
+
+/** The event types of agent history items. */
+export const AGENT_HISTORY_ITEM_TYPES =
+  agentHistoryItemSchema.options.map(typeOf);
+
+/** The event types of History replacements. */
+export const HISTORY_REPLACEMENT_TYPES =
+  historyReplacementDataSchema.options.map(typeOf);
+
+const historyReplacementTypes: ReadonlySet<string> = new Set(
+  HISTORY_REPLACEMENT_TYPES,
+);
+
+/** True when an event type is a History replacement type. */
+export function isHistoryReplacementType(type: string): boolean {
+  return historyReplacementTypes.has(type);
+}
+
+/** True when core's event data is a History replacement. */
+export function isHistoryReplacement(
+  data: AgentHistoryItem | HistoryReplacementData,
+): data is HistoryReplacementData {
+  return isHistoryReplacementType(data.type);
+}
+
 /** Validate an event that intentionally replaces active model history. */
 export const historyReplacementSchema = z
   .object({
@@ -125,3 +164,53 @@ export const historyReplacementSchema = z
 
 /** One atomically persisted model-history replacement. */
 export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
+
+/** Translate one Pi message into the agent history item that stores it. */
+export function historyItemFromPiMessage(
+  message: PiMessage,
+  provenance: ConversationMessageProvenance,
+): AgentHistoryItem {
+  const parsed = piMessageSchema.parse(message);
+  const { role, ...fields } = parsed;
+  if (role === "user") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "user_message",
+      provenance,
+    });
+  }
+  if (role === "assistant") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "assistant_message",
+    });
+  }
+  if (role === "toolResult") {
+    return agentHistoryItemSchema.parse({
+      ...fields,
+      type: "tool_result",
+    });
+  }
+  return agentHistoryItemSchema.parse({
+    ...fields,
+    type: "system_message",
+  });
+}
+
+/** Translate one agent history item into the Pi message it represents. */
+export function piMessageFromHistoryItem(data: AgentHistoryItem): PiMessage {
+  if (data.type === "user_message") {
+    const { type: _, provenance: __, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "user" });
+  }
+  if (data.type === "assistant_message") {
+    const { type: _, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "assistant" });
+  }
+  if (data.type === "system_message") {
+    const { type: _, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "system" });
+  }
+  const { type: _, ...fields } = data;
+  return piMessageSchema.parse({ ...fields, role: "toolResult" });
+}
