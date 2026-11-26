@@ -1,8 +1,8 @@
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { Button } from "./ui/button";
-import { BottomSheet } from "./BottomSheet";
+import { BottomSheet, type BottomSheetProps } from "./BottomSheet";
 import { Drawer } from "./Drawer";
 
 const panelMediaQuery = "(min-width: 80rem)";
@@ -30,6 +30,8 @@ export function useDetailsPanel(): boolean {
 /** Show details beside their source, or in a bottom sheet when space is limited. */
 export function DetailsPanel(props: {
   actions?: ReactNode | undefined;
+  /** Show ← before the title, for a view one step deeper than details. */
+  back?: BottomSheetProps["back"];
   children: ReactNode;
   onClose(): void;
   label: string;
@@ -72,6 +74,7 @@ export function DetailsPanel(props: {
     return (
       // A resize mounts it, so it stays behind an open drawer.
       <BottomSheet
+        back={props.back}
         label={props.label}
         onClose={onClose}
         stayBehind
@@ -119,7 +122,20 @@ export function DetailsPanel(props: {
           starts on the body's text edge, and the close icon ends 24px in,
           like the header's last icon. */}
       <header className="box-content flex h-header items-center justify-between gap-3 border-b border-dashboard-border pl-5 pr-4">
-        <div className="min-w-0 flex-1">{props.title}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          {props.back ? (
+            <Button
+              variant="ghost"
+              aria-label={props.back.label}
+              className="-ml-2"
+              onClick={props.back.onBack}
+              size="icon"
+            >
+              <ArrowLeft aria-hidden="true" size={15} />
+            </Button>
+          ) : null}
+          <div className="min-w-0 flex-1">{props.title}</div>
+        </div>
         {/* Keep actions beside close, so they do not move with the title width. */}
         <div className="flex shrink-0 items-center gap-1">
           {props.actions}

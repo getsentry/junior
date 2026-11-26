@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Duration } from "../../components/Duration";
 import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type {
   ActorProfileReport,
   CodePersonReport,
@@ -24,6 +24,7 @@ import {
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
+import { useRegisterMobileHeaderBack } from "../../components/layout/DashboardChrome";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { anchorTitleId } from "../../components/layout/AnchorHeading";
@@ -51,6 +52,13 @@ export function PersonProfilePage() {
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
   const codeQuery = useActorCodeData(email);
+  const navigate = useNavigate();
+  // A phone shows the way back in the shell header, as other pages do.
+  useRegisterMobileHeaderBack(
+    "Back to people",
+    () => void navigate(NAV_PAGES.people.to),
+    NAV_PAGES.people.label,
+  );
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
@@ -96,7 +104,7 @@ export function Profile(props: {
   return (
     <div className="grid min-w-0 gap-5">
       <Link
-        className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
+        className="flex w-fit items-center gap-2 max-md:hidden font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
         to={NAV_PAGES.people.to}
       >
         <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
