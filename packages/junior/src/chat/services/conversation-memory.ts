@@ -25,8 +25,11 @@ import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
 // Most characters of one Message in the thread context. A longer Message is
-// cut and marked, so the model knows to read it in full with a tool.
+// cut and marked, so the model knows to read it in full. Only Slack threads
+// hold Messages that are not Turn input, so the marker names the Slack tool.
 const CONTEXT_MAX_MESSAGE_CHARS = 8_000;
+const TRUNCATED_MESSAGE_NOTE =
+  " [truncated: read the full Message with slackThreadRead]";
 // Hard cap on the rendered thread context, newest Messages first.
 const THREAD_CONTEXT_MAX_CHARS = 60_000;
 const THREAD_CONTEXT_OMITTED_NOTE =
@@ -58,13 +61,6 @@ function buildImageContextSuffix(
   return ` [image context: ${escapeTagTextAndQuotes(summaries.join(" | "))}]`;
 }
 
-function truncatedMessageNote(message: ConversationMessage): string {
-  const reader = message.meta?.slackTs
-    ? "slackThreadRead"
-    : "a searchConversationEvents query, then readConversationEvent";
-  return ` [truncated: read the full Message with ${reader}]`;
-}
-
 function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
@@ -75,7 +71,7 @@ function renderConversationMessageLine(
   const fullText = message.text.replace(/\s+/g, " ");
   const text =
     fullText.length > CONTEXT_MAX_MESSAGE_CHARS
-      ? `${escapeTagTextAndQuotes(fullText.slice(0, CONTEXT_MAX_MESSAGE_CHARS))}${truncatedMessageNote(message)}`
+      ? `${escapeTagTextAndQuotes(fullText.slice(0, CONTEXT_MAX_MESSAGE_CHARS))}${TRUNCATED_MESSAGE_NOTE}`
       : escapeTagTextAndQuotes(fullText);
 
   const markers: string[] = [];

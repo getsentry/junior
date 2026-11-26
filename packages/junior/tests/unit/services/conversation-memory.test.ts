@@ -396,12 +396,6 @@ describe("buildConversationContext", () => {
         createdAtMs: 1000,
         meta: { slackTs: "1795727795.305449" },
       },
-      {
-        id: "msg-2",
-        role: "user",
-        text: `web ${"y".repeat(10_000)}`,
-        createdAtMs: 2000,
-      },
     ];
 
     const context = buildConversationContext(conversation).text ?? "";
@@ -410,9 +404,6 @@ describe("buildConversationContext", () => {
     expect(context).not.toContain(" end");
     expect(context).toContain(
       "[truncated: read the full Message with slackThreadRead]",
-    );
-    expect(context).toContain(
-      "[truncated: read the full Message with a searchConversationEvents query, then readConversationEvent]",
     );
   });
 });
