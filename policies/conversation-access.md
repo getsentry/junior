@@ -81,8 +81,9 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation and join it by
-posting. Only its Participants may read and act on a private one
+is not a Conversation. Anyone may read a public Conversation and Join it. A
+Slack Message adds its author. A web Message and a mention add nobody. Only
+its Participants may read and act on a private one
 (`canViewPrivateContent`, `isParticipant`). Any Participant may Invite a
 person, and each person may only Leave on their own. A Slack-backed one
 follows its channel instead. This rule never lets one Conversation read

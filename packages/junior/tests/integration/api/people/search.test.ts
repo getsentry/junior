@@ -167,10 +167,7 @@ describe("user search API", () => {
       name: "Launch",
       visibility: "private",
     });
-    const { conversationId: lead } = await getSpaceLead({
-      member: viewer.viewer,
-      space,
-    });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await slackUser({
       email: "lucas@example.com",
       fullName: "Bob Lucase",
@@ -248,10 +245,7 @@ describe("user search API", () => {
       name: "Launch",
       visibility: "public",
     });
-    const { conversationId: lead } = await getSpaceLead({
-      member: viewer.viewer,
-      space,
-    });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         slackUser({
@@ -294,10 +288,7 @@ describe("user search API", () => {
       name: "Secret",
       visibility: "private",
     });
-    const { conversationId: lead } = await getSpaceLead({
-      member: owner.viewer,
-      space,
-    });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await slackUser({
       email: "casey@example.com",
       fullName: "Casey Nguyen",

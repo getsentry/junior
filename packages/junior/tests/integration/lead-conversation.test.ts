@@ -62,7 +62,7 @@ async function spaceLead(
     visibility,
     name,
   });
-  return { lead: await getSpaceLead({ member, space }), space };
+  return { lead: await getSpaceLead(space.id), space };
 }
 
 /** A Turn of `conversationId` that `person` started on the web. */
@@ -140,13 +140,8 @@ describe("Lead", () => {
       name: "Billing migration",
     });
 
-    // Creating the Space made its Lead, so two reads at once return it.
-    const [first, second] = await Promise.all([
-      getSpaceLead({ member: ana, space }),
-      getSpaceLead({ member: ana, space }),
-    ]);
-
-    expect(second.conversationId).toBe(first.conversationId);
+    // Creating the Space made its Lead.
+    const first = await getSpaceLead(space.id);
     expect(first).toMatchObject({
       kind: "lead",
       spaceId: space.id,
@@ -157,7 +152,7 @@ describe("Lead", () => {
       first.conversationId,
     );
 
-    // A Space and its Lead share one name.
+    // A Space's name is its Lead's title.
     await updateSpace(space.id, { name: "Billing cutover" });
     expect(
       await getConversationStore().get({

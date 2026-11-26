@@ -381,7 +381,7 @@ describe("conversation status", () => {
       name: "Release",
       visibility: "public",
     });
-    const lead = await getSpaceLead({ member: bob!, space });
+    const lead = await getSpaceLead(space.id);
     const target = {
       leadConversationId: lead.conversationId,
       spaceId: space.id,
