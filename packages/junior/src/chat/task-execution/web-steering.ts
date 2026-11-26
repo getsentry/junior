@@ -8,6 +8,7 @@ import {
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { persistConversationMessages } from "@/chat/conversations/messages";
+import { queueSteeredLinks } from "@/chat/conversations/sent-links";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { upsertConversationMessage } from "@/chat/services/conversation-memory";
@@ -82,6 +83,10 @@ export function createWebSteeringDrain(args: {
         conversation,
         conversationId: context.conversationId,
       });
+      await queueSteeredLinks(
+        context.conversationId,
+        joining.map((message) => message.inboundMessageId),
+      );
 
       // An earlier drain can save the messages in the Turn and fail before
       // the mailbox ack. Do not give them to the Turn again.

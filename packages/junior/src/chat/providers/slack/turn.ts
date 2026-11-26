@@ -152,6 +152,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
+import { queueSteeredLinks } from "@/chat/conversations/sent-links";
 import {
   deliversFinalText,
   postsRunNotices,
@@ -1078,6 +1079,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                       conversation: preparedState.conversation,
                       conversationId,
                     });
+                    // Untagged Messages are thread context, not input.
+                    await queueSteeredLinks(
+                      conversationId,
+                      queuedMessages
+                        .filter((queued) => queued.explicitMention)
+                        .map((queued) => queued.message.id),
+                    );
                     await accept(acceptedMessages);
                   },
                   { conversationContext: preparedState.conversationContext },

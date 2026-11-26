@@ -4,7 +4,9 @@
  *
  * The transaction that stores a `turn_started` event gives each link of the
  * Turn's input Messages that a person wrote a due time
- * (`queueTurnInputLinks`), so the work is stored before it runs. Each
+ * (`queueTurnInputLinks`), so the work is stored before it runs. A Message
+ * that steers into a running Turn queues its links the same way, after the
+ * Turn stores it (`queueSteeredLinks`). Each
  * heartbeat attaches a bounded slice of due links as their author, with the
  * rule of the dashboard attach (`object-attach.ts`). The claim moves a
  * link's due time ahead by the retry delay. A run that dies leaves its claims
@@ -19,7 +21,7 @@
  * Policy: policies/observability.md.
  */
 import { and, asc, eq, lte, or } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { readIdentityById } from "@/chat/plugins/viewer";
@@ -29,6 +31,7 @@ import {
   juniorMessageAttachments,
 } from "@/db/schema";
 import { attachObjectLinkForUser } from "./object-attach";
+import { queueTurnInputLinks } from "./sql/message-links";
 
 // Each link can read a provider, so one run attaches a few.
 const MAX_LINKS_PER_RUN = 25;
@@ -52,6 +55,21 @@ function linkWhere(keys: readonly LinkKey[]) {
       ),
     ),
   );
+}
+
+/**
+ * Queue the links of stored Messages that steered into a running Turn, as
+ * the links of its first input are. Steered Messages join the Turn as input.
+ */
+export async function queueSteeredLinks(
+  conversationId: string,
+  messageIds: readonly string[],
+): Promise<void> {
+  await queueTurnInputLinks(getSqlExecutor(), {
+    at: new Date(),
+    conversationId,
+    inputMessageIds: messageIds,
+  });
 }
 
 /**

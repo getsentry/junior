@@ -75,10 +75,23 @@ describe("createConversation MCP tool", () => {
     expect(result).toMatchObject({ isError: true });
   });
 
-  it("adds the links of the first Message to linked work after its Turn starts", async () => {
+  it("adds the links of the first Message and of a steered Message to linked work", async () => {
     const docUrl = "https://docs.test/d/1";
+    const steeredUrl = "https://docs.test/d/2";
+    let steered = false;
     const work = await createConversationWorkHarness({
-      run: async (run) => await finishRun(run),
+      run: async (run) => {
+        if (!steered) {
+          steered = true;
+          await call("sendMessage", {
+            conversationId: run.conversationId,
+            delivery: "interrupt",
+            message: `Also ${steeredUrl}`,
+          });
+          await run.durability?.drainSteeringMessages?.(async () => {});
+        }
+        return await finishRun(run);
+      },
     });
     const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
       conversationWorkQueue: () => work.queue,
@@ -114,13 +127,23 @@ describe("createConversation MCP tool", () => {
     await work.process(work.queue.takeMessageFor(conversationId));
 
     await runTestHeartbeat(work.queue, Date.now());
-    expect(await listConversationAnnotations(getDb(), conversationId)).toEqual([
-      expect.objectContaining({
+    const links = await listConversationAnnotations(getDb(), conversationId);
+    expect(
+      links
+        .map(({ kind, label, objectType, url }) => ({
+          kind,
+          label,
+          objectType,
+          url,
+        }))
+        .sort((a, b) => (a.url ?? "").localeCompare(b.url ?? "")),
+    ).toEqual(
+      [docUrl, steeredUrl].map((url) => ({
         kind: "resource_link",
-        label: docUrl,
+        label: url,
         objectType: "document",
-        url: docUrl,
-      }),
-    ]);
+        url,
+      })),
+    );
   });
 });
