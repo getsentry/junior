@@ -348,13 +348,16 @@ test("$ finds a skill by its words, and the words after it are text", async ({
 
   // `in` matches the inserted name, but the reference is complete. In the
   // next one, `ix` matches no skill, so the menu stays closed even when
-  // `ixci` would match `incident` as a typo.
+  // `ixci` would match `incident` as a typo, also after a caret move in it.
   await composer.pressSequentially("in tpm, then $triage ixci");
+  await composer.press("ArrowLeft");
+  await composer.pressSequentially("i");
+  await composer.press("End");
   await expect(skills).toBeHidden();
   await composer.press("Enter");
   await expect
     .poll(() => sent)
-    .toEqual(["use $triage-incident in tpm, then $triage ixci"]);
+    .toEqual(["use $triage-incident in tpm, then $triage ixcii"]);
   await expect(composer).toHaveText("");
 
   // Escape keeps the menu closed through a blur and a focus.
@@ -369,7 +372,7 @@ test("$ finds a skill by its words, and the words after it are text", async ({
   await expect
     .poll(() => sent)
     .toEqual([
-      "use $triage-incident in tpm, then $triage ixci",
+      "use $triage-incident in tpm, then $triage ixcii",
       "run $triage in",
     ]);
 });

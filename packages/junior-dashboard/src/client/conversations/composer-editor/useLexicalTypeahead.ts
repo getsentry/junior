@@ -42,9 +42,10 @@ type TokenFinder = (text: string, caret: number) => ComposerToken | undefined;
 type TextRange = { nodeKey: NodeKey; start: number; end: number };
 // The text and a collapsed caret that the last sync read.
 type Synced = { text: string; caret: string };
-// A reference whose menu is closed. With `query`, it stays closed only
-// while the query starts with it, so a shorter query searches again.
-type Closed = { nodeKey: NodeKey; start: number; query?: string };
+// A reference whose menu is closed, up to `end`. Typing moves `end`, and a
+// caret move past it leaves the reference. With `query`, it stays closed
+// only while the query starts with it, so a shorter query searches again.
+type Closed = { nodeKey: NodeKey; start: number; end: number; query?: string };
 
 // Tags the update of an insert, so its sync keeps `inserted`.
 const INSERT_TAG = "composer-typeahead-insert";
@@ -116,17 +117,19 @@ export function useLexicalTypeahead(
           (open?.nodeKey === found.nodeKey && open.start === found.start))
           ? { ...found, edited }
           : undefined;
-      // A focus reads the caret with no caret before it, so it stays in
-      // a closed reference even when that reference opens no menu.
       const closed = closedRef.current;
-      if (
-        closed &&
-        (found?.nodeKey !== closed.nodeKey ||
+      if (closed) {
+        if (
+          found?.nodeKey !== closed.nodeKey ||
           found.start !== closed.start ||
-          (!next && last !== undefined) ||
-          (closed.query !== undefined && !found.query.startsWith(closed.query)))
-      ) {
-        closedRef.current = undefined;
+          (closed.query !== undefined &&
+            !found.query.startsWith(closed.query)) ||
+          (!edited && found.start + 1 + found.query.length > closed.end)
+        ) {
+          closedRef.current = undefined;
+        } else if (edited) {
+          closed.end = found.end;
+        }
       }
       setToken((current) =>
         !next || closedRef.current
@@ -181,6 +184,7 @@ export function useLexicalTypeahead(
         closedRef.current = {
           nodeKey: current.nodeKey,
           start: current.start,
+          end: current.end,
           ...(atQuery ? { query: current.query } : undefined),
         };
       }
@@ -212,6 +216,7 @@ export function useLexicalTypeahead(
           closedRef.current = {
             nodeKey: current.nodeKey,
             start: current.start,
+            end: current.start + insertion.text.length + 1,
             query: `${insertion.text.slice(1)} `,
           };
           setInserted(insertion.text);
