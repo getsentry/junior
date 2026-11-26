@@ -408,14 +408,6 @@ export function storesSpace(
 }
 
 /**
- * Return whether only members of the Conversation's Space can send it a
- * Message. A Space's Lead talks only to its members.
- */
-export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
-  return kind === "lead";
-}
-
-/**
  * Return whether a Conversation is top-level work: it has no parent, or it
  * is a Lead's child. Top-level lists show it, and its child
  * agents move with it.
