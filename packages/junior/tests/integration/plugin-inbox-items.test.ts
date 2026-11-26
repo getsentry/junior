@@ -367,6 +367,22 @@ describe("plugin inbox items", () => {
       closeReason: "Nobody on the item has an ask now.",
       status: "done",
     });
+
+    // Two first asks at once both find no open item. Both people join the
+    // one item that the first insert adds.
+    await Promise.all(
+      [ana, bo].map(
+        async (asked) =>
+          await items.upsert({
+            ...NOTICE,
+            askedIdentityIds: [asked.identityId],
+            assigneeIdentityIds: both,
+          }),
+      ),
+    );
+    expect((await assignees()).sort()).toEqual(
+      [ana.user.id, bo.user.id].sort(),
+    );
   });
 
   it("saves the item closes of a batch together or not at all", async () => {

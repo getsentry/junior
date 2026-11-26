@@ -154,7 +154,7 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginInboxItems {
   const { conversationId, show } = args;
-  return {
+  const items: PluginInboxItems = {
     async upsert(notice: PluginReviewNotice) {
       const subject = pluginItemSubject(args.plugin, notice.subject);
       if (!subjectKindLabel(subject.kind, getPlugins())) {
@@ -248,8 +248,13 @@ export function createPluginInboxItems(args: {
           owner: { id: conversationId, kind: "conversation" },
           nowMs: Date.now(),
         });
-        // Undefined means a concurrent upsert added the item first.
-        if (!item) return;
+        // Undefined means a concurrent upsert added the item first. Run
+        // again, so that this event's ask joins that item. Each run that
+        // gets here lost to another insert, so the runs end.
+        if (!item) {
+          await items.upsert(notice);
+          return;
+        }
         itemId = item.id;
       }
       await show(itemId);
@@ -283,4 +288,5 @@ export function createPluginInboxItems(args: {
       return true;
     },
   };
+  return items;
 }
