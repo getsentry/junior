@@ -33,7 +33,9 @@ export interface Inputs {
      */
     can_merge: boolean;
     /**
-     * GitHub still requests the viewer's review.
+     * GitHub still requests the viewer's review. GitHub requests a review
+     * only while it is pending, so `requested` is never true while
+     * `review_pending` is false.
      */
     requested: boolean;
     /**
@@ -49,8 +51,8 @@ export interface Inputs {
      * The viewer's latest review waits for Junior's answer: it requests
      * changes, or it is a comment-only review, which Junior handles like a
      * change request. After the viewer approves, or after their review is
-     * dismissed, only a comment-only review after a later ask counts. A
-     * draft never waits, because it cannot merge.
+     * dismissed, only a comment-only review after a later ask counts. The
+     * source gives false for a draft, because a draft cannot merge.
      */
     feedback: boolean;
     /**
