@@ -126,7 +126,9 @@ const listedAgentFields = z
     last_result: z
       .enum(CHILD_AGENT_RESULTS)
       .optional()
-      .describe("How the latest finished task of the agent ended"),
+      .describe(
+        "How the agent's latest finished Turn ended, as the status of its agent result",
+      ),
     task: z
       .string()
       .optional()

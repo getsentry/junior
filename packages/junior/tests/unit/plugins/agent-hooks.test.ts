@@ -610,6 +610,11 @@ describe("agent plugin hooks", () => {
           pluginName: "agent-demo",
           text: "y".repeat(8_000),
         },
+        {
+          id: "userPrompt:0",
+          pluginName: "overflow-demo",
+          text: "The context of this plugin could not load for this Turn.",
+        },
       ]);
     } finally {
       setPlugins(previous);
