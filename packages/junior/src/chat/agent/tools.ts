@@ -34,7 +34,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import {
   createPluginHookRunner,
   type PluginHookRunner,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/runner";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
@@ -158,7 +158,6 @@ export async function createRunSandbox(
     conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
     credentialAuditSource: credentialAuditSource(args.run.source),
-    actor: args.currentActor,
     artifacts: attachmentStorage
       ? createArtifactSync({
           conversationId: args.run.conversationId,
@@ -167,8 +166,6 @@ export async function createRunSandbox(
         })
       : undefined,
     locationConfiguration: args.run.environment?.locationConfiguration,
-    configurationValues: args.configurationValues,
-    getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: async (sandbox) => {
       const actor = args.currentActor;
       if (actor) {
@@ -207,6 +204,8 @@ export function createPromptHookContext(args: {
 interface ToolWiringArgs {
   abortAgent: () => void;
   behavior: TurnBehavior;
+  /** A root or a Lead's child, which counts as a root for `maxAgentDepth`. */
+  topLevelWork: boolean;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
@@ -218,6 +217,7 @@ interface ToolWiringArgs {
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
   conversationPrivacy?: ConversationPrivacy | undefined;
+  spaceId?: string | undefined;
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
@@ -466,8 +466,10 @@ export async function wireAgentTools(
         }
       : undefined),
     conversationPrivacy: args.conversationPrivacy,
+    spaceId: args.spaceId,
     userText: args.userInput,
     configuration: args.configurationValues,
+    locationConfiguration: args.run.environment?.locationConfiguration,
     egress: createPluginEgress({
       credentialAuditSource: auditSource,
       credentialContext: args.run.credentialContext,
@@ -492,13 +494,14 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(args.run.actorIsApp ? { actorIsApp: true } : undefined),
     ...(args.currentActor
       ? {
           resolveActorIdentity: async () =>
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...bindTurnTools(args.run, args.behavior),
+    ...bindTurnTools(args.run, args.behavior, args.topLevelWork),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -520,6 +523,7 @@ export async function wireAgentTools(
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
+      lead: args.behavior.promptMode === "lead",
       source: runSource,
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
@@ -769,6 +773,7 @@ export async function wireAgentTools(
 export function bindTurnTools(
   run: AgentRun,
   behavior: TurnBehavior,
+  topLevelWork: boolean,
 ): Pick<
   ToolRuntimeContext,
   "listedTools" | "messageAgent" | "spawnAgent" | "turnTools"
@@ -787,10 +792,10 @@ export function bindTurnTools(
   return {
     turnTools:
       run.dispatch?.outcomes?.length === 0
-        ? { ...behavior.tools, reply: "none" }
+        ? { ...behavior.tools, reply: false }
         : behavior.tools,
     listedTools,
-    ...bindAgentTools(run, listedTools.agents),
+    ...bindAgentTools(run, listedTools.agents, topLevelWork),
   };
 }
 
@@ -798,21 +803,17 @@ export function bindTurnTools(
 export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,
+  topLevelWork: boolean,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
-  if (agents === "none" || !bindSpawnAgent) return {};
-  // A Lead steers other top-level agents and starts no child agents.
-  if (agents === "lead") {
-    const messageAgent = bindMessageAgent?.(run, agents);
-    return messageAgent ? { messageAgent } : {};
-  }
-  // The rule reads only the Turn behavior and the deployment, so a child gets
-  // the same tools on every path. Every child has depth 1 or more, so with
-  // maxAgentDepth 0 no child can spawn. With more, a child past the limit
-  // still sees startAgent, and the depth check in spawn.ts refuses it.
+  if (!bindSpawnAgent) return {};
+  // The rule reads only the Turn behavior, the Conversation's place in its
+  // tree, and the deployment, so a child gets the same tools on every path.
+  // A Lead's child counts as a root. Every other child has depth 1 or more,
+  // so with maxAgentDepth 0 it cannot spawn. With more, a child past the
+  // limit still sees startAgent, and the depth check in spawn.ts refuses it.
   const canSpawn =
-    agents === "children" ||
-    (agents === "children_and_parent" && botConfig.maxAgentDepth > 0);
+    agents === "children" || topLevelWork || botConfig.maxAgentDepth > 0;
   const spawnAgent = canSpawn ? bindSpawnAgent(run) : undefined;
   // A child agent can always message its parent, even when it is too deep to
   // start child agents of its own.

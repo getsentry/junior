@@ -18,10 +18,8 @@ import {
 import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import {
-  EVENT_WAIT_MS,
-  type EventMailboxMetadata,
-} from "@/chat/events/notification";
+import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { formatUserInputAnswer } from "@/chat/inbox-items/user-input-request";
@@ -220,7 +218,6 @@ async function sendOne(args: {
     ) {
       await enqueueChildDismissToParent({
         conversationId: args.conversationId,
-        addedByTurnId: args.item.addedByTurnId,
         inboxItemId: args.item.id,
         queue: args.queue,
         text: args.text,
@@ -238,7 +235,7 @@ async function sendOne(args: {
     if (
       conversation &&
       (acceptsWebMessages(conversation) ||
-        takesInboxAnswersAsWebInput(conversation.kind))
+        takesInboxAnswersAsWebInput(conversation))
     ) {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(

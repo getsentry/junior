@@ -5,10 +5,11 @@ import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { mockConversationDetail } from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+  const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 
   async function openActiveConversation(page: Page, baseURL: string) {
     await page.goto(
@@ -244,6 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             .first(),
         ).toBeVisible();
       },
+      // One of them reads the viewer's Spaces for the pane.
       { requests: 9, serialRounds: 2 },
     );
     expect(requests).toBe(1);
@@ -266,6 +268,30 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     expect(await extraFeedFetch).toBe(false);
     expect(requests).toBe(1);
+  });
+
+  test("loads a finished conversation within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    // A running Conversation polls every 2 seconds, so a slow load would
+    // count a poll. Measure a finished one, which does not poll its detail.
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(
+          `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+        );
+        await expect(
+          page.getByRole("heading", {
+            name: "Deployment investigation failed",
+            exact: true,
+          }),
+        ).toBeVisible();
+      },
+      // One of them reads the viewer's Spaces for the pane.
+      { requests: 11, serialRounds: 2 },
+    );
   });
 
   test("reads the card of each link once, for rows near the screen", async ({
@@ -414,7 +440,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       conversationId: `long-${index}`,
       cumulativeDurationMs: 1_000 + index,
       displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
@@ -790,10 +816,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === childDetailPath,
       async (route) => {
-        const response = await route.fetch();
         await route.fulfill({
-          json: { ...(await response.json()), isParticipant: true },
-          response,
+          json: {
+            ...(await mockConversationDetail(route)),
+            isParticipant: true,
+          },
         });
       },
     );

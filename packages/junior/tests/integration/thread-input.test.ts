@@ -1,5 +1,4 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { buildPromptInput } from "@/chat/agent/prompt";
@@ -28,7 +27,7 @@ import {
 } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { juniorDestinations } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import {
   slackDestination,
   slackInvocationInput,
@@ -220,41 +219,33 @@ describe("Thread input", () => {
       });
       expect(
         (parentWork?.messages ?? []).map((message) => message.input.text),
-      ).toEqual([
-        expect.stringMatching(/^<agent-result [^>]*status="completed"/),
-      ]);
+      ).toEqual([expect.stringMatching(/^<agent-result [^>]*status="done"/)]);
     } finally {
       await harness.close();
     }
   });
 
-  it.each(["direct", "unknown"] as const)(
-    "runs a person's Turn in a Thread as private when the Slack root is %s",
-    async (visibility) => {
-      const harness = await createHarness();
-      try {
-        const threadId = await startFinishedThread(harness);
-        // A Slack DM, or a channel whose type is unknown, has no confirmed
-        // visibility. Missing visibility is private.
-        await getDb()
-          .update(juniorDestinations)
-          .set({ visibility })
-          .where(eq(juniorDestinations.provider, "slack"));
+  it("runs a person's Turn in a Thread as private when the Slack root has no visibility", async () => {
+    const harness = await createHarness();
+    try {
+      const threadId = await startFinishedThread(harness);
+      // A writer of an older deploy leaves the tree null. Missing visibility
+      // is private.
+      await getDb().update(juniorConversations).set({ visibility: null });
 
-        await expect(
-          sendPersonMessage(harness, threadId, "person-1"),
-        ).resolves.toMatchObject({ status: "accepted" });
-        await harness.process(threadId);
+      await expect(
+        sendPersonMessage(harness, threadId, "person-1"),
+      ).resolves.toMatchObject({ status: "accepted" });
+      await harness.process(threadId);
 
-        expect(harness.runs.at(-1)).toMatchObject({
-          actor: webTestActor,
-          source: { kind: "web", visibility: "private" },
-        });
-      } finally {
-        await harness.close();
-      }
-    },
-  );
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: webTestActor,
+        source: { kind: "web", visibility: "private" },
+      });
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("runs a person's Turn in a Thread under a private web root", async () => {
     const harness = await createHarness();

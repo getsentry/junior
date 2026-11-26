@@ -7,6 +7,7 @@ import { createApp } from "@/app";
 import type { AuthenticatedRoute } from "@/dashboard-routes";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { MCP_CLIENT_ID } from "../msw/handlers/mcp-client-metadata";
+import { mockBuiltSystemPrompts } from "./built-system-prompts";
 
 export const MCP_TEST_ORIGIN = "http://junior.test";
 export const MCP_TEST_URL = `${MCP_TEST_ORIGIN}/api/mcp`;
@@ -49,6 +50,7 @@ export function mockMcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+  mockBuiltSystemPrompts();
 }
 
 /** Build the cookie header that signs one viewer in to the fake dashboard. */

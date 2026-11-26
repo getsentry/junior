@@ -24,7 +24,7 @@ import {
   type ConversationDrawerTarget,
 } from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
-import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
+import { ConversationHeader } from "../src/client/shell/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
   ConversationStats,
@@ -34,9 +34,9 @@ import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
-import { ConversationPage } from "../src/client/conversations/ConversationPage";
+import { ConversationPage } from "../src/client/shell/conversations/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
-import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { LocationsPageContent } from "../src/client/shell/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
 import {
@@ -93,7 +93,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -169,6 +169,15 @@ function systemData(): SystemFixture {
           durationMs: 12_000,
           inputTokens: 3_000,
           tokens: 12_345,
+        },
+      ],
+      personSpendDays: [
+        {
+          date: "2026-01-01",
+          medianPersonCostUsd: 1.5,
+          people: 2,
+          personCostUsd: 4,
+          unattributedCostUsd: 0.56,
         },
       ],
       source: "conversation_index",
@@ -381,7 +390,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="search">
           <TranscriptToolView
-            conversationId="slack:C1:123"
+            conversation={conversation([], { conversationId: "slack:C1:123" })}
             part={{
               id: "tool-1",
               input: { query: "regression" },
@@ -405,7 +414,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <TranscriptToolView
-            conversationId="slack:C1:123"
+            conversation={conversation([], { conversationId: "slack:C1:123" })}
             part={{
               id: "tool-1",
               name: "webSearch",
@@ -425,47 +434,50 @@ describe("dashboard canonical-event components", () => {
 
   it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <ConversationHeader
-          detailsOpen={false}
-          errors={[]}
-          menu={{
-            actions: {
-              archive: () => {},
-              continueInSlack: () => {},
-              delivery: () => {},
-              eventLog: () => {},
-              pin: () => {},
-              rename: () => {},
-              subscription: () => {},
-            },
-            conversation: undefined,
-            conversationId: "conversation-1",
-            detail: undefined,
-            eventLogOpen: true,
-            pending: {
-              archive: false,
-              delivery: false,
-              pin: false,
-              subscription: false,
-            },
-          }}
-          onDetailsClick={() => {}}
-          onSearchChange={() => {}}
-          onViewChange={() => {}}
-          privacy={null}
-          search=""
-          searchMatch={{
-            count: 0,
-            index: 0,
-            reset: () => {},
-            setMatches: () => {},
-            step: () => {},
-          }}
-          title="Header QA"
-          view="raw"
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ConversationHeader
+            detailsOpen={false}
+            errors={[]}
+            lead={false}
+            menu={{
+              actions: {
+                archive: () => {},
+                continueInSlack: () => {},
+                delivery: () => {},
+                eventLog: () => {},
+                pin: () => {},
+                rename: () => {},
+                subscription: () => {},
+              },
+              conversation: undefined,
+              conversationId: "conversation-1",
+              detail: undefined,
+              eventLogOpen: true,
+              pending: {
+                archive: false,
+                delivery: false,
+                pin: false,
+                subscription: false,
+              },
+            }}
+            onDetailsClick={() => {}}
+            onSearchChange={() => {}}
+            onViewChange={() => {}}
+            privacy={null}
+            search=""
+            searchMatch={{
+              count: 0,
+              index: 0,
+              reset: () => {},
+              setMatches: () => {},
+              step: () => {},
+            }}
+            title="Header QA"
+            view="raw"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(html).toContain('title="Back to conversation"');
     expect(html).toMatch(/aria-current="page"[^>]*>Event log</);
@@ -1540,7 +1552,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
-          kind: "root",
+          kind: "thread",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1714,7 +1726,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
-          kind: "root",
+          kind: "thread",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -2137,7 +2149,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
-      kind: "root",
+      kind: "thread",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",

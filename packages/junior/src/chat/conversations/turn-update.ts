@@ -4,7 +4,10 @@
  * gets from a child agent: the reply, the `noReply` note, or what blocks
  * it. Every Turn stores these events, whatever surface ran it.
  */
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import type {
+  AgentUpdate,
+  AgentUpdateStatus,
+} from "@/chat/agent-invocations/agent-update";
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import { readTurnAnswer } from "@/chat/turn-answer";
 import type {
@@ -26,6 +29,8 @@ export interface EndedTurn {
   /** Seq of the Turn's terminal event. */
   terminalSeq: number;
   turnId: string;
+  /** The answer that the worker that ended the Turn saw, when it has one. */
+  answerText?: string | undefined;
 }
 
 async function readTurnEvents(
@@ -78,29 +83,46 @@ async function readAnswerText(
 }
 
 /**
- * Return the agent update of a Turn that ended without a failure. A
+ * The agent update status of a Turn that ended without a failure. A
  * cancelled Turn reports nothing: new input or a stop replaced it, and each
  * of them reports.
  */
+export const TURN_OUTCOME_STATUSES = {
+  blocked: "blocked",
+  cancelled: undefined,
+  no_reply: "done",
+  success: "done",
+} as const satisfies Record<
+  EndedTurn["outcome"],
+  Extract<AgentUpdateStatus, "blocked" | "done"> | undefined
+>;
+
+/** Return the agent update of a Turn that ended without a failure. */
 export async function readTurnUpdate(
   events: ConversationEventStore,
   turn: EndedTurn,
 ): Promise<AgentUpdate | undefined> {
-  switch (turn.outcome) {
-    case "success":
-      return { status: "completed", text: await readReplyText(events, turn) };
-    case "no_reply":
-      return { status: "completed", text: await readAnswerText(events, turn) };
-    case "blocked":
-      return { status: "blocked", text: await readAnswerText(events, turn) };
-    case "cancelled":
-      return undefined;
-  }
+  const status = TURN_OUTCOME_STATUSES[turn.outcome];
+  if (!status) return undefined;
+  return {
+    status,
+    text:
+      turn.outcome === "success"
+        ? await readReplyText(events, turn)
+        : (turn.answerText ?? (await readAnswerText(events, turn))),
+  };
 }
 
-/** Return the agent update of a failed Turn. Raw error text is not stored. */
+/**
+ * Return the agent update of a failed Turn. Raw error text is not stored, so
+ * only the worker that saw the failure has `failureText`.
+ */
 export function failedTurnUpdate(
   failureCode: ConversationTurnFailureCode,
+  failureText?: string,
 ): AgentUpdate {
-  return { status: "failed", text: `The Turn failed: ${failureCode}.` };
+  return {
+    status: "failed",
+    text: failureText?.trim() || `The Turn failed: ${failureCode}.`,
+  };
 }

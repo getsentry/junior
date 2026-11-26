@@ -18,7 +18,11 @@ import {
   type ConversationOrigin,
 } from "../components/layout/paneRows";
 import { NAV_PAGES } from "../navPages";
-import { useConversationOrigin } from "./conversationOrigin";
+import { isSpacePath } from "../spaces/spaceRoutes";
+import {
+  useConversationOrigin,
+  type ConversationOpener,
+} from "./conversationOrigin";
 import {
   inboxViewOfPath,
   inboxViewPath,
@@ -46,6 +50,8 @@ type InboxListValue = {
   ];
   /** The Inbox view that opened the Conversation that shows, if any. */
   origin: ConversationOrigin | undefined;
+  /** The Space page that opened the Conversation that shows, if any. */
+  originSpacePath: string | undefined;
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
   /** Places by list, so `/inbox` and `/inbox?view=inbox` share the Inbox's. */
@@ -76,12 +82,18 @@ export function InboxListProvider(props: { children: ReactNode }) {
   const [inFlightExpanded, setInFlightExpanded] = useState(false);
   const [returnPath, setReturnPath] = useState(inboxViewPath("inbox"));
   const location = useLocation();
-  // The list of the page shown last, if it was one: an Inbox view or Code.
-  // Plugin pages are neither, so the row needs no nav items.
-  const [lastList, setLastList] = useState<ConversationOrigin>();
-  const origin = useConversationOrigin(location, lastList);
+  // The list of the page shown last, if it was one: an Inbox view, Code, or
+  // a Space page. Plugin pages are none, so the row needs no nav items.
+  const [lastList, setLastList] = useState<ConversationOpener>();
+  const opener = useConversationOrigin(location, lastList);
+  // A Space page is no row of the pane, so only Back returns to it.
+  const originSpacePath =
+    opener !== undefined && isSpacePath(opener) ? opener : undefined;
+  const origin = isConversationOrigin(opener) ? opener : undefined;
   const row = paneRowForPath(location, [], origin);
-  const list = isConversationOrigin(row) ? row : undefined;
+  const list = isSpacePath(location.pathname)
+    ? location.pathname
+    : (originSpacePath ?? (isConversationOrigin(row) ? row : undefined));
   if (list !== lastList) setLastList(list);
   const composerShown = useRef(false);
   const showComposer = useCallback(() => {
@@ -113,6 +125,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
       inFlightExpanded: [inFlightExpanded, setInFlightExpanded] as const,
       linkedItems: [linkedItems, setLinkedItems] as const,
       origin,
+      originSpacePath,
       places,
       returnPath,
       scroll,
@@ -124,6 +137,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
       inFlightExpanded,
       linkedItems,
       origin,
+      originSpacePath,
       places,
       returnPath,
       scroll,
@@ -201,11 +215,12 @@ export function useInboxListState(ready: boolean) {
 /**
  * The list that Back from a Conversation or the composer returns to: the
  * Inbox view or Code page that opened it, as the pane marks it, where the
- * reader left that list. Without an origin, such as a direct link, it is
- * Conversations.
+ * reader left that list, or the Space page that opened it. Without an
+ * origin, such as a direct link, it is Conversations.
  */
 export function useInboxReturnPath(): string {
-  const { origin, returnPath } = useInboxListContext();
+  const { origin, originSpacePath, returnPath } = useInboxListContext();
+  if (originSpacePath) return originSpacePath;
   const codePath = isCodePath(returnPath);
   if (origin === "code") return codePath ? returnPath : NAV_PAGES.code.to;
   const view = origin ?? "conversations";

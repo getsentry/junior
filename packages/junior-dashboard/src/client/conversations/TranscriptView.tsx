@@ -1,4 +1,10 @@
-import { useMemo, useState, type ReactNode, type Ref } from "react";
+import {
+  useImperativeHandle,
+  useMemo,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
@@ -13,6 +19,7 @@ import { cn } from "../styles";
 import {
   ConversationTranscriptView,
   TranscriptAskRevealContext,
+  TranscriptShowRowContext,
   type TranscriptAskReveal,
 } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
@@ -22,6 +29,7 @@ import {
   transcriptJuniorMessageVersion,
   useAutoLoadHistoryPage,
   usePinnedTranscriptBottom,
+  type ShowTranscriptRow,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
@@ -81,8 +89,9 @@ export function Transcript(props: {
   revealAsk?: TranscriptAskReveal | undefined;
   /** Keep the rows around this event seq mounted, so the page can show it. */
   revealSeq?: number | undefined;
+  /** Receives the function that shows a row, for jumps that the page owns. */
+  showRowRef?: Ref<ShowTranscriptRow>;
   search?: string;
-  onSearchChange?(value: string): void;
   /** Index of the current search match. */
   searchMatch?: number;
   onSearchMatches?(count: number, prepended: number): void;
@@ -103,8 +112,7 @@ export function Transcript(props: {
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
-  const [localSearch, setLocalSearch] = useState("");
-  const search = props.search ?? localSearch;
+  const search = props.search ?? "";
   const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
@@ -125,6 +133,7 @@ export function Transcript(props: {
 
   const { revealAsk } = props;
   const { showRow } = bottomPinning;
+  useImperativeHandle(props.showRowRef, () => showRow, [showRow]);
   const linkSeq = useMessageLinkJump({
     content: bottomPinning.contentElement,
     events: props.transcript?.events,
@@ -234,7 +243,6 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
-            onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             scrollAnchorKey={bottomPinning.scrollAnchorKey}
             selectedSeq={props.selectedEventSeq}
@@ -243,23 +251,25 @@ export function Transcript(props: {
           <TurnContextPanelProvider panel={props.turnContextPanel}>
             <TranscriptJumpToLatestContext value={jumpToLatest}>
               <TranscriptAskRevealContext value={askReveal}>
-                <TranscriptShowQuestion value={showQuestion}>
-                  <QuestionsInView value={questionsInView}>
-                    <TranscriptEvents value={props.transcript.events}>
-                      <ConversationTranscriptView
-                        onOpenSubagentTranscript={
-                          props.onOpenSubagentTranscript
-                        }
-                        conversation={props.transcript}
-                        pendingMessages={props.pendingMessages}
-                        responding={props.responding ?? props.live ?? false}
-                        revealSeq={props.revealSeq ?? linkSeq}
-                        scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                        unread={props.unread}
-                      />
-                    </TranscriptEvents>
-                  </QuestionsInView>
-                </TranscriptShowQuestion>
+                <TranscriptShowRowContext value={showRow}>
+                  <TranscriptShowQuestion value={showQuestion}>
+                    <QuestionsInView value={questionsInView}>
+                      <TranscriptEvents value={props.transcript.events}>
+                        <ConversationTranscriptView
+                          onOpenSubagentTranscript={
+                            props.onOpenSubagentTranscript
+                          }
+                          conversation={props.transcript}
+                          pendingMessages={props.pendingMessages}
+                          responding={props.responding ?? props.live ?? false}
+                          revealSeq={props.revealSeq ?? linkSeq}
+                          scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                          unread={props.unread}
+                        />
+                      </TranscriptEvents>
+                    </QuestionsInView>
+                  </TranscriptShowQuestion>
+                </TranscriptShowRowContext>
               </TranscriptAskRevealContext>
             </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>

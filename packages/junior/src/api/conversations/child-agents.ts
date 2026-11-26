@@ -5,6 +5,7 @@ import { throwApiError } from "../http";
 import { type ConversationChildAgentsReport } from "../schema/child-agent";
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
+import { readConversationTreeStates } from "./tree-state";
 import {
   childAgentTotalsReport,
   readConversationTreeMetricsFromSql,
@@ -33,15 +34,18 @@ export async function requireConversationChildAgents(
   // Match the child Conversation detail: count the child and its own child
   // agents at any depth.
   const childIds = children.map((agent) => agent.childConversationId);
-  const [metricsByChild, auxiliaryCostsByChild] = await Promise.all([
-    readConversationTreeMetricsFromSql(db, childIds),
-    readConversationAuxiliaryCostsFromSql(db, childIds),
-  ]);
+  const [metricsByChild, auxiliaryCostsByChild, treeByChild] =
+    await Promise.all([
+      readConversationTreeMetricsFromSql(db, childIds),
+      readConversationAuxiliaryCostsFromSql(db, childIds),
+      readConversationTreeStates(db, childIds, options.viewer?.id),
+    ]);
 
   const agents = children.map((agent) => {
     const metrics = metricsByChild.get(agent.childConversationId);
     const auxiliaryCosts = auxiliaryCostsByChild.get(agent.childConversationId);
     const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
+    const tree = treeByChild.get(agent.childConversationId);
     return {
       conversationId: agent.childConversationId,
       cumulativeDurationMs: metrics?.durationMs ?? 0,
@@ -56,7 +60,9 @@ export async function requireConversationChildAgents(
           : null,
       kind: agent.kind,
       status: agent.status,
+      treeState: tree?.treeState ?? "done",
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
+      watching: tree?.watching ?? false,
       ...(canExposePayload
         ? {
             ...(agent.agentName ? { name: agent.agentName } : undefined),

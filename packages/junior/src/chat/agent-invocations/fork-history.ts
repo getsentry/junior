@@ -80,8 +80,9 @@ async function hasTurnStarted(conversationId: string): Promise<boolean> {
  * the history is below the Turn start. A child that already has agent
  * history, such as on a retry, commits nothing. A child whose Turn already
  * started commits nothing too: the history would be Turn messages, and a
- * parent `reply` in it would read as the Turn's answer. Only a worker that
- * committed fork history after the Turn start leaves such a child.
+ * parent `noReply` or `reportBlocked` in it would read as the Turn's own.
+ * Only a worker that committed fork history after the Turn start leaves such
+ * a child.
  */
 export async function commitForkHistory(args: {
   childConversationId: string;

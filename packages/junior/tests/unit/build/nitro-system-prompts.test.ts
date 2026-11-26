@@ -122,7 +122,8 @@ describe("juniorNitro system prompts", () => {
       );
       for (const mode of PROMPT_MODES) {
         const sections = systemPrompts[platform][mode];
-        // The runtime here has no app plugins, so it builds the core blocks.
+        // The runtime here has no app plugins, so it builds only the core
+        // blocks.
         expect(
           sections
             .slice(0, -1)

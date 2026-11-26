@@ -11,7 +11,7 @@ const AGENT_UPDATE_TEXT_MAX_LENGTH = 12_000;
 /** What happened in the Conversation. */
 export type AgentUpdateStatus =
   | "blocked"
-  | "completed"
+  | "done"
   | "failed"
   | "stopped"
   | "waiting";

@@ -16,26 +16,20 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root, an Automation run, and a
- * Lead have no parent. A Thread is a child that people can message. A Task
- * is a child that only its parent messages. A Conversation never changes
- * kind.
+ * What a Conversation is. An Automation run and a Lead have no parent. A Task
+ * is a child that only its parent messages. A `thread` is one that people
+ * can message, with or without a parent. A Conversation never changes kind.
  */
-export type ConversationKind =
-  | "root"
-  | "automation"
-  | "lead"
-  | "thread"
-  | "task";
+export type ConversationKind = "thread" | "automation" | "lead" | "task";
 
 /** The kind of a Conversation that has no parent. */
-export type TopLevelConversationKind = Exclude<
-  ConversationKind,
-  ChildConversationKind
->;
+export type TopLevelConversationKind = Exclude<ConversationKind, "task">;
 
 /** The kind of a Conversation that has a parent. */
-export type ChildConversationKind = "thread" | "task";
+export type ChildConversationKind = Extract<
+  ConversationKind,
+  "thread" | "task"
+>;
 
 export type ConversationStatus =
   | "paused"
@@ -85,10 +79,28 @@ export interface Conversation {
   /** Immutable kind. Set when the Conversation is created. */
   kind: ConversationKind;
   lastActivityAtMs: number;
-  /** Immutable parent Conversation. */
+  /**
+   * Parent Conversation. Only `setConversationSpace` changes it: a
+   * Conversation in a Space is a child of the Space's Lead.
+   */
   parentConversationId?: string;
-  /** Immutable root of the Conversation tree, read from storage. */
+  /**
+   * Top-level Conversation of this work, read from storage: itself when it
+   * has no parent or its parent is a Lead. Its child agents keep it when it
+   * moves.
+   */
   rootConversationId?: string;
+  /**
+   * Space of a Lead, or of a Lead's child, read from its Lead. Other
+   * Conversations have none: a child agent is in the Space of its root. Only
+   * a Lead stores it.
+   */
+  spaceId?: string;
+  /**
+   * Set on a child whose Location is its own, not a copy of its parent's,
+   * such as a Slack Conversation that moved into a Space.
+   */
+  ownLocation?: true;
   /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.
@@ -127,7 +139,10 @@ export interface Conversation {
   stoppedAtMs?: number | undefined;
   /** Set while a root's Event Turn replies stay out of its Location. */
   deliveryPausedAtMs?: number | undefined;
-  /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
+  /**
+   * Visibility of the root. Undefined is private. As a write input, it is a
+   * live signal that replaces the visibility of the Destination row.
+   */
   visibility?: ConversationPrivacy;
 }
 
@@ -217,14 +232,17 @@ export interface ConversationStore {
     sessionSource?: Source;
     title?: string;
     /**
-     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * Kind of a new Conversation. Default `thread`. An existing Conversation
      * keeps its kind.
      */
     kind?: TopLevelConversationKind;
+    /** Space of a new root. An existing Conversation keeps its Space. */
+    spaceId?: string | undefined;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row. Omit it for saved
-     * values, such as visibility captured when an Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
@@ -249,8 +267,9 @@ export interface ConversationStore {
     updatedAtMs: number;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
-     * replaces the visibility of the shared Destination row. Omit it for saved
-     * values, such as visibility captured when an Automation was created.
+     * replaces the visibility of the shared Destination row. A root keeps the
+     * first visibility that it gets. Omit it for saved values, such as
+     * visibility captured when an Automation was created.
      */
     visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;

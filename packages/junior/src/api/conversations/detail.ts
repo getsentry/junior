@@ -1,6 +1,7 @@
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { startSpan } from "@/chat/sentry";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
@@ -22,6 +23,8 @@ import {
   conversationSummaryFromStoredConversation,
 } from "./projection";
 import {
+  canInviteToConversation,
+  leaveEndsAccess,
   createConversationAccessReader,
   type ConversationAccess,
 } from "./access";
@@ -70,6 +73,7 @@ function projectConversationDetail(args: {
   authors: NonNullable<ConversationDetailReport["authors"]>;
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
+  space: SpaceRef | null;
   sourceTask?: ConversationDetailReport["sourceTask"];
   status: ConversationDetailReport["status"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -97,6 +101,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      space: args.space,
       status: args.status,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
@@ -322,6 +327,7 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
+    space: state.space,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
@@ -363,6 +369,12 @@ async function readConversationDetailFromSql(
       : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
+      : undefined),
+    ...(canInviteToConversation(access)
+      ? { canInvite: true as const }
+      : undefined),
+    ...(leaveEndsAccess(access)
+      ? { leaveEndsAccess: true as const }
       : undefined),
     ...(report.isParticipant &&
     canPauseConversationDelivery(record.conversation)

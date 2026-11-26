@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
+import { topLevelConversation } from "./listed";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { hasAnnotationKey } from "./annotation-filter";
 import {
@@ -11,6 +12,7 @@ import type {
   ConversationMessageSearchResult,
   ConversationMessageSearchStore,
 } from "../message-search";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
 
@@ -46,10 +48,10 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     // Results are Slack threads, so the Slack tool can describe each match.
     const conditions: SQL[] = [
       eq(juniorConversations.source, "slack"),
-      isNull(juniorConversations.parentConversationId),
+      topLevelConversation(),
       isNull(juniorConversations.transcriptPurgedAt),
       ne(juniorConversations.conversationId, args.currentConversationId),
-      eq(juniorDestinations.visibility, "public"),
+      isPublicConversation(juniorConversations),
       eq(juniorConversationEvents.type, "message"),
       sql`${role} in ('user', 'assistant')`,
     ];

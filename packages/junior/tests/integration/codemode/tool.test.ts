@@ -15,7 +15,8 @@ import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const ROOT_TURN_TOOLS = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

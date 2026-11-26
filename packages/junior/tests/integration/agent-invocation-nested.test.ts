@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import type { TurnAnswer } from "@/chat/turn-answer";
 import {
   slackInvocationInput,
   slackParentConversationId,
@@ -33,7 +32,7 @@ async function spawn(
   });
 }
 
-/** Run the child's queued task to its end without a `reply`. */
+/** Run the child's queued task to its end with no final text. */
 async function finishTask(harness: Harness, conversationId: string) {
   harness.onRun(finishRun);
   await harness.drain(conversationId);
@@ -57,10 +56,7 @@ describe("nested child agents", () => {
     const replyAfterResult = async (conversationId: string, text: string) => {
       // The result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      harness.onRun(
-        async (run) =>
-          await finishRun(run, { reply: { text, toolCallId: "call-reply" } }),
-      );
+      harness.onRun(async (run) => await finishRun(run, { finalText: text }));
       await harness.processUntilRun(conversationId);
       harness.onRun(undefined);
       return harness.runs.at(-1)!;
@@ -69,16 +65,15 @@ describe("nested child agents", () => {
       const child = await spawn(harness, "nested-child");
       const helper = await spawn(harness, "nested-helper", child);
       const grandHelper = await spawn(harness, "nested-grand-helper", helper);
-      // Each child's own child agent still works, so these Turns end with no
-      // result.
+      // Each child's own child agent still works. These Turns end with no
+      // reply, and the child's update still reaches its parent as a
+      // message.
       for (const conversationId of [child, helper]) {
         await finishTask(harness, conversationId);
       }
       harness.onRun(
         async (run) =>
-          await finishRun(run, {
-            reply: { text: "Grand helper fact: 42.", toolCallId: "call-reply" },
-          }),
+          await finishRun(run, { finalText: "Grand helper fact: 42." }),
       );
       await harness.drain(grandHelper);
 
@@ -107,11 +102,12 @@ describe("nested child agents", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(parentMessages).toHaveLength(1);
-      expect(parentMessages[0]!.input.text).toMatch(
-        /^<agent-result [^>]*status="completed"/,
-      );
-      expect(parentMessages[0]!.input.text).toContain("Final answer: 42.");
+      expect(parentMessages.map((message) => message.input.text)).toEqual([
+        expect.stringMatching(/^<agent-message [^>]*source="child_agent"/),
+        expect.stringMatching(
+          /^<agent-result [^>]*status="done"[\s\S]*Final answer: 42\./,
+        ),
+      ]);
     } finally {
       await harness.close();
     }
@@ -125,9 +121,9 @@ describe("nested child agents", () => {
       parentConversationId: string,
       text: string,
     ) =>
-      await enqueueChildResultToParent({
+      await enqueueStarterUpdate({
         actor,
-        result: { kind: "reply", reply: { text, toolCallId: text } },
+        update: { status: "done", text },
         messageKey: text,
         queue: harness.queue,
         sender: { childConversationId: sender, parentConversationId },
@@ -170,17 +166,20 @@ describe("nested child agents", () => {
       await finishTask(harness, done);
       await sendReply(done, slackParentConversationId, "Final answer.");
       expect(await lastText(slackParentConversationId)).toMatch(
-        /^<agent-result [^>]*status="completed"/,
+        /^<agent-result [^>]*status="done"/,
       );
     } finally {
       await harness.close();
     }
   });
 
-  it("reports a Task whose helper ended its work with noReply", async () => {
+  it("reports a Task after its helper ends its work", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
-    const endWith = async (conversationId: string, answer: TurnAnswer) => {
+    const endWith = async (
+      conversationId: string,
+      answer: Parameters<typeof finishRun>[1],
+    ) => {
       harness.onRun(async (run) => await finishRun(run, answer));
       await harness.drain(conversationId);
       harness.onRun(undefined);
@@ -194,25 +193,23 @@ describe("nested child agents", () => {
       const helper = await spawn(harness, "quiet-helper", child);
       // The child replies while its helper works, so the parent reads a
       // message, not the child's result.
-      await endWith(child, {
-        reply: { text: "Partial findings.", toolCallId: "call-reply" },
-      });
-      await endWith(helper, { noReply: { note: "Helper found nothing." } });
+      await endWith(child, { finalText: "Partial findings." });
+      await endWith(helper, { finalText: "Helper found nothing." });
       await expect(texts(child)).resolves.toEqual([
         expect.stringMatching(
-          /^<agent-result [^>]*status="completed">\n[\s\S]*\nHelper found nothing\.\n/,
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nHelper found nothing\.\n/,
         ),
       ]);
 
       // The helper's result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      await endWith(child, { noReply: { note: "The findings stand." } });
+      await endWith(child, { finalText: "The findings stand." });
       await expect(texts(slackParentConversationId)).resolves.toEqual([
         expect.stringMatching(
           /^<agent-message [^>]*>\n[\s\S]*\nPartial findings\.\n/,
         ),
         expect.stringMatching(
-          /^<agent-result [^>]*status="completed">\n[\s\S]*\nThe findings stand\.\n/,
+          /^<agent-result [^>]*status="done">\n[\s\S]*\nThe findings stand\.\n/,
         ),
       ]);
     } finally {

@@ -34,6 +34,11 @@ export const conversationFeedQuerySchema = z
       .transform((value) => [...new Set(value.split(",").filter(Boolean))])
       .pipe(z.array(conversationFeedIncludeSchema)),
     q: z.string().trim().max(200).optional(),
+    /**
+     * Every root in this Space, in place of the viewer's own feed. `status`
+     * still picks active or archived roots.
+     */
+    spaceId: z.string().uuid().optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
   .strict();

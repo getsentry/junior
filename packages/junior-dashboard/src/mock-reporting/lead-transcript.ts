@@ -3,6 +3,10 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
+import {
+  mockReceivedAgentMessage,
+  mockSentAgentMessage,
+} from "./agent-messages";
 import { NOW_MS } from "./fixtures";
 
 type MockEventData = ConversationReportEvent["data"];
@@ -40,11 +44,14 @@ export const MOCK_LEAD_WATCHED_CONVERSATION_IDS = [
 
 /**
  * A mock Lead's transcript, at fixture time: two Turns that start fixture
- * Conversations in each state and watch some, then a Watch report for one
- * that needs the viewer and one that failed.
+ * Conversations in each state and watch some, two routine Watch reports, then
+ * a Watch report for one that needs the viewer and one that failed. Another
+ * member asks first, and the viewer asks next, since members share their
+ * Space's Lead.
  */
 export function mockLeadEvents(
   actorIdentity: ActorIdentity,
+  otherMember: ActorIdentity,
 ): ConversationReportEvent[] {
   const events: ConversationReportEvent[] = [];
   const push = (atMs: number, data: MockEventData) => {
@@ -59,6 +66,8 @@ export function mockLeadEvents(
     id: string;
     input: MockEventData & { type: "message" };
     reply: string;
+    /** Messages to Conversations that the Lead started. */
+    sends?: { text: string; to: MockStart }[];
     starts?: MockStart[];
     watches?: MockStart[];
   }) => {
@@ -80,24 +89,38 @@ export function mockLeadEvents(
         calls: [
           {
             toolCallId,
-            name: "startConversation",
+            name: "startAgent",
             status: "running",
             startedAt,
             startedSeq,
-            input: { task: start.task, title: start.title },
+            input: { kind: "thread", task: start.task, title: start.title },
           },
         ],
+      });
+      const childStartedAt = new Date(step()).toISOString();
+      const childStartedSeq = events.length;
+      push(at, {
+        type: "subagent",
+        startedSeq: childStartedSeq,
+        startedAt: childStartedAt,
+        childConversationId: start.conversationId,
+        childKind: "thread",
+        subagentKind: "agent",
+        task: start.task,
+        title: start.title,
+        parentToolCallId: toolCallId,
+        status: "running",
       });
       push(step(), {
         type: "tool_calls",
         calls: [
           {
             toolCallId,
-            name: "startConversation",
+            name: "startAgent",
             status: "completed",
             startedAt,
             startedSeq,
-            startedConversationId: start.conversationId,
+            output: { conversation_id: start.conversationId },
           },
         ],
       });
@@ -121,7 +144,7 @@ export function mockLeadEvents(
               intent: "Tell the person when it needs them or ends.",
               label: `Conversation ${watched.title}`,
               namespace: "junior",
-              resource_type: "conversation",
+              resource_type: "agent",
             },
           },
         ],
@@ -139,6 +162,19 @@ export function mockLeadEvents(
         ],
       });
     }
+    for (const [index, send] of (args.sends ?? []).entries()) {
+      const [sending, sent] = mockSentAgentMessage({
+        toolCallId: `${args.id}-send-${index}`,
+        startedAt: new Date(step()).toISOString(),
+        startedSeq: events.length,
+        to: send.to.conversationId,
+        text: send.text,
+        // A message to another top-level agent waits in its mailbox.
+        result: { conversationId: send.to.conversationId, delivery: "queued" },
+      });
+      push(at, sending);
+      push(step(), sent);
+    }
     push(step(), {
       type: "message",
       messageId: `${args.id}-reply`,
@@ -155,9 +191,10 @@ export function mockLeadEvents(
     status: string,
     watched: MockStart,
     summary: string,
+    n = 0,
   ): MockEventData & { type: "message" } => ({
     type: "message",
-    messageId: `mock-lead-${status}-${watched.conversationId}`,
+    messageId: `mock-lead-${status}-${watched.conversationId}${n ? `-${n}` : ""}`,
     role: "user",
     eventType: "agent.update",
     eventNamespace: "junior",
@@ -176,7 +213,7 @@ export function mockLeadEvents(
       messageId: "mock-lead-morning-request",
       role: "user",
       source: "web",
-      actorIdentity,
+      actorIdentity: otherMember,
       text: "Triage last night's checkout latency alert, and find out why the snuba deploy failed.",
     },
     reply:
@@ -197,9 +234,37 @@ export function mockLeadEvents(
     },
     reply:
       "Started both and watching them. I'll report back here when one needs you or finishes.",
+    sends: [
+      {
+        to: triage,
+        text: "Checkout got slow again this morning. Can last night's cause explain it? Reply here.",
+      },
+    ],
     starts: [latency, sentaur],
     watches: [latency, sentaur],
   });
+  // The morning triage answers the Lead with a message of its own.
+  turn({
+    atMs: NOW_MS - 50 * MINUTE_MS,
+    id: "mock-lead-triage-message",
+    input: mockReceivedAgentMessage({
+      messageId: "mock-lead-triage-message-input",
+      sender: {
+        conversationId: triage.conversationId,
+        source: "top_level_agent",
+      },
+      text: "No. Last night's spike came from the cache eviction bug, and its fix shipped at 2 AM. This morning's rise is only in the EU region, so it has another cause.",
+    }),
+    reply:
+      "Last night's cause is fixed, so this morning's EU-only rise is new. The latency investigation is on it.",
+  });
+  // Routine updates that no reply follows. They fold into one row.
+  for (const [n, minutesAgo] of [42, 38].entries()) {
+    push(
+      NOW_MS - minutesAgo * MINUTE_MS,
+      report("done", latency, `"${latency.title}" finished a Turn.`, n + 1),
+    );
+  }
   turn({
     atMs: NOW_MS - 36 * MINUTE_MS,
     id: "mock-lead-sentaur-waiting",

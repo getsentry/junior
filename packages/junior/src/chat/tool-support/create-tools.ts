@@ -5,8 +5,6 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/tools/start-conversation";
-import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -22,7 +20,6 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
@@ -69,6 +66,9 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
+import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
+import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AnyToolDefinition,
@@ -107,7 +107,7 @@ import type {
   ToolState,
 } from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -210,11 +210,6 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updateTodos: (run) =>
-    createUpdateTodosTool(
-      run.context,
-      run.inboxItemServices().findMentionedUserId,
-    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
   submitFeedback: (run) => createSubmitFeedbackTool(run.context),
@@ -267,6 +262,18 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  listSpaces: (run) => createListSpacesTool(run.context),
+  moveConversationToSpace: (run) =>
+    createMoveConversationToSpaceTool(run.context),
+  // The Turn keeps the tool listed, so its tool list stays the same, but only
+  // a Conversation with a Slack channel or a Space can use it.
+  setConfiguration: (run) =>
+    withDisabledReason(
+      createSetConfigurationTool(run.context),
+      run.context.locationConfiguration || run.context.spaceId
+        ? undefined
+        : "This conversation has no Slack channel or Space, so it has no configuration to change.",
+    ),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(
       run.context,
@@ -302,10 +309,8 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
-      // A Lead Turn that no person started searches for the Lead's person.
       resolveUserId: async () =>
-        (await run.context.resolveActorIdentity?.())?.user?.id ??
-        (await readLeadUser(run.context.conversationId))?.id,
+        (await run.context.resolveActorIdentity?.())?.user?.id,
     }),
   startAgent: (run) =>
     run.context.spawnAgent
@@ -339,8 +344,7 @@ const STATIC_TOOL_BINDERS = {
     run.context.messageAgent
       ? createMessageAgentTool(run.context.messageAgent)
       : undefined,
-  [REPLY_TOOL_NAME]: (run) =>
-    createReplyTool(enabledMode(run.listedTools.reply)),
+  [REPLY_TOOL_NAME]: () => createReplyTool(),
   [REPORT_BLOCKED_TOOL_NAME]: (run) =>
     createReportBlockedTool(enabledMode(run.listedTools.reportBlocked)),
   [NO_REPLY_TOOL_NAME]: () => createNoReplyTool(),
@@ -390,18 +394,9 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
-  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
-
-// A person's Turn in a child agent lists the agent tools of the child, but
-// it cannot use them: their results would report to the parent as the wrong
-// Actor.
-const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
-  turnTools.agents === "none"
-    ? "A person's Turn in a child agent cannot use agent tools."
-    : undefined;
 
 // The listed tools that the Turn's own tools can disallow, with the reason
 // that the model sees. A Thread lists the tools of both senders, so one
@@ -409,20 +404,20 @@ const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
 const TURN_TOOL_LIMITS: Partial<
   Record<StaticToolName, (turnTools: TurnTools) => string | undefined>
 > = {
-  startAgent: AGENT_TOOL_LIMIT,
-  stopAgent: AGENT_TOOL_LIMIT,
-  archiveAgent: AGENT_TOOL_LIMIT,
-  messageAgent: AGENT_TOOL_LIMIT,
   // The system prompt says why for each sender: a person's Turn ends with a
   // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
-    turnTools.reply === "none"
-      ? `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`
-      : undefined,
+    turnTools.reply
+      ? undefined
+      : `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`,
   [REPORT_BLOCKED_TOOL_NAME]: (turnTools) =>
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."
       : undefined,
+  [NO_REPLY_TOOL_NAME]: (turnTools) =>
+    turnTools.noReply
+      ? undefined
+      : "An agent's Turn in a Thread reports to its parent with its final text.",
   updateUserCustomization: (turnTools) =>
     turnTools.userCustomization
       ? undefined
@@ -431,6 +426,14 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
+  moveConversationToSpace: (turnTools) =>
+    turnTools.settings
+      ? undefined
+      : "Only a person's request moves a conversation to a Space.",
+  setConfiguration: (turnTools) =>
+    turnTools.settings
+      ? undefined
+      : "Only a person's request changes configuration.",
 };
 
 function attachmentStore(run: ToolRun) {

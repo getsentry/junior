@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -16,11 +17,13 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { waitForRequestsToEnd } from "../harness";
+import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("lists To do first, and the tab badge counts it", async ({
@@ -66,71 +69,100 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todo.getByRole("list").first()).toBeVisible();
   });
 
-  test("each entry lists its own rows under its name", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockInboxItems(page, {
-      open: [rollout, license, audit, prReady, migration, prMerge, prReview],
+  // One test per view, so each shoots its own view within the test timeout.
+  test.describe("each entry lists its own rows under its name", () => {
+    const primaryNav = (page: Page) =>
+      page.getByRole("navigation", { name: "Primary" });
+    const sections = (page: Page) =>
+      page.locator("section[aria-label] section[aria-label]");
+
+    test.beforeEach(async ({ dashboard, page }) => {
+      await mockInboxItems(page, {
+        open: [rollout, license, audit, prReady, migration, prMerge, prReview],
+      });
+      await page.goto(`${dashboard.baseURL}/inbox`);
     });
-    await page.goto(`${dashboard.baseURL}/inbox`);
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link")).toHaveText([
-      /^Lead$/,
-      /^Inbox/,
-      /^Snoozed/,
-      /^Done$/,
-      /^Conversations$/,
-      /^Code$/,
-      /^Automations/,
-      new RegExp(checkout),
-    ]);
-    // A filter counts what waits on the viewer, like the badge: the
-    // "Pull request ready for review" notice does not.
-    await expect(
-      page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
-    ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
-    const sections = page.locator("section[aria-label] section[aria-label]");
 
-    // Code lists the viewer's open changes, with their asks.
-    await nav.getByRole("link", { name: "Code", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Code" }),
-    ).toBeVisible();
-    await expect(sections).toHaveText([
-      /^Waiting on you/,
-      /^Waiting on others/,
-    ]);
-    await screenshot(page, "code-mine", { lightTheme: true });
+    test("a filter counts what waits on the viewer", async ({ page }) => {
+      await expect(primaryNav(page).getByRole("link")).toHaveText([
+        /^Inbox/,
+        /^Snoozed/,
+        /^Done$/,
+        /^Conversations$/,
+        /^Code$/,
+        /^Automations/,
+        // The viewer's Spaces.
+        /Billing migration$/,
+        /Mobile app$/,
+        /Pricing launch$/,
+        new RegExp(checkout),
+      ]);
+      // Like the badge: the "Pull request ready for review" notice does not
+      // count.
+      await expect(
+        page
+          .getByRole("navigation", { name: "Asks to show" })
+          .getByRole("link"),
+      ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
+    });
 
-    // Decisions group by Conversation, the longest wait first.
-    await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Decisions" }),
-    ).toBeVisible();
-    await expect(sections).toHaveCount(2);
-    await expect(sections.nth(1)).toHaveAccessibleName(checkout);
-    await screenshot(page, "inbox-decisions", { lightTheme: true });
+    test("Code lists the viewer's open changes, with their asks", async ({
+      page,
+    }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: "Code", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Code" }),
+      ).toBeVisible();
+      await expect(sections(page)).toHaveText([
+        /^Waiting on you/,
+        /^Waiting on others/,
+      ]);
+      await screenshot(page, "code-mine", { lightTheme: true });
+    });
 
-    // Conversations lists every Conversation, To do ones too.
-    await nav.getByRole("link", { name: "Conversations", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Conversations" }),
-    ).toBeVisible();
-    // The row's own link; its summary can link the same Conversation.
-    await expect(
-      page
-        .getByRole("region", { name: "Today" })
-        .locator("a[data-inbox-head]")
-        .getByText(checkout, { exact: true }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-conversations", { lightTheme: true });
+    test("Decisions group by Conversation, the longest wait first", async ({
+      dashboard,
+      page,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Decisions" }),
+      ).toBeVisible();
+      await expect(sections(page)).toHaveCount(2);
+      await expect(sections(page).nth(1)).toHaveAccessibleName(checkout);
+      await screenshot(page, "inbox-decisions", { lightTheme: true });
+    });
 
-    await nav.getByRole("link", { name: /^Automations/ }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Automations" }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-automations", { lightTheme: true });
+    test("Conversations lists every Conversation, To do ones too", async ({
+      page,
+    }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: "Conversations", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Conversations" }),
+      ).toBeVisible();
+      // The row's own link; its summary can link the same Conversation.
+      await expect(
+        page
+          .getByRole("region", { name: "Today" })
+          .locator("a[data-inbox-head]")
+          .getByText(checkout, { exact: true }),
+      ).toBeVisible();
+      await screenshot(page, "inbox-conversations", { lightTheme: true });
+    });
+
+    test("the sidebar opens Automations", async ({ page }) => {
+      await primaryNav(page)
+        .getByRole("link", { name: /^Automations/ })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Automations" }),
+      ).toBeVisible();
+      await screenshot(page, "inbox-automations", { lightTheme: true });
+    });
   });
 
   test("a row answers its ask in place", async ({ dashboard, page }) => {
@@ -553,16 +585,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The card is not part of the clamped prose, and only one shows.
     await expect(clamp.getByRole("region", { name: card })).toHaveCount(0);
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
-    // In full means nothing clips it once it is scrolled to. On a slow CI
-    // runner the list can still move after one scroll, so scroll again
-    // until the card shows.
-    await expect(async () => {
-      await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
-      await expect(page.getByRole("region", { name: card })).toBeInViewport({
-        ratio: 1,
-        timeout: 1000,
-      });
-    }).toPass();
+    // In full means nothing clips it once it is scrolled to. The card's
+    // reads change its height, so scroll once they end.
+    await waitForRequestsToEnd(page);
+    await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("region", { name: card })).toBeInViewport({
+      ratio: 1,
+    });
   });
 
   test("an item's subject card hides when its text already shows that card", async ({
@@ -737,5 +766,78 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await expect(message).toContainText("The canary error rate is flat");
     expect(reads).toBe(1);
+  });
+
+  test("loads the Inbox within its request budget", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page);
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/inbox`);
+        await expect(
+          page
+            .getByRole("region", { name: "To do" })
+            .getByRole("link", { name: new RegExp(checkout) }),
+        ).toBeVisible();
+      },
+      // The pull request on the checkout row reads its live state, and the
+      // pane reads the viewer's Spaces.
+      { requests: 10, serialRounds: 2 },
+    );
+  });
+
+  test("an item from a Conversation outside the feed shows its title once the feed loads", async ({
+    dashboard,
+    page,
+  }) => {
+    const outsideId = "slack:CQA777:1770014400.000500";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          owner: { id: outsideId, kind: "conversation" },
+          rootConversationId: outsideId,
+        },
+      ],
+    });
+    // The feed leaves the Conversation out, so its title loads on its own.
+    let feedLoaded = false;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const feed = await mockFeedPage(route);
+        await route.fulfill({
+          json: {
+            ...feed,
+            conversations: feed.conversations.filter(
+              (row: { conversationId: string }) =>
+                row.conversationId !== outsideId,
+            ),
+          },
+        });
+        feedLoaded = true;
+      },
+    );
+    const titleReads: boolean[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.pathname.startsWith("/api/conversations/") &&
+        url.searchParams.get("limit") === "1"
+      ) {
+        titleReads.push(feedLoaded);
+      }
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(
+      page
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("link", { name: /Review the acme/ }) }),
+    ).toContainText("Deployment investigation failed");
+    // Only the Conversation outside the feed reads its title, after the feed.
+    expect(titleReads).toEqual([true]);
   });
 });

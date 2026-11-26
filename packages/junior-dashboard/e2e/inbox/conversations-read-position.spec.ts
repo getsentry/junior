@@ -1,7 +1,6 @@
-import type { Locator } from "@playwright/test";
-
 import { withRequestedMailbox } from "../harness";
 import { openRow } from "./inbox-fixture";
+import { scrollTranscriptUntil } from "./scroll-until";
 import { expect, test } from "../test";
 import {
   mockReadPositionConversation,
@@ -9,31 +8,7 @@ import {
 } from "../read-position-fixture";
 import { desktop, mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
-  /** Scroll to the end of the transcript until `row` renders. */
-  async function scrollDownTo(transcript: Locator, row: Locator) {
-    await expect(async () => {
-      await transcript.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
-      await expect(row).toBeAttached({ timeout: 500 });
-    }).toPass();
-  }
-
-  /**
-   * Scroll up one viewport at a time until `row` mounts. Rows mount only near
-   * the viewport, and a step of one viewport does not skip past them.
-   */
-  async function scrollUpTo(transcript: Locator, row: Locator) {
-    await expect(async () => {
-      await transcript.evaluate((element) => {
-        element.scrollTop -= element.clientHeight;
-      });
-      await expect(row).toBeAttached({ timeout: 250 });
-    }).toPass({ intervals: [100] });
-  }
-
+test.describe("new UI", () => {
   test("opens where the reader left off and reports what they read", async ({
     page,
     dashboard,
@@ -346,7 +321,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeInViewport();
     // The earlier page loads above the reader and holds their place, so
     // scroll up to its first row.
-    await scrollUpTo(transcript, transcript.getByText("Transcript message 0 "));
+    await scrollTranscriptUntil(
+      transcript,
+      transcript.getByText("Transcript message 0 "),
+      "up",
+    );
 
     // The earlier page stays cached. It is not the latest page, so the
     // transcript still needs the newer pages after the read position.
@@ -463,7 +442,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       cumulativeDurationMs: 1_000,
       displayTitle: "Far behind",
       isParticipant: true,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
@@ -643,9 +622,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeInViewport();
     await expect(transcript.getByText("Show newer messages")).toBeAttached();
     expect(cursors).toEqual(["after-40"]);
-    await scrollDownTo(
+    await scrollTranscriptUntil(
       transcript,
       transcript.getByText(`Transcript message ${latestSeq} `),
+      "down",
     );
     await expect(transcript.getByText("Show newer messages")).toHaveCount(0);
     await expect(marker).toHaveCount(1);
@@ -658,13 +638,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       transcript.getByText("Transcript message 141 "),
     ).toBeAttached();
-    await scrollUpTo(
+    await scrollTranscriptUntil(
       transcript,
       transcript.getByText("Transcript message 101 "),
+      "up",
     );
-    await scrollDownTo(
+    await scrollTranscriptUntil(
       transcript,
       transcript.getByText("Transcript message 141 "),
+      "down",
     );
     await expect(transcript.getByText("Loading newer messages…")).toHaveCount(
       0,

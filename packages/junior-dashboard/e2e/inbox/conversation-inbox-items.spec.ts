@@ -1,4 +1,3 @@
-import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import {
   answered,
   conversationId,
@@ -7,11 +6,11 @@ import {
   prReady,
   rollout,
 } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockConversationDetail } from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("inbox item changes show as rows, not as context for other items", async ({
     dashboard,
     page,
@@ -25,13 +24,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}*`,
       async (route) => {
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-        });
-        const detail = await response.json();
+        const detail = await mockConversationDetail(route);
         const askedAt = Date.parse(rollout.createdAt);
         const change = (
           seq: number,
@@ -74,7 +67,6 @@ test.describe("new UI", { tag: "@new" }, () => {
           (event) => Date.parse(event.createdAt) <= askedAt,
         );
         await route.fulfill({
-          response,
           json: {
             ...detail,
             events: [
@@ -147,16 +139,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     // Show the tool call that added the item, as a live Turn does.
     await page.route(`${path}*`, async (route) => {
-      const response = await route.fetch({
-        headers: {
-          ...route.request().headers(),
-          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-        },
-      });
-      const detail = await response.json();
-      const last = detail.events.at(-1);
+      const detail = await mockConversationDetail(route);
+      const last = detail.events.at(-1)!;
       await route.fulfill({
-        response,
         json: {
           ...detail,
           events: [
@@ -182,6 +167,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
 
+    // The shot is desktop only, so start at that size. At the default size,
+    // the Approve option sits at the top edge of the transcript, and the
+    // click can scroll it into view. That scroll leaves the latest message,
+    // and the shot then shows another place.
+    await page.setViewportSize(desktop);
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );

@@ -24,6 +24,7 @@ import type {
   ConversationSurface,
   ConversationUsage,
 } from "../schema/conversation";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import type { ConversationAccess } from "./access";
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 
@@ -231,6 +232,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number | undefined;
   pinPosition?: number;
+  /** The Space of the root, or null for a one-off. Feed rows and the detail. */
+  space?: SpaceRef | null;
   /** The status that `conversationStatusSql` read with the row. */
   status: ConversationReportStatus;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -288,6 +291,7 @@ export function conversationSummaryFromStoredConversation(args: {
       : undefined),
     isParticipant: args.access?.isParticipant ?? false,
     ...(visibility ? { visibility } : undefined),
+    ...(args.space !== undefined ? { space: args.space } : undefined),
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),

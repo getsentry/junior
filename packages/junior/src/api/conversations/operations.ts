@@ -21,6 +21,11 @@ import {
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
 import {
+  setConversationSpaceBodySchema,
+  setConversationSpaceResponseSchema,
+} from "../schema/conversation-space";
+import {
+  conversationLeaveResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -33,8 +38,9 @@ import {
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { pinConversation } from "./pin";
 import { renameConversation } from "./rename";
+import { setConversationSpaceForViewer } from "./space";
 import { stopConversationTurnForViewer } from "./stop";
-import { setConversationSubscription } from "./subscription";
+import { leaveConversation, setConversationSubscription } from "./subscription";
 
 // The route param, which MCP takes as an input field.
 const conversationIdInput = { conversationId: mcpConversationIdSchema };
@@ -100,6 +106,20 @@ export const renameConversationOperation = defineApiOperation({
     renameConversation(viewer, conversationId, body),
 });
 
+/** Put one root Conversation in a Space, or make it a one-off. */
+export const setConversationSpaceOperation = defineApiOperation({
+  name: "setConversationSpace",
+  title: "Set conversation Space",
+  description:
+    "Put one of your top-level conversations in a Space, or pass null to take it out of its Space. You must be a member of the Space that it joins and of the Space that it leaves. Only a public conversation can join a Space. Its child conversations move with it.",
+  scope: "conversations:manage",
+  input: setConversationSpaceBodySchema.extend(conversationIdInput),
+  output: setConversationSpaceResponseSchema,
+  annotations: writeAnnotations,
+  run: (viewer, { conversationId, ...body }) =>
+    setConversationSpaceForViewer(viewer, conversationId, body),
+});
+
 /** Override the viewer's auto-archive default for one Conversation. */
 export const setConversationAutoArchiveOperation = defineApiOperation({
   name: "setConversationAutoArchive",
@@ -112,6 +132,20 @@ export const setConversationAutoArchiveOperation = defineApiOperation({
   annotations: writeAnnotations,
   run: (viewer, { autoArchive, conversationId }) =>
     setConversationAutoArchive(viewer, conversationId, autoArchive),
+});
+
+/** The viewer leaves a Conversation. Nobody removes another person. */
+export const leaveConversationOperation = defineApiOperation({
+  name: "leaveConversation",
+  title: "Leave conversation",
+  description:
+    "Leave one of your conversations. It leaves your feed and clears your pin. In a private conversation you also lose access, and only another participant can invite you back. A public one stays readable, and you can subscribe again. When nobody else is subscribed, it archives the conversation for everyone.",
+  scope: "conversations:manage",
+  input: z.object(conversationIdInput).strict(),
+  output: conversationLeaveResponseSchema,
+  annotations: { ...writeAnnotations, destructiveHint: true },
+  run: (viewer, { conversationId }) =>
+    leaveConversation(viewer, conversationId),
 });
 
 /** Subscribe or unsubscribe the viewer. It never changes another person. */
@@ -162,9 +196,11 @@ export const conversationOperations = [
   cancelQueuedMessagesOperation,
   archiveConversationOperation,
   archiveDoneConversationsOperation,
+  leaveConversationOperation,
   pinConversationOperation,
   renameConversationOperation,
   setConversationAutoArchiveOperation,
+  setConversationSpaceOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
 ];

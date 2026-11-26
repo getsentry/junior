@@ -24,7 +24,6 @@ import {
 } from "../conversations/PinnedConversationOrder";
 import {
   ROW_ACTION_BUTTON_CLASS,
-  ROW_ACTIONS_FADE_CLASS,
   ROW_ACTIONS_REVEAL_CLASS,
 } from "../conversations/sidebarRowActions";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
@@ -36,6 +35,7 @@ import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
 import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { SpacesNav } from "../spaces/SpacesNav";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -53,7 +53,7 @@ function InFlightRow(props: {
       <ContextMenuTrigger
         {...browserMenuOnLinks}
         className={cn(
-          "group relative list-none [--row-actions-width:1.25rem]",
+          "group relative list-none",
           drag?.dragging && "opacity-40",
         )}
         onKeyDown={drag?.onKeyDown}
@@ -65,7 +65,13 @@ function InFlightRow(props: {
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            paneEntryClass(props.selected ? "page" : undefined, props.phone),
+            // The state sits on the right, as on a Space row, so the title
+            // takes the icon column.
+            paneEntryClass(
+              props.selected ? "page" : undefined,
+              props.phone,
+              false,
+            ),
             // Phones always show the `⋯`, so the title stops before it.
             "max-sm:pr-10",
             // The row shows which Conversation its open menu acts on.
@@ -78,23 +84,18 @@ function InFlightRow(props: {
           draggable={drag ? false : undefined}
           to={conversationPath(conversation.id)}
         >
-          <ConversationStateIcon
-            className="justify-self-center"
-            state={conversationDisplayState(conversation)}
-          />
           <span
-            className={cn(
-              fadeOverflowClass,
-              ROW_ACTIONS_FADE_CLASS,
-              // The same fade while the `⋯` menu is open. Tailwind needs the
-              // whole class written out.
-              "sm:group-has-data-popup-open:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]",
-              "text-dashboard-text",
-            )}
+            className={cn(fadeOverflowClass, "text-dashboard-text")}
             ref={fadeWhenOverflowing}
           >
             {conversation.displayTitle}
           </span>
+          {/* The `⋯` takes the state's place while it shows. Phones show
+              both. */}
+          <ConversationStateIcon
+            className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
+            state={conversationDisplayState(conversation)}
+          />
         </Link>
         <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>
           <DropdownMenuTrigger
@@ -127,14 +128,17 @@ function InFlightRow(props: {
 
 /**
  * The pane, like Google Inbox: no list of Conversations, only the
- * destinations that open a list in the main area, then the Conversations
- * in flight, running or pinned, each one click away. Pins drag into a new
- * order here. Every page with destinations shows it.
+ * destinations that open a list in the main area, then the viewer's
+ * Spaces, then the Conversations in flight, running or pinned, each one
+ * click away. Pins drag into a new order here. Every page with destinations
+ * shows it.
  */
 export function InboxNav(props: {
   /** On a phone the entries are a page, and each opens its list page. */
   phone?: boolean;
   selectedConversationId?: string;
+  /** The Space of the selected Conversation. A child is in its root's. */
+  selectedSpaceId?: string;
 }) {
   const data = useInboxData();
   // On a phone the entries are a screen of their own, so Back from what
@@ -162,6 +166,11 @@ export function InboxNav(props: {
       )}
     >
       <PaneDestinations phone={props.phone} />
+      <SpacesNav
+        conversationSpaceId={props.selectedSpaceId}
+        phone={props.phone}
+        signedIn={data.signedIn}
+      />
       {data.inFlight.length > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">

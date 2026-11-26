@@ -1,9 +1,9 @@
 import type { Page } from "@playwright/test";
 import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockConversationDetail } from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // The mock release Conversation saves Annotations for these pull requests,
   // and its last reply links to them.
   const CONVERSATION_ID = "slack:CQA456:1770021600.000600";
@@ -22,8 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         url.pathname ===
         `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
-        const detail = await response.json();
+        const detail = await mockConversationDetail(route);
         await route.fulfill({
           json: {
             ...detail,
@@ -31,7 +30,6 @@ test.describe("new UI", { tag: "@new" }, () => {
             annotations: [...extraAnnotations, ...(detail.annotations ?? [])],
             isParticipant: true,
           },
-          response,
         });
       },
     );
@@ -639,6 +637,55 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
+  test("a Sentry alert link resolves to a titled link, an alert row, and a hover card", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(desktop);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+    );
+    const link = linksParagraph(page).getByRole("link", {
+      name: "New checkout feedback",
+    });
+    await expect(link).toHaveAttribute(
+      "href",
+      "https://acme.sentry.io/monitors/alerts/6363564/",
+    );
+    // The reply also links to it on its own line, which shows a compact row.
+    const card = page.getByRole("region", {
+      name: "Sentry alert: New checkout feedback",
+    });
+    await expect(card).toHaveCount(1);
+    await card.scrollIntoViewIfNeeded();
+    await screenshot(page, "conversation-sentry-alert-card", {
+      lightTheme: true,
+      target: card,
+      view: "desktop",
+    });
+
+    await waitForResolvedLinks(page);
+    await link.hover();
+    await expect(card).toHaveCount(2);
+    const preview = card.nth(1);
+    for (const text of [
+      "Enabled",
+      "Project",
+      "junior",
+      "When",
+      "First seen · Feedback · app.feedback.topic is new_checkout",
+      "Notifies",
+      "Email member, Slack #checkout-feedback",
+      "Last triggered",
+    ]) {
+      await expect(preview).toContainText(text);
+    }
+    await screenshot(page, "conversation-sentry-alert-link", {
+      lightTheme: true,
+      view: "desktop",
+    });
+  });
+
   test("a participant attaches a Google Doc from its hover card", async ({
     page,
     dashboard,
@@ -784,16 +831,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     const conversationUrl = `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`;
     // Move the two links of the reply apart, so that only one is in view.
     await page.route(
-      (url) => url.pathname.startsWith("/api/conversations/"),
+      (url) =>
+        url.pathname ===
+        `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
-        const text = await response.text();
+        const text = JSON.stringify(await mockConversationDetail(route));
         // A pull request description also says "picks up", so match the reply.
         const body = text.replace(
           "dev%40example.com picks up ",
           `dev%40example.com picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
         );
-        await route.fulfill({ body, response });
+        await route.fulfill({ body, contentType: "application/json" });
       },
     );
     const requests: URL[] = [];

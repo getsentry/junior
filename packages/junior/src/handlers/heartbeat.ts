@@ -1,6 +1,6 @@
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
+import type { AppEventPublisher } from "@/chat/plugins/hooks/routes";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
@@ -14,6 +14,8 @@ export interface HeartbeatHandlerOptions {
   events: AppEventPublisher;
   sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem;
+  /** Sends the queue message again for core Turns that no message reaches. */
+  sweepTurns?: () => Promise<void>;
 }
 
 /** Handle the authenticated internal heartbeat. */
@@ -41,6 +43,15 @@ export async function GET(
       });
     }),
   );
+
+  const { sweepTurns } = options;
+  if (sweepTurns) {
+    waitUntil(() =>
+      sweepTurns().catch((error) => {
+        logException(error, "turn.sweep.failed");
+      }),
+    );
+  }
 
   return new Response("Accepted", { status: 202 });
 }

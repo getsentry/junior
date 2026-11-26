@@ -16,7 +16,7 @@ import {
   type LocalAgentReply,
   type LocalToolResult,
 } from "@/chat/local/runner";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { listWatches } from "@/chat/events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
@@ -31,7 +31,8 @@ import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

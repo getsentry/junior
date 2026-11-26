@@ -4,6 +4,7 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { conversationSubtree, conversationSubtreeColumns } from "./subtree";
 
 /** One Conversation in a tree, with the fields that archive rules read. */
 export type ConversationTreeNode = {
@@ -15,14 +16,15 @@ export type ConversationTreeNode = {
 };
 
 /**
- * Read every Conversation in the trees of the given roots. Every descendant
- * shares `root_conversation_id`, so one indexed read covers any depth.
+ * Read each given Conversation and every descendant at any depth. A root
+ * reads its whole tree in one indexed read. A Lead's child reads only its
+ * own subtree, not the Lead's whole tree.
  */
 export async function readConversationTrees(
   db: JuniorDatabase,
-  rootConversationIds: readonly string[],
+  conversationIds: readonly string[],
 ): Promise<Map<string, ConversationTreeNode>> {
-  if (rootConversationIds.length === 0) return new Map();
+  if (conversationIds.length === 0) return new Map();
   const rows = await db
     .select({
       archivedAt: juniorConversations.archivedAt,
@@ -32,8 +34,12 @@ export async function readConversationTrees(
       rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
-    .where(
-      inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
+    .innerJoin(
+      conversationSubtree(conversationIds),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
+      ),
     );
   return new Map(
     rows.map((row) => [

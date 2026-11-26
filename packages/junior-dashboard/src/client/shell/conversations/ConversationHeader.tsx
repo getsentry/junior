@@ -61,18 +61,26 @@ const ConversationMenuSheet = lazy(() =>
 );
 
 /**
- * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
- * bar until the page knows which it is, else the Conversation's own header.
+ * Head a Conversation page: its Space's header on a Lead, an empty bar until
+ * the page knows which it is, else the Conversation's own header.
  */
 export function ConversationHeader(
   props: ComponentProps<typeof ConversationTitleHeader> & {
-    /** Undefined until the page knows whether it shows the Lead. */
+    /** Undefined until the page knows whether it shows a Lead. */
     lead: boolean | undefined;
+    /** The Conversation's Space, which a Lead's header shows. */
+    spaceId?: string | undefined;
   },
 ) {
-  // The app bar names the Lead on a phone.
   if (props.lead)
-    return <LeadHeader mobileHidden sidebarToggle={props.sidebarToggle} />;
+    return (
+      <LeadHeader
+        detailsOpen={props.detailsOpen}
+        onDetailsClick={props.onDetailsClick}
+        sidebarToggle={props.sidebarToggle}
+        spaceId={props.spaceId}
+      />
+    );
   if (props.lead === undefined)
     return (
       <div
@@ -92,6 +100,8 @@ export function ConversationHeader(
 function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The reader closed details. A resize can also close them. */
+  detailsClosedByReader?: boolean | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -112,6 +122,8 @@ function ConversationTitleHeader(props: {
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
+  /** A link to the Conversation's Space, after the title. */
+  space?: ReactNode;
   /** The tree state or pin icon, before the title. */
   state?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
@@ -153,10 +165,16 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // Closing details removes their focused close button, and focus falls to
+  // the body. Return it to the button that opens them. Not when a resize
+  // closes them: the resize can also hide another focused element, and the
+  // focus that falls from it stays on the body.
+  const detailsClosedByReader = props.detailsClosedByReader;
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
+      detailsClosedByReader &&
       document.activeElement === document.body
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
@@ -165,7 +183,7 @@ function ConversationTitleHeader(props: {
       trigger?.focus({ preventScroll: true });
     }
     wasDetailsOpen.current = detailsOpen;
-  }, [detailsOpen]);
+  }, [detailsOpen, detailsClosedByReader]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;
@@ -393,6 +411,7 @@ function ConversationTitleHeader(props: {
             )}
             {props.status}
             {childAgentTags}
+            {props.space}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}

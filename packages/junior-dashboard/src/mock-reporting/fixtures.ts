@@ -39,6 +39,10 @@ import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
 } from "@sentry/junior/api/schema";
+import {
+  mockReceivedAgentMessage,
+  mockSentAgentMessage,
+} from "./agent-messages";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./question-conversations";
@@ -418,7 +422,7 @@ function detail(
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
     isParticipant: options.isParticipant ?? false,
-    kind: options.kind ?? "root",
+    kind: options.kind ?? "thread",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
     status: options.status ?? "done",
@@ -1247,8 +1251,77 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         title: "Compare sidebar badges",
         status: "completed",
       }),
+      // Messages to and from child agents show as message rows: one that
+      // started a Task again, its reply, a long one to a blocked Task, and
+      // one that no agent got.
+      ...dashboardQaAgentMessages(startedAt, 25),
     ],
   });
+}
+
+function dashboardQaAgentMessages(
+  startedAt: string,
+  firstSeq: number,
+): ConversationReportEvent[] {
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  const [plannerSending, plannerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-planner",
+    startedAt: at(94_000),
+    startedSeq: firstSeq,
+    to: "planner",
+    text: "Also check that the plan keeps the pinned row order after a hard reload.",
+    result: { conversationId: DASHBOARD_QA_PLAN_ID, delivery: "started" },
+  });
+  const plannerReply = mockReceivedAgentMessage({
+    messageId: "qa-planner-message",
+    sender: {
+      conversationId: DASHBOARD_QA_PLAN_ID,
+      name: "planner",
+      source: "child_agent",
+      title: "Review the dashboard plan",
+    },
+    text: "The plan keeps the order after a hard reload. One pinned row moved once while the feed loaded again, and I could not make it happen again.",
+  });
+  const [reviewerSending, reviewerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-reviewer",
+    startedAt: at(100_000),
+    startedSeq: firstSeq + 3,
+    to: "reviewer",
+    text: [
+      "You now have read access to getsentry/junior-dashboard. Review the plan again with these limits:",
+      "",
+      "- Keep the sidebar order exactly as it is today.",
+      "- Do not change the pinned row styles.",
+      "- Check the empty, loading, and failed transcript states on a phone and on a desktop.",
+      "- Report each state that does not match the design, with a screenshot.",
+      "",
+      "Tell me when the review is done, or if you get blocked again.",
+    ].join("\n"),
+    result: { conversationId: DASHBOARD_QA_REVIEW_ID, delivery: "started" },
+  });
+  const [unknownSending, unknownRefused] = mockSentAgentMessage({
+    toolCallId: "qa-message-unknown",
+    startedAt: at(104_000),
+    startedSeq: firstSeq + 5,
+    to: "designer",
+    text: "Share the latest sidebar mockups with the reviewer.",
+    result: {
+      error:
+        '"designer" is not "parent", a child agent of this conversation, or a top-level agent that you can message. Use listAgents to find an agent.',
+    },
+  });
+  const events: [number, ConversationReportEvent["data"]][] = [
+    [94_000, plannerSending],
+    [95_000, plannerSent],
+    [98_000, plannerReply],
+    [100_000, reviewerSending],
+    [101_000, reviewerSent],
+    [104_000, unknownSending],
+    [104_500, unknownRefused],
+  ];
+  return events.map(([offsetMs, data], index) =>
+    reportEvent(firstSeq + index, at(offsetMs), data),
+  );
 }
 
 function advisorConversation(
@@ -2526,7 +2599,9 @@ function mockThreadPlacement(
     ancestor;
     ancestor = byId.get(ancestor.parentConversationId ?? "")
   ) {
-    if (ancestor.kind === "root") return placement ?? ancestor.conversationId;
+    if (!ancestor.parentConversationId) {
+      return placement ?? ancestor.conversationId;
+    }
     if (ancestor.archivedAt) return undefined;
     if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
@@ -2556,7 +2631,13 @@ function mockThreadsByPlacement(
   );
   const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
   for (const thread of conversations) {
-    if (thread.kind !== "thread" || thread.archivedAt) continue;
+    if (
+      thread.kind !== "thread" ||
+      !thread.parentConversationId ||
+      thread.archivedAt
+    ) {
+      continue;
+    }
     const placement = mockThreadPlacement(byId, thread);
     if (!placement) continue;
     threadsByPlacement.set(placement, [
@@ -2584,7 +2665,8 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     conversations: conversations
       .filter(
         (conversation) =>
-          conversation.kind === "root" &&
+          conversation.kind === "thread" &&
+          !conversation.parentConversationId &&
           !isUnlistedMockConversation(conversation.conversationId),
       )
       .map((root) => {
@@ -2602,7 +2684,8 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
   return mockConversations(nowMs)
     .filter(
       (conversation) =>
-        conversation.kind === "root" &&
+        conversation.kind === "thread" &&
+        !conversation.parentConversationId &&
         !isUnlistedMockConversation(conversation.conversationId),
     )
     .map(summaryFromConversation)
@@ -2745,6 +2828,48 @@ function conversationMetricDays(
   }
   addMockMergedCodeChanges(days, nowMs, 10);
   return [...days.values()];
+}
+
+/** Split mock daily spend by verified person, from the same summaries. */
+function mockPersonSpendDays(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): ConversationStatsReport["personSpendDays"] {
+  const byDate = new Map<
+    string,
+    { people: Map<string, number>; unattributedCostUsd: number }
+  >();
+  for (const summary of summaries) {
+    const date = summary.lastSeenAt.slice(0, 10);
+    const day = byDate.get(date) ?? {
+      people: new Map<string, number>(),
+      unattributedCostUsd: 0,
+    };
+    byDate.set(date, day);
+    const costUsd = summary.cumulativeUsage?.cost?.total ?? 0;
+    const email = summary.actorIdentity?.email?.toLowerCase();
+    if (email) day.people.set(email, (day.people.get(email) ?? 0) + costUsd);
+    else day.unattributedCostUsd += costUsd;
+  }
+  return activityDates(nowMs, 90).map((date) => {
+    const day = byDate.get(date);
+    const costs = [...(day?.people.values() ?? [])].sort((a, b) => a - b);
+    const middle = Math.floor(costs.length / 2);
+    return {
+      date,
+      people: costs.length,
+      personCostUsd: costs.reduce((sum, cost) => sum + cost, 0),
+      unattributedCostUsd: day?.unattributedCostUsd ?? 0,
+      ...(costs.length
+        ? {
+            medianPersonCostUsd:
+              costs.length % 2
+                ? (costs[middle] ?? 0)
+                : ((costs[middle - 1] ?? 0) + (costs[middle] ?? 0)) / 2,
+          }
+        : undefined),
+    };
+  });
 }
 
 function conversationMetricHours(
@@ -2951,7 +3076,7 @@ export function setMockConversationArchived(
     mockArchivedAt.delete(id);
   }
   // Match the API: a manual root restore turns auto-archive off.
-  if (conversation.kind === "root") {
+  if (conversation.kind === "thread" && !conversation.parentConversationId) {
     mockAutoArchiveByConversationId.set(conversationId, false);
   }
   return { archivedAt: null };
@@ -3234,6 +3359,8 @@ export function readMockConversationChildAgents(
       archivedAt: mockArchivedAt.get(childConversationId) ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
+      treeState: "done" as const,
+      watching: false,
     };
   };
   if (conversationId === DASHBOARD_QA_PLAN_ID) {
@@ -3344,7 +3471,7 @@ function mockAgentTree(
     if (!item.parentConversationId) {
       return {
         conversationId: item.conversationId,
-        kind: "root" as const,
+        kind: "thread" as const,
         label: item.displayTitle,
       };
     }
@@ -3383,6 +3510,10 @@ export function readMockConversationDetail(
       !conversation.parentConversationId &&
       !isUnlistedMockConversation(conversationId) &&
       conversation.eventHistory.status !== "redacted",
+    // Match the API: anyone who can post in a public one may Invite.
+    ...(conversation.visibility === "public"
+      ? { canInvite: true as const }
+      : undefined),
     ...(conversation.isParticipant
       ? {
           autoArchive:
@@ -3622,6 +3753,7 @@ export function readMockConversationStats(): ConversationStatsReport {
         ),
       };
     })(),
+    personSpendDays: mockPersonSpendDays(nowMs, summaries),
     source: "conversation_index",
     ...windowBounds(nowMs),
   };

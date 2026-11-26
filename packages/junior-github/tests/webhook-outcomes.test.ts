@@ -2914,6 +2914,7 @@ describe("GitHub-owned pull request outcomes", () => {
     const toolCtx = {
       ...pluginCtx,
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      codeChanges: fixture.codeIndex.codeChanges,
       conversationId: "slack:C123:1712345.0001",
       destination: { platform: "local", conversationId: "local:test" },
       source: {
@@ -2998,6 +2999,11 @@ describe("GitHub-owned pull request outcomes", () => {
         [undefined, undefined],
         [undefined, undefined],
       ]);
+      // The webhook recorded the code change first, so the create call
+      // credits the opener on it. Code · Mine lists it at once.
+      expect(fixture.codeIndex.requesters("1001")).toEqual([
+        "slack-identity-dcramer",
+      ]);
       await route.handler(signedRequest(opened));
       expect(openerFields()).toEqual([
         ["dcramer", "admin"],
@@ -3045,6 +3051,10 @@ describe("GitHub-owned pull request outcomes", () => {
         [946, "slack-identity-dcramer", "slack:C123:1712345.0001"],
         [946, "slack-identity-octocat", null],
       ]);
+      expect(fixture.codeIndex.requesters("1001")).toEqual([
+        "slack-identity-dcramer",
+        "slack-identity-octocat",
+      ]);
 
       // An opener with no linked GitHub account is unknown. The bot is not
       // used in their place.
@@ -3066,7 +3076,13 @@ describe("GitHub-owned pull request outcomes", () => {
       await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-unlinked",
       });
+      // The create call saved the opener before the webhook recorded the
+      // code change, so the webhook credits them.
+      expect(fixture.codeIndex.requesters("1002")).toEqual([]);
       await route.handler(signedRequest(reused));
+      expect(fixture.codeIndex.requesters("1002")).toEqual([
+        "slack-identity-burak",
+      ]);
       expect(openerFields()).toEqual([
         [undefined, undefined],
         [undefined, undefined],
@@ -3253,6 +3269,16 @@ describe("GitHub-owned pull request outcomes", () => {
         }),
         expect.objectContaining({
           eventType: "pull_request.merged",
+          identifier: "getsentry/junior",
+        }),
+        // A late delivery still publishes its event; only the projection
+        // ignores it.
+        expect.objectContaining({
+          eventType: "pull_request.reopened",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.reopened",
           identifier: "getsentry/junior",
         }),
       ]);

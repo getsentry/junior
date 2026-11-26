@@ -1,9 +1,6 @@
 import type { MessageAttachment } from "@/chat/attachments/input";
 /** Input for one Run through Junior's agent. */
-import {
-  isTopLevelKind,
-  type AgentTools,
-} from "@/chat/conversations/kind-behavior";
+import type { AgentTools } from "@/chat/conversations/kind-behavior";
 import type {
   Destination,
   ReplyAttribution,
@@ -339,6 +336,11 @@ export type AgentRun = {
    * unless a caller already bound credentials.
    */
   actor?: Actor;
+  /**
+   * The Actor is an app or bot that wrote the request, not a person. Tools
+   * that need a person, such as Inbox items, see no person in this Run.
+   */
+  actorIsApp?: boolean | undefined;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext | undefined;
   source: Source;
@@ -411,7 +413,7 @@ export function actorFromRun(
 
 /**
  * Reject contradictory provider coordinates before the run touches state.
- * `conversationKind` comes from the stored Conversation, never from the Run.
+ * `conversation` comes from the stored Conversation, never from the Run.
  */
 export function assertRunConsistency(
   run: Pick<
@@ -424,7 +426,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
-  conversationKind?: ConversationKind,
+  conversation?: { kind: ConversationKind; hasParent: boolean },
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -471,7 +473,7 @@ export function assertRunConsistency(
         case "local": {
           // A person's Turn in a child agent replies in the child. Its
           // Destination is the child's own copy of its root's.
-          if (conversationKind && !isTopLevelKind(conversationKind)) {
+          if (conversation?.hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

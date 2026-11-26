@@ -10,8 +10,7 @@ import {
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const SPEND_LABEL = "Personal model spend: 7 days $0.46, 30 days $0.46";
 
   test("shows the primary destinations at the top of every desktop pane", async ({
@@ -22,13 +21,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
-    // One list of labelled rows: the Lead, the Inbox views, Conversations,
-    // Code, and Automations. The Inbox filters its asks by type, so the pane
-    // has no rows for them. No tab bar sits above them.
+    // One list of labelled rows: the Inbox views, Conversations, Code, and
+    // Automations. The Inbox filters its asks by type, so the pane has no
+    // rows for them. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
-      "Lead",
       /^Inbox, \d+ waiting$/,
       "Snoozed",
       "Done",
@@ -38,7 +36,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ];
     for (const [index, name] of names.entries())
       await expect(rows.nth(index)).toHaveAccessibleName(name);
-    await expect(rows.nth(1)).toHaveAttribute("aria-current", "page");
+    await expect(rows.nth(0)).toHaveAttribute("aria-current", "page");
     await expect(
       primary.getByRole("heading", { name: "Asks by type" }),
     ).toHaveCount(0);
@@ -52,7 +50,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       primary.getByRole("link", { name: /^Automations/ }),
     ).toHaveAttribute("aria-current", "page");
-    await expect(rows.nth(1)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
+    await expect(rows.nth(0)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
     // The profile row keeps the running spend totals in view.
     const profile = page.getByRole("button", {
       name: /^Open profile menu for Dashboard User\./,
@@ -442,12 +440,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(conversations).not.toHaveAttribute("aria-current");
     await expect(backToInbox).toHaveAttribute("href", "/inbox");
     await screenshot(page, "navigation-origin-in-flight", { lightTheme: true });
-
-    // The Lead is a Conversation with its own row, so that row is the page.
-    const lead = primary.getByRole("link", { exact: true, name: "Lead" });
-    await lead.click();
-    await expect(lead).toHaveAttribute("aria-current", "page");
-    await expect(inbox).not.toHaveAttribute("aria-current");
   });
 
   test("marks the Inbox, but not as the page, for a Conversation it opened", async ({
@@ -631,7 +623,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
-  test("sends feedback about the new UI from the profile menu", async ({
+  test("sends feedback about the dashboard from the profile menu", async ({
     page,
     dashboard,
   }) => {
@@ -670,7 +662,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lightTheme: true,
       view: "desktop",
     });
-    await dialog.getByRole("radio", { name: "The new UI" }).click();
+    await dialog.getByRole("radio", { name: "The dashboard" }).click();
     await dialog
       .getByRole("textbox", { name: "Comment" })
       .fill("Snoozed rows are hard to find");
@@ -688,7 +680,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           source: "dashboard_feedback",
         },
       },
-      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+      tags: { "app.feedback.topic": "new_ui" },
     });
 
     // On a phone the entry is in the navigation sheet, and the dialog opens

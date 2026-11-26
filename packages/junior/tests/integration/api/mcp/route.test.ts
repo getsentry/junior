@@ -391,6 +391,7 @@ describe("remote MCP HTTP", () => {
       "getAutomation",
       "getConversation",
       "getInboxItem",
+      "leaveConversation",
       "listConversationMessages",
       "markConversationRead",
       "pinConversation",
@@ -400,6 +401,7 @@ describe("remote MCP HTTP", () => {
       "searchInboxItems",
       "sendMessage",
       "setConversationAutoArchive",
+      "setConversationSpace",
       "setConversationSubscription",
       "stopConversation",
     ]);

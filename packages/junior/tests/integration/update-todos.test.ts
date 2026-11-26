@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
-import type { ParentResult } from "@/chat/agent-invocations/parent-result";
+import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -10,12 +9,13 @@ import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools"
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   invocationInput,
   parentConversationId,
   prepareParentConversation,
+  createPublishChildTurn,
 } from "../fixtures/agent-invocations";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
@@ -54,20 +54,21 @@ async function createHarness() {
     childContext,
     findMentionedUserId,
   );
-  const deliverToParent = createDeliverToParent({
+  const publishChildTurn = createPublishChildTurn({
     queue: work.queue,
     state: work.state,
   });
   return {
     childConversationId,
     spawn,
+    work,
     /** Sends one child Turn's result to the parent, as its loop does. */
-    send: async (conversationId: string, result: ParentResult) =>
-      await deliverToParent({
+    send: async (conversationId: string, update: AgentUpdate) =>
+      await publishChildTurn({
         actor: invocationInput.actor,
         conversationId,
-        result,
         turnId: "turn_child",
+        update,
       }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
@@ -254,6 +255,33 @@ describe("updateTodos", () => {
       await harness.close();
     }
   });
+  it("rejects a change that makes the open To-dos too long", async () => {
+    const harness = await createHarness();
+    try {
+      const notes = "n".repeat(1_900);
+      const big = Array.from({ length: 5 }, (_, index) => ({
+        title: `Review part ${index}`,
+        notes,
+      }));
+      await expect(harness.updateTodos({ add: big })).rejects.toThrow(
+        /^The open To-dos would take \d+ characters, over the limit of 8000\. Close, remove, or shorten To-dos, then try again\.$/,
+      );
+      expect(await listTodos(getSqlExecutor(), parentConversationId)).toEqual(
+        [],
+      );
+
+      const { todos } = await harness.updateTodos({ add: big.slice(0, 4) });
+      await expect(
+        harness.updateTodos({ add: [{ title: "One more", notes }] }),
+      ).rejects.toThrow(ToolInputError);
+      await expect(
+        harness.updateTodos({ update: [{ id: todos[0]!.id, status: "done" }] }),
+      ).resolves.toMatchObject({ todos: [{ status: "done" }] });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("lets a child close only its own To-dos of the parent", async () => {
     const harness = await createHarness();
     try {
@@ -307,10 +335,8 @@ describe("updateTodos", () => {
       ]);
       expect(renderTodoDelta(parentTodos, seen)).toBe(
         [
-          "<todo-delta>",
           `To-do version ${parentTodos[0]!.version}. Others changed these To-dos since you last saw them. Each To-do shows its current fields.`,
           `- ${draft!.id} (done, assignee Echo, changed by child agent Echo): Review the draft`,
-          "</todo-delta>",
         ].join("\n"),
       );
     } finally {
@@ -318,7 +344,7 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
+  it("drops a child's open To-dos once its stopped result reaches the parent after them, and leaves them open on a completed result", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
@@ -329,9 +355,9 @@ describe("updateTodos", () => {
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
       };
-      const reply: ParentResult = {
-        kind: "reply",
-        reply: { text: "Reviewed.", toolCallId: "call-reply" },
+      const reply: AgentUpdate = {
+        status: "done",
+        text: "Reviewed.",
       };
       tick();
       await harness.updateTodos({
@@ -349,7 +375,10 @@ describe("updateTodos", () => {
       tick();
       await harness.send(children.completed, reply);
       for (const kind of ["stopped", "failed", "blocked"] as const) {
-        await harness.send(children[kind], { kind, text: `Child ${kind}.` });
+        await harness.send(children[kind], {
+          status: kind,
+          text: `Child ${kind}.`,
+        });
       }
       // A retry of the same result leaves To-dos assigned after it open.
       tick();
@@ -362,7 +391,7 @@ describe("updateTodos", () => {
       tick();
       await harness.send(children.completed, reply);
       await harness.send(children.stopped, {
-        kind: "stopped",
+        status: "stopped",
         text: "Child stopped.",
       });
 
@@ -377,8 +406,8 @@ describe("updateTodos", () => {
           todo.changedByAgent?.name,
         ]),
       ).toEqual([
-        ["Echo open", "done", "Echo"],
-        ["Echo started", "done", "Echo"],
+        ["Echo open", "open", undefined],
+        ["Echo started", "in_progress", undefined],
         ["Echo dropped", "dropped", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],

@@ -38,8 +38,9 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ```bash
 jr-rpc config get github.repo
-jr-rpc config set github.repo owner/repo
 ```
+
+Change `github.repo` with the `setConfiguration` tool.
 
 ## Behavior notes
 

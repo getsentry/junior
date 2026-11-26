@@ -1,10 +1,8 @@
-import {
-  CONVERSATION_DETAIL_VERSION_HEADER,
-  CONVERSATION_VERSION_HEADER,
-} from "@sentry/junior/api/schema";
+import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { requestedConversationIds, withRequestedMailbox } from "./harness";
 import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
+import { mockConversationDetail, mockObjectLinks } from "./mock-reports";
 
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 
@@ -60,14 +58,10 @@ test("refreshes idle reads only when their version moves", async ({
     (url) => url.pathname === detailPath,
     async (route) => {
       detailReads += 1;
-      // Request the full body because this test changes it.
-      const response = await route.fetch({
-        headers: {
-          ...route.request().headers(),
-          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-        },
-      });
-      const report = withRequestedMailbox(route, await response.json());
+      const report = withRequestedMailbox(
+        route,
+        await mockConversationDetail(route),
+      );
       if (slackReply) {
         report.events.push({
           seq: 100_000,
@@ -80,10 +74,10 @@ test("refreshes idle reads only when their version moves", async ({
           },
         });
       }
-      const headers = response.headers();
-      delete headers["content-length"];
-      headers[CONVERSATION_VERSION_HEADER] = versions.conversation;
-      await route.fulfill({ headers, json: report });
+      await route.fulfill({
+        headers: { [CONVERSATION_VERSION_HEADER]: versions.conversation },
+        json: report,
+      });
     },
   );
   await page.goto(
@@ -179,7 +173,7 @@ test.describe("checks less often while the reader is away", () => {
 
 test.describe("refreshes each Conversation on screen from its token", () => {
   test.use({ controlTimers: true });
-  test("an Inbox card shows its pull request merged when the token moves @new", async ({
+  test("an Inbox card shows its pull request merged when the token moves", async ({
     page,
     dashboard,
   }) => {
@@ -222,13 +216,10 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       (url) => url.pathname === detailPath,
       async (route) => {
         detailReads += 1;
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-        });
-        const report = withRequestedMailbox(route, await response.json());
+        const report = withRequestedMailbox(
+          route,
+          await mockConversationDetail(route),
+        );
         if (merged) {
           for (const annotation of report.annotations) {
             if (annotation.key === "getsentry/payments#91") {
@@ -236,24 +227,26 @@ test.describe("refreshes each Conversation on screen from its token", () => {
             }
           }
         }
-        const headers = response.headers();
-        delete headers["content-length"];
-        headers[CONVERSATION_VERSION_HEADER] = token;
-        await route.fulfill({ headers, json: report });
+        await route.fulfill({
+          headers: { [CONVERSATION_VERSION_HEADER]: token },
+          json: report,
+        });
       },
     );
     // The card reads the pull request live.
     await page.route(/\/api\/objects\?/, async (route) => {
-      const response = await route.fetch();
-      const report: {
-        objects: { object?: { status?: string }; url: string }[];
-      } = await response.json();
-      for (const entry of report.objects) {
-        if (merged && entry.url.endsWith("/getsentry/payments/pull/91")) {
-          entry.object = { ...entry.object, status: "merged" };
-        }
-      }
-      await route.fulfill({ response, json: report });
+      const report = await mockObjectLinks(route);
+      await route.fulfill({
+        json: {
+          objects: report.objects.map((entry) =>
+            merged &&
+            entry.object &&
+            entry.url.endsWith("/getsentry/payments/pull/91")
+              ? { ...entry, object: { ...entry.object, status: "merged" } }
+              : entry,
+          ),
+        },
+      });
     });
     await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     await rowHead(page, "Pin the release train").click();
@@ -284,7 +277,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     expect(detailReads).toBe(settled + 1);
   });
 
-  test("a card whose Conversation read failed reads it again @new", async ({
+  test("a card whose Conversation read failed reads it again", async ({
     page,
     dashboard,
   }) => {

@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   openRepositoryConversations,
@@ -9,10 +10,14 @@ import {
   prReview,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
+import {
+  mockCodeRepository,
+  mockFeedPage,
+  mockPeopleCode,
+} from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("the Code row opens Mine, and stays the origin of a Conversation that Code opens", async ({
     page,
     dashboard,
@@ -372,10 +377,8 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The reports list at most 100 changes. The counts cover every change.
     await page.route(/\/api\/people\/[^/]+\/code$/, async (route) => {
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockPeopleCode(route);
       await route.fulfill({
-        response,
         json: {
           ...report,
           // Every listed change is active. The one idle change is past the
@@ -393,8 +396,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     // The open changes fill the list, so the Closed tab loads its own rows.
     await page.route(/\/api\/code\/repositories\/[^/]+$/, async (route) => {
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockCodeRepository(route);
       const state = new URL(route.request().url()).searchParams.get("state");
       const changes = (count: number, changeState: string, title: string) =>
         Array.from({ length: count }, (_, index) => ({
@@ -408,7 +410,6 @@ test.describe("new UI", { tag: "@new" }, () => {
           url: `https://github.com/${report.repository.name}/pull/${index + 1}`,
         }));
       await route.fulfill({
-        response,
         json: {
           ...report,
           changeCounts: { closed: 12, merged: 3, open: 105 },
@@ -490,8 +491,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/code/repositories/*", async (route) => {
       const state = new URL(route.request().url()).searchParams.get("state");
       states.push(state);
-      const response = await route.fetch();
-      const report = await response.json();
+      const report = await mockCodeRepository(route);
       const idleChange = {
         id: "00000000-0000-4000-8000-000000000099",
         lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
@@ -509,7 +509,6 @@ test.describe("new UI", { tag: "@new" }, () => {
           changeCounts: { closed: 2, merged: 40, open: 3 },
           changes: state === "open" ? [idleChange] : report.changes,
         },
-        response,
       });
     });
     await page.goto(`${dashboard.baseURL}/code?scope=all`);
@@ -602,9 +601,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       /\/api\/conversations\?.*codeRepositoryId=/,
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
-        const [first] = feed.conversations;
+        const feed = await mockFeedPage(route);
+        const first = feed.conversations[0]!;
         const listed = (name: string, treeState: string) => ({
           ...first,
           conversationId: `${first.conversationId}-${treeState}`,
@@ -613,7 +611,6 @@ test.describe("new UI", { tag: "@new" }, () => {
           treeState,
         });
         return route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: [
@@ -666,5 +663,107 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).not.toHaveURL(/[?&]state=/);
     await expect(working).toBeVisible();
     await expect(done).toBeVisible();
+  });
+
+  test.describe("the repository Conversations tab holds its order", () => {
+    /**
+     * List "Older conversation" below "Newer conversation". The returned
+     * function moves new activity to the older one, or takes it back, and
+     * moves the token that the versions poll reads.
+     */
+    async function mockMovingConversations(page: Page) {
+      let moved = false;
+      const versions = {
+        conversationDetails: {},
+        conversations: "feed-1",
+        inboxItems: "items-1",
+        spend: "spend-1",
+      };
+      await page.route("**/api/versions*", (route) =>
+        route.fulfill({ json: versions }),
+      );
+      await page.route(
+        /\/api\/conversations\?.*codeRepositoryId=/,
+        async (route) => {
+          const feed = await mockFeedPage(route);
+          const first = feed.conversations[0]!;
+          const row = (name: string, ageMs: number) => ({
+            ...first,
+            conversationId: `${first.conversationId}-${name}`,
+            displayTitle: `${name} conversation`,
+            lastSeenAt: new Date(NOW_MS - ageMs).toISOString(),
+            pinnedAt: null,
+          });
+          return route.fulfill({
+            json: {
+              ...feed,
+              conversations: [
+                row("Older", moved ? 60_000 : 180_000),
+                row("Newer", 120_000),
+              ],
+            },
+          });
+        },
+      );
+      let version = 1;
+      return (next: boolean) => {
+        moved = next;
+        version += 1;
+        versions.conversations = `feed-${version}`;
+      };
+    }
+
+    test("holds the order under the pointer and offers the new one", async ({
+      page,
+      dashboard,
+    }) => {
+      // A fixed time keeps the row times in the screenshot the same.
+      await page.clock.install({ time: NOW_MS });
+      await page.setViewportSize(desktop);
+      const setMoved = await mockMovingConversations(page);
+      const list = await openRepositoryConversations(page, dashboard.baseURL);
+      const rows = list.getByRole("link", { name: /^Open \w+ conversation$/ });
+      const older = list.getByRole("link", {
+        name: "Open Older conversation",
+      });
+      const pill = page.getByRole("button", { name: "1 updated" });
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+
+      // While the pointer is on the list, the rows keep their place, and the
+      // pill offers the new order.
+      await older.hover();
+      setMoved(true);
+      // The next versions poll reads the new feed token.
+      await page.clock.fastForward(5_000);
+      await expect(pill).toBeVisible();
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+      await screenshot(page, "repository-conversations-held", {
+        lightTheme: true,
+        view: "desktop",
+      });
+
+      // The pill applies the new order.
+      await pill.click();
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Older conversation",
+      );
+      await expect(pill).toHaveCount(0);
+
+      // Leaving the list, pointer and focus both, applies the next order.
+      await older.hover();
+      setMoved(false);
+      // The next versions poll reads the new feed token.
+      await page.clock.fastForward(5_000);
+      await expect(pill).toBeVisible();
+      await page.mouse.move(5, 890);
+      await expect(rows.first()).toHaveAccessibleName(
+        "Open Newer conversation",
+      );
+      await expect(pill).toHaveCount(0);
+    });
   });
 });

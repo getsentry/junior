@@ -31,7 +31,7 @@ export async function mockReadPositionConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Read position",
     isParticipant: true,
-    kind: "root",
+    kind: "thread",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,

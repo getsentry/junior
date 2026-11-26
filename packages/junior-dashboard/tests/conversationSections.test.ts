@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildConversationSections,
+  attentionGroups,
+  attentionOrder,
+  buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
 function conversation(id: string, lastSeenAt: string): Conversation {
   return {
-    kind: "root",
+    kind: "thread",
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
@@ -27,7 +29,7 @@ const NOW = {
   timeZone: "America/Los_Angeles",
 };
 
-function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
+function sectionIds(sections: ReturnType<typeof buildTimeSections>) {
   return sections.map((section) => ({
     conversations: section.conversations.map((item) => item.id),
     label: section.label,
@@ -36,7 +38,7 @@ function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
 
 describe("conversation activity sections", () => {
   it("groups by last activity into rolling windows, then months", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         conversation("last-year", "2025-12-01T12:00:00-08:00"),
         conversation("june", "2026-06-20T12:00:00-07:00"),
@@ -64,7 +66,7 @@ describe("conversation activity sections", () => {
   });
 
   it("keeps conversations that wait on the viewer in their time section", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         conversation("today", "2026-08-03T11:00:00-07:00"),
         // A Turn parked for authorization leaves the conversation idle.
@@ -84,62 +86,8 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts pinned conversations only in Pinned, first", () => {
-    const pinned = (
-      id: string,
-      lastSeenAt: string,
-      pinnedAt: string,
-      pinPosition?: number,
-    ) => ({ ...conversation(id, lastSeenAt), pinnedAt, pinPosition });
-    const sections = buildConversationSections(
-      [
-        conversation("today", "2026-08-03T11:00:00-07:00"),
-        // The older pin has the newer activity.
-        pinned(
-          "pinned-earlier",
-          "2026-08-03T10:00:00-07:00",
-          "2026-07-01T08:00:00-07:00",
-        ),
-        pinned(
-          "pinned-later",
-          "2026-06-20T12:00:00-07:00",
-          "2026-08-01T15:00:00Z",
-        ),
-        pinned(
-          "placed-second",
-          "2026-08-03T11:30:00-07:00",
-          "2026-06-01T08:00:00-07:00",
-          1,
-        ),
-        pinned(
-          "placed-first",
-          "2026-06-01T12:00:00-07:00",
-          "2026-08-02T08:00:00-07:00",
-          0,
-        ),
-        conversation("earlier", "2026-08-03T09:00:00-07:00"),
-      ],
-      NOW,
-    );
-
-    // Pins without a place go first, newest pin first, then the viewer's
-    // order. Activity does not move a pin.
-    expect(sectionIds(sections)).toEqual([
-      {
-        conversations: [
-          "pinned-later",
-          "pinned-earlier",
-          "placed-first",
-          "placed-second",
-        ],
-        label: "Pinned",
-      },
-      { conversations: ["today", "earlier"], label: "Today" },
-    ]);
-  });
-
   it("sorts and groups by the last Message, not by later tool or status events", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         // A tool event moved its activity today; its last Message was
         // yesterday.
@@ -189,6 +137,80 @@ describe("conversation activity sections", () => {
       "recent",
       "older",
       "tool-only",
+    ]);
+  });
+});
+
+describe("attention order", () => {
+  const at = (hour: number) =>
+    `2026-08-03T${String(hour).padStart(2, "0")}:00:00-07:00`;
+  const feed: Conversation[] = [
+    conversation("done-new", at(11)),
+    { ...conversation("working-old", at(2)), treeState: "working" },
+    {
+      ...conversation("waiting", at(9)),
+      treeState: "done",
+      watching: true,
+    },
+    { ...conversation("needs-old", at(1)), treeState: "needs_you" },
+    { ...conversation("working-new", at(10)), treeState: "working" },
+    { ...conversation("failed", at(8)), latestTurnFailed: true },
+    {
+      ...conversation("pinned-done", at(7)),
+      pinnedAt: "2026-08-03T08:00:00-07:00",
+    },
+    {
+      ...conversation("tool-only", at(12)),
+      lastMessageAt: at(3),
+      treeState: "needs_you",
+    },
+    conversation("done-old", at(4)),
+  ];
+
+  it("groups needs you, working, waiting, then done, each newest first", () => {
+    const rows = [
+      { group: "done", id: "done-old", time: 1 },
+      { group: "waiting", id: "waiting", time: 2 },
+      { group: "needs_you", id: "needs-old", time: 3 },
+      { group: "working", id: "working", time: 4 },
+      { group: "done", id: "done-new", time: 5 },
+      { group: "needs_you", id: "needs-new", time: 6 },
+    ] as const;
+    expect(
+      attentionGroups(rows, (row) => row).map(({ group, rows }) => ({
+        group,
+        ids: rows.map((row) => row.id),
+      })),
+    ).toEqual([
+      { group: "needs_you", ids: ["needs-new", "needs-old"] },
+      { group: "working", ids: ["working"] },
+      { group: "waiting", ids: ["waiting"] },
+      { group: "done", ids: ["done-new", "done-old"] },
+    ]);
+    // Groups with no rows are left out.
+    expect(
+      attentionGroups(
+        rows.filter((row) => row.group !== "working"),
+        (row) => row,
+      ).map(({ group }) => group),
+    ).toEqual(["needs_you", "waiting", "done"]);
+  });
+
+  it("orders feed rows by tree state, then last Message", () => {
+    expect(attentionOrder(feed).map((item) => item.id)).toEqual([
+      // A failed latest Turn needs the viewer. A tool event does not move a
+      // row: the last Message sorts it.
+      "failed",
+      "tool-only",
+      "needs-old",
+      "working-new",
+      "working-old",
+      // A watching tree waits.
+      "waiting",
+      // A pin does not change the group.
+      "done-new",
+      "pinned-done",
+      "done-old",
     ]);
   });
 });

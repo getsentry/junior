@@ -28,7 +28,8 @@ import {
   type LogContext,
   type SetSpanAttributes,
 } from "@/chat/logging";
-import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import { readConversationSpaceId } from "@/chat/spaces/configuration";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -63,6 +64,7 @@ import {
   writeAgentHistory,
 } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createContextImageFitter } from "@/chat/images/model-fit";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -77,7 +79,10 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  buildTurnResult,
+  isCutOffStopReason,
+} from "@/chat/services/turn-result";
 import {
   isAnswerToolName,
   readTurnAnswer,
@@ -130,6 +135,7 @@ import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
   isPersonInput,
+  isTopLevelWork,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -247,7 +253,7 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // A child reads visibility from its own Destination row, the same as a root.
+  // A child reads the visibility of its root.
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
@@ -293,12 +299,17 @@ export async function executeAgentRun(
       reportFailedRun(
         await executeAgentRunInPrivacyContext(
           run,
-          // TODO(dcramer): Remove the `root` case one release after #3060
-          // step 3. An Automation run in progress at deploy is stored as
-          // `root`.
-          run.dispatch?.declaresResult
-            ? "automation"
-            : (conversation?.kind ?? "root"),
+          {
+            // TODO(dcramer): Remove the `thread` case one release after #3060
+            // step 3. An Automation run in progress at deploy is stored as
+            // `thread`.
+            kind: run.dispatch?.declaresResult
+              ? "automation"
+              : (conversation?.kind ?? "thread"),
+            hasParent: Boolean(conversation?.parentConversationId),
+            // Only a root can run before its row exists.
+            topLevelWork: conversation ? isTopLevelWork(conversation) : true,
+          },
           conversationPrivacy,
           runLogContext,
           streamFn,
@@ -331,7 +342,11 @@ function reportFailedRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationKind: ConversationKind,
+  storedConversation: {
+    kind: ConversationKind;
+    hasParent: boolean;
+    topLevelWork: boolean;
+  },
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: AgentRequestStreamFn | undefined,
@@ -339,8 +354,9 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
+  const conversationKind = storedConversation.kind;
   const behavior = turnBehavior({
-    kind: conversationKind,
+    ...storedConversation,
     personInput: isPersonInput(run.source.kind),
   });
   const input = {
@@ -413,7 +429,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run, conversationKind);
+  assertRunConsistency(run, storedConversation);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
@@ -626,14 +642,14 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const persistedConfigurationValues = policy.locationConfiguration
-      ? await policy.locationConfiguration.resolveValues()
-      : {};
-    const configurationValues: Record<string, unknown> = {
-      ...getConfigDefaults(),
-      ...(policy.configuration ?? {}),
-      ...persistedConfigurationValues,
-    };
+    const [configurationValues, spaceId] = await Promise.all([
+      resolveConversationConfiguration({
+        configuration: policy.configuration,
+        conversationId,
+        locationConfiguration: policy.locationConfiguration,
+      }),
+      readConversationSpaceId(conversationId),
+    ]);
 
     // Match the history source the agent will actually receive so crash retries
     // do not let an unstripped running record suppress fresh turn context.
@@ -699,6 +715,7 @@ async function executeAgentRunInPrivacyContext(
       context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingTurnMessages: currentTurnMessages,
+      priorPiMessages,
       promptSaved,
       resumedFromSessionRecord,
       turnId,
@@ -750,6 +767,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       behavior,
+      topLevelWork: storedConversation.topLevelWork,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,
@@ -758,6 +776,7 @@ async function executeAgentRunInPrivacyContext(
       configurationValues,
       connectedMcpProviders,
       conversationPrivacy,
+      spaceId,
       durability,
       authorization,
       generatedFiles,
@@ -1184,6 +1203,7 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       // One AI Gateway session per Conversation, not a prompt fingerprint.
       sessionId: conversationId,
+      transformContext: createContextImageFitter(),
       streamFn: withAgentRequest(
         createTracedStreamFn({
           conversationPrivacy,
@@ -1340,8 +1360,11 @@ async function executeAgentRunInPrivacyContext(
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         const message = event.message;
+        // Text that the output limit or an abort cut off is not a reply.
+        // The Turn fails, and only its failure is delivered.
         const delivery =
-          message.stopReason === "error" || message.stopReason === "aborted"
+          message.stopReason === "error" ||
+          isCutOffStopReason(message.stopReason)
             ? undefined
             : deliverAssistantMessage(message);
         // Record after delivery, so the reply is not late. Record also when
@@ -1777,7 +1800,7 @@ async function executeAgentRunInPrivacyContext(
             // answer, so the run history shows it.
             missingAnswerError: run.dispatch
               ? "Automation run ended without an answer."
-              : behavior.missingAnswerError,
+              : undefined,
           }
         : undefined),
     });

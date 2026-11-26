@@ -28,7 +28,8 @@ export function areaForPath(
   },
   isTabPath: boolean,
 ): Area | undefined {
-  if (isTabPath) return undefined;
+  // A Space page keeps the Conversations pane, where its Space row lists.
+  if (isTabPath || under(pathname, "/spaces")) return undefined;
   if (under(pathname, NAV_PAGES.settings.to))
     return {
       items: sectionItems(NAV_PAGES.settings.to),

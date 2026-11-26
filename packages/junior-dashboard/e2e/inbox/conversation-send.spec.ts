@@ -1,5 +1,4 @@
 import {
-  CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
   webMessageId,
 } from "@sentry/junior/api/schema";
@@ -17,9 +16,9 @@ import {
 } from "../harness";
 import { screenshot } from "../screenshot";
 import { mockChartPng } from "../../src/mock-reporting/chart-png";
+import { mockConversationDetail } from "../mock-reports";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("starts and continues conversations from the dashboard", async ({
     page,
     dashboard,
@@ -260,19 +259,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       async (route) => {
         createdDetailReads += 1;
         await createdDetailHeld;
-        const url = route.request().url();
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-          // Any mock Conversation with available history.
-          url: url.replace(
-            encodeURIComponent(createdConversationId),
-            encodeURIComponent("slack:CQA123:1770003600.000200"),
-          ),
-        });
-        const detail = await response.json();
+        // Any mock Conversation with available history.
+        const detail = await mockConversationDetail(
+          route,
+          "slack:CQA123:1770003600.000200",
+        );
         await route.fulfill({
           json: withRequestedMailbox(route, {
             ...detail,
@@ -328,16 +319,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       `**/api/conversations/${encodeURIComponent(slackConversationId)}*`,
       async (route) => {
         if (holdDetailRefresh) await detailRefreshHeld;
-        // Request the full body because this test changes it.
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-        });
         await route.fulfill({
-          response,
-          json: { ...(await response.json()), isParticipant: true },
+          json: {
+            ...(await mockConversationDetail(route)),
+            isParticipant: true,
+          },
         });
       },
     );
@@ -508,21 +494,9 @@ test.describe("new UI", { tag: "@new" }, () => {
         messages: queued,
       };
       await historyHeld;
-      // Request the full body because this test changes it.
-      const response = await route.fetch({
-        headers: {
-          ...route.request().headers(),
-          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-        },
-      });
-      const detail = await response.json();
-      const { "content-length": _, ...headers } = response.headers();
+      const detail = await mockConversationDetail(route);
       await route.fulfill({
-        response,
-        headers: {
-          ...headers,
-          [CONVERSATION_VERSION_HEADER]: conversationVersion(),
-        },
+        headers: { [CONVERSATION_VERSION_HEADER]: conversationVersion() },
         json: {
           ...detail,
           mailbox,
@@ -849,23 +823,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       `**/api/conversations/${encodeURIComponent(createdConversationId)}*`,
       async (route) => {
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-          // Any mock Conversation with available history.
-          url: route
-            .request()
-            .url()
-            .replace(
-              encodeURIComponent(createdConversationId),
-              encodeURIComponent("slack:CQA123:1770003600.000200"),
-            ),
-        });
+        // Any mock Conversation with available history.
+        const detail = await mockConversationDetail(
+          route,
+          "slack:CQA123:1770003600.000200",
+        );
         await route.fulfill({
           json: withRequestedMailbox(route, {
-            ...(await response.json()),
+            ...detail,
             conversationId: createdConversationId,
             events: [],
             isParticipant: true,

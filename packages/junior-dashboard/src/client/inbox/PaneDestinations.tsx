@@ -12,13 +12,11 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
 import {
-  isLeadPath,
   isCodePath,
   type PaneRow,
   type PaneRowMark,
 } from "../components/layout/paneRows";
 import { cn, dashboardCountClass } from "../styles";
-import { LEAD_NAV_KEY } from "../shell/primaryNav";
 import { useInboxData } from "./inboxData";
 import {
   INBOX_VIEW_LABELS,
@@ -41,11 +39,17 @@ const ICONS: Record<InboxView, LucideIcon> = {
  * list that opened the page keeps the accent text without the fill, so only
  * the page's own row is lit.
  */
-export const paneEntryClass = (mark?: PaneRowMark, phone?: boolean) =>
+export const paneEntryClass = (
+  mark?: PaneRowMark,
+  phone?: boolean,
+  /** False when the row has no leading icon, so its title takes that room. */
+  icon = true,
+) =>
   cn(
     // A count adds its own column, so a row without one gives its title the
     // full width, with no gap left for a count.
-    "grid min-w-0 grid-flow-col grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    icon ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]",
+    "grid min-w-0 grid-flow-col items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     phone ? "h-11" : "h-8",
     mark === "page"
       ? "bg-dashboard-accent/[0.12]"
@@ -123,8 +127,8 @@ function Entry(props: {
 }
 
 /**
- * The pane's destinations, in one list: the Lead, the Inbox, Snoozed, and
- * Done; then Conversations, Code, Automations, and the primary plugin pages.
+ * The pane's destinations, in one list: the Inbox, Snoozed, and Done; then
+ * Conversations, Code, Automations, and the primary plugin pages.
  * The Inbox filters its asks by type itself. Each row reopens where the
  * reader left it, and the Inbox and Automations rows count what waits on the
  * viewer.
@@ -160,27 +164,13 @@ export function PaneDestinations(props: { phone?: boolean }) {
   // and System without an account, follow them.
   const automationsItem = navItems.find((item) => item.key === "automations");
   const codeItem = navItems.find((item) => item.key === "code");
-  const leadItem = navItems.find((item) => item.key === LEAD_NAV_KEY);
   const pages = navItems.filter(
     (item) =>
-      item.key !== "inbox" &&
-      item.key !== "automations" &&
-      item.key !== "code" &&
-      item.key !== LEAD_NAV_KEY,
+      item.key !== "inbox" && item.key !== "automations" && item.key !== "code",
   );
   return (
     <>
       <ul className="m-0 grid gap-0.5 p-0">
-        {leadItem ? (
-          <Entry
-            icon={navItemIcon(leadItem.key)}
-            label={leadItem.label}
-            phone={props.phone}
-            phoneTo={leadItem.to}
-            row={leadItem.key}
-            phoneSelected={isLeadPath(pathname, navItems)}
-          />
-        ) : null}
         {view("inbox", true)}
         {data.signedIn ? (
           <>

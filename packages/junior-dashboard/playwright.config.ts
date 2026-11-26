@@ -1,7 +1,4 @@
-import { readdirSync } from "node:fs";
-
 import { defineConfig, devices } from "@playwright/test";
-import type { DashboardShell } from "./src/public-assets";
 
 const chrome = {
   ...devices["Desktop Chrome"],
@@ -11,13 +8,7 @@ const chrome = {
   ...(process.env["GITHUB_ACTIONS"] ? { channel: "chrome" } : undefined),
 };
 
-// A spec under e2e/inbox/ tests the new UI, so its namesake in e2e/ is
-// for the current UI only.
-const currentUiSpecs = readdirSync(new URL("./e2e/inbox", import.meta.url))
-  .filter((name) => name.endsWith(".spec.ts"))
-  .map((name) => `**/e2e/${name}`);
-
-export default defineConfig<{ ui: DashboardShell }>({
+export default defineConfig({
   testDir: "./e2e",
   outputDir: "../../.playwright/junior-dashboard",
   timeout: 30_000,
@@ -32,6 +23,7 @@ export default defineConfig<{ ui: DashboardShell }>({
   ...(process.env["CI"] ? { maxFailures: 10 } : undefined),
   reporter: process.env["CI"] ? [["github"], ["list"]] : "list",
   use: {
+    ...chrome,
     // Dark is the default dashboard theme. Light theme journeys opt in.
     colorScheme: "dark",
     // Reduced motion stops the dashboard's transitions, animations, and
@@ -45,19 +37,4 @@ export default defineConfig<{ ui: DashboardShell }>({
     },
     trace: "retain-on-failure",
   },
-  // One project for each UI shell. A test for one shell has the `@classic`
-  // or `@new` tag, or is in a spec for one shell. Other specs run on both.
-  projects: [
-    {
-      grepInvert: /@new\b/,
-      name: "classic",
-      use: { ...chrome, ui: "classic" },
-    },
-    {
-      grepInvert: /@classic\b/,
-      name: "inbox",
-      testIgnore: currentUiSpecs,
-      use: { ...chrome, ui: "inbox" },
-    },
-  ],
 });

@@ -4,7 +4,8 @@ import path from "node:path";
 import { loadModule, parse, parsePlPgSQL } from "libpg-query";
 
 /**
- * Migration lock checks that squawk (`.squawk.toml`) cannot do.
+ * Migration checks that squawk (`.squawk.toml`) cannot do: lock checks, and
+ * the release that a drop or rename must name.
  *
  * `junior upgrade` runs each pending migration in a transaction against the
  * live database. Squawk checks the statements that lock a whole table, but it
@@ -21,6 +22,24 @@ const RULES = {
   "ddl-in-do-block":
     "Squawk cannot check SQL inside a DO block. Put the statement at the top level of the migration.",
 };
+// `junior upgrade` runs in the deployment build, before the new deployment is
+// promoted, so the live release runs against the new schema for minutes. A
+// migration may drop or rename an object only after a release that no longer
+// uses it is live. Squawk flags these statements, and its ignore comment must
+// name that release: "-- squawk-ignore <rule> -- unused since <version>".
+// Squawk cannot require the reason, so this check does.
+const DROPS_BASELINE_PATH = "scripts/migration-drops-baseline.json";
+const DROP_RULES = new Set([
+  "ban-drop-column",
+  "ban-drop-constraint",
+  "ban-drop-function",
+  "ban-drop-not-null",
+  "ban-drop-table",
+  "renaming-column",
+  "renaming-object",
+  "renaming-table",
+]);
+const SQUAWK_IGNORE = /--\s*squawk-ignore(?:-file)?\s+(.*)$/;
 // DO block statements that squawk has no lock rule for.
 const DO_BLOCK_STATEMENTS = new Set([
   "SelectStmt",
@@ -171,6 +190,67 @@ export async function checkMigrationLocks(files, baseline) {
   return errors;
 }
 
+const versionParts = (version) => version.split(".").map(Number);
+
+/** Whether release `a` is the same as or older than release `b`. */
+function notNewer(a, b) {
+  const [left, right] = [versionParts(a), versionParts(b)];
+  const index = left.findIndex((part, at) => part !== right[at]);
+  return index === -1 || left[index] < right[index];
+}
+
+/**
+ * Report squawk warnings (its JSON report) and drop ignore comments that break
+ * the drop rules. A squawk ignore comment for a drop rule must name a release
+ * that is out: one no newer than `released`. A baseline file already ran, so
+ * squawk may flag its drops; it must still have one.
+ */
+export function checkDrops(files, warnings, baseline, released) {
+  const exempt = new Set(baseline);
+  const flagged = new Set();
+  const errors = [];
+  for (const { file, line, column, rule_name, message } of warnings) {
+    if (exempt.has(file) && DROP_RULES.has(rule_name)) {
+      flagged.add(file);
+    } else {
+      errors.push(`${file}:${line}:${column}: ${rule_name}: ${message}`);
+    }
+  }
+  for (const [filePath, sql] of files) {
+    if (exempt.has(filePath)) {
+      if (!flagged.has(filePath)) {
+        errors.push(
+          `${filePath}: has no drop or rename; remove it from ${DROPS_BASELINE_PATH}`,
+        );
+      }
+      continue;
+    }
+    for (const [index, text] of sql.split("\n").entries()) {
+      const [rules, reason = ""] = (SQUAWK_IGNORE.exec(text)?.[1] ?? "").split(
+        /\s+--\s*/,
+      );
+      if (!rules.split(",").some((rule) => DROP_RULES.has(rule.trim()))) {
+        continue;
+      }
+      const version = /\b\d+\.\d+\.\d+\b/.exec(reason)?.[0];
+      if (version === undefined || !notNewer(version, released)) {
+        errors.push(
+          `${filePath}:${index + 1}: drop-without-release: Drop or rename an object only after a release that no longer uses it is out, and name that release: "-- squawk-ignore <rule> -- unused since <version>". The latest release is ${released}.`,
+        );
+      }
+    }
+  }
+  const filePaths = new Set(files.map(([filePath]) => filePath));
+  for (const filePath of exempt) {
+    if (!filePaths.has(filePath)) {
+      errors.push(
+        `${filePath}: file not found; remove it from ${DROPS_BASELINE_PATH}`,
+      );
+    }
+  }
+  return errors;
+}
+
 async function migrationFiles(root) {
   const packages = await fs.readdir(path.join(root, "packages"), {
     withFileTypes: true,
@@ -199,21 +279,35 @@ async function migrationFiles(root) {
   return files;
 }
 
-/** Check migration locks with this script, then with squawk. */
+/** Check migrations with this script, then with squawk. */
 export async function run({ root }) {
-  const [files, baselineText] = await Promise.all([
-    migrationFiles(root),
-    fs.readFile(path.join(root, BASELINE_PATH), "utf8"),
-  ]);
+  const [files, baselineText, dropsBaselineText, packageText] =
+    await Promise.all([
+      migrationFiles(root),
+      fs.readFile(path.join(root, BASELINE_PATH), "utf8"),
+      fs.readFile(path.join(root, DROPS_BASELINE_PATH), "utf8"),
+      fs.readFile(path.join(root, "packages/junior/package.json"), "utf8"),
+    ]);
   const errors = await checkMigrationLocks(files, JSON.parse(baselineText));
   const squawk = spawnSync(
     path.join(root, "node_modules/.bin/squawk"),
-    ["--reporter", "gcc", "packages/*/migrations/*/migration.sql"],
+    ["--reporter", "json", "packages/*/migrations/*/migration.sql"],
     { cwd: root, encoding: "utf8" },
   );
   if (squawk.error) throw squawk.error;
-  if (squawk.status !== 0) {
-    errors.push(...`${squawk.stdout}${squawk.stderr}`.trim().split("\n"));
+  let warnings;
+  try {
+    warnings = JSON.parse(squawk.stdout);
+  } catch {
+    return [...errors, `squawk: ${squawk.stdout}${squawk.stderr}`.trim()];
   }
+  errors.push(
+    ...checkDrops(
+      files,
+      warnings,
+      JSON.parse(dropsBaselineText),
+      JSON.parse(packageText).version,
+    ),
+  );
   return errors;
 }

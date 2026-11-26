@@ -27,11 +27,11 @@ export async function getChildAgentLabel(childConversationId: string) {
 }
 
 /**
- * Return whether a child agent still works when its Turn sends a `reply`:
- * one of its own child agents has open work, it or one of its descendants
- * waits on a person's answer to its Inbox item, or a reply or message from
- * one of its child agents waits in its mailbox. That reply then goes to the
- * parent as a message, not as the child's result.
+ * Return whether a child agent still works when its Turn ends with final
+ * text: one of its own child agents has open work, it or one of its
+ * descendants waits on a person's answer to its Inbox item, or a result or
+ * message from one of its child agents waits in its mailbox. That final text
+ * then goes to the parent as a message, not as the child's result.
  */
 export async function childAgentStillWorks(
   conversationId: string,

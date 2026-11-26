@@ -9,7 +9,11 @@ import {
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import type { ConversationStatus } from "@/chat/conversations/store";
-import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
+import {
+  conversationLastTurnOutcomeSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
+import { TURN_OUTCOME_STATUSES } from "@/chat/conversations/turn-update";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import {
@@ -23,9 +27,9 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
-import { CHILD_AGENT_KINDS, type ChildAgent } from "./types";
+import type { ChildAgent } from "./types";
 
-const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
+const childConversationKindSchema = z.enum(["thread", "task"]);
 
 /** Bound the child agents that one listing reads. */
 const CHILD_AGENT_LIST_LIMIT = 200;
@@ -37,8 +41,9 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * children of a parent, such as ones that a removed feature created, are not
  * listed. A child is `running` while a Turn or mailbox input that answers its
  * parent is open, and is `failed` when its last Turn failed, also when the
- * Turn ended with a model error and execution went back to idle. Turns do
- * not store a blocked result, so only a failure sets `lastResult`.
+ * Turn ended with a model error and execution went back to idle.
+ * `lastResult` is how its newest finished Turn that was not stopped ended:
+ * the status that `readTurnUpdate` gives it, or `failed`.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -51,6 +56,7 @@ export async function listChildAgents(
       conversationId: juniorConversations.conversationId,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
+      lastTurnOutcome: conversationLastTurnOutcomeSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
       turnFailed: conversationTurnFailedSql(juniorConversations),
@@ -87,7 +93,7 @@ export async function listChildAgents(
   const children = await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // Every child agent stores its kind.
-      const kind = childAgentKindSchema.parse(row.kind);
+      const kind = childConversationKindSchema.parse(row.kind);
       const stoppedAtMs = row.stoppedAt?.getTime();
       const running =
         stoppedAtMs === undefined &&
@@ -97,6 +103,13 @@ export async function listChildAgents(
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
         ));
+      const outcome = row.lastTurnOutcome;
+      const lastResult =
+        outcome === "failed"
+          ? "failed"
+          : outcome
+            ? TURN_OUTCOME_STATUSES[outcome]
+            : undefined;
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         ...(row.archivedAt
@@ -104,7 +117,7 @@ export async function listChildAgents(
           : undefined),
         childConversationId: row.conversationId,
         kind,
-        ...(row.turnFailed && !running ? { lastResult: "failed" } : undefined),
+        ...(lastResult ? { lastResult } : undefined),
         status:
           stoppedAtMs !== undefined
             ? "stopped"
@@ -220,7 +233,7 @@ async function listAnsweredLoopChildren(
 
 /**
  * List the other child agents of one parent that still run and have not
- * answered. A running child whose open Turn's `reply` is already among
+ * answered. A running child whose open Turn's result is already among
  * `parentMessages`, the child replies and results that reached the parent's
  * mailbox, has answered, so it does not count.
  */

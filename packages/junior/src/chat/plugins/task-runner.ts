@@ -56,7 +56,8 @@ import {
   CONVERSATION_METADATA_TASK,
   updateConversationMetadata,
 } from "@/chat/conversations/metadata/task";
-import { getRegistrations } from "./agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
+import type { AppEventPublisher } from "@/chat/plugins/hooks/routes";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
@@ -90,6 +91,10 @@ export type SendPluginTask = (
 interface ProcessPluginTaskOptions {
   /** Queue delivery of this message, when the queue reports it. */
   deliveryCount?: number | undefined;
+  /** Publishes the Events of a started task. */
+  events?: AppEventPublisher | undefined;
+  /** Sends the tasks that a started task starts. */
+  sendPluginTask?: SendPluginTask | undefined;
   /** Shows an Inbox item that a started task changed. */
   showInboxItem?: ShowInboxItem | undefined;
   signal?: AbortSignal;
@@ -537,7 +542,18 @@ export async function processPluginTask(
   options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
   if ("payload" in message) {
-    await processStartedPluginTask(message, options);
+    const { events, sendPluginTask } = options;
+    // Only the app's queue consumers deliver started tasks, and they pass both.
+    if (!events || !sendPluginTask) {
+      throw new Error(
+        "A started plugin task needs the app event publisher and task sender",
+      );
+    }
+    await processStartedPluginTask(message, {
+      ...options,
+      events,
+      sendPluginTask,
+    });
     return;
   }
   const params = pluginTaskParamsSchema.parse(message.params);

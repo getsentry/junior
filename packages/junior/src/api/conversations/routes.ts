@@ -13,6 +13,10 @@ import {
 } from "../schema/conversation-fork";
 import {
   acceptedConversationMessageSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
+} from "../schema/conversation-create";
+import {
   conversationAttachmentParamsSchema,
   conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
@@ -22,8 +26,6 @@ import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationParamsSchema,
-  createConversationBodySchema,
-  createConversationMessageBodySchema,
 } from "../schema/conversation";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
@@ -93,9 +95,11 @@ import { setConversationDeliveryForViewer } from "./delivery";
 import {
   archiveConversationOperation,
   cancelQueuedMessagesOperation,
+  leaveConversationOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
   renameConversationOperation,
+  setConversationSpaceOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
@@ -145,8 +149,15 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, cursor, include, q, status } =
-        context.req.valid("query");
+      const {
+        actorEmail,
+        codeRepositoryId,
+        cursor,
+        include,
+        q,
+        spaceId,
+        status,
+      } = context.req.valid("query");
       const viewer = context.get("viewer");
       // The feed does not mark waiting rows, so the read reports their count.
       let waitingRows = 0;
@@ -159,6 +170,7 @@ export function createConversationRoutes(
           waitingRows = count;
         },
         ...(q ? { q } : undefined),
+        ...(spaceId ? { spaceId } : undefined),
         status,
         ...(viewer ? { viewer } : undefined),
       });
@@ -362,6 +374,12 @@ export function createConversationRoutes(
     apiOperationHandler(archiveConversationOperation, options),
   );
 
+  app.put(
+    "/:conversationId/space",
+    requireViewer,
+    apiOperationHandler(setConversationSpaceOperation, options),
+  );
+
   app.patch(
     "/:conversationId/pin",
     requireViewer,
@@ -390,6 +408,12 @@ export function createConversationRoutes(
           context.req.valid("json"),
         ),
       ),
+  );
+
+  app.post(
+    "/:conversationId/leave",
+    requireViewer,
+    apiOperationHandler(leaveConversationOperation, options),
   );
 
   app.patch(

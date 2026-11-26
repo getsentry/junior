@@ -131,11 +131,12 @@ describe("a child agent asks a person", () => {
 
       const itemId = await askInTask(harness, childId, person);
 
-      // The parent learns that the child waits on a person, and gets no
-      // completed result for the Turn that ended with `noReply`.
+      // The parent learns that the child waits on a person, and gets the
+      // Turn that ended with `noReply` as a message, not as a result.
       const waiting = await parentMessages();
       expect(waiting.map((message) => message.input.text)).toEqual([
         expect.stringMatching(/status="waiting"[\s\S]*Delete the preview-42/),
+        expect.stringMatching(/^<agent-message /),
       ]);
 
       await actOnInboxItem({
@@ -148,7 +149,7 @@ describe("a child agent asks a person", () => {
 
       // The root that the item links only records the answer. It gets no
       // input that would start a Turn.
-      expect(await parentMessages()).toHaveLength(1);
+      expect(await parentMessages()).toHaveLength(2);
       const rootEvents = await getConversationEventStore().query(
         slackParentConversationId,
         { limit: 20, types: ["message", "message_handled"] },
@@ -222,8 +223,9 @@ describe("a child agent asks a person", () => {
       });
 
       // The root already has the reply as its own input, so it gets only
-      // the `waiting` update. The child gets the answer as the person's.
-      expect(await parentMessages()).toHaveLength(1);
+      // the `waiting` update and the asking Turn's message. The child gets
+      // the answer as the person's.
+      expect(await parentMessages()).toHaveLength(2);
       expect(await childMessages(childId)).toEqual([
         expect.objectContaining({ source: "web" }),
       ]);
@@ -271,13 +273,19 @@ describe("a child agent asks a person", () => {
         expect.arrayContaining([
           expect.stringMatching(/status="waiting"/),
           expect.stringMatching(
-            /status="completed"[\s\S]*dismissed inbox item "Delete preview-42"/,
+            /status="done"[\s\S]*dismissed inbox item "Delete preview-42"/,
           ),
         ]),
       );
-      expect(messages).toHaveLength(2);
+      // The third is the asking Turn's message, which runs as that Turn's
+      // Actor. The `waiting` and dismiss updates run as the Event system Actor.
+      expect(messages).toHaveLength(3);
+      const updates = messages.filter((message) =>
+        message.input.text.startsWith("<agent-result "),
+      );
+      expect(updates).toHaveLength(2);
       expect(
-        messages.every(
+        updates.every(
           (message) =>
             message.input.authorId === resultAuthorId(EVENT_SYSTEM_ACTOR),
         ),
@@ -307,7 +315,7 @@ describe("a child agent asks a person", () => {
 
       expect(
         (await parentMessages()).filter((message) =>
-          message.input.text.includes('status="completed"'),
+          message.input.text.includes('status="done"'),
         ),
       ).toHaveLength(1);
     } finally {
@@ -338,7 +346,7 @@ describe("a child agent asks a person", () => {
         (message) => message.input.text,
       );
       expect(
-        texts.filter((text) => text.includes('status="completed"')),
+        texts.filter((text) => text.includes('status="done"')),
       ).toHaveLength(1);
       // The parent hears of the dismiss, so the Turn's end is not a bare
       // completion.
@@ -378,9 +386,7 @@ describe("a child agent asks a person", () => {
       const texts = (await parentMessages()).map(
         (message) => message.input.text,
       );
-      expect(texts.some((text) => text.includes('status="completed"'))).toBe(
-        false,
-      );
+      expect(texts.some((text) => text.includes('status="done"'))).toBe(false);
       expect(texts).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/dismissed inbox item "Delete preview-42"/),
@@ -412,7 +418,7 @@ describe("a child agent asks a person", () => {
         ]),
       );
       const completed = async () =>
-        (await texts()).filter((text) => text.includes('status="completed"'));
+        (await texts()).filter((text) => text.includes('status="done"'));
       expect(await completed()).toHaveLength(0);
 
       // A dismiss ends the child's work, so the parent gets its result.
@@ -491,7 +497,7 @@ describe("a child agent asks a person", () => {
       });
       const completed = async () =>
         (await parentMessages()).filter((message) =>
-          message.input.text.includes('status="completed"'),
+          message.input.text.includes('status="done"'),
         );
       expect(await completed()).toHaveLength(1);
 
@@ -530,9 +536,15 @@ describe("a child agent asks a person", () => {
       await harness.drain(childId);
       harness.onRun(undefined);
 
-      // The grandchild still waits on the person, so the root gets no
-      // completed result from the child.
-      expect(await parentMessages()).toEqual([]);
+      // The grandchild still waits on the person, so the root gets each of
+      // the child's three Turns as a message, and no result from the child.
+      const messages = await parentMessages();
+      expect(messages).toHaveLength(3);
+      expect(
+        messages.every((message) =>
+          message.input.text.startsWith("<agent-message "),
+        ),
+      ).toBe(true);
     } finally {
       await harness.close();
     }

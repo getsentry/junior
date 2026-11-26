@@ -28,6 +28,7 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useComposerLiveMarkdown } from "./composerLiveMarkdownSetting";
 import {
   mentionablePersonSchema,
   type MentionablePerson,
@@ -227,6 +228,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
+  const [liveMarkdown] = useComposerLiveMarkdown();
   const enterSends = !useSyncExternalStore(
     subscribeToTouchKeyboard,
     touchKeyboardMatches,
@@ -684,6 +686,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               enterKeyHint={enterSends ? "send" : "enter"}
               enterSends={enterSends}
               label={props.label}
+              liveMarkdown={liveMarkdown}
               lookup={{
                 origin: window.location.origin,
                 person: (slackUserId) => peopleRef.current.get(slackUserId),

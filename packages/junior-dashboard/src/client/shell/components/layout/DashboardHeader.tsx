@@ -9,11 +9,9 @@ import { Sheet, SheetClose, SheetContent } from "../../../components/ui/sheet";
 import { useSheet } from "../../../components/ui/useSheet";
 import {
   MobileHeaderActionsSlot,
-  MobileHeaderTagsSlot,
   MobileHeaderTitleSlot,
   MobileSecondaryNavigationSlot,
   useMobileHeaderBack,
-  useRegisterOpenMobileNavigation,
 } from "../../../components/layout/DashboardChrome";
 import { PaneDestinations } from "../../../inbox/PaneDestinations";
 import { cn, dashboardInteractiveTextClass } from "../../../styles";
@@ -66,10 +64,6 @@ export function DashboardHeader(props: {
   const conversationMode = Boolean(props.mobileBackTo || mobileBack);
   const title = props.mobileTitle ?? mobileBack?.title;
   const mobileTitle = title === undefined ? "Conversation" : title.trim();
-
-  useRegisterOpenMobileNavigation(() => {
-    onOpenChangeRef.current(true);
-  });
 
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -152,7 +146,7 @@ export function DashboardHeader(props: {
             "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
-          to={NAV_PAGES.lead.to}
+          to={NAV_PAGES.inbox.to}
         >
           <span
             className={cn(fadeOverflowClass, "font-sans text-sm font-semibold")}
@@ -162,7 +156,6 @@ export function DashboardHeader(props: {
           </span>
         </Link>
         {conversationMode ? <MobileHeaderActionsSlot /> : null}
-        {conversationMode ? <MobileHeaderTagsSlot /> : null}
       </div>
       {props.mobileNavigationOpen ? (
         <MobileNavigationSheet
@@ -173,7 +166,7 @@ export function DashboardHeader(props: {
             <Link
               aria-label={`${getDashboardAgentName()} home`}
               className="flex min-w-0 font-sans text-sm font-semibold text-inherit no-underline"
-              to={NAV_PAGES.lead.to}
+              to={NAV_PAGES.inbox.to}
             >
               <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                 {getDashboardAgentName()}

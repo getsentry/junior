@@ -9,7 +9,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -106,7 +106,11 @@ async function openPullRequest(): Promise<string> {
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
-    turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+    turnTools: turnBehavior({
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+    }).tools,
     workspace: {} as never,
   })["github_createPullRequest"]!.execute!(
     {

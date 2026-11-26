@@ -305,6 +305,7 @@ export const conversationTurnFailureReasonSchema = z.enum([
   "empty_output",
   "tool_errors",
   "suppressed_output",
+  "cut_off_output",
 ]);
 
 /** Why a failed turn stopped. */

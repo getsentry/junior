@@ -93,7 +93,7 @@ export async function readConversationOutline(
 
 /**
  * Read the cut text of one role's messages in seq order. The
- * `message_role_idx` index reads only these messages, not all events.
+ * `message_role_seq_idx` index reads only these messages, in that order.
  */
 function readMessages(
   conversationId: string,

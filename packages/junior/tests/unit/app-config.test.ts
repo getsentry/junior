@@ -10,11 +10,12 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
+import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 const originalCwd = process.cwd();
 const originalPluginPackages = process.env["JUNIOR_PLUGIN_PACKAGES"];
@@ -64,6 +65,7 @@ afterEach(async () => {
   setConfigDefaults(undefined);
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
   if (originalPluginPackages === undefined) {
     delete process.env["JUNIOR_PLUGIN_PACKAGES"];
   } else {
@@ -646,6 +648,7 @@ describe("createApp plugin config", () => {
       },
       pluginRuntimeRegistrations: ["hooked"],
     }));
+    mockBuiltSystemPrompts();
 
     await createApp({
       configDefaults: { "hooked.org": "sentry" },
@@ -847,6 +850,7 @@ describe("createApp plugin config", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: ["notes"],
     }));
+    mockBuiltSystemPrompts();
 
     const app = await createApp();
 

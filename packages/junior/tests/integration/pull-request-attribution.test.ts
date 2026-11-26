@@ -15,7 +15,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -137,7 +137,11 @@ async function prepare() {
       },
       resolveActorIdentity: async () => await readActorIdentity(run.actor!),
       source: { kind: "parent_message" },
-      turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+      turnTools: turnBehavior({
+        kind: "task",
+        hasParent: true,
+        personInput: false,
+      }).tools,
       workspace: {} as any,
     })["github_createPullRequest"]!.execute!(
       {

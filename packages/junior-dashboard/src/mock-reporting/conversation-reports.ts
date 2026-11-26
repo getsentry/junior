@@ -1,0 +1,149 @@
+import {
+  conversationDetailQuerySchema,
+  conversationFeedQuerySchema,
+  type ConversationChildAgentsReport,
+  type ConversationFeed,
+  type ConversationFeedItem,
+} from "@sentry/junior/api/schema";
+import type { z } from "zod";
+import { filterMockConversationsByRepository } from "./code-repository";
+import { mockConversationFeedPage } from "./feed-page";
+import {
+  NOW_MS,
+  readMockConversationChildAgents,
+  readMockConversationDetail,
+  readMockConversationFeed,
+  readMockConversationPendingMessages,
+  withMockImageOrigin,
+} from "./fixtures";
+import { withMockViewerAnswers } from "./inbox-items";
+import { withMockReadPosition } from "./read-positions";
+import { mockLeadSpaceId } from "./sends";
+import {
+  filterMockConversationsBySpace,
+  mockTreeState,
+  withMockSpace,
+  withMockSpaces,
+} from "./spaces";
+
+type FeedQuery = z.output<typeof conversationFeedQuerySchema>;
+type DetailQuery = z.output<typeof conversationDetailQuerySchema>;
+
+/** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
+function withMockFeedIncludes(
+  feed: ConversationFeed,
+  include: readonly ("links" | "media")[],
+): ConversationFeed {
+  const strip = (item: ConversationFeedItem): ConversationFeedItem => {
+    const { links, media, threads, ...row }: ConversationFeedItem = item;
+    const kept: ConversationFeedItem = row;
+    if (links && include.includes("links")) kept.links = links;
+    if (media && include.includes("media")) kept.media = media;
+    if (threads) kept.threads = threads.map(strip);
+    return kept;
+  };
+  return { ...feed, conversations: feed.conversations.map(strip) };
+}
+
+/**
+ * Build the page that `GET /conversations` answers, with image URLs on
+ * `origin`. Undefined means the cursor is invalid.
+ */
+export function readMockConversationFeedPage(
+  query: FeedQuery,
+  origin: string,
+): ConversationFeed | undefined {
+  const repositoryId = query.codeRepositoryId;
+  const { spaceId } = query;
+  const readFeed = (status: "active" | "archived") => {
+    const feed = withMockSpaces(
+      readMockConversationFeed(query.actorEmail, status),
+    );
+    // Like the API, only the viewer's own feed says what they answered.
+    if (repositoryId)
+      return filterMockConversationsByRepository(feed, repositoryId);
+    if (spaceId) return filterMockConversationsBySpace(feed, spaceId);
+    return query.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
+  };
+  const respond = (feed: ConversationFeed) => {
+    const page = mockConversationFeedPage(feed, {
+      ...(query.cursor ? { cursor: query.cursor } : undefined),
+      pinsFirst:
+        !query.q && !repositoryId && !spaceId && query.status === "active",
+    });
+    return page
+      ? withMockImageOrigin(withMockFeedIncludes(page, query.include), origin)
+      : undefined;
+  };
+  const report = readFeed(query.status);
+  if (!query.q) return respond(report);
+  const archived = readFeed("archived");
+  const search = query.q.toLowerCase();
+  const conversations = new Map(
+    [...report.conversations, ...archived.conversations].map((conversation) => [
+      conversation.conversationId,
+      conversation,
+    ]),
+  );
+  return respond({
+    ...report,
+    conversations: [...conversations.values()].filter((conversation) =>
+      conversation.displayTitle.toLowerCase().includes(search),
+    ),
+  });
+}
+
+/**
+ * Build the detail that `GET /conversations/:conversationId` answers, with
+ * the mailbox when the query asks for it. Undefined means not found.
+ */
+export function readMockConversationDetailReport(
+  conversationId: string,
+  query: DetailQuery,
+) {
+  const report = readMockConversationDetail(conversationId, query.limit);
+  if (!report) return undefined;
+  const detail = withMockSpace(withMockReadPosition(report));
+  const mailbox = query.mailbox
+    ? readMockConversationPendingMessages(conversationId)
+    : undefined;
+  return { detail, mailbox };
+}
+
+/**
+ * Build the child agents that `GET /conversations/:conversationId/agents`
+ * answers. A Lead's children are its Space's Conversations, as the API makes
+ * them. Undefined means not found.
+ */
+export function readMockChildAgentsReport(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const spaceId = mockLeadSpaceId(conversationId);
+  if (!spaceId) return readMockConversationChildAgents(conversationId);
+  const rows = filterMockConversationsBySpace(
+    readMockConversationFeed(undefined, "active"),
+    spaceId,
+  ).conversations;
+  return {
+    agents: rows.map((row) => ({
+      archivedAt: row.archivedAt ?? null,
+      conversationId: row.conversationId,
+      cumulativeDurationMs: row.cumulativeDurationMs,
+      ...(row.cumulativeUsage
+        ? { cumulativeUsage: row.cumulativeUsage }
+        : undefined),
+      kind: "thread" as const,
+      status: row.latestTurnFailed
+        ? ("failed" as const)
+        : row.turnActive
+          ? ("running" as const)
+          : ("completed" as const),
+      task: row.displayTitle,
+      title: row.displayTitle,
+      treeState: mockTreeState(row),
+      updatedAt: row.lastMessageAt ?? row.lastProgressAt,
+      watching: row.watching ?? false,
+    })),
+    conversationId,
+  };
+}

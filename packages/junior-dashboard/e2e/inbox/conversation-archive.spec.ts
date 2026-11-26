@@ -4,6 +4,7 @@ import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { mockFeedPage } from "../mock-reports";
 
 /**
  * Rest the pointer on an Inbox row's head until the row stops moving, so
@@ -41,8 +42,7 @@ async function restOnRow(head: Locator) {
     .toBe(true);
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // Only participants can archive or restore.
   test.beforeEach(async ({ page }) => viewAsParticipant(page));
 
@@ -93,10 +93,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, { open: [] });
     let archived = false;
     await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       await route.fulfill({
-        response,
         json: {
           ...feed,
           // This route replaces the `viewAsParticipant` one.

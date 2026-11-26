@@ -88,6 +88,23 @@ export interface TurnResultInput {
   missingAnswerError?: string;
 }
 
+type CutOffStopReason = "length" | "aborted";
+
+const CUT_OFF_ERRORS = {
+  length: "The final text was cut off at the model's output length limit.",
+  aborted: "The final text was cut off when the model request was aborted.",
+} as const satisfies Record<CutOffStopReason, string>;
+
+/**
+ * Return whether a Pi stop reason means that the model did not finish its
+ * message: `length` at the output token limit, or `aborted`.
+ */
+export function isCutOffStopReason(
+  stopReason: string | undefined,
+): stopReason is CutOffStopReason {
+  return stopReason === "length" || stopReason === "aborted";
+}
+
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   if (input.answer) {
@@ -145,11 +162,18 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     typeof lastAssistant?.stopReason === "string"
       ? lastAssistant.stopReason
       : undefined;
-  const errorMessage =
-    typeof lastAssistant?.errorMessage === "string"
-      ? lastAssistant.errorMessage
-      : undefined;
   const isProviderError = stopReason === "error";
+  // Final text that the model stopped at its output limit, or that an abort
+  // stopped, is not a finished reply.
+  const cutOffError =
+    primaryText && isCutOffStopReason(stopReason)
+      ? CUT_OFF_ERRORS[stopReason]
+      : undefined;
+  const errorMessage =
+    cutOffError ??
+    (typeof lastAssistant?.errorMessage === "string"
+      ? lastAssistant.errorMessage
+      : undefined);
 
   if (noReplyRequested && !isProviderError) {
     logInfo("ai.no_reply.accepted", {
@@ -178,7 +202,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (suppressedPrimaryText) {
+  } else if (suppressedPrimaryText || cutOffError) {
     outcome = "execution_failure";
   } else if (primaryText || completedWithoutTerminalText || blocked) {
     outcome = "success";

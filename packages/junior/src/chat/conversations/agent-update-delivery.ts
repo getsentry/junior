@@ -1,9 +1,11 @@
 /**
- * Delivery of one agent update to the Watches on a Conversation. Each Watch
- * gets the `<agent-result>` that a parent gets from a child agent, as data
- * under the intent that the watcher wrote for the Watch. The update text
- * never adds instructions.
+ * Delivery of one agent update to the starter and the Watches of a
+ * Conversation. The starter of a child agent gets the update as its child's
+ * `<agent-result>`. Each Watch gets the same `<agent-result>`, as data under
+ * the intent that the watcher wrote for the Watch. The update text never
+ * adds instructions.
  */
+import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { canReadConversation } from "@/api/conversations/access";
 import {
@@ -11,7 +13,11 @@ import {
   type AgentUpdate,
   type AgentUpdateStatus,
 } from "@/chat/agent-invocations/agent-update";
+import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
+import { getPersonStopTurnId } from "@/chat/agent-invocations/ids";
+import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
 import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { CORE_EVENT_NAMESPACE, eventGuidance } from "@/chat/events/catalog";
@@ -25,11 +31,15 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { deliverWatch, isQuietEvent } from "@/chat/events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { renderTaskInput } from "@/chat/task-input";
-import { CONVERSATION_RESOURCE_TYPE, type MatchedWatch } from "./watch-events";
+import {
+  isAgentResourceType,
+  type MatchedWatch,
+  type UpdateKey,
+} from "./watch-events";
 
 const SUMMARIES: Record<AgentUpdateStatus, string> = {
   blocked: "The conversation is blocked.",
-  completed: "The conversation finished a Turn.",
+  done: "The conversation finished a Turn.",
   failed: "A Turn of the conversation failed.",
   stopped: "The conversation stopped.",
   waiting: "The conversation waits on a person.",
@@ -38,7 +48,7 @@ const SUMMARIES: Record<AgentUpdateStatus, string> = {
 /**
  * Deliver one agent update to each matched Watch whose Conversation may
  * still read the target. The access check runs before the update text
- * reaches the watcher. A Watch that names the update as quiet gets a note
+ * reaches the watcher. A Watch that names the update as quiet gives a note
  * that starts no Turn.
  */
 export async function deliverAgentUpdate(args: {
@@ -93,7 +103,7 @@ export async function deliverAgentUpdate(args: {
         subscription: watch,
         deliver: async (current) => {
           if (
-            current.resourceType !== CONVERSATION_RESOURCE_TYPE ||
+            !isAgentResourceType(current.resourceType) ||
             !(await canReadConversation(
               getDb(),
               current.conversationId,
@@ -141,4 +151,56 @@ export async function deliverAgentUpdate(args: {
   if (errors.length > 0) {
     throw new AggregateError(errors, "Failed to deliver one or more watches");
   }
+}
+
+// The key of the starter's message for one update. A Turn keys it by its
+// Turn id, so a retry or the report of a lost worker adds nothing.
+function starterMessageKey(
+  key: Exclude<UpdateKey, { type: "waiting" }>,
+): string {
+  switch (key.type) {
+    case "turn":
+    case "turn_failed":
+      return key.turnId;
+    case "stopped":
+      return getPersonStopTurnId(key.stoppedAtMs);
+  }
+}
+
+/**
+ * Deliver one agent update of a child agent to the agent that started it.
+ * The stored parent edge is the starter's Watch: it never expires, and the
+ * parent's Turn runs as `actor`, never with more authority than the work
+ * that the update reports. A Conversation without a parent has no starter,
+ * and its update is not read.
+ */
+export async function deliverToStarter(args: {
+  actor?: Actor | undefined;
+  conversationId: string;
+  key: UpdateKey;
+  nowMs: number;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter | undefined;
+  update: () => Promise<AgentUpdate | undefined>;
+}): Promise<void> {
+  const { key } = args;
+  // TODO(dcramer): Tell the starter about a wait, as `design/agent-teams.md`
+  // states. Today only the Watches on the child hear it.
+  if (key.type === "waiting") return;
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
+  const update = await args.update();
+  const status = update?.status;
+  if (!update || !status || status === "waiting") return;
+  const messageKey = starterMessageKey(key);
+  await enqueueStarterUpdate({
+    actor: args.actor ?? EVENT_SYSTEM_ACTOR,
+    messageKey,
+    nowMs: args.nowMs,
+    queue: args.queue,
+    sender,
+    state: args.state,
+    turnId: messageKey,
+    update: { status, text: update.text },
+  });
 }

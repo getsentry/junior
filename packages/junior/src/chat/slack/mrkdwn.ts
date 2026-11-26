@@ -2,7 +2,7 @@ import { truncateStatusText } from "@/chat/slack/status-format";
 import {
   applyPluginFormatMarkdown,
   type PluginMarkdownFormat,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/prompt";
 
 /** Escape dynamic text for Slack mrkdwn without changing intended formatting. */
 export function escapeSlackMrkdwnText(text: string): string {

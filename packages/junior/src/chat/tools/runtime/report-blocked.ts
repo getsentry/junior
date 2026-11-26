@@ -4,7 +4,7 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 
 const DESCRIPTIONS = {
   parent: {
-    tool: "End this delegated task as blocked. Call this when the task needs something that the parent agent can give, such as input, its decision, or a fix to the task, also when a search for the missing part found nothing. For a person's approval, access, or decision, ask that person with addInboxItem instead. Do not guess, mock, or fake results to work around it.",
+    tool: "End this Turn as blocked, not with a final text reply. Call this when the task needs something that the parent agent can give, such as input, its decision, or a fix to the task, also when a search for the missing part found nothing. For a person's approval, access, or decision, ask that person with addInboxItem instead. Do not guess, mock, or fake results to work around it.",
     missing:
       "What the task needs from the parent. Add the work you already did, so the parent does not repeat it.",
   },

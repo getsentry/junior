@@ -4,6 +4,7 @@ import { mobile } from "../screenshot";
 import { expect, test } from "../test";
 import { holdTouch } from "./browserMenu";
 import { mockInboxItems, rowHead } from "./inbox-fixture";
+import { mockFeedPage } from "../mock-reports";
 
 const PIN_TITLES = ["Alpha pin", "Bravo pin", "Charlie pin"];
 const pinId = (index: number) => `slack:CPINS:${1770000000 + index}.000100`;
@@ -19,10 +20,8 @@ async function servePins(page: Page) {
     return route.fulfill({ json: { conversationIds: order } });
   });
   await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-    const response = await route.fetch();
-    const feed = await response.json();
+    const feed = await mockFeedPage(route);
     return route.fulfill({
-      response,
       json: {
         ...feed,
         conversations: PIN_TITLES.map((displayTitle, index) => {
@@ -48,15 +47,13 @@ async function servePins(page: Page) {
 // Pins in In flight keep the viewer's order, above every busy row: only
 // pins drag, and a drag, Alt+ArrowUp or Alt+ArrowDown, or the row menu
 // saves that order.
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a drag in In flight moves only that pin in the stored order", async ({
     dashboard,
     page,
   }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const pin = (index: number, displayTitle: string, status: string) => ({
         ...feed.conversations[0],
         conversationId: `slack:CPINS:${1770000000 + index}.000100`,
@@ -68,7 +65,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         turnActive: status === "working",
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           // Stored order Alpha, Bravo, Charlie. Charlie runs, and still
@@ -116,8 +112,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
     // more pages follow.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      // The mock API has no "page-2" cursor, so every page is built from the
+      // first one.
+      const first = new URL(route.request().url());
+      first.searchParams.delete("cursor");
+      const feed = await mockFeedPage(route, first);
       const row = (index: number, displayTitle: string, pinned: boolean) => ({
         ...feed.conversations[0],
         conversationId: `slack:CFEED:${1770000000 + index}.000100`,
@@ -133,7 +132,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       return route.fulfill({
-        response,
         json: cursor
           ? { ...feed, conversations: [], nextCursor: undefined }
           : {
@@ -176,8 +174,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("only pins drag in In flight", async ({ dashboard, page }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const row = (index: number, displayTitle: string, pinned: boolean) => ({
         ...feed.conversations[0],
         conversationId: `slack:CPINS:${1770000000 + index}.000100`,
@@ -189,7 +186,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         turnActive: !pinned,
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [

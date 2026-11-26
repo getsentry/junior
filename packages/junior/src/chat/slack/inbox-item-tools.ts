@@ -16,7 +16,7 @@ const SLACK_MENTION = /^<@([A-Z0-9]+)(?:\|[^>]*)?>$/;
  * Throw a `ToolInputError` when the person has no Junior User in the
  * workspace of `tenant`, so an agent assigns them by email instead.
  */
-async function findSlackMentionedUserId(
+export async function findSlackMentionedUserId(
   text: string,
   tenant: ProviderTenant | undefined,
 ): Promise<string | undefined> {

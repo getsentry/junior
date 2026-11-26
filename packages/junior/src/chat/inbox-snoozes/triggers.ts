@@ -70,7 +70,7 @@ async function resolvedTodos(
  * Fire the snooze triggers that one Event matches. A `resolve` trigger
  * cancels the snooze and closes the item: it dismisses it, or marks the
  * To-do of a To-do item done for the person who snoozed it, so the agent
- * sees the change in its next `<todo-delta>`. A `wake` trigger ends the
+ * sees the change in its next To-do delta. A `wake` trigger ends the
  * snooze, which records `reason`. When one Event fires both on a snooze,
  * `resolve` wins. A snooze that already ended ignores the Event. Each
  * woken snooze pushes to its User. Returns the number of items woken.

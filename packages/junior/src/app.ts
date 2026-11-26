@@ -9,6 +9,7 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -35,14 +36,13 @@ import {
   type SandboxResourceConfig,
 } from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
   getPluginApiRoutes,
   getPluginRoutes,
-  setPlugins,
-  validatePlugins,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   setMemoryConfig,
@@ -82,6 +82,8 @@ import {
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
+  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -109,6 +111,14 @@ import { createVercelCacheWarmupCallback } from "@/chat/cache-warming/queue";
 import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
 import { createVercelBackgroundCompactionCallback } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  createGatewayModelClient,
+  turnStepConsumer,
+} from "@/turn-steps/consumer";
+import { turnTools } from "@/turn-steps/tools";
+import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import { sweepTurns } from "@/core/turn/sweep";
+import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
@@ -584,6 +594,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const pluginTaskQueue = options?.pluginTaskQueue?.((message, delivery) =>
     processPluginTask(message, {
       deliveryCount: delivery?.deliveryCount,
+      events,
+      sendPluginTask: (task, sendOptions) => sendPluginTask(task, sendOptions),
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     }),
   );
@@ -804,6 +816,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
+  // Built after resetRuntimeConfig, so the lease and the queue visibility
+  // timeout use this app's functionMaxDurationSeconds.
+  const chatConfig = getChatConfig();
+  const engineCtx = createEngineContext(chatConfig);
+  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
@@ -812,6 +829,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback({
+      events,
+      sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     return pluginTaskPOST(c.req.raw);
@@ -837,6 +856,29 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
     return backgroundCompactionPOST(c.req.raw);
   });
+  let turnStepPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
+  // Built on the first step message, like the callbacks above. It builds the
+  // Turn prompt layouts, so building it at startup would slow every cold
+  // start, and a failure there would stop every route of the app.
+  app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, async (c) => {
+    turnStepPOST ??= engineCtx.queue.createCallback(
+      await turnStepConsumer(engineCtx, {
+        client: createGatewayModelClient(),
+        bot: chatConfig.bot,
+        tools: turnTools,
+      }),
+    );
+    return turnStepPOST(c.req.raw);
+  });
+  let deliveryPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
+  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
+    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
+    return deliveryPOST(c.req.raw);
+  });
 
   app.get("/api/internal/heartbeat", (c) => {
     return heartbeatGET(c.req.raw, waitUntil, {
@@ -845,6 +887,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       events,
       sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+      sweepTurns: () => sweepTurns(engineCtx),
     });
   });
 

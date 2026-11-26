@@ -55,9 +55,27 @@ import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockTodos } from "./mock-reporting/todos";
 import { resetMockWatches } from "./mock-reporting/watches";
+import { resetMockSpaces } from "./mock-reporting/spaces";
+import { readMockCodeRepository } from "./mock-reporting/code-repository";
+import {
+  readMockConversationDetailReport,
+  readMockConversationFeedPage,
+} from "./mock-reporting/conversation-reports";
+import { readMockPeopleCode } from "./mock-reporting/fixtures";
+import { readMockObjectLinks } from "./mock-reporting/objects";
+import { readMockConversationOutline } from "./mock-reporting/outline";
+import { readMockSearchRows } from "./mock-reporting/search-routes";
+import {
+  readMockInboxItemCount,
+  readMockInboxItemList,
+} from "./mock-reporting/inbox-item-routes";
 import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
-import { createMockReportingApi } from "./mock-reporting/routes";
+import { readMockSpaceList } from "./mock-reporting/spaces";
+import {
+  createMockReportingApi,
+  readMockNotificationSettings,
+} from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
   DASHBOARD_INSTALL_ICON_PATH,
@@ -104,7 +122,28 @@ export function resetMockDashboardState(): void {
   resetMockInboxItems();
   resetMockSends();
   resetMockWatches();
+  resetMockSpaces();
 }
+
+/**
+ * Mock report readers for dashboard E2E specs. A spec that changes a mock
+ * answer builds all of it with these, so it reads the state that the running
+ * server reads. Read them from the built dashboard, as with
+ * `resetMockDashboardState`.
+ */
+export const mockReports = {
+  codeRepository: readMockCodeRepository,
+  conversationDetail: readMockConversationDetailReport,
+  conversationFeedPage: readMockConversationFeedPage,
+  conversationOutline: readMockConversationOutline,
+  inboxItemCount: readMockInboxItemCount,
+  inboxItemList: readMockInboxItemList,
+  notificationSettings: readMockNotificationSettings,
+  objectLinks: readMockObjectLinks,
+  peopleCode: readMockPeopleCode,
+  searchRows: readMockSearchRows,
+  spaceList: readMockSpaceList,
+};
 
 export interface JuniorDashboardOptions {
   /** The configured bot name. Core passes `botConfig.userName`. */

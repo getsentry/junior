@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -46,6 +47,15 @@ export async function seedConversation(
   },
 ): Promise<void> {
   const at = new Date(args.lastActivityAtMs);
+  // A root takes the visibility of its Destination, as the store writes it.
+  const [destination] =
+    args.destinationId && !args.parentConversationId
+      ? await executor
+          .db()
+          .select({ visibility: juniorDestinations.visibility })
+          .from(juniorDestinations)
+          .where(eq(juniorDestinations.id, args.destinationId))
+      : [];
   await executor
     .db()
     .insert(juniorConversations)
@@ -54,7 +64,7 @@ export async function seedConversation(
       schemaVersion: 1,
       destinationId: args.destinationId ?? null,
       parentConversationId: args.parentConversationId ?? null,
-      kind: args.parentConversationId ? "task" : "root",
+      kind: args.parentConversationId ? "task" : "thread",
       title: args.title === undefined ? "A title" : args.title,
       channelName: args.channelName === undefined ? "eng" : args.channelName,
       actor: { platform: "slack", slackUserId: "U1", teamId: "T1" },
@@ -62,6 +72,11 @@ export async function seedConversation(
       lastActivityAt: at,
       updatedAt: at,
       executionStatus: "idle",
+      visibility: destination
+        ? destination.visibility === "public"
+          ? "public"
+          : "private"
+        : null,
     });
   if (args.withContent !== false) {
     await executor

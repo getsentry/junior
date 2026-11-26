@@ -32,7 +32,8 @@ function context(
     },
     workspace: {} as ToolRuntimeContext["workspace"],
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
     ...overrides,
@@ -71,6 +72,7 @@ describe("user customization tool", () => {
           parentConversationId: "local:user-customization:parent",
           turnTools: turnBehavior({
             kind: "task",
+            hasParent: true,
             personInput: false,
           }).tools,
         }),

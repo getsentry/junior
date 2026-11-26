@@ -1,7 +1,10 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { setConversationArchive } from "@/api/conversations/archive";
 import { getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { changeTodos, listTodos } from "@/chat/todos/store";
+import { juniorConversations } from "@/db/schema";
 import {
   slackInvocationInput,
   slackParentConversationId,
@@ -36,7 +39,23 @@ describe("To-dos of child agents that no Agent invocation names", () => {
     });
   }
 
-  it("closes the parent's To-dos of a child once its reply ends its work", async () => {
+  async function archiveChild(childId: string) {
+    const [child] = await getSqlExecutor()
+      .db()
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, childId));
+    await expect(
+      setConversationArchive({
+        applyToChildren: false,
+        archived: true,
+        conversationId: childId,
+        lastSeenAt: child!.lastActivityAt.toISOString(),
+      }),
+    ).resolves.toMatchObject({ status: "archived" });
+  }
+
+  it("keeps a child's To-dos open after its reply, and closes them once it is archived", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -73,12 +92,18 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         async (run) =>
           await finishRun(
             run,
-            { reply: { text: "Deploy is green.", toolCallId: "reply-1" } },
+            { finalText: "Deploy is green." },
             "Deploy is green.",
           ),
       );
       await harness.drain(childId);
-      // A To-do given to the idle child after its work ends stays open.
+      // A done reply does not end the child's work.
+      await expect(readTodos()).resolves.toEqual([
+        ["Check the deploy", "open", undefined],
+      ]);
+      vi.setSystemTime(Date.now() + 1_000);
+      await archiveChild(childId);
+      // A To-do given to the child after its archive stays open.
       await assignTodo("Watch the canary");
 
       const expected = [
@@ -92,7 +117,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
     }
   });
 
-  it("leaves the parent's To-do of a Thread open after a person's Turn there", async () => {
+  it("keeps the parent's To-do of a Thread open after a person's Turn there", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -119,7 +144,8 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         nowMs: Date.now(),
       });
 
-      // A person's Turn in the Thread answers the person, not the parent.
+      // A person's Turn in the Thread also reports to the parent, which
+      // leaves the To-do open.
       vi.setSystemTime(Date.now() + 1_000);
       await sendPersonMessage(harness, childId, "person-1");
       harness.onRun(

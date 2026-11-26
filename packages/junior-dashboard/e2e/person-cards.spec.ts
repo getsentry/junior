@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { mockObjectLinks } from "./mock-reports";
 
 // A mock Conversation where the viewer wrote, answered a question, and
 // Junior mentions Avery Chen as `<@U789>`.
@@ -101,9 +102,8 @@ test("a merged change with no size shows no size separator", async ({
   await page.setViewportSize(desktop);
   // The live cards of the merged changes have no size.
   await page.route("**/api/objects?*", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    for (const item of body.objects ?? []) {
+    const body = await mockObjectLinks(route);
+    for (const item of body.objects) {
       const facts = item.object?.facts;
       if (facts?.type === "code_change") {
         delete facts.additions;
@@ -111,7 +111,7 @@ test("a merged change with no size shows no size separator", async ({
         delete facts.changedFiles;
       }
     }
-    await route.fulfill({ json: body, response });
+    await route.fulfill({ json: body });
   });
   await openConversation(page, dashboard.baseURL);
   await page
@@ -270,57 +270,52 @@ test.describe("on a touch screen", () => {
   });
 });
 
-// The screenshots show the new UI, where the request came from.
-test(
-  "person references in a transcript",
-  { tag: "@new" },
-  async ({ dashboard, page }) => {
-    for (const view of [desktop, mobile]) {
-      await page.setViewportSize(view);
-      await openConversation(page, dashboard.baseURL);
-      const message = page
-        .getByRole("article")
-        .filter({ hasText: "The canary is running in us-east-1." });
-      await expect(
-        message.getByRole("link", { name: "@Avery Chen" }),
-      ).toBeVisible();
-      const ask = page.getByRole("region", {
-        name: "Asked Pick the canary region",
-      });
-      await ask.scrollIntoViewIfNeeded();
-      await screenshot(page, "person-references", {
-        lightTheme: true,
-        view: view.name,
-      });
-      // Close crops of a mention and an "Answered by" line, to check that
-      // each photo sits on the middle of its line.
-      await screenshot(page, "person-mention-line", {
-        lightTheme: true,
-        target: message.locator("p").filter({ hasText: "can roll it back" }),
-        view: view.name,
-      });
-      await screenshot(page, "person-answered-by-line", {
-        lightTheme: true,
-        target: ask,
-        view: view.name,
-      });
-      // The viewer's own card has Conversations they may read.
-      await page
-        .getByRole("article")
-        .getByRole("link", { name: "Dashboard User", exact: true })
-        .first()
-        .hover();
-      await expect(
-        personCard(page, "Dashboard User")
-          .getByRole("region", { name: "Recently shipped" })
-          .getByRole("link")
-          .first(),
-      ).toBeVisible();
-      await screenshot(page, "person-card", {
-        lightTheme: true,
-        view: view.name,
-      });
-      await page.mouse.move(0, 0);
-    }
-  },
-);
+test("person references in a transcript", async ({ dashboard, page }) => {
+  for (const view of [desktop, mobile]) {
+    await page.setViewportSize(view);
+    await openConversation(page, dashboard.baseURL);
+    const message = page
+      .getByRole("article")
+      .filter({ hasText: "The canary is running in us-east-1." });
+    await expect(
+      message.getByRole("link", { name: "@Avery Chen" }),
+    ).toBeVisible();
+    const ask = page.getByRole("region", {
+      name: "Asked Pick the canary region",
+    });
+    await ask.scrollIntoViewIfNeeded();
+    await screenshot(page, "person-references", {
+      lightTheme: true,
+      view: view.name,
+    });
+    // Close crops of a mention and an "Answered by" line, to check that
+    // each photo sits on the middle of its line.
+    await screenshot(page, "person-mention-line", {
+      lightTheme: true,
+      target: message.locator("p").filter({ hasText: "can roll it back" }),
+      view: view.name,
+    });
+    await screenshot(page, "person-answered-by-line", {
+      lightTheme: true,
+      target: ask,
+      view: view.name,
+    });
+    // The viewer's own card has Conversations they may read.
+    await page
+      .getByRole("article")
+      .getByRole("link", { name: "Dashboard User", exact: true })
+      .first()
+      .hover();
+    await expect(
+      personCard(page, "Dashboard User")
+        .getByRole("region", { name: "Recently shipped" })
+        .getByRole("link")
+        .first(),
+    ).toBeVisible();
+    await screenshot(page, "person-card", {
+      lightTheme: true,
+      view: view.name,
+    });
+    await page.mouse.move(0, 0);
+  }
+});
