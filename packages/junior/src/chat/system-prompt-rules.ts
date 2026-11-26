@@ -357,7 +357,7 @@ const SAFETY_RULES = [
  * about one tool goes in that tool's description, not here.
  */
 const WATCH_POLICY_RULE =
-  "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggested_events, use watchEvents only for those remaining events that serve the current intent. If suggested_events is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.";
+  "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggested_events, use watchEvents only for those remaining events that serve the current intent. If suggested_events is empty or omitted, do not invent a watch. Each watched event arrives in a later Turn, also after this Turn ends. Do not wait, sleep, poll, or create scheduled polling tasks for events a watch can deliver: finish the rest of the task and end the Turn. Write a concise intent summary. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.";
 
 const CODEMODE_POLICY_RULE =
   "- When several tool calls need no judgment from you between them, such as the same lookup for many items, results you only filter, count, or combine, or independent calls to different tools, make them in one `codemode` script instead of separate or parallel direct calls. Call tools directly when one call is enough or when you must read a result to decide what to do next.";
