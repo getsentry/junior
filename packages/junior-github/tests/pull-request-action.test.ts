@@ -287,29 +287,35 @@ describe("next action item", () => {
       draft: false,
       mergeableStates: ["clean"],
       merged: false,
-      requesterRole: "triage",
+      requesterAccess: { permission: "read", role: "triage" },
       reviews: [{ state: "APPROVED", user: { login: "reviewer" } }],
       state: "open",
     };
     mockGitHub(github, []);
+    const ready = {
+      kind: "upsert",
+      notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+    };
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
 
       // GitHub says that it can merge, but triage cannot merge.
       await webhook.handler(reviewSubmitted("approved"));
-      expect(calls).not.toContainEqual(
-        expect.objectContaining({
-          notice: expect.objectContaining({ title: "Ready to merge · #946" }),
-        }),
-      );
+      expect(calls).not.toContainEqual(expect.objectContaining(ready));
 
-      // A maintainer can merge, so the same state asks them to.
-      github.requesterRole = "maintain";
+      // A custom role whose base permission is write can merge.
+      github.requesterAccess = { permission: "write", role: "merger" };
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls.at(-1)).toMatchObject(ready);
+
+      // GitHub no longer knows the requester's login, such as after a
+      // rename. They cannot merge, and the item still follows the state.
+      github.requesterAccess = "unknown";
       await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toMatchObject({
-        kind: "upsert",
-        notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+        input: { dedupeKey: DEDUPE_KEY, status: "dismissed" },
+        kind: "close",
       });
     } finally {
       await fixture.close();

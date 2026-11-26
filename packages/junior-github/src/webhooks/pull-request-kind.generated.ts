@@ -28,8 +28,8 @@ export interface Inputs {
   viewer: {
     requester: boolean;
     /**
-     * The viewer's role on the repository is write, maintain, or admin, so
-     * GitHub lets them merge.
+     * GitHub lets the viewer merge: the base permission of their repository
+     * role, custom roles too, is write or admin.
      */
     can_merge: boolean;
     /**

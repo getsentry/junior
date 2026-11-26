@@ -87,7 +87,6 @@ import { GitHubRequestError } from "../credential-support.js";
 import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
-  canMergeRole,
   inLimbo,
   latestActivity,
   nextAction,
@@ -128,8 +127,8 @@ import { logFailOpenFailure } from "./fail-open-log.js";
 import { GitHubGraphqlError } from "./graphql-request.js";
 import {
   loadGraphqlRateLimitReset,
+  canMergeInRepository,
   loadPullRequestMergeState,
-  loadRepositoryRole,
   loadReviewAgainReader,
   requestPullRequestReviewers,
   type GitHubInstallationEnv,
@@ -535,12 +534,10 @@ async function syncOne(
     // Without a linked login, Junior cannot read the requester's role.
     const canMerge =
       requesterLogin !== undefined &&
-      canMergeRole(
-        await loadRepositoryRole(args.env, args.cache, {
-          login: requesterLogin,
-          repositoryFullName: target.repositoryFullName,
-        }),
-      );
+      (await canMergeInRepository(args.env, args.cache, {
+        login: requesterLogin,
+        repositoryFullName: target.repositoryFullName,
+      }));
     const asked = await askHeldReview(args, target, state, requesterLogin);
     const reason = await askReason(args.state, target, {
       asked,

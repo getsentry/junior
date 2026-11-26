@@ -34,8 +34,8 @@ inputs:
   viewer.can_merge:
     values: bool
     description: >-
-      The viewer's role on the repository is write, maintain, or admin, so
-      GitHub lets them merge.
+      GitHub lets the viewer merge: the base permission of their repository
+      role, custom roles too, is write or admin.
   viewer.requested:
     values: bool
     description: >-

@@ -224,8 +224,11 @@ export interface GitHubState {
   state: "closed" | "open";
   /** The pull request title. */
   title?: string;
-  /** The requester's repository role. Defaults to `write`. */
-  requesterRole?: string;
+  /**
+   * The requester's repository role and its base permission, or `unknown`
+   * when GitHub does not know their login. Defaults to `write`.
+   */
+  requesterAccess?: { permission: string; role: string } | "unknown";
 }
 
 // Each pull request read takes the next merge state, after any hold.
@@ -353,11 +356,19 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
     ),
     http.get(
       "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
-      () =>
-        HttpResponse.json({
-          permission: "read",
-          role_name: github.requesterRole ?? "write",
-        }),
+      () => {
+        if (github.requesterAccess === "unknown") {
+          return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+        }
+        const access = github.requesterAccess ?? {
+          permission: "write",
+          role: "write",
+        };
+        return HttpResponse.json({
+          permission: access.permission,
+          role_name: access.role,
+        });
+      },
     ),
     http.get(
       "https://api.github.com/repos/getsentry/junior/pulls/946",
