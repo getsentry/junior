@@ -10,7 +10,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {

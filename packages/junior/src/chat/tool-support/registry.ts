@@ -65,7 +65,6 @@ import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progre
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
 import { startAgentToolDefinition } from "@/chat/tools/runtime/start-agent";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
-import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
@@ -153,7 +152,6 @@ function workspaceWriteTool(
 // keep the order that they had.
 const CORE_TOOLS = {
   loadSkill: RUN_BUILT,
-  updateTodos: always(updateTodosToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
   submitFeedback: always(submitFeedbackToolDefinition),
@@ -239,7 +237,7 @@ const CORE_TOOLS = {
   },
   listAgents: {
     when: (scope) => !isLead(scope),
-    definition: () => listAgentsToolDefinition,
+    definition: listAgentsToolDefinition,
   },
   messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {

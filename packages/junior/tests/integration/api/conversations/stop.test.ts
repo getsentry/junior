@@ -19,7 +19,7 @@ import {
 } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getConversationEventStore } from "@/chat/db";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   ackMessages,
   completeConversationWork,
