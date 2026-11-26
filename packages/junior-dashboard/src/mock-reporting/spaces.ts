@@ -53,13 +53,13 @@ type MockSpace = {
 };
 
 /** A member of every seeded Space but Docs refresh. */
-export const AVERY: MockMember = {
+const AVERY: MockMember = {
   avatarUrl: null,
   displayName: "Avery Chen",
   email: "avery@sentry.io",
 };
 /** A member of Mobile app and Docs refresh. */
-export const RILEY: MockMember = {
+const RILEY: MockMember = {
   avatarUrl: null,
   displayName: "Riley Park",
   email: "riley@sentry.io",
@@ -79,7 +79,7 @@ const MOCK_PEOPLE = [AVERY, RILEY, CASEY];
  * The seeded Spaces. The viewer is a member of all but Docs refresh. Pricing
  * launch is private.
  */
-export const MOCK_SPACE_IDS = {
+const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
