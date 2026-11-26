@@ -94,6 +94,7 @@ attributes. Nested logs and spans inherit them.
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
+| AI SDK call failed or costly         | spans `gen_ai.invoke_agent`, `gen_ai.embeddings`, `gen_ai.rerank`, `gen_ai.decide`; `gen_ai.cost.*` from AI Gateway, `app.cost.*` on `gen_ai.embeddings` and `gen_ai.decide` | `chat/pi/client.ts`                                             |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
 | Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
@@ -138,8 +139,12 @@ attributes. Nested logs and spans inherit them.
   JSON that the size limit counts) and, when a review's model call aborts,
   `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one
   batch, so a Code Mode batch of several actions keeps the last value.
-- `piAiIntegration` records prompts, responses, and tool definitions on
-  `gen_ai.chat` only in public Conversations.
+- `vercelAIIntegration` records structured output and web search as a
+  `gen_ai.invoke_agent` span named after the prompt, with a
+  `gen_ai.generate_content` child for each model request. `sentry.origin:
+  auto.ai.vercelai` tells them from Junior agent spans.
+- `piAiIntegration` and `vercelAIIntegration` record prompts, responses,
+  tool definitions, and embedding inputs only in public Conversations.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.

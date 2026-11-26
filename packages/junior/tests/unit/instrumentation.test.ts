@@ -37,7 +37,7 @@ function resetEnv(): void {
   }
 }
 
-interface PiAiIntegrationOptions {
+interface AiIntegrationOptions {
   recordInputs: () => boolean;
   recordOutputs: () => boolean;
 }
@@ -50,8 +50,12 @@ async function loadInstrumentationModule() {
     getClient: () => undefined,
     init,
     getGlobalScope: () => globalScope,
-    piAiIntegration: (options: PiAiIntegrationOptions) => ({
+    piAiIntegration: (options: AiIntegrationOptions) => ({
       name: "PiAi",
+      options,
+    }),
+    vercelAIIntegration: (options: AiIntegrationOptions) => ({
+      name: "VercelAI",
       options,
     }),
   }));
@@ -111,26 +115,29 @@ describe("initSentry", () => {
     expect(options?.beforeSendLog).toEqual(expect.any(Function));
     expect(options?.beforeSendSpan).toEqual(expect.any(Function));
     const http = { name: "Http", setupOnce: () => {} };
-    const anthropic = { name: "Anthropic_AI", setupOnce: () => {} };
     const integrations = options?.integrations?.([
       http,
-      anthropic,
-      { name: "VercelAI", setupOnce: () => {} },
       { name: "Dedupe", setupOnce: () => {} },
     ]);
     expect(integrations).toEqual([
       http,
-      anthropic,
       expect.objectContaining({ name: "PiAi" }),
+      expect.objectContaining({ name: "VercelAI" }),
     ]);
-    // pi-ai records prompts and responses only in public Conversations.
-    // `loadInstrumentationModule` reset the module registry.
+    // The AI integrations record prompts and responses only in public
+    // Conversations. `loadInstrumentationModule` reset the module registry.
     const privacy = await import("@/chat/conversation-privacy");
-    const { recordInputs, recordOutputs } = integrations[2].options;
-    for (const record of [recordInputs, recordOutputs]) {
-      expect(privacy.runWithConversationPrivacy("public", record)).toBe(true);
-      expect(privacy.runWithConversationPrivacy("private", record)).toBe(false);
-      expect(record()).toBe(false);
+    for (const { options: integration } of integrations.slice(1)) {
+      for (const record of [
+        integration.recordInputs,
+        integration.recordOutputs,
+      ]) {
+        expect(privacy.runWithConversationPrivacy("public", record)).toBe(true);
+        expect(privacy.runWithConversationPrivacy("private", record)).toBe(
+          false,
+        );
+        expect(record()).toBe(false);
+      }
     }
     const span: {
       attributes: Record<string, unknown>;
