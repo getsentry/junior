@@ -172,7 +172,7 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
-    // A mention in the Space's work adds them, as in any public root.
+    // A mention in the Space's work adds nobody.
     await resolveActorIdentityId(getSqlExecutor(), {
       email: "spaces-api-bo@example.com",
       platform: "slack",
@@ -186,12 +186,25 @@ describe("Spaces API", () => {
     const readByBo = async () =>
       spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json());
     expect(await readByBo()).toMatchObject({
+      memberCount: 1,
+      viewerIsMember: false,
+    });
+
+    // Invite on the Lead adds a member.
+    const lead = await leadOf(bo, space.id);
+    const invited = await request(
+      ana,
+      "POST",
+      `/conversations/${encodeURIComponent(lead)}/invites`,
+      { userId: (await signedInViewer("spaces-api-bo@example.com")).id },
+    );
+    expect(invited.status).toBe(200);
+    expect(await readByBo()).toMatchObject({
       memberCount: 2,
       viewerIsMember: true,
     });
 
     // Leave of the Lead leaves the Space.
-    const lead = await leadOf(bo, space.id);
     expect((await leave(bo, lead)).status).toBe(200);
     expect(await readByBo()).toMatchObject({
       memberCount: 1,
