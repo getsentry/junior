@@ -110,11 +110,8 @@ import {
   savedTurnInputMessages,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import {
-  instructionActorFor,
-  instructionForInputs,
-  turnRequestText,
-} from "@/chat/agent/prompt";
+import { instructionActorFor, turnRequestText } from "@/chat/agent/prompt";
+import { instructionForInputs } from "@/chat/agent/instruction";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";

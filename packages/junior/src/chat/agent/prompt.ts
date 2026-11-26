@@ -63,7 +63,6 @@ import type {
   AgentAttachment,
   AgentInstruction,
   AgentInstructionActor,
-  AgentInstructionInput,
   AgentRun,
   AgentSteeringMessage,
 } from "@/chat/agent/types";
@@ -165,22 +164,6 @@ export function instructionActorFor(
     authorId: actor.userId,
     ...(authorName ? { authorName } : undefined),
     ...(slackTs ? { slackTs } : undefined),
-  };
-}
-
-/**
- * Build the instruction for Turn inputs. Each input keeps its own prompt
- * content part, and `text` joins them for action review.
- */
-export function instructionForInputs(
-  inputs: readonly AgentInstructionInput[],
-): Pick<AgentInstruction, "inputs" | "text"> {
-  return {
-    inputs,
-    text: inputs
-      .map((input) => input.text.trim())
-      .filter(Boolean)
-      .join("\n\n"),
   };
 }
 

@@ -3,7 +3,7 @@ import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { instructionForInputs } from "@/chat/agent/instruction";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import {

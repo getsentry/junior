@@ -6,7 +6,7 @@
  * each answered field. `input-tags.ts` lists the input tags.
  */
 import { mapBounded } from "@/chat/fan-out";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { instructionForInputs } from "@/chat/agent/instruction";
 import type {
   AgentInstruction,
   RuntimeInstructionInput,

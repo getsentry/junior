@@ -9,7 +9,8 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { SkillMetadata } from "@/chat/skills";
 import { parentTaskText } from "@/chat/agent-invocations/parent-message";
-import { instructionForInputs, turnRequestText } from "@/chat/agent/prompt";
+import { turnRequestText } from "@/chat/agent/prompt";
+import { instructionForInputs } from "@/chat/agent/instruction";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 
 const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;

@@ -1,11 +1,8 @@
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import type { User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  buildPromptInput,
-  instructionForInputs,
-  turnRequestText,
-} from "@/chat/agent/prompt";
+import { buildPromptInput, turnRequestText } from "@/chat/agent/prompt";
+import { instructionForInputs } from "@/chat/agent/instruction";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import {
   appendAndEnqueueWebMessage,
