@@ -52,6 +52,7 @@
     "evals:behavioral": "pnpm --filter @sentry/junior-evals evals:behavioral",
     "evals:integration": "pnpm --filter @sentry/junior-evals evals:integration",
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
+    "evals:guardian-design": "pnpm --filter @sentry/junior-evals evals:guardian-design",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck-coverage:check": "node scripts/check.mjs typecheck-coverage",
     "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint && tsc --noEmit -p tools/configs",

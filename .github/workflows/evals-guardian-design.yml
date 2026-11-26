@@ -1,0 +1,77 @@
+name: Evals
+
+# The Guardian design suite measures how far a Guardian arm is from
+# design/guardian.md. Its cases are expected to fail until the design ships,
+# so this workflow never gates a merge: the eval step may fail, and the job
+# still passes. Only a missing or unreadable result fails the job.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/evals-guardian-design.yml"
+      - "packages/junior-evals/evals/guardian-design/**"
+      - "packages/junior-evals/evals/guardian/helpers.ts"
+      - "packages/junior-evals/src/guardian-design-*.ts"
+      - "packages/junior-evals/src/guardian-harness.ts"
+      - "packages/junior-evals/src/guardian-tools.ts"
+      - "packages/junior-evals/scripts/guardian-design-summary*.mjs"
+      - "packages/junior-evals/vitest.evals.guardian-design.config.ts"
+      - "packages/junior/src/chat/guardian/**"
+  workflow_dispatch:
+    inputs:
+      arm:
+        description: Guardian arm to measure
+        default: current
+        required: true
+        type: string
+      samples:
+        description: Samples of each case
+        default: "3"
+        required: true
+        type: string
+
+concurrency:
+  group: evals-guardian-design-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guardian-design:
+    name: guardian-design / run
+    # Pull requests from forks get no AI Gateway secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      GUARDIAN_DESIGN_ARM: ${{ inputs.arm || 'current' }}
+      GUARDIAN_DESIGN_SAMPLES: ${{ inputs.samples || '3' }}
+      VITEST_EVALS_OUTPUT_FILE: guardian-results-design.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: node --test packages/junior-evals/scripts/guardian-design-summary.test.mjs
+      # Evals load the built output of some workspace packages.
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
+      # Samples are live model calls, so the suite runs without Roach.
+      - name: Run Guardian design evals
+        continue-on-error: true
+        run: pnpm --filter @sentry/junior-evals evals:guardian-design
+      - name: Summarize the baseline
+        run: node packages/junior-evals/scripts/guardian-design-summary.mjs packages/junior-evals/guardian-results-design.json
+      - name: Upload Guardian design results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guardian-design-evals
+          path: packages/junior-evals/guardian-results-design.json
+          if-no-files-found: warn
+          retention-days: 14
