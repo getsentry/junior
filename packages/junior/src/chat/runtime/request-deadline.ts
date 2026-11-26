@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getChatConfig } from "@/chat/config";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
 
 export interface TurnRequestDeadline {
   deadlineAtMs: number;

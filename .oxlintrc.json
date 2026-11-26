@@ -127,9 +127,8 @@
       }
     },
     {
-      // Entrypoints read env and pass it to loadConfig in src/config.ts.
+      // Entrypoints read env and pass it to loadConfig in src/config/.
       "files": [
-        "packages/junior/src/config.ts",
         "packages/junior/src/cli/**",
         "packages/junior/src/instrumentation.ts",
         "packages/junior/src/nitro.ts",
@@ -141,7 +140,7 @@
       }
     },
     {
-      // These reads still have to move into src/config.ts. Remove a file
+      // These reads still have to move into src/config/. Remove a file
       // from this list when its reads move.
       "files": [
         "packages/junior/src/app.ts",
