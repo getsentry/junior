@@ -515,7 +515,9 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
         { eventType: "issue.closed", outcome: "wake", resourceUrl: issue },
       ],
     });
-    // The row leaves the list. The Inbox opens the next row.
+    // The sheet closes under the dialog, back to the list, and the row
+    // leaves it.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(
       page
         .getByRole("listitem")

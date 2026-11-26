@@ -559,6 +559,7 @@ function InboxRowBody(
       data-inbox-sheet={
         props.sheetOpen === undefined ? undefined : props.rowKey
       }
+      data-sheet-open={props.sheetOpen || undefined}
       id={props.actionsBelow ? `${regionId}-asks` : regionId}
       role="region"
     >

@@ -22,14 +22,16 @@ export function InboxItemSheet(props: {
   onClose(): void;
 }) {
   const { item } = props;
-  const pending = item.status === "open" && !item.snoozedByViewer;
-  const [openedPending] = useState(pending);
+  // Any change to how the item stands, as an answer, a dismiss, or a
+  // snooze, shuts the sheet.
+  const standing = `${item.status}:${Boolean(item.snoozedByViewer)}`;
+  const [openedStanding] = useState(standing);
   return (
     <BottomSheet
       bodyClassName="grid content-start gap-4 p-4 font-sans text-sm text-dashboard-text"
       label={inboxItemTitleText(item)}
       onClose={props.onClose}
-      open={!openedPending || pending}
+      open={standing === openedStanding}
       size="content"
       title={<InboxItemTitle item={item} links />}
     >

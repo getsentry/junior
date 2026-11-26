@@ -14,7 +14,7 @@ export function BottomSheetContent(props: BottomSheetProps) {
   const sheet = useSheet(props.onClose);
   const band = useKeyboardBand();
   const shut = props.open === false;
-  const close = useEffectEvent(() => sheet.close());
+  const close = useEffectEvent(() => sheet.shut());
   useEffect(() => {
     if (shut) close();
   }, [shut]);
