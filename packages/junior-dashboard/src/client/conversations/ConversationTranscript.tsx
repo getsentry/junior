@@ -39,6 +39,8 @@ import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
+import { TranscriptReceivedAgentMessage } from "./TranscriptAgentMessage";
+import { isReceivedAgentMessage } from "./agentMessage";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
@@ -405,6 +407,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             message={entry.message}
             timestamp={entry.message.timestamp}
           />
+        ) : isReceivedAgentMessage(entry.message) ? (
+          <TranscriptReceivedAgentMessage
+            conversation={props.conversation}
+            message={entry.message}
+          />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
@@ -461,7 +468,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView
-          conversationId={props.conversation.conversationId}
+          conversation={props.conversation}
           part={entry.part}
           timestamp={entry.timestamp}
         />
@@ -965,7 +972,7 @@ function RedactedTranscriptView(
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
         <TranscriptToolView
-          conversationId={props.conversation.conversationId}
+          conversation={props.conversation}
           part={entry.part}
           timestamp={entry.timestamp}
         />
