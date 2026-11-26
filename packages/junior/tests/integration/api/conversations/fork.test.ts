@@ -15,7 +15,7 @@ import {
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { openConversationProjection } from "@/chat/conversations/projection";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeConversationFixture } from "../../../fixtures/conversation";

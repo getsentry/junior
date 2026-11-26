@@ -41,6 +41,11 @@ export type ComposerTypeahead = {
   insert(insertion: ComposerInsertion): void;
   /** Close the menu until the caret leaves this reference. */
   dismiss(): void;
+  /**
+   * Close the menu while the reader types on after this query. It opens
+   * again when the query gets shorter or the caret leaves the reference.
+   */
+  end(): void;
   /** Put focus back in the text box, at its caret. */
   focus(): void;
   /**
@@ -156,6 +161,14 @@ export function ComposerMenu(props: {
       return action !== undefined;
     });
   }, [active, open, rows, typeahead]);
+
+  // A query with a space and no rows ends the reference, so the words
+  // typed after it are text and search nothing.
+  const ended =
+    /\s/.test(typeahead.query ?? "") && !pending && rows.length === 0;
+  useEffect(() => {
+    if (ended) typeahead.end();
+  }, [ended, typeahead]);
 
   // Before the first rows arrive there is no menu, so Enter would send the
   // half-typed reference and Tab would leave the text box. Hold both.

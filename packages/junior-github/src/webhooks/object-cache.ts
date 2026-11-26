@@ -134,10 +134,18 @@ async function refreshPullRequest(
     conflicted =
       merged?.fields.state === "open" &&
       (payload.mergeable === false || (patch && current?.mergeable === false));
-    const value = merged && {
-      ...GITHUB_PULL_REQUEST_CACHE,
-      value: reviewChanged ? withoutGitHubReview(merged.fields) : merged.fields,
-    };
+    const value = merged
+      ? {
+          ...GITHUB_PULL_REQUEST_CACHE,
+          value: reviewChanged
+            ? withoutGitHubReview(merged.fields)
+            : merged.fields,
+        }
+      : // An older payload changes no fields, but its review change still
+        // makes the cached decision stale.
+        reviewChanged && current?.review !== undefined
+        ? { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) }
+        : undefined;
     changed = Boolean(value) && !sameValue(current, value?.value);
     return value;
   });

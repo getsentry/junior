@@ -23,6 +23,7 @@ import {
 } from "@/chat/workspaces/store";
 import type { WorkspaceSnapshot } from "@/chat/workspaces/types";
 import { juniorSnapshots } from "@/db/schema";
+import { useConfig } from "../../../fixtures/config";
 
 async function insertReadySnapshot(
   workspaceId: string,
@@ -59,12 +60,11 @@ function authenticatedApi(email = "person@example.com") {
 
 describe("workspace admin API", () => {
   afterEach(async () => {
-    delete process.env["SANDBOX_VCPUS"];
     await closeDb();
   });
 
   it("creates, lists, updates, and deletes Workspace recipes", async () => {
-    process.env["SANDBOX_VCPUS"] = "4";
+    useConfig({ sandbox: { vcpus: 4 } });
     const app = authenticatedApi();
 
     const createResponse = await app.request(

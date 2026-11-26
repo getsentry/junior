@@ -6,9 +6,10 @@
 -- trigger writes them for new code: the owner that the code adding the item
 -- names (`junior.inbox_item_owner_kind` and `junior.inbox_item_owner_id`,
 -- set for its transaction), a dedupe key in the old form of its subject
--- kind, and the visibility of the owner's Destination. A question item gets
--- a copy of its question's title and body, and an action also gets a copy
--- of its request, which the old kind check needs. An old worker writes all
+-- kind, and the owner's visibility: its Destination's, but private while
+-- an owner Conversation is private. A question item gets a copy of its
+-- question's title and body, and an action also gets a copy of its
+-- request, which the old kind check needs. An old worker writes all
 -- of them itself, so the trigger leaves its rows alone. A later release
 -- drops the trigger with the old columns and checks. Its name sorts after
 -- `junior_inbox_items_legacy_subject_question`, so an old worker's question
@@ -34,7 +35,7 @@ BEGIN
     NEW."visibility" := CASE
         WHEN NEW."subject_kind" = 'todo' THEN 'private'
         WHEN NEW."owner_kind" = 'automation' THEN (SELECT d."visibility" FROM "junior_automations" a JOIN "junior_destinations" d ON d."provider" = 'slack' AND d."provider_tenant_id" = a."team_id" AND d."provider_destination_id" = a."channel_id" WHERE a."id" = NEW."owner_id")
-        ELSE (SELECT d."visibility" FROM "junior_conversations" o JOIN "junior_conversations" r ON r."conversation_id" = o."root_conversation_id" JOIN "junior_destinations" d ON d."id" = r."destination_id" WHERE o."conversation_id" = NEW."owner_id")
+        ELSE (SELECT CASE WHEN r."visibility" = 'public' THEN d."visibility" END FROM "junior_conversations" o JOIN "junior_conversations" r ON r."conversation_id" = o."root_conversation_id" JOIN "junior_destinations" d ON d."id" = r."destination_id" WHERE o."conversation_id" = NEW."owner_id")
       END;
     IF NEW."visibility" IS DISTINCT FROM 'public' THEN
       NEW."visibility" := 'private';

@@ -6,7 +6,7 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { botConfig, getChatConfig } from "@/chat/config";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
 import {
   commitAcceptedReply,
   loadConversationProjection,

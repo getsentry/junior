@@ -6,7 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
 // Warm the module cache so the first test's timeout doesn't include the cold load.
 import "@/chat/task-execution/checkpoint";
