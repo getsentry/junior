@@ -129,6 +129,25 @@ describe("authority digest", () => {
     expect(digest.text).toContain("other person: please also deploy prod");
   });
 
+  it("does not tie a yes to an agent message before a gap", () => {
+    const digest = authorityDigest(
+      proposal(
+        {},
+        {
+          messages: [
+            { author: "assistant", text: "Should I deploy staging now?" },
+            { author: "system", text: "3 messages are not shown." },
+            { author: "user", text: "yes" },
+          ],
+          truncated: false,
+        },
+      ),
+      undefined,
+    );
+
+    expect(digest.text).not.toContain("in reply to");
+  });
+
   it("gives ids to the brief of a run that another agent started", () => {
     const digest = authorityDigest(
       proposal({

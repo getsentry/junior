@@ -180,7 +180,9 @@ export function authorityDigest(
     const label =
       message.author === "user" ? "agent (context)" : message.author;
     lines.push(...splitLines(message.text).map((line) => `${label}: ${line}`));
-    if (message.author === "user") {
+    // A gap note means the message that a later line answers may not be
+    // shown, so that line answers nothing shown.
+    if (message.author === "user" || message.author === "system") {
       lastAgentMessage = undefined;
     }
   }
