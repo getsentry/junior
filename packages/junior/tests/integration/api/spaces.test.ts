@@ -7,7 +7,6 @@ import {
   conversationFeedSchema,
   conversationInviteResponseSchema,
   userSearchReportSchema,
-  leadSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
   spaceConfigurationSchema,
@@ -86,9 +85,9 @@ async function moveTo(
 
 /** The id of a Space's Lead, whose Participants are its members. */
 async function leadOf(app: Hono<JuniorApiEnv>, spaceId: string) {
-  const response = await send(app, "GET", `/${spaceId}/lead`);
+  const response = await send(app, "GET", `/${spaceId}`);
   expect(response.status).toBe(200);
-  return leadSchema.parse(await response.json()).conversationId;
+  return spaceSchema.parse(await response.json()).leadConversationId;
 }
 
 async function leave(app: Hono<JuniorApiEnv>, conversationId: string) {

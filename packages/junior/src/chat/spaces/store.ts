@@ -45,6 +45,8 @@ export interface Space {
   archivedAt: Date | null;
   memberCount: number;
   viewerIsMember: boolean;
+  /** The Lead, which Junior creates with the Space. */
+  leadConversationId: string;
 }
 
 /** Which Spaces a list returns. */
@@ -121,6 +123,7 @@ async function selectSpaces(
       viewerIsMember: sql<boolean>`${exists(
         viewerMembership(viewerUserId, { subscribed: true }),
       )}`.mapWith(Boolean),
+      leadConversationId: spaceLead.conversationId,
     })
     .from(juniorSpaces)
     .innerJoin(

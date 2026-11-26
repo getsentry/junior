@@ -22,6 +22,7 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
 import { getInboxItem, type InboxItem } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 
@@ -45,9 +46,10 @@ function typedAnswerText(
 function renderInboxItemAnswer(
   item: InboxItem,
 ): RuntimeInstructionInput | undefined {
-  if (!item.request || !item.answer) return undefined;
-  const question = item.request.question.trim();
-  const requestText = typedAnswerText(item.request, item.answer);
+  const request = inboxItemQuestion(item.request);
+  if (!request || !item.answer) return undefined;
+  const question = request.question.trim();
+  const requestText = typedAnswerText(request, item.answer);
   const text = renderTag(
     "inbox-item-answer",
     { id: item.id },
@@ -57,7 +59,7 @@ function renderInboxItemAnswer(
           ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`
           : question
       }`,
-      formatUserInputAnswer(item.request, item.answer),
+      formatUserInputAnswer(request, item.answer),
     ].map(escapeTagText),
   );
   return {

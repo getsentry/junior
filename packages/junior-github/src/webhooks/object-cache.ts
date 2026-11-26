@@ -12,7 +12,9 @@ import {
   githubPullRequestFieldsSchema,
   type GitHubPullRequestFields,
   mergeGitHubObject,
+  markGitHubReviewCleared,
   mergeGitHubPullRequest,
+  withoutGitHubReview,
 } from "../object-cache.js";
 import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
 import { startGitHubPullRequestPatch } from "../pull-request-patches.js";
@@ -24,9 +26,23 @@ const issueEventSchema = z.object({
   repository: repositorySchema,
 });
 const pullRequestEventSchema = z.object({
+  action: z.string().optional(),
   pull_request: githubPullRequestFieldsSchema,
   repository: repositorySchema,
 });
+const pullRequestReviewEventSchema = z.object({
+  action: z.string().optional(),
+  pull_request: z.object({ number: z.number().int().positive() }),
+  repository: repositorySchema,
+});
+
+// Webhook actions that can change GitHub's review decision. They clear the
+// cached decision, so the next page read asks GitHub for it.
+const REVIEW_ACTIONS = {
+  pull_request: new Set(["review_requested", "review_request_removed"]),
+  pull_request_review: new Set(["dismissed", "submitted"]),
+};
+
 const checkPullRequestsSchema = z.array(
   z.object({ number: z.number().int().positive() }),
 );
@@ -68,7 +84,8 @@ async function refreshPullRequest(
   args: RefreshArgs,
   event: z.output<typeof pullRequestEventSchema>,
 ): Promise<void> {
-  const { pull_request: payload, repository } = event;
+  const { action = "", pull_request: payload, repository } = event;
+  const reviewChanged = REVIEW_ACTIONS.pull_request.has(action);
   const key = githubObjectCacheKey(
     "pulls",
     repository.full_name,
@@ -76,6 +93,7 @@ async function refreshPullRequest(
   );
   let patch = false;
   let conflicted = false;
+  if (reviewChanged) await markGitHubReviewCleared(args.cache, key);
   await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
     const merged = mergeGitHubPullRequest(current, payload);
     patch = merged?.patch ?? false;
@@ -84,7 +102,19 @@ async function refreshPullRequest(
     conflicted =
       merged?.fields.state === "open" &&
       (payload.mergeable === false || (patch && current?.mergeable === false));
-    return merged && { ...GITHUB_PULL_REQUEST_CACHE, value: merged.fields };
+    if (merged) {
+      return {
+        ...GITHUB_PULL_REQUEST_CACHE,
+        value: reviewChanged
+          ? withoutGitHubReview(merged.fields)
+          : merged.fields,
+      };
+    }
+    // An older payload changes no fields, but its review change still
+    // makes the cached decision stale.
+    return reviewChanged && current?.review !== undefined
+      ? { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) }
+      : undefined;
   });
   if (conflicted) {
     await markGitHubConflict(args.state, {
@@ -160,7 +190,8 @@ function checkEventTarget(
 /**
  * Write the issue or pull request of an `issues` or `pull_request` webhook
  * into its cache entry, so the next card read shows it without a GitHub
- * call. A `check_suite` or `check_run` webhook marks the checks
+ * call. A webhook that can change the review decision clears it, so the
+ * next page read asks GitHub. A `check_suite` or `check_run` webhook marks the checks
  * of its pull requests pending. Merge state and checks that turn pending
  * get a patch (`pull-request-patches.ts`).
  */
@@ -170,6 +201,25 @@ export async function refreshGitHubObjectCache(
   if (args.eventName === "pull_request") {
     const event = pullRequestEventSchema.safeParse(args.body);
     if (event.success) await refreshPullRequest(args, event.data);
+    return;
+  }
+  if (args.eventName === "pull_request_review") {
+    const event = pullRequestReviewEventSchema.safeParse(args.body);
+    if (!event.success) return;
+    if (!REVIEW_ACTIONS.pull_request_review.has(event.data.action ?? "")) {
+      return;
+    }
+    const key = githubObjectCacheKey(
+      "pulls",
+      event.data.repository.full_name,
+      event.data.pull_request.number,
+    );
+    await markGitHubReviewCleared(args.cache, key);
+    await args.cache.update<GitHubPullRequestFields | null>(key, (current) =>
+      current?.review === undefined
+        ? undefined
+        : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) },
+    );
     return;
   }
   if (args.eventName === "issues") {

@@ -19,7 +19,7 @@ import { createPluginConversationEventReader } from "@/chat/plugins/conversation
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
-import { readIdentityById, resolveViewerUser } from "@/chat/plugins/viewer";
+import { createPluginUsers, resolveViewerUser } from "@/chat/plugins/viewer";
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
@@ -227,7 +227,7 @@ export function getPluginRoutes(options: {
         send: options.sendPluginTask,
         tasks: plugin.tasks,
       }),
-      users: { readIdentity: readIdentityById },
+      users: createPluginUsers(pluginName),
       events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {

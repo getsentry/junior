@@ -4,6 +4,7 @@ import {
   readInboxItemForUser,
   InboxItemActionError,
 } from "@/chat/inbox-items/actions";
+import { resolveInboxItemSubjects } from "@/api/inbox-items/resolve-subjects";
 import { mcpInboxItem, mcpInboxItemSchema } from "../inbox-item";
 import {
   mcpToolError,
@@ -35,7 +36,8 @@ export function registerGetInboxItemTool(
     async ({ id }) => {
       try {
         const item = await readInboxItemForUser(user, id);
-        return mcpToolResult({ item: mcpInboxItem(item, user.id) });
+        const cards = await resolveInboxItemSubjects(user, [item]);
+        return mcpToolResult({ item: mcpInboxItem(item, user.id, cards) });
       } catch (error) {
         if (error instanceof InboxItemActionError) {
           return mcpToolError(error.message);

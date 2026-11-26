@@ -528,6 +528,10 @@ const PULL_REQUEST_CARD = githubGraphql(`
         }
       }
     }
+    reviewDecision
+    latestOpinionatedReviews(first: 5, writersOnly: true) {
+      nodes { state }
+    }
     commits(last: 1) {
       nodes {
         commit {

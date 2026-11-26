@@ -8,6 +8,9 @@ import * as z from "zod";
 import { getDashboardInboxItemLink } from "@/chat/dashboard-link";
 import { canActOnInboxItem } from "@/chat/inbox-items/access";
 import type { InboxItem } from "@/chat/inbox-items/store";
+import type { InboxSubjectView } from "@/api/inbox-items/resolve-subjects";
+import { subjectKey } from "@/chat/inbox-items/subject-links";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
 export const mcpInboxItemSchema = z
@@ -37,30 +40,39 @@ export const mcpInboxItemSchema = z
   })
   .strict();
 
-/** Map an Inbox item to its MCP view for one user. */
+/**
+ * Map an Inbox item to its MCP view for one user. A subject shows only when
+ * it is a web link. Its title comes from the user's card of the link
+ * (`resolveInboxItemSubjects`).
+ */
 export function mcpInboxItem(
   item: InboxItem,
   userId: string,
+  views: ReadonlyMap<string, InboxSubjectView>,
 ): z.output<typeof mcpInboxItemSchema> {
   const url = getDashboardInboxItemLink(item.id);
+  const view = views.get(subjectKey(item.subject));
+  const question = inboxItemQuestion(item.request);
+  const subjectUrl = view?.url;
+  const subjectTitle = view?.object?.title;
   return {
     id: item.id,
     kind: item.kind,
     status: item.status,
     title: item.title,
     body: item.body,
-    ...(item.request ? { question: item.request.question } : undefined),
+    ...(question ? { question: question.question } : undefined),
     assignees: item.assignedToEveryone
       ? []
       : item.assignees.map((person) => person.displayName ?? person.email),
     canAct: canActOnInboxItem(item, userId),
     conversationIds: item.conversationIds,
-    ...(item.subject
+    ...(subjectUrl
       ? {
           subject: {
             id: item.subject.id,
-            ...(item.subject.title ? { title: item.subject.title } : undefined),
-            ...(item.subject.url ? { url: item.subject.url } : undefined),
+            ...(subjectTitle ? { title: subjectTitle } : undefined),
+            url: subjectUrl,
           },
         }
       : undefined),

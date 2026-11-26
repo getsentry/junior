@@ -1,6 +1,9 @@
 import { ArrowUpRight, Check, X } from "lucide-react";
 import { Link } from "react-router";
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import {
+  inboxItemQuestion,
+  type InboxItemPayload,
+} from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
@@ -28,7 +31,8 @@ import { inboxItemTitleText } from "./inboxItemFormat";
 
 /** The answer, or the reason that the item closed. */
 function outcomeOf(item: InboxItemPayload): string | undefined {
-  if (item.request && item.answer) return answerLine(item.request, item.answer);
+  const question = inboxItemQuestion(item.request);
+  if (question && item.answer) return answerLine(question, item.answer);
   return item.closeReason;
 }
 
@@ -42,10 +46,11 @@ function DoneRow(props: {
   const { item } = props;
   const dismissed = item.status === "dismissed";
   const outcome = outcomeOf(item);
+  const question = inboxItemQuestion(item.request);
   const text =
-    item.kind === "notice" || !item.request
+    item.kind === "notice" || !question
       ? inboxItemText(item)
-      : item.request.question;
+      : question.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
@@ -124,7 +129,7 @@ function DoneRow(props: {
           </div>
           <InboxItemObjects conversationId={itemConversationId(item)}>
             <DisplayText mentions={item.mentions} text={text} />
-            {item.subject ? (
+            {item.subject.url ? (
               <InboxItemSubjectPreview
                 conversationId={itemConversationId(item)}
                 subject={item.subject}

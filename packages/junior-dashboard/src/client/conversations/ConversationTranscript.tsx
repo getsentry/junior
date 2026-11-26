@@ -69,10 +69,6 @@ import {
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
-import {
-  isConversationWatchReport,
-  LeadWatchReport,
-} from "../lead/LeadWatchReport";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
 import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -396,12 +392,6 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           <TranscriptAutomationTriggerView
             message={entry.message}
             sourceTask={props.conversation.sourceTask}
-          />
-        ) : props.conversation.kind === "lead" &&
-          isConversationWatchReport(entry.message) ? (
-          <LeadWatchReport
-            message={entry.message}
-            timestamp={entry.message.timestamp}
           />
         ) : isReceivedAgentMessage(entry.message) ? (
           <TranscriptReceivedAgentMessage

@@ -47,7 +47,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Composer](./composer.md) covers the message box under the transcript: sending, the queue (edit, delete, steer), `Stop`, drafts, files, quoting a reply, the `$` skill menu, and who sees the box.
-- [Inbox](./inbox.md) covers asking a person, answering in the Inbox or in the composer, notices, taking, dedupe, and closing with a reason.
+- [Inbox](./inbox.md) covers asking a person, answering in the Inbox or in the composer, notices, taking, changes by id, and closing with a reason.
 - [Guardian](./guardian.md) covers action review: ordinary work that runs, risky actions that ask or stop, the recorded decision, and the System card.
 - [Background work](./background-work.md) covers one reply per message, a Turn that outlives its time limit, and a Turn whose worker is killed.
 - [Automations](./automations.md) covers Scheduled, Event, and channel-message Automations from Slack, and the Automations pages.

@@ -5,7 +5,9 @@ import {
   migration,
   mockInboxItems,
   prMerge,
+  prReady,
   prReview,
+  pullRequestSubject,
   rollout,
   todoForYou,
 } from "./inbox-fixture";
@@ -22,6 +24,18 @@ test.describe("new UI", () => {
     id: "item-other",
     request: undefined,
     title: "Rotate the staging deploy keys",
+  };
+  // A question that cites a pull request is a Decision, not a PR.
+  const citesPr = {
+    ...rollout,
+    id: "item-cites-pr",
+    subject: pullRequestSubject({
+      id: "item-cites-pr",
+      kind: "question",
+      title: "Pin the release train",
+      url: "https://github.com/getsentry/payments/pull/91",
+    }),
+    title: "Ship the release train today?",
   };
 
   function typeFilter(page: Page, label: string) {
@@ -48,19 +62,29 @@ test.describe("new UI", () => {
   }) => {
     await mockInboxItems(page, {
       automations: () => 0,
-      open: [rollout, license, migration, prMerge, prReview, todoForYou, other],
+      open: [
+        rollout,
+        license,
+        migration,
+        prMerge,
+        prReview,
+        todoForYou,
+        other,
+        citesPr,
+      ],
     });
     await page.goto(`${dashboard.baseURL}/inbox`);
-    // Pull requests counts each ask, and a pull request ask with a question
-    // is not also a Decision. A To-do counts in To-dos, not in Other. All,
+    // Pull requests counts a code change's own asks, and a pull request ask
+    // with a question is not also a Decision. A question that cites a pull
+    // request is a Decision. A To-do counts in To-dos, not in Other. All,
     // the default, is at the right edge.
     await expect(typeFilters(page)).toHaveText([
       /^Other\s*1$/,
       /^PRs\s*2$/,
-      /^Decisions\s*3$/,
+      /^Decisions\s*4$/,
       /^To-dos\s*1$/,
       /^Pinned$/,
-      /^All\s*7$/,
+      /^All\s*8$/,
     ]);
     // Tab moves through the tabs in their order on screen.
     const tabs = typeFilters(page);
@@ -69,7 +93,7 @@ test.describe("new UI", () => {
       await page.keyboard.press("Tab");
       await expect(tabs.nth(index)).toBeFocused();
     }
-    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 8 waiting");
     await expect(typeFilter(page, "All")).toHaveAttribute(
       "aria-current",
       "page",
@@ -81,8 +105,8 @@ test.describe("new UI", () => {
     const todoRows = todoList.getByRole("listitem");
     // Each pull request ask is a row, headed by its pull request.
     await expect(todoRows).toHaveText([
-      new RegExp(prReview.subject.title),
-      new RegExp(prMerge.subject.title),
+      new RegExp(prReview.subject.object.title),
+      new RegExp(prMerge.subject.object.title),
     ]);
 
     await page.reload();
@@ -91,11 +115,11 @@ test.describe("new UI", () => {
       "page",
     );
     await expect(todoRows).toHaveText([
-      new RegExp(prReview.subject.title),
-      new RegExp(prMerge.subject.title),
+      new RegExp(prReview.subject.object.title),
+      new RegExp(prMerge.subject.object.title),
     ]);
     // The filters do not change the Inbox count.
-    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 8 waiting");
 
     await typeFilter(page, "To-dos").click();
     await expect(page).toHaveURL(/[?&]type=todos/);
@@ -108,7 +132,7 @@ test.describe("new UI", () => {
     await expect(todoRows).toHaveCount(1);
     await expect(todoList).toContainText(other.title);
     await expect(todoList).not.toContainText(todoForYou.title);
-    await expect(todoList).not.toContainText(prReview.subject.title);
+    await expect(todoList).not.toContainText(prReview.subject.object.title);
 
     // Pinned is a tab of the same control, so it turns the type off, and a
     // type turns Pinned off.
@@ -139,6 +163,28 @@ test.describe("new UI", () => {
       /^Pinned$/,
       /^All\s*2$/,
     ]);
+  });
+
+  test("an agent notice that cites a pull request is not under PRs", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [prReview, prReady],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(page.getByText(prReady.title)).toBeVisible();
+
+    await typeFilter(page, "PRs").click();
+    await expect(page).toHaveURL(/[?&]type=prs/);
+    await expect(
+      page
+        .getByRole("region", { name: "To do" })
+        .getByRole("listitem")
+        .filter({ hasText: prReview.subject.object.title }),
+    ).not.toHaveCount(0);
+    await expect(page.getByText(prReady.title)).toHaveCount(0);
   });
 
   test("on a phone every tab fits one row of the header, also with a two-digit count on each type", async ({

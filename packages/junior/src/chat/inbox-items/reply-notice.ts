@@ -1,5 +1,4 @@
 import { and, eq, gt, inArray, max, sql } from "drizzle-orm";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -8,16 +7,17 @@ import {
   juniorIdentities,
   juniorInboxItems,
 } from "@/db/schema";
-import { inboxItemAssignedTo, REPLY_NOTICE_KEY_PREFIX } from "./access";
+import { inboxItemAssignedTo } from "./access";
 import {
   closeInboxItem,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   insertInboxItem,
   ownerConversationId,
   updateInboxItemContent,
   type InboxItem,
   type InboxItemContent,
 } from "./store";
+import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 // A reply in a dashboard Conversation is a notice for its starter. The
 // Conversation has one open reply notice at a time. Each reply replaces its
@@ -25,10 +25,6 @@ import {
 // action that waits on the starter, or their answer to an item, also closes
 // it: the item has their attention. A Slack thread already tells people, so
 // a Conversation with a Location gets none.
-
-function replyNoticeKey(conversationId: string): string {
-  return `${REPLY_NOTICE_KEY_PREFIX}${conversationId}`;
-}
 
 /**
  * Add the reply notice of a Conversation for its starter, or replace the
@@ -46,27 +42,19 @@ export async function upsertReplyNotice(
     turnId: string;
   },
 ): Promise<string> {
-  const access = (
-    await readConversationAccessFromSql(db, [input.conversationId])
-  ).get(input.conversationId);
-  const tenant = access?.tenant;
-  const key = replyNoticeKey(input.conversationId);
   const content: InboxItemContent = {
     assignedToEveryone: false,
     assigneeUserIds: [input.starterUserId],
     body: input.body,
     conversationIds: [input.conversationId],
     kind: "notice",
+    subject: { id: input.conversationId, kind: INBOX_SUBJECT_KINDS.reply },
     title: input.title,
-    visibility: access?.visibility === "public" ? "public" : "private",
   };
-  const open = await getOpenInboxItemByDedupeKey(db, key, tenant);
+  const open = await getOpenInboxItemBySubject(db, content.subject);
   if (open) {
     const updated = await updateInboxItemContent(db, {
       ...content,
-      // A private Conversation that turned public keeps its items private.
-      visibility:
-        open.visibility === "private" ? "private" : content.visibility,
       addedByTurnId: input.turnId,
       id: open.id,
       nowMs: input.nowMs,
@@ -76,10 +64,8 @@ export async function upsertReplyNotice(
   const inserted = await insertInboxItem(db, {
     ...content,
     addedByTurnId: input.turnId,
-    dedupeKey: key,
     nowMs: input.nowMs,
     owner: { id: input.conversationId, kind: "conversation" },
-    ...(tenant ? { tenant } : undefined),
   });
   // Turns of one Conversation run one at a time, so a race here is
   // unexpected. The task retry then finds the open notice and updates it.
@@ -230,7 +216,8 @@ async function openReplyNoticeId(
     .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorInboxItems.dedupeKey, replyNoticeKey(input.conversationId)),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.reply),
+        eq(juniorInboxItems.subjectId, input.conversationId),
         eq(juniorInboxItems.status, "open"),
         inboxItemAssignedTo(input.userId),
       ),

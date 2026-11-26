@@ -4,6 +4,10 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  githubInboxSubjectKinds,
+} from "./inbox-subjects.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
@@ -22,13 +26,13 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
 import {
-  GITHUB_CONFLICT_RESUME,
-  parseGitHubConflictItemKey,
-} from "./merge-conflict-checks/policy.js";
-import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
-import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
+  allowGitHubConflictAsk,
+  resumeGitHubConflictFixes,
+} from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
+import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import {
   GITHUB_PULL_REQUEST_PATCH_TASK,
   githubPullRequestPatchTask,
@@ -141,6 +145,7 @@ import {
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
 const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
+// A Conversation opens pull requests in few repositories.
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -225,6 +230,7 @@ export function githubPlugin(
       repository: (name) => `https://github.com/${name}`,
     },
     images: githubImageSource,
+    inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
       [GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK]:
@@ -422,18 +428,47 @@ export function githubPlugin(
         ];
       },
       async inboxItemAnswered(ctx) {
-        const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
-        if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
+        if (
+          ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
+          ctx.choice !== GITHUB_CONFLICT_RESUME
+        ) {
+          return;
+        }
+        const db = gitHubDbSchema.parse(ctx.db);
+        const pullRequestId = ctx.subject.id;
+        // The item belongs to the Conversation that opened the pull request,
+        // and the opener's row holds the pull request's id. The code index
+        // holds its current name, also after a rename.
+        const opened = await wasGitHubPullRequestOpenedIn(db, {
+          conversationId: ctx.conversationId,
+          pullRequestId,
+        });
+        const [change] = opened
+          ? await ctx.codeChanges.list({ providerIds: [pullRequestId] })
+          : [];
+        if (!change) {
+          // Core closed the item already. Let the next conflict check ask
+          // again, so the Resume is not lost.
+          ctx.log.warn("GitHub merge conflict Resume found no pull request", {
+            conversationId: ctx.conversationId,
+            pullRequestId,
+          });
+          await allowGitHubConflictAsk(db, pullRequestId);
+          return;
+        }
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
-          codeChanges: ctx.codeChanges,
-          db: gitHubDbSchema.parse(ctx.db),
+          db,
           events: ctx.events,
           itemId: ctx.itemId,
           loadPullRequest: async (pullRequest) =>
             await loadPullRequest(installationEnv, pullRequest),
           nowMs: ctx.nowMs,
-          ref,
+          pullRequestId,
+          ref: {
+            number: change.number,
+            repositoryFullName: change.repository.name,
+          },
           subscription: gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),
@@ -450,12 +485,6 @@ export function githubPlugin(
           events: ctx.events,
           loadHistory: async (ref) =>
             await loadPullRequestConflictHistory(installationEnv, ref),
-          loadTitleParts: async (input) =>
-            await loadGitHubTitleParts(
-              { ...installationEnv, responses: ctx.state },
-              input,
-              ctx.log,
-            ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
           inboxItems: ctx.inboxItems,
@@ -547,6 +576,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
+            findLinkedIdentityIds: async (logins) =>
+              await ctx.users.findLinkedIdentityIds(logins),
             loadPullRequest: async (pullRequest) =>
               await loadPullRequest(installationEnv, pullRequest),
             loadPullRequestConflictHistory: async (pullRequest) =>
@@ -556,8 +587,6 @@ export function githubPlugin(
               ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
-            loadTitleParts: async (input) =>
-              await loadGitHubTitleParts(installationEnv, input, ctx.log),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),

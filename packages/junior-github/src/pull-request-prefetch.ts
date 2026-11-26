@@ -10,9 +10,11 @@ import pLimit, { type LimitFunction } from "p-limit";
 import type * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
+  clearGitHubReviewAfterRead,
   type GitHubPullRequestFields,
   githubObjectCacheKey,
   githubPullRequestEntry,
+  githubPullRequestFieldsSchema,
   isOlderGitHubObject,
 } from "./object-cache.js";
 import {
@@ -42,13 +44,27 @@ function cacheKey(ref: PullRequestRef): string {
   return githubObjectCacheKey("pulls", `${ref.owner}/${ref.name}`, ref.number);
 }
 
-// The cache entries that are not fresh, of repositories the viewer sees.
+// Whether a fresh entry still needs a read: an open pull request whose
+// review decision is not read yet. Webhooks have no review decision, and a
+// review webhook clears it (`webhooks/object-cache.ts`).
+function needsReview(entry: unknown): boolean {
+  const fields = githubPullRequestFieldsSchema.safeParse(entry);
+  return (
+    fields.success &&
+    fields.data.state === "open" &&
+    fields.data.review === undefined
+  );
+}
+
+// The cache entries that are not fresh, or have no review read, of
+// repositories the viewer sees.
 async function missingRefs(
   ctx: ObjectLinkContext,
   refs: PullRequestRef[],
 ): Promise<PullRequestRef[]> {
   const missing = await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref) => {
-    if ((await ctx.cache.get(cacheKey(ref))) !== undefined) return false;
+    const entry = await ctx.cache.get(cacheKey(ref));
+    if (entry !== undefined && !needsReview(entry)) return false;
     return await viewerCanSeeRepository(ctx, ref);
   });
   return refs.filter((_, index) => missing[index]);
@@ -58,13 +74,24 @@ async function storeCard(
   ctx: ObjectLinkContext,
   key: string,
   node: z.output<typeof pullRequestCardNodeSchema>,
+  startedAtMs: number,
 ): Promise<void> {
   const fields = githubPullRequestFieldsFromNode(node);
-  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) =>
-    isOlderGitHubObject(current, fields)
-      ? undefined
-      : githubPullRequestEntry({ ...current, ...fields }),
-  );
+  let stored = false;
+  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+    stored = !isOlderGitHubObject(current, fields);
+    return stored
+      ? githubPullRequestEntry({ ...current, ...fields })
+      : undefined;
+  });
+  // A review webhook during the read changes the decision after GitHub
+  // answered, often with the same `updated_at`.
+  if (stored) {
+    await clearGitHubReviewAfterRead(ctx.cache, key, {
+      review: fields.review,
+      startedAtMs,
+    });
+  }
 }
 
 async function loadChunk(
@@ -72,7 +99,8 @@ async function loadChunk(
   refs: PullRequestRef[],
   deadlineMs: number,
 ): Promise<void> {
-  const leftMs = deadlineMs - Date.now();
+  const startedAtMs = Date.now();
+  const leftMs = deadlineMs - startedAtMs;
   if (leftMs <= 0) throw new Error("The page has no time left for cards");
   const response = await githubApi(ctx.egress, {
     body: {
@@ -96,7 +124,7 @@ async function loadChunk(
   );
   await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref, index) => {
     const node = nodes[index];
-    if (node) await storeCard(ctx, cacheKey(ref), node);
+    if (node) await storeCard(ctx, cacheKey(ref), node, startedAtMs);
   });
 }
 

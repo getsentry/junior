@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { recordCodeChange } from "@/chat/code/store";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -23,7 +24,7 @@ import {
   takeInboxItem,
 } from "@/chat/inbox-items/store";
 import { juniorIdentities } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
@@ -146,7 +147,6 @@ describe("inbox item actions API", () => {
       title: "Review acme entry",
       body: "The acme entry changed its license.",
       assignees: ["ana@example.com"],
-      dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
     });
     // Created later, so it is the newest item.
@@ -156,7 +156,6 @@ describe("inbox item actions API", () => {
       title: "Review globex entry",
       body: "The globex entry changed its license.",
       assignees: ["ana@example.com"],
-      dedupe_key: "fair-source:entry:globex",
       request: REQUEST,
     });
 
@@ -170,12 +169,12 @@ describe("inbox item actions API", () => {
       parentConversationId: "slack:CPUB:1.000004",
     });
     await insertInboxItem(getDb(), {
+      subject: { id: "fair-source:entry:initech", kind: "question" },
       owner: { id: "agent:child-of-4", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
       body: "The initech entry changed its license.",
       conversationIds: ["agent:child-of-4"],
-      dedupeKey: "fair-source:entry:initech",
       kind: "action",
       nowMs: Date.now(),
       request: {
@@ -190,7 +189,6 @@ describe("inbox item actions API", () => {
         question: "Approve or reject this entry?",
       },
       title: "Review initech entry",
-      visibility: "private",
     });
 
     expect(
@@ -294,7 +292,6 @@ describe("inbox item actions API", () => {
       body: "The acme entry changed its license.",
       assignees: ["ana@example.com", "ben@example.com"],
       conversation_ids: ["slack:CPUB:1.000002"],
-      dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
     });
     // A notice does not need Ana, so it does not count.
@@ -304,7 +301,6 @@ describe("inbox item actions API", () => {
       body: "Read it when you have time.",
       assignees: ["ana@example.com"],
       conversation_ids: ["slack:CPUB:1.000003"],
-      dedupe_key: "report:weekly",
     });
 
     const anaCount = await (
@@ -508,16 +504,15 @@ describe("inbox item actions API", () => {
     });
     const add = async (conversationId: string, title: string) => {
       const created = await insertInboxItem(getDb(), {
+        subject: { id: `roll-up:${conversationId}`, kind: "question" },
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: `${title}.`,
         conversationIds: [conversationId],
-        dedupeKey: `roll-up:${conversationId}`,
         kind: "notice",
         nowMs,
         title,
-        visibility: conversationId.includes("6") ? "private" : "public",
       });
       if (!created) throw new Error(`${title} was not added`);
       return created.id;
@@ -586,12 +581,12 @@ describe("inbox item actions API", () => {
       nowMs: number,
     ) => {
       const created = await insertInboxItem(getDb(), {
+        subject: { id: `waiting-sort:${index}`, kind: "question" },
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: `Item ${index}.`,
         conversationIds: ["slack:CPUB:1.000001"],
-        dedupeKey: `waiting-sort:${index}`,
         ...(kind === "action"
           ? {
               kind,
@@ -610,7 +605,6 @@ describe("inbox item actions API", () => {
           : { kind }),
         nowMs,
         title: `Item ${index}`,
-        visibility: "private",
       });
       if (!created) throw new Error(`item ${index} was not added`);
       return created.id;
@@ -667,13 +661,27 @@ describe("inbox item actions API", () => {
       index: number,
       input: {
         assignee?: User;
-        kind: "decision" | "notice" | "pr";
+        kind: "decision" | "notice" | "pr" | "prQuestion";
       },
     ) => {
-      const pr = {
-        id: `https://github.com/getsentry/junior/pull/${index}`,
-        url: `https://github.com/getsentry/junior/pull/${index}`,
-      };
+      const pr = { id: `${1000 + index}`, kind: "github:pull_request" };
+      const prUrl = `https://github.com/getsentry/junior/pull/${index}`;
+      if (input.kind === "pr" || input.kind === "notice") {
+        await recordCodeChange(getDb(), "github", {
+          conversationIds: [],
+          number: index,
+          openedAt: new Date(base),
+          providerId: pr.id,
+          repository: { name: "getsentry/junior", providerId: "repository-1" },
+          state: "open",
+          title: `Change ${index}`,
+          updatedAt: new Date(base),
+        });
+        // The opener's row names the Conversation that owns the item.
+        await getDb().execute(
+          sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${index}, 'identity:opener', 'slack:CPUB:1.000001', ${pr.id}, now(), now())`,
+        );
+      }
       const created = await insertInboxItem(getDb(), {
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
@@ -681,17 +689,26 @@ describe("inbox item actions API", () => {
         body: `Item ${index}.`,
         conversationIds: ["slack:CPUB:1.000001"],
         ...(input.kind === "decision"
-          ? { dedupeKey: `bundles:${index}`, kind: "action", request: REQUEST }
+          ? {
+              kind: "action",
+              request: REQUEST,
+              subject: { id: `bundles:${index}`, kind: "question" },
+            }
           : input.kind === "pr"
-            ? {
-                dedupeKey: `plugin:github:${index}`,
-                kind: "action",
-                subject: pr,
-              }
-            : { dedupeKey: `bundles:${index}`, kind: "notice", subject: pr }),
+            ? { kind: "action", subject: pr }
+            : input.kind === "prQuestion"
+              ? {
+                  // A question about a pull request links it.
+                  kind: "action",
+                  request: {
+                    ...REQUEST,
+                    related: [{ label: "The pull request", url: prUrl }],
+                  },
+                  subject: { id: `bundles:${index}`, kind: "question" },
+                }
+              : { kind: "notice", subject: pr }),
         nowMs: base + index * 1_000,
         title: `Item ${index}`,
-        visibility: "private",
       });
       if (!created) throw new Error(`item ${index} was not added`);
       return created.id;
@@ -701,7 +718,7 @@ describe("inbox item actions API", () => {
       await item(index, { kind: "decision" });
     }
     await item(27, { kind: "pr" });
-    await item(28, { kind: "pr" });
+    await item(28, { kind: "prQuestion" });
     // A notice and Ben's pull request do not wait on Ana.
     await item(29, { kind: "notice" });
     await item(30, { assignee: ben, kind: "pr" });
@@ -716,22 +733,24 @@ describe("inbox item actions API", () => {
     ).json();
     expect(first.items).toHaveLength(25);
     expect(first.nextCursor).toBeDefined();
-    // Newest first: the two pull requests, then the decisions.
+    // Newest first. The question that cites a pull request has no card of
+    // it: its related links do not decide its card.
     expect(
       first.items
         .slice(0, 3)
-        .map((listed: { subject?: { objectType?: string } }) => listed.subject),
-    ).toEqual([
-      expect.objectContaining({ objectType: "code_change" }),
-      expect.objectContaining({ objectType: "code_change" }),
-      undefined,
-    ]);
+        .map(
+          (listed: { subject: { objectType?: string } }) =>
+            listed.subject.objectType,
+        ),
+    ).toEqual([undefined, "code_change", undefined]);
 
     // The counts cover every page.
+    // The question that cites a pull request counts as a decision only:
+    // pull requests count a code change's own asks.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
-      decisions: 27,
+      decisions: 28,
       needsViewer: 29,
-      codeChanges: 2,
+      codeChanges: 1,
       snoozed: 0,
       todos: 0,
     });
@@ -753,7 +772,6 @@ describe("inbox item actions API", () => {
       title: "Pull request needs review",
       body: "It waits on a reviewer.",
       assignees: ["everyone"],
-      dedupe_key: "pr:7",
       request: REQUEST,
     });
 
@@ -778,7 +796,6 @@ describe("inbox item actions API", () => {
       title: "Another pull request needs review",
       body: "It waits on a reviewer too.",
       assignees: ["everyone"],
-      dedupe_key: "pr:8",
     });
 
     // The list pages the open items, oldest first. A cursor reads the next

@@ -17,10 +17,13 @@ function createdIssues(result: { toolCalls: ToolCall[] }): string[] {
   });
 }
 
-/** Dedupe keys of the Inbox items that the agent added. */
-function inboxItemKeys(result: { toolCalls: ToolCall[] }): unknown[] {
-  return toolCallsOf("addInboxItem", result).map(
-    (call) => (call.input as { dedupe_key?: unknown }).dedupe_key,
+/** Questions of the Inbox items that the agent added. */
+function inboxItemQuestions(result: { toolCalls: ToolCall[] }): string[] {
+  return toolCallsOf("addInboxItem", result).map((call) =>
+    String(
+      (call.input as { request?: { question?: unknown } }).request?.question ??
+        "",
+    ),
   );
 }
 
@@ -48,9 +51,11 @@ describe("Filing Issues", () => {
     expect(issue, "No issue: this run does not test the next step").toEqual(
       expect.any(String),
     );
-    expect(inboxItemKeys(conversation)).toContain(
-      `github-issue-implement:${issue}`,
-    );
+    expect(
+      inboxItemQuestions(conversation).some((question) =>
+        question.includes(issue!),
+      ),
+    ).toBe(true);
     // The person did not ask for the work yet, so it waits for the answer.
     expect(threadsStarted(conversation)).toHaveLength(0);
     await expect(conversation).toSatisfyJudge(
@@ -74,7 +79,7 @@ describe("Filing Issues", () => {
     // Only the first Turn: a later Turn reads the Thread's result.
     const [first] = conversation.turns;
     expect(threadsStarted(first!)).toHaveLength(1);
-    expect(inboxItemKeys(first!)).toEqual([]);
+    expect(inboxItemQuestions(first!)).toEqual([]);
   });
 
   test("when the issue hands work to another team, do not ask whether to implement it", async ({
@@ -87,7 +92,7 @@ describe("Filing Issues", () => {
     );
 
     expect(createdIssues(conversation)).toHaveLength(1);
-    expect(inboxItemKeys(conversation)).toEqual([]);
+    expect(inboxItemQuestions(conversation)).toEqual([]);
     expect(threadsStarted(conversation)).toHaveLength(0);
   });
 });

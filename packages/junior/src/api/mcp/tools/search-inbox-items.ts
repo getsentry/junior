@@ -6,6 +6,7 @@ import {
   inboxItemReaderForUserInConversation,
 } from "@/chat/inbox-items/access";
 import { searchInboxItems } from "@/chat/inbox-items/store";
+import { resolveInboxItemSubjects } from "@/api/inbox-items/resolve-subjects";
 import { mcpInboxItem, mcpInboxItemSchema } from "../inbox-item";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
 
@@ -66,8 +67,10 @@ export function registerSearchInboxItemsTool(
           statuses: ["open"],
         },
       );
+      const page = items.slice(0, limit);
+      const cards = await resolveInboxItemSubjects(user, page);
       return mcpToolResult({
-        items: items.slice(0, limit).map((item) => mcpInboxItem(item, user.id)),
+        items: page.map((item) => mcpInboxItem(item, user.id, cards)),
         truncated: items.length > limit,
       });
     },
