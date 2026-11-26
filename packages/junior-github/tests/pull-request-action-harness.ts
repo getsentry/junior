@@ -284,9 +284,23 @@ function botReactionGroups(github: GitHubState, key: string) {
 // whether to ask a reviewer again.
 function reviewAgainPull(github: GitHubState, reviewer: string) {
   const lower = reviewer.toLowerCase();
-  const reviews = github.reviews
-    .filter((item) => item.user.login.toLowerCase() === lower)
-    .slice(-20);
+  const own = github.reviews.filter(
+    (item) => item.user.login.toLowerCase() === lower,
+  );
+  const node = (review: GitHubState["reviews"][number]) => ({
+    body: review.body ?? "Please change this.",
+    databaseId: review.id ?? null,
+    comments: {
+      nodes: (review.comments ?? []).map((id) => ({
+        databaseId: id,
+        reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
+      })),
+      totalCount: review.comments?.length ?? 0,
+    },
+    reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
+    state: review.state,
+    submittedAt: review.submitted_at ?? null,
+  });
   return {
     baseRef: { refUpdateRule: null },
     baseRefName: "main",
@@ -312,21 +326,20 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
         requestedReviewer: { __typename: "User", login },
       })),
     },
+    decision: {
+      nodes: own
+        .filter(
+          (review) =>
+            review.state !== "COMMENTED" && review.state !== "PENDING",
+        )
+        .slice(-1)
+        .map(node),
+    },
     reviews: {
-      nodes: reviews.map((review) => ({
-        body: review.body ?? "Please change this.",
-        databaseId: review.id ?? null,
-        comments: {
-          nodes: (review.comments ?? []).map((id) => ({
-            databaseId: id,
-            reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
-          })),
-          totalCount: review.comments?.length ?? 0,
-        },
-        reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
-        state: review.state,
-        submittedAt: review.submitted_at ?? null,
-      })),
+      nodes: own
+        .filter((review) => review.state === "COMMENTED")
+        .slice(-20)
+        .map(node),
     },
     timelineItems: {
       nodes: (github.reviewRequests ?? []).map((request) => ({
