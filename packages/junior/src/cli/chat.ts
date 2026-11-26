@@ -249,10 +249,10 @@ async function prepareLocalChatRun(
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
-  const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
-  const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
+  const { bindSpawnAgent } = await import("@/chat/child-agents/spawn");
+  const { bindMessageAgent } = await import("@/chat/child-agents/message");
   const { createChildConversationWorker } =
-    await import("@/chat/agent-invocations/result");
+    await import("@/chat/child-agents/result");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
   const { resumeForPersonInput } =

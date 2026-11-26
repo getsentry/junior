@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { stopChildAgent } from "@/chat/agent-invocations/stop";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { stopChildAgent } from "@/chat/child-agents/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -22,10 +22,10 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import {
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
-import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+} from "../fixtures/child-agents";
+import { startChildAgent } from "../fixtures/child-agent-start";
 import {
   createHarness,
   finishRun,
@@ -33,7 +33,7 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 
-const parentActor = slackInvocationInput.actor;
+const parentActor = slackSpawnInput.actor;
 
 async function topLevelConversation(args: {
   channelId: string;
@@ -82,9 +82,9 @@ function childRun(conversationId: string): AgentRun {
 async function spawnChild(
   harness: Harness,
   idempotencyKey: string,
-  input: Partial<Parameters<typeof spawnChildWithoutAgentInvocation>[0]> = {},
+  input: Partial<Parameters<typeof startChildAgent>[0]> = {},
 ) {
-  return await spawnChildWithoutAgentInvocation({
+  return await startChildAgent({
     actor: parentActor,
     conversationStore: harness.conversationStore,
     idempotencyKey,

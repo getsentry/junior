@@ -227,8 +227,8 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentityId
           ? { actorIdentityId: data.actorIdentityId }
           : undefined),
-        ...(data.agentInvocationId
-          ? { agentInvocationId: data.agentInvocationId }
+        ...(data.fromParentAgent
+          ? { fromParentAgent: data.fromParentAgent }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.eventNamespace

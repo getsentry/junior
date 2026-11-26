@@ -7,8 +7,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -25,11 +25,11 @@ import {
   destination,
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 const checksFailedSource = createEventSource({
   eventKey: "check_run:1",
   eventType: "pull_request.checks.failed",

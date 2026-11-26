@@ -8,7 +8,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { SkillMetadata } from "@/chat/skills";
-import { parentTaskText } from "@/chat/agent-invocations/parent-message";
+import { parentTaskText } from "@/chat/child-agents/parent-message";
 import { instructionForInputs, turnRequestText } from "@/chat/agent/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 

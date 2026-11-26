@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 
-const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
+const LOCK_PREFIX = "junior:child_agents";
 
 /**
  * Return the SQL lock that one parent Conversation takes to start, message,
  * or stop its child agents.
  */
 export function getChildAgentLockName(parentConversationId: string): string {
-  return `${CREATE_LOCK_PREFIX}:${parentConversationId}`;
+  return `${LOCK_PREFIX}:${parentConversationId}`;
 }
 
 function stableId(prefix: string, ...parts: string[]): string {
@@ -18,11 +18,13 @@ function stableId(prefix: string, ...parts: string[]): string {
   return `${prefix}:${digest}`;
 }
 
-// The ids below keep the values that earlier releases wrote, so a retry of
-// a spawn or message from before a deploy finds its child and its message.
-// No reader takes meaning from them.
+// The ids below are opaque, and no reader takes meaning from them. They keep
+// the values that earlier releases wrote, so a retry of a spawn or message
+// from before a deploy finds its child and its message.
+const ID_PREFIX = "agent-invocation";
+
 function taskKey(parentConversationId: string, idempotencyKey: string) {
-  return stableId("agent-invocation", parentConversationId, idempotencyKey);
+  return stableId(ID_PREFIX, parentConversationId, idempotencyKey);
 }
 
 /**
@@ -41,7 +43,15 @@ export function getParentMessageId(
   parentConversationId: string,
   idempotencyKey: string,
 ): string {
-  return `agent-invocation:${taskKey(parentConversationId, idempotencyKey)}:input`;
+  return `${ID_PREFIX}:${taskKey(parentConversationId, idempotencyKey)}:input`;
+}
+
+/** Return the parent mailbox identity of one message from a child agent. */
+export function getAgentMessageId(
+  childConversationId: string,
+  messageKey: string,
+): string {
+  return `${ID_PREFIX}:${childConversationId}:message:${messageKey}`;
 }
 
 const REPLY_MESSAGE_PREFIX = "agent-reply:";
@@ -54,16 +64,11 @@ export function getAgentReplyMessageId(
   return `${REPLY_MESSAGE_PREFIX}${childConversationId}:${messageKey}`;
 }
 
-// The Turn id of the `stopped` result that a person's stop of a child agent
-// sends. No Turn has it, so readers can tell this result from a Turn's reply.
+// The key of the `stopped` result that a person's stop of a child agent
+// sends. It is opaque: readers tell this result by its stored status.
 const PERSON_STOP_TURN_PREFIX = "stopped:";
 
 /** Return the Turn id that keys the `stopped` result of one person's stop. */
 export function getPersonStopTurnId(stoppedAtMs: number): string {
   return `${PERSON_STOP_TURN_PREFIX}${stoppedAtMs}`;
-}
-
-/** Return whether a sender Turn id names a person's stop, not a Turn. */
-export function isPersonStopTurnId(turnId: string): boolean {
-  return turnId.startsWith(PERSON_STOP_TURN_PREFIX);
 }

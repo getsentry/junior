@@ -1207,7 +1207,7 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         type: "message",
         messageId: "qa-reviewer-result",
         role: "user",
-        eventType: "agent_invocation.blocked",
+        eventType: "agent.update",
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),
@@ -1341,7 +1341,7 @@ function advisorConversation(
     // The viewer takes part, so QA shows that a Task still has no composer.
     isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
-    // its agent invocation input.
+    // the task that its parent agent gave it.
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
@@ -1352,7 +1352,7 @@ function advisorConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
-        agentInvocationId: `${conversationId}:invocation`,
+        fromParentAgent: true,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 18_000), {
@@ -1402,7 +1402,7 @@ function threadConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
-        agentInvocationId: `${conversationId}:invocation`,
+        fromParentAgent: true,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 12_000), {
@@ -1464,8 +1464,8 @@ function withFollowUpFiles(conversation: MockConversation): MockConversation {
 }
 
 /**
- * Add a Watch Event that reached a child after its last reply. The child runs
- * it as an agent invocation, so the input names the invocation and the Event.
+ * Add a Watch Event that reached a child after its last reply. No person
+ * wrote it, so the input names the Event and not the child's Actor.
  */
 function withChildWatchEvent(conversation: MockConversation): MockConversation {
   const last = conversation.events.at(-1)!;
@@ -1479,7 +1479,7 @@ function withChildWatchEvent(conversation: MockConversation): MockConversation {
         type: "message",
         messageId: `${conversationId}:watch-event`,
         role: "user",
-        agentInvocationId: `${conversationId}:watch-invocation`,
+        fromParentAgent: true,
         eventType: "pull_request.checks.failed",
         eventNamespace: "github",
         eventObjectType: "code_change",

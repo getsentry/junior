@@ -1,19 +1,16 @@
 import * as z from "zod";
 import {
   AgentDepthLimitError,
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
   AgentStoppedError,
-} from "@/chat/agent-invocations/errors";
+} from "@/chat/child-agents/errors";
 import {
   agentNameSchema,
   CHILD_AGENT_KINDS,
   PARENT_AGENT_TARGET,
-} from "@/chat/agent-invocations/types";
-import {
-  AGENT_TYPES,
-  formatAgentTypes,
-} from "@/chat/agent-invocations/agent-types";
+} from "@/chat/child-agents/types";
+import { AGENT_TYPES, formatAgentTypes } from "@/chat/child-agents/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
@@ -159,7 +156,7 @@ export function createStartAgentTool(
             { cause: error },
           );
         }
-        if (error instanceof AgentInvocationLimitError) {
+        if (error instanceof ChildAgentLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before you start more.`,
             { cause: error },

@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spawnChildAgent as spawnChild } from "@/chat/agent-invocations/create";
-import { AgentNameInUseError } from "@/chat/agent-invocations/errors";
+import { spawnChildAgent as spawnChild } from "@/chat/child-agents/create";
+import { AgentNameInUseError } from "@/chat/child-agents/errors";
 import {
   getAgentReplyMessageId,
   getParentMessageId,
-} from "@/chat/agent-invocations/ids";
+} from "@/chat/child-agents/ids";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -16,7 +16,7 @@ import {
   appendInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -36,13 +36,13 @@ import {
   destination,
   parentConversationId,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
   spawnChildAgent,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { createHarness, finishRun } from "../fixtures/thread-input";
 
 /** Connect the shared state adapter and a queue for one Slack parent. */
@@ -55,7 +55,7 @@ async function prepareSlackParent() {
     (
       await spawnChild(
         {
-          ...slackInvocationInput,
+          ...slackSpawnInput,
           ...(agentName ? { agentName } : undefined),
           idempotencyKey,
           parentToolCallId: idempotencyKey,
@@ -101,7 +101,7 @@ describe("child agent spawn and result delivery", () => {
       (
         await bindSpawnAgent(
           {
-            actor: slackInvocationInput.actor,
+            actor: slackSpawnInput.actor,
             conversationId: slackParentConversationId,
             destination: slackDestination,
             instruction: { text: "Delegate the investigation." },
@@ -328,7 +328,7 @@ describe("child agent spawn and result delivery", () => {
       // The sibling's task still waits, so it still runs.
       await spawn("fan-out-sibling", "analyst");
       await createPublishChildTurn({ queue, state })({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         conversationId: first,
         update: { status: "done", text: "First finding." },
         turnId: taskTurnId("fan-out-first"),
@@ -356,7 +356,7 @@ describe("child agent spawn and result delivery", () => {
       try {
         const replied = await spawnChild(
           {
-            ...slackInvocationInput,
+            ...slackSpawnInput,
             agentName: "analyst",
             idempotencyKey: "fan-out-replied",
             parentToolCallId: "fan-out-replied",
@@ -443,7 +443,7 @@ describe("child agent spawn and result delivery", () => {
         vi.setSystemTime(Date.now() + 1_000);
         const other = await spawnChild(
           {
-            ...slackInvocationInput,
+            ...slackSpawnInput,
             idempotencyKey: "fan-out-other",
             parentToolCallId: "fan-out-other",
             parentTurnId: "fan-out-other",
@@ -451,7 +451,7 @@ describe("child agent spawn and result delivery", () => {
           harness,
         );
         await deliver({
-          actor: slackInvocationInput.actor,
+          actor: slackSpawnInput.actor,
           conversationId: other.childConversationId,
           update: { status: "failed", text: "model unavailable" },
           turnId: "turn_other",
@@ -483,7 +483,7 @@ describe("child agent spawn and result delivery", () => {
       await Promise.all(
         siblings.map((childId, index) =>
           createPublishChildTurn({ queue, state })({
-            actor: slackInvocationInput.actor,
+            actor: slackSpawnInput.actor,
             conversationId: childId,
             update: { status: "done", text: "Finding." },
             turnId: taskTurnId(`fan-out-${["analyst", "auditor"][index]}`),

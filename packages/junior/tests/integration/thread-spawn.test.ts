@@ -1,23 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+  MAX_ACTIVE_CHILD_AGENTS,
   messageChildAgent,
-} from "@/chat/agent-invocations/create";
-import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+} from "@/chat/child-agents/create";
+import { ChildAgentLimitError } from "@/chat/child-agents/errors";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import {
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   sendParentMessage,
-  spawnChildWithoutAgentInvocation,
-} from "../fixtures/child-without-agent-invocation";
+  startChildAgent,
+} from "../fixtures/child-agent-start";
 import {
   createHarness,
   finishRun,
@@ -45,8 +45,8 @@ async function spawnChild(
   kind: "task" | "thread",
   parentConversationId = slackParentConversationId,
 ) {
-  return await spawnChildWithoutAgentInvocation({
-    actor: slackInvocationInput.actor,
+  return await startChildAgent({
+    actor: slackSpawnInput.actor,
     conversationStore: harness.conversationStore,
     idempotencyKey,
     kind,
@@ -88,7 +88,7 @@ async function messageChild(
 ) {
   return await messageChildAgent(
     {
-      actor: slackInvocationInput.actor,
+      actor: slackSpawnInput.actor,
       childConversationId,
       idempotencyKey,
       input: "Check it again.",
@@ -229,22 +229,18 @@ describe("Thread spawn and archive", () => {
         "thread",
       );
       const busy: string[] = [];
-      for (
-        let index = 0;
-        index < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT;
-        index++
-      ) {
+      for (let index = 0; index < MAX_ACTIVE_CHILD_AGENTS; index++) {
         busy.push(await spawnChild(harness, `busy-thread-${index}`, "thread"));
       }
 
       // Threads with open work count.
       await expect(
         spawnChild(harness, "one-too-many", "task"),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      ).rejects.toBeInstanceOf(ChildAgentLimitError);
       // New work makes an idle Thread active, so it needs a slot.
       await expect(
         messageChild(harness, idleThread, "more-for-idle-thread"),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      ).rejects.toBeInstanceOf(ChildAgentLimitError);
       // A busy Thread already counts, so more work for it needs no new slot.
       await expect(
         messageChild(harness, busy[0]!, "more-for-busy-thread"),
@@ -324,13 +320,13 @@ describe("Thread spawn and archive", () => {
     const harness = await createHarness();
     try {
       const spawn = {
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         idempotencyKey: "thread-person-then-parent",
         parentConversationId: slackParentConversationId,
         queue: harness.queue,
         state: harness.state,
       };
-      const thread = await spawnChildWithoutAgentInvocation({
+      const thread = await startChildAgent({
         ...spawn,
         conversationStore: harness.conversationStore,
         kind: "thread",

@@ -4,7 +4,7 @@
  * starts, not on each warmup.
  */
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
-import { listChildAgents } from "@/chat/agent-invocations/list";
+import { listChildAgents } from "@/chat/child-agents/list";
 import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
 
