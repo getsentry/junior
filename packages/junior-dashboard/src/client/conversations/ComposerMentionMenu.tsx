@@ -26,7 +26,10 @@ import {
 } from "./ComposerMenu";
 import { ComposerConversationContext } from "./ComposerMention";
 import { ReferenceIcon } from "./ComposerReference";
-import { useConversationChildAgents } from "./ConversationChildAgents";
+import {
+  childAgentStatusLabel,
+  useConversationChildAgents,
+} from "./ConversationChildAgents";
 import { conversationDisplayState } from "./ConversationStateIcon";
 import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
@@ -195,8 +198,7 @@ function useTaskSource(
     .flatMap((agent) => {
       if (agent.redacted) return [];
       const title =
-        linkLabel(agent.title ?? agent.name ?? agent.task ?? "") ||
-        agent.conversationId;
+        linkLabel(agent.title ?? agent.name ?? "") || agent.conversationId;
       const match = quickOpenMatch(title, query);
       return match ? [{ agent, match, title }] : [];
     })
@@ -216,9 +218,8 @@ function useTaskSource(
         labelMatches: match.indices,
         details: (
           <ComposerMenuDetails
-            body={agent.task}
             icon={<ReferenceIcon reference={reference} />}
-            meta={`${agent.kind === "thread" ? "Thread" : "Task"} · ${agent.status}`}
+            meta={`${agent.kind === "thread" ? "Thread" : "Task"} · ${childAgentStatusLabel(agent)}`}
             title={title}
           />
         ),

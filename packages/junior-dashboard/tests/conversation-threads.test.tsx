@@ -17,8 +17,8 @@ function thread(
     conversationId: `internal:${title.toLowerCase().replaceAll(" ", "-")}`,
     cumulativeDurationMs: 0,
     kind: "thread",
-    status: "completed",
-    task: title,
+    lastResult: "done",
+    status: "idle",
     title,
     treeState: "done",
     updatedAt: `2026-08-03T${String(hour).padStart(2, "0")}:00:00.000Z`,
@@ -53,10 +53,7 @@ describe("a Conversation's Threads", () => {
     // Its own run ended, but a nested child still works.
     thread("Close the books", 6, { treeState: "working" }),
     thread("Approve the cutover window", 3, { treeState: "needs_you" }),
-    thread("Reconcile Stripe balances", 2, {
-      error: "Lost access to the API.",
-      status: "failed",
-    }),
+    thread("Reconcile Stripe balances", 2, { lastResult: "failed" }),
   ];
 
   it("labels each group with its count, needs you first", () => {
@@ -77,7 +74,8 @@ describe("a Conversation's Threads", () => {
     expect(markup.indexOf("Approve the cutover window")).toBeLessThan(
       markup.indexOf("Reconcile Stripe balances"),
     );
-    expect(markup).toContain("Lost access to the API.");
+    // A finished Thread shows how its last Turn ended.
+    expect(markup).toContain('<span class="sr-only">failed</span>');
     // A wait on the viewer, work in its tree, or a Watch shows over the
     // run's own status.
     expect(markup).toContain('aria-label="Waiting on you"');
@@ -91,7 +89,7 @@ describe("a Conversation's Threads", () => {
   it("marks a failed Thread that waits on the viewer as waiting on you", () => {
     const markup = render([
       thread("Retry the export", 1, {
-        status: "failed",
+        lastResult: "failed",
         treeState: "needs_you",
       }),
     ]);

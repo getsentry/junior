@@ -50,6 +50,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
   blocked: "warning",
   completed: "success",
+  done: "success",
   error: "danger",
   failed: "danger",
   needs_input: "warning",
@@ -62,10 +63,17 @@ export function subagentStatusTone(status: string): StatusChipTone {
   return statusTones[status] ?? "neutral";
 }
 
-const errorToneClass: Partial<Record<StatusChipTone, string>> = {
-  danger: "text-rose-200/85",
-  warning: "text-amber-200/85",
-};
+/**
+ * Name what a child agent does now. Once it is idle, its last result says
+ * more, such as `blocked`.
+ */
+export function childAgentStatusLabel(
+  agent: Pick<ConversationChildAgent, "lastResult" | "status">,
+): string {
+  return agent.status === "idle"
+    ? (agent.lastResult ?? agent.status)
+    : agent.status;
+}
 
 /** Load the child agents of one Conversation with runtime status. */
 export function useConversationChildAgents(
@@ -95,12 +103,13 @@ const GROUP_HEADING_CLASS =
   "-mx-1.5 my-0 flex items-center gap-1 px-1.5 pt-1 pb-2 font-sans text-xs font-medium text-dashboard-text-muted";
 
 /**
- * Read a child's attention from its tree state and run status. A failed or
- * blocked child needs the viewer, like a failed latest Turn on a feed row.
- * An archived child needs nothing.
+ * Read a child's attention from its tree state, run status, and last result.
+ * A failed or blocked child needs the viewer, like a failed latest Turn on a
+ * feed row. An archived child needs nothing.
  */
 function childAgentAttention(agent: ConversationChildAgent): Attention {
-  const { status, treeState } = agent;
+  const { treeState } = agent;
+  const status = childAgentStatusLabel(agent);
   return {
     group: agent.archivedAt
       ? "done"
@@ -251,7 +260,7 @@ export function ConversationTasks(props: {
                         ...(task.name ? { agentName: task.name } : undefined),
                         label: task.title ?? task.name,
                       }),
-                  status: task.status,
+                  status: childAgentStatusLabel(task),
                 })
               }
             />
@@ -291,6 +300,7 @@ const statusIcons: Partial<Record<string, LucideIcon>> = {
   active: CircleDot,
   blocked: CircleAlert,
   completed: CircleCheck,
+  done: CircleCheck,
   error: CircleX,
   failed: CircleX,
   paused: CirclePause,
@@ -311,7 +321,8 @@ const statusIconToneClass: Record<StatusChipTone, string> = {
  * in its group.
  */
 function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
-  const { archivedAt, status, treeState, watching } = props.agent;
+  const { archivedAt, treeState, watching } = props.agent;
+  const status = childAgentStatusLabel(props.agent);
   if (!archivedAt && treeState === "needs_you") {
     return <ConversationStateIcon state="needs_you" />;
   }
@@ -347,9 +358,9 @@ function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
 
 /**
  * Show one child agent as a dense row: status, title, and run time first,
- * then agent name and cost. The row text is the accessible name, so status,
- * title, and error stay audible. A Thread row links to its page; a Task row
- * opens its transcript.
+ * then agent name and cost. The row text is the accessible name, so status
+ * and title stay audible. A Thread row links to its page; a Task row opens
+ * its transcript.
  */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
@@ -359,9 +370,7 @@ function ChildAgentRow(props: {
   to?: string;
 }) {
   const { agent } = props;
-  const tone = subagentStatusTone(agent.status);
-  const task = agent.task?.trim();
-  const headline = props.title ?? agent.title ?? task;
+  const headline = props.title ?? agent.title;
   const kindLabel = agent.kind === "thread" ? "Thread" : "Task";
   const name = agent.redacted
     ? `Private ${kindLabel.toLowerCase()}`
@@ -383,15 +392,10 @@ function ChildAgentRow(props: {
       onClick={props.onOpen}
       title={headline ?? name ?? kindLabel}
       to={props.to}
-      tooltip={[
-        task && task !== headline ? task : "",
-        `Updated ${formatTime(agent.updatedAt, {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}`,
-      ]
-        .filter(Boolean)
-        .join("\n")}
+      tooltip={`Updated ${formatTime(agent.updatedAt, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`}
     >
       {meta.length > 0 || agent.redacted ? (
         <DetailsRowLine className="flex items-center gap-1.5">
@@ -399,16 +403,6 @@ function ChildAgentRow(props: {
             <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
           ) : null}
           <span className="min-w-0 truncate">{meta.join(" · ")}</span>
-        </DetailsRowLine>
-      ) : null}
-      {agent.error ? (
-        <DetailsRowLine
-          className={cn(
-            "line-clamp-2 whitespace-pre-wrap break-words",
-            errorToneClass[tone],
-          )}
-        >
-          {agent.error}
         </DetailsRowLine>
       ) : null}
     </DetailsRow>
