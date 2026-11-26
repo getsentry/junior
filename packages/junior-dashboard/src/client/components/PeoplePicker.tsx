@@ -30,6 +30,12 @@ const SEARCH_DEBOUNCE_MS = 150;
 const SEARCH_STALE_MS = 30_000;
 // One add starts a request for each chosen person, so it takes a few.
 const MAX_CHOSEN = 10;
+// A person types until the one they want is near the top.
+const SEARCH_LIMIT = 5;
+// The results and the search status float over the content below the search
+// box, so they do not push it down as they open.
+const FLOATING_CLASS =
+  "absolute inset-x-0 top-full z-10 mt-1 rounded-md border border-input bg-secondary shadow-lg";
 
 /** The Space or Conversation that the picker adds people to. */
 export type PeoplePickerTarget =
@@ -86,10 +92,11 @@ export function PeoplePicker(props: {
   const full = chosen.length >= MAX_CHOSEN;
   const open = query.trim().length > 0;
   const listed = open && !full && options.length > 0;
-  // In a phone's details sheet, the list can push the form below the fold.
-  const formRef = useRef<HTMLFormElement>(null);
+  // Near the bottom of a phone's details sheet, the list can open below the
+  // fold. Scroll only then.
+  const listboxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (listed) formRef.current?.scrollIntoView({ block: "nearest" });
+    if (listed) listboxRef.current?.scrollIntoView({ block: "nearest" });
   }, [listed, options.length]);
 
   const choose = (user: UserSearchResult) => {
@@ -159,134 +166,140 @@ export function PeoplePicker(props: {
         event.preventDefault();
         void submit();
       }}
-      ref={formRef}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-dashboard-ink p-1.5 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/25">
-        {chosen.length > 0 ? (
-          <ul aria-label="Chosen people" className="contents list-none">
-            {chosen.map((user) => (
-              <li
-                className="flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-dashboard-fill-strong pl-1.5 font-sans text-sm text-foreground"
-                key={user.userId}
-              >
-                <ActorAvatar
-                  imageUrl={user.avatarUrl}
-                  name={pickerName(user)}
-                  size="list"
-                />
-                <span className="min-w-0 truncate">{pickerName(user)}</span>
-                <button
-                  aria-label={`Remove ${pickerName(user)}`}
-                  className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-dashboard-fill-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                  disabled={adding}
-                  onClick={() => unchoose(user.userId)}
-                  type="button"
+      <div className="relative min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-dashboard-ink p-1.5 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/25">
+          {chosen.length > 0 ? (
+            <ul aria-label="Chosen people" className="contents list-none">
+              {chosen.map((user) => (
+                <li
+                  className="flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-dashboard-fill-strong pl-1.5 font-sans text-sm text-foreground"
+                  key={user.userId}
                 >
-                  <X aria-hidden="true" size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <Input
-          aria-activedescendant={
-            activeUser ? `${ids}-option-${activeUser.userId}` : undefined
-          }
-          aria-autocomplete="list"
-          aria-controls={listboxId}
-          aria-describedby={failed.length > 0 ? errorId : undefined}
-          aria-expanded={listed}
-          aria-label={props.label}
-          autoComplete="off"
-          autoFocus
-          // 16px text on a phone, so the browser does not zoom in on focus.
-          className="h-8 w-auto min-w-32 flex-1 border-0 bg-transparent px-1.5 py-0 text-base focus:ring-0 sm:text-sm"
-          disabled={adding}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={chosen.length > 0 ? "" : "Name, handle, or email"}
-          role="combobox"
-          spellCheck={false}
-          value={query}
-        />
-      </div>
-      <div
-        aria-busy={search.pending}
-        aria-label="People"
-        className={cn(
-          "grid gap-0.5 rounded-md border border-input bg-secondary p-1",
-          !listed && "hidden",
-        )}
-        id={listboxId}
-        role="listbox"
-      >
-        {listed
-          ? options.map((user, index) => (
-              <div
-                aria-disabled={user.isMember ? true : undefined}
-                aria-selected={index === active}
-                className={cn(
-                  "flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 font-sans text-sm text-foreground select-none sm:min-h-9",
-                  index === active && "bg-dashboard-fill-hover",
-                  user.isMember && "cursor-default text-muted-foreground",
-                )}
-                id={`${ids}-option-${user.userId}`}
-                key={user.userId}
-                // Keep focus in the search box.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  if (!search.pending) choose(user);
-                }}
-                onMouseMove={() => {
-                  if (!user.isMember && index !== active) setActive(index);
-                }}
-                role="option"
-              >
-                <ActorAvatar
-                  imageUrl={user.avatarUrl}
-                  name={pickerName(user)}
-                  size="list"
-                />
-                <span className="grid min-w-0 flex-1">
-                  <span className="truncate">{pickerName(user)}</span>
-                  <span className="truncate text-xs text-dashboard-text-muted">
-                    {user.slackUserName
-                      ? `@${user.slackUserName} · ${user.email}`
-                      : user.email}
-                  </span>
-                </span>
-                {user.isMember ? (
-                  <span className="shrink-0 text-xs text-dashboard-text-muted">
-                    {props.memberLabel}
-                  </span>
-                ) : null}
-              </div>
-            ))
-          : null}
-      </div>
-      {open && !listed ? (
-        <p
-          className="m-0 flex items-center gap-2 px-1 font-sans text-xs text-dashboard-text-muted"
-          role="status"
-        >
-          {full ? (
-            `Add these ${MAX_CHOSEN} people first.`
-          ) : search.pending ? (
-            <>
-              <Spinner
-                aria-hidden="true"
-                className="size-3.5"
-                role={undefined}
-              />
-              Searching…
-            </>
-          ) : search.failed ? (
-            "Search is unavailable."
-          ) : (
-            "No people match."
+                  <ActorAvatar
+                    imageUrl={user.avatarUrl}
+                    name={pickerName(user)}
+                    size="list"
+                  />
+                  <span className="min-w-0 truncate">{pickerName(user)}</span>
+                  <button
+                    aria-label={`Remove ${pickerName(user)}`}
+                    className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-dashboard-fill-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    disabled={adding}
+                    onClick={() => unchoose(user.userId)}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <Input
+            aria-activedescendant={
+              activeUser ? `${ids}-option-${activeUser.userId}` : undefined
+            }
+            aria-autocomplete="list"
+            aria-controls={listboxId}
+            aria-describedby={failed.length > 0 ? errorId : undefined}
+            aria-expanded={listed}
+            aria-label={props.label}
+            autoComplete="off"
+            autoFocus
+            // 16px text on a phone, so the browser does not zoom in on focus.
+            className="h-8 w-auto min-w-32 flex-1 border-0 bg-transparent px-1.5 py-0 text-base focus:ring-0 sm:text-sm"
+            disabled={adding}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={chosen.length > 0 ? "" : "Name, handle, or email"}
+            role="combobox"
+            spellCheck={false}
+            value={query}
+          />
+        </div>
+        <div
+          aria-busy={search.pending}
+          aria-label="People"
+          className={cn(
+            FLOATING_CLASS,
+            "grid gap-0.5 p-1",
+            !listed && "hidden",
           )}
-        </p>
-      ) : null}
+          id={listboxId}
+          ref={listboxRef}
+          role="listbox"
+        >
+          {listed
+            ? options.map((user, index) => (
+                <div
+                  aria-disabled={user.isMember ? true : undefined}
+                  aria-selected={index === active}
+                  className={cn(
+                    "flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 font-sans text-sm text-foreground select-none sm:min-h-9",
+                    index === active && "bg-dashboard-fill-hover",
+                    user.isMember && "cursor-default text-muted-foreground",
+                  )}
+                  id={`${ids}-option-${user.userId}`}
+                  key={user.userId}
+                  // Keep focus in the search box.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    if (!search.pending) choose(user);
+                  }}
+                  onMouseMove={() => {
+                    if (!user.isMember && index !== active) setActive(index);
+                  }}
+                  role="option"
+                >
+                  <ActorAvatar
+                    imageUrl={user.avatarUrl}
+                    name={pickerName(user)}
+                    size="list"
+                  />
+                  <span className="grid min-w-0 flex-1">
+                    <span className="truncate">{pickerName(user)}</span>
+                    <span className="truncate text-xs text-dashboard-text-muted">
+                      {user.slackUserName
+                        ? `@${user.slackUserName} · ${user.email}`
+                        : user.email}
+                    </span>
+                  </span>
+                  {user.isMember ? (
+                    <span className="shrink-0 text-xs text-dashboard-text-muted">
+                      {props.memberLabel}
+                    </span>
+                  ) : null}
+                </div>
+              ))
+            : null}
+        </div>
+        {open && !listed ? (
+          <p
+            className={cn(
+              FLOATING_CLASS,
+              "m-0 mt-1 flex items-center gap-2 px-3 py-2 font-sans text-xs text-dashboard-text-muted",
+            )}
+            role="status"
+          >
+            {full ? (
+              `Add these ${MAX_CHOSEN} people first.`
+            ) : search.pending ? (
+              <>
+                <Spinner
+                  aria-hidden="true"
+                  className="size-3.5"
+                  role={undefined}
+                />
+                Searching…
+              </>
+            ) : search.failed ? (
+              "Search is unavailable."
+            ) : (
+              "No people match."
+            )}
+          </p>
+        ) : null}
+      </div>
       <div className="flex min-w-0 items-center justify-end gap-2">
         <FieldError className="mr-auto min-w-0" id={errorId}>
           {failed.length > 0 ? `Could not add ${failed.join(", ")}.` : null}
@@ -314,7 +327,7 @@ function useUserSearch(target: PeoplePickerTarget, query: string) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         userSearchReportSchema,
-        `/api/people/user-search?${new URLSearchParams({ ...target, q: debounced })}`,
+        `/api/people/user-search?${new URLSearchParams({ ...target, q: debounced, limit: String(SEARCH_LIMIT) })}`,
         signal,
       ),
     staleTime: SEARCH_STALE_MS,
