@@ -433,8 +433,9 @@ describe("Lead", () => {
       outcome: "success",
       turnId: "child-turn-1",
     });
+    // A done result reminds the Lead that a status update needs no reply.
     expect(await leadMailbox()).toEqual([
-      expect.stringMatching(/status="done"/),
+      expect.stringMatching(/status="done"[\s\S]*end with `noReply`\.$/),
     ]);
 
     await lifecycle.fail({
@@ -445,7 +446,7 @@ describe("Lead", () => {
     });
     expect(await leadMailbox()).toEqual([
       expect.stringMatching(/status="done"/),
-      expect.stringMatching(/status="failed"/),
+      expect.stringMatching(/status="failed"[\s\S]*<\/agent-result>$/),
     ]);
   });
 

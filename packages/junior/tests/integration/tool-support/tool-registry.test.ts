@@ -412,6 +412,7 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "addInboxItem",
         "archiveAgent",
         "listAgents",
         "listSpaces",
@@ -429,6 +430,7 @@ describe("static tool registry", () => {
         "stopAgent",
         "stopWatchingResources",
         "systemTime",
+        "updateInboxItem",
         // `updateUserCustomization` is listed only with its experiment on.
         "watchEvents",
         "watchTimer",

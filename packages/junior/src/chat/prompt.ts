@@ -63,6 +63,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { Workspace } from "@/chat/workspaces/types";
 import {
+  buildIdentityHeader,
   buildRuleBlocks,
   SLACK_MENTION_FORMAT_RULE,
   type PromptMode,
@@ -391,16 +392,6 @@ function formatConfigurationLines(
 }
 
 type PromptPlatform = Platform;
-
-/**
- * Block 1 header: the role and the precedence rule. The consumer and plugin
- * blocks come last, and models tend to follow the nearest rule, so the header
- * states that core rules win.
- */
-const PRECEDENCE_RULE =
-  "The rules in this system prompt hold for the whole conversation. Use the personality section for voice and tone in every reply. The personality, world, and plugin sections at the end set voice and add operator facts and guidance; when they conflict with the rules before them, those rules win.";
-const SLACK_HEADER = `You are a Slack-based helper assistant. ${PRECEDENCE_RULE}`;
-const LOCAL_HEADER = `You are a helper assistant. ${PRECEDENCE_RULE}`;
 
 /**
  * Header of the context message. Trust levels live in `<context-trust>`, so
@@ -914,7 +905,7 @@ export function buildCoreSystemPromptSections(
   return [
     {
       name: "header",
-      text: platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
+      text: buildIdentityHeader(platform, mode),
     },
     { name: "identity", text: buildIdentitySection(platform, botName) },
     { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },

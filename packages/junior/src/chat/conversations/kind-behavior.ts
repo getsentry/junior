@@ -228,9 +228,9 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 
 // A Lead finds, starts, and steers the Space's other Conversations, its
 // child agents, and never does their work. So it gets only the tools for
-// that, and no sandbox, skills, MCP, or provider tools. Automation tools stay
-// out until a Lead can pick a Slack Destination for one. `updateInboxItem`
-// stays out: a Lead adds no items, so it can change none.
+// that and its questions to members, and no sandbox, skills, MCP, plugin,
+// or provider tools. A child reads provider state for it. Automation tools
+// stay out until a Lead can pick a Slack Destination for one.
 const LEAD_TOOLS = [
   "startAgent",
   "messageAgent",
@@ -241,6 +241,8 @@ const LEAD_TOOLS = [
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
+  "addInboxItem",
+  "updateInboxItem",
   "searchEventTypes",
   "watchEvents",
   "watchTimer",
@@ -383,6 +385,17 @@ export function capsActiveChildren(
  */
 export function childrenAreTopLevel(
   kind: ConversationKind | null | undefined,
+): boolean {
+  return kind === "lead";
+}
+
+/**
+ * Return whether a parent of this kind gets a reminder with a child's status
+ * update that it can end the Turn with no reply. A Lead's members read each
+ * reply that it posts.
+ */
+export function remindsNoReplyForChildStatus(
+  kind: ConversationKind | undefined,
 ): boolean {
   return kind === "lead";
 }
