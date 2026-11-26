@@ -63,7 +63,7 @@ export function ConversationDetails(props: {
   overview: ReactNode;
   /** The Participants card, or null when it has nothing to show. */
   participants: ReactNode;
-  /** A Lead's Space: its description, members, and settings. */
+  /** A Lead's Space: its description and settings. */
   space?: ReactNode;
   usage: ReactNode;
 }) {

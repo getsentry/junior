@@ -13,12 +13,11 @@ import { JoinSpaceButton } from "../../../spaces/SpaceActions";
 import { SpaceTile } from "../../../spaces/SpaceTile";
 import { ConversationPage } from "../../conversations/ConversationPage";
 import { ConversationDetailLoading } from "../../conversations/ConversationWorkspaceLoading";
-import { SpaceOverview } from "./SpaceDetails";
+import { SpaceDetails } from "./SpaceDetails";
 
 /**
- * One Space, which shows its Lead. Members talk to the Lead here, and the
- * Space's details beside it list its Threads and members. Anyone can
- * open a Space, and read its Lead once a member has talked to it.
+ * One Space, which shows its Lead as a Conversation page. Anyone can open a
+ * Space, and read its Lead once a member has talked to it.
  */
 export function SpacePage(props: {
   /** The Lead's data, from the shell. */
@@ -75,7 +74,7 @@ function SpaceWithoutLead(props: { space: SpaceReport }) {
         <p className="m-0 px-1 pb-2 font-sans text-sm text-dashboard-text-muted">
           No member has talked to this Space&apos;s Lead yet.
         </p>
-        <SpaceOverview space={space} />
+        <SpaceDetails space={space} />
       </div>
     </PageFrame>
   );

@@ -1,4 +1,7 @@
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 import type { ReactNode } from "react";
 
 import { ConversationDetails } from "./ConversationDetails";
@@ -18,7 +21,10 @@ import type {
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
 import { conversationParticipants } from "../../components/ParticipantAvatarStack";
-import { ConversationParticipants } from "../../conversations/ConversationParticipants";
+import {
+  ConversationParticipants,
+  type ParticipantInvite,
+} from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -33,7 +39,14 @@ export function ConversationDetailsPanel(props: {
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry): void;
-  /** A Lead's Space: its description, members, and settings. */
+  /**
+   * Who the Participants card lists and where its Invite adds people, when
+   * they are not the Conversation's own, as on a Lead.
+   */
+  participants?:
+    | { invite: ParticipantInvite; participants: readonly ActorIdentity[] }
+    | undefined;
+  /** A Lead's Space: its description and settings. */
   space?: ReactNode;
 }) {
   const { conversation, detail } = props;
@@ -55,7 +68,11 @@ export function ConversationDetailsPanel(props: {
         <ConversationParticipants
           conversationId={props.conversationId}
           detail={detail}
-          participants={conversationParticipants(conversation)}
+          invite={props.participants?.invite}
+          participants={
+            props.participants?.participants ??
+            conversationParticipants(conversation)
+          }
         />
       }
       isParticipant={detail?.isParticipant === true}

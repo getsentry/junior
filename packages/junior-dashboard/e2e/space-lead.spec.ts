@@ -1,4 +1,5 @@
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { conversationMenuRow } from "./conversationMenu";
 import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
@@ -51,11 +52,9 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   await expect(
     transcript.getByText("Deployment investigation failed failed"),
   ).toBeVisible();
-  await expect(
-    page.getByText("Ask the Lead to start, find, or check on work…"),
-  ).toBeVisible();
 
-  // The Lead's details show its Threads and its Space's members.
+  // The Lead's details show its Threads, and its Participants are its
+  // Space's members.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
@@ -63,7 +62,11 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
-  await expect(details.getByText("Avery Chen")).toBeVisible();
+  await expect(
+    details
+      .getByRole("region", { name: "Participants" })
+      .getByRole("img", { name: /^Avery Chen/ }),
+  ).toBeVisible();
   await screenshot(page, "space-lead-reports");
   await working.scrollIntoViewIfNeeded();
   await screenshot(page, "space-lead");
@@ -116,13 +119,13 @@ test("loads a Space page within its request budget", async ({
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    // A Lead shows Conversation details, so it reads its Inbox items,
-    // To-dos, and Watches as any Conversation does.
-    { requests: 18, serialRounds: 3 },
+    // A Lead shows Conversation details and the outline, so it reads its
+    // Inbox items, To-dos, Watches, and outline as any Conversation does.
+    { requests: 19, serialRounds: 3 },
   );
 });
 
-test("the Lead's own link keeps its Space's header", async ({
+test("the Lead's own link shows the Conversation header", async ({
   page,
   dashboard,
 }) => {
@@ -142,7 +145,7 @@ test("the Lead's own link keeps its Space's header", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Conversation menu" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
@@ -164,22 +167,18 @@ test("home opens the Inbox, and the pane has no Lead", async ({
   ).toHaveCount(0);
 });
 
-test("a new Lead introduces itself", async ({ page, dashboard }) => {
+test("a new Lead opens as an empty Conversation", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${MOBILE_APP}`);
+  await expect(page.getByRole("heading", { name: "Mobile app" })).toBeVisible();
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "This Space's Lead" }),
+    page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
-  for (const title of ["Starts work", "Keeps watch", "Finds and steers"]) {
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
-  }
-  const reply = page.getByLabel("Continue this conversation");
-  await expect(reply).toBeFocused();
-  await screenshot(page, "space-lead-first-run");
-
-  // A Try prompt fills the reply box.
-  await page.getByRole("button", { name: "What's waiting on me?" }).click();
-  await expect(reply).toContainText("What's waiting on me?");
+  await screenshot(page, "space-lead-empty");
 });
 
 test("a non-member reads the Lead", async ({ page, dashboard }) => {
@@ -235,12 +234,17 @@ test.describe("on a touch screen", () => {
     await expect(
       page.getByRole("heading", { name: "Billing migration" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Conversation details" }).click();
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await sheet.getByRole("button", { name: "Done · 2" }).click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();
-    await expect(sheet.getByText("Avery Chen")).toBeVisible();
+    await expect(
+      sheet
+        .getByRole("region", { name: "Participants" })
+        .getByRole("img", { name: /^Avery/ }),
+    ).toBeVisible();
   });
 });

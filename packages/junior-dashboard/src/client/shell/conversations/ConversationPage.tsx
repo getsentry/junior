@@ -52,18 +52,17 @@ import {
 } from "../../conversations/conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
-import { useLeadPageKind } from "../../lead/Lead";
-import {
-  LEAD_REPLY_PLACEHOLDER,
-  LeadFirstRun,
-  useLeadFirstRun,
-} from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { useSpaceActions } from "../../spaces/SpaceActions";
+import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { LeadSpaceDetails } from "../pages/spaces/SpaceDetails";
+import {
+  SpaceDetails,
+  useSpaceParticipants,
+} from "../pages/spaces/SpaceDetails";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
@@ -213,14 +212,19 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  const { known: kindKnown, lead } = useLeadPageKind(props.detail.data);
+  const lead = props.detail.data?.kind === "lead";
   const spaceId = props.detail.data?.space?.id;
+  // A Lead's name, archive, and Participants are its Space's, so its menu
+  // and Participants card act on the Space.
+  const leadSpace = useSpaceData(lead ? spaceId : undefined).data;
+  const spaceActions = useSpaceActions(leadSpace);
+  const spaceParticipants = useSpaceParticipants(leadSpace);
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  const detailsShown = showDetails && !zen.active && kindKnown;
+  const detailsShown = showDetails && !zen.active;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -422,14 +426,6 @@ export function ConversationPage(props: {
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
-  const leadFirstRun = useLeadFirstRun(
-    lead &&
-      transcriptShown &&
-      !history.hasPreviousPage &&
-      transcript?.events.length === 0 &&
-      detail.inlineMessages.length === 0,
-    replyRef,
-  );
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -635,9 +631,8 @@ export function ConversationPage(props: {
           memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
-          space={
-            lead && spaceId ? <LeadSpaceDetails spaceId={spaceId} /> : null
-          }
+          participants={spaceParticipants}
+          space={leadSpace ? <SpaceDetails space={leadSpace} /> : null}
           onSelectMemory={(entry) => {
             // Memory rows show only in the Conversation view, and search
             // can hide them.
@@ -698,8 +693,6 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              lead={kindKnown ? lead : undefined}
-              spaceId={spaceId}
               agentTree={conversationDetail?.agentTree}
               detailsClosedByReader={closedByReader}
               detailsOpen={showDetails}
@@ -743,7 +736,9 @@ export function ConversationPage(props: {
               menu={{
                 actions: {
                   archive: () => {
-                    if (conversation?.archivedAt) {
+                    if (leadSpace) {
+                      spaceActions.archive();
+                    } else if (conversation?.archivedAt) {
                       setArchived(false);
                     } else if (!conversation!.parentConversationId) {
                       setArchived(true);
@@ -758,7 +753,11 @@ export function ConversationPage(props: {
                   moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
-                  subscription: (subscribed) => subscription.mutate(subscribed),
+                  subscription: (subscribed) => {
+                    if (!leadSpace) subscription.mutate(subscribed);
+                    else if (subscribed) spaceActions.join();
+                    else spaceActions.leave();
+                  },
                 },
                 conversation,
                 conversationId,
@@ -772,10 +771,14 @@ export function ConversationPage(props: {
                       )
                   : undefined,
                 pending: {
-                  archive: archive.isPending,
+                  archive: leadSpace
+                    ? spaceActions.pending.archive
+                    : archive.isPending,
                   delivery: delivery.isPending,
                   pin: pin.isPending,
-                  subscription: subscription.isPending,
+                  subscription: leadSpace
+                    ? spaceActions.pending.membership
+                    : subscription.isPending,
                 },
               }}
               onSearchChange={setSearch}
@@ -783,7 +786,8 @@ export function ConversationPage(props: {
               rename={{
                 editing: renaming,
                 onEditingChange: setRenaming,
-                onSave: (next) => rename.mutate(next),
+                onSave: (next) =>
+                  leadSpace ? spaceActions.rename(next) : rename.mutate(next),
               }}
               privacy={
                 <ConversationPrivacyChip
@@ -794,7 +798,8 @@ export function ConversationPage(props: {
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
               space={
-                conversation?.space ? (
+                // A Lead is its Space, so it links to no Space.
+                conversation?.space && !lead ? (
                   <SpaceChip className="shrink-0" space={conversation.space} />
                 ) : null
               }
@@ -813,7 +818,7 @@ export function ConversationPage(props: {
             />
           }
           overlay={
-            view === "rich" && !lead && !transcriptPending && outlineEvents ? (
+            view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
                 conversation={conversationDetail}
                 conversationId={conversationId}
@@ -831,9 +836,7 @@ export function ConversationPage(props: {
           }
           scroll={
             <TranscriptColumn full={view === "raw"}>
-              {leadFirstRun.shown ? (
-                <LeadFirstRun onTry={leadFirstRun.prefill} />
-              ) : transcriptPending ? (
+              {transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -915,7 +918,6 @@ export function ConversationPage(props: {
               onEngage={engageComposer}
               onFocusRequestDone={setReplyFocusDoneKey}
               onPinRequest={requestPin}
-              placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
               ref={replyRef}
               spaceId={spaceId}
               view={view}
@@ -971,6 +973,7 @@ export function ConversationPage(props: {
           onClose={() => setContinueInSlackOpen(false)}
         />
       ) : null}
+      {spaceActions.dialogs}
       {movingToSpace ? (
         <MoveToSpaceDialog
           conversationId={conversationId}

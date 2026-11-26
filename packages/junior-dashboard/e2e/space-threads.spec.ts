@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type { ConversationChildAgent } from "@sentry/junior/api/schema";
 
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { conversationMenuRow } from "./conversationMenu";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -130,7 +131,8 @@ test("a phone shows a Space's Threads in its details sheet", async ({
   await seedThreads(page);
   await page.setViewportSize(mobile);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  await page.getByRole("button", { name: "Conversation details" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Conversation details").click();
   const threads = page
     .getByRole("dialog", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Threads" });

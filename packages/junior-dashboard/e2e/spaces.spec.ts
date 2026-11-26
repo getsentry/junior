@@ -66,7 +66,9 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
     threads.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
   await expect(
-    details.getByRole("region", { name: "Members" }).getByText("Avery Chen"),
+    details
+      .getByRole("region", { name: "Participants" })
+      .getByRole("img", { name: /^Avery Chen/ }),
   ).toBeVisible();
   await screenshot(page, "space-page", { view: "desktop" });
 
@@ -198,10 +200,10 @@ test("a Space's page shows its settings when they are opened", async ({
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
-  const settings = details.getByRole("region", { name: "Settings" });
+  const settings = details.getByRole("region", { name: "Space" });
   // Settings load only when opened.
   await expect(settings.getByText("github.repo")).toHaveCount(0);
-  await settings.getByRole("button", { name: "Show" }).click();
+  await settings.getByRole("button", { name: "Settings" }).click();
   await expect(settings.getByText("github.repo")).toBeVisible();
   await expect(settings.getByText("getsentry/junior")).toBeVisible();
   await screenshot(page, "space-settings", {
@@ -214,8 +216,8 @@ test("a Space's page shows its settings when they are opened", async ({
   await page.goto(`${dashboard.baseURL}${DOCS}`);
   const docsSettings = page
     .getByRole("complementary", { name: "Conversation details" })
-    .getByRole("region", { name: "Settings" });
-  await docsSettings.getByRole("button", { name: "Show" }).click();
+    .getByRole("region", { name: "Space" });
+  await docsSettings.getByRole("button", { name: "Settings" }).click();
   await expect(
     docsSettings.getByText("No settings. Ask Junior to set one."),
   ).toBeVisible();
@@ -254,7 +256,7 @@ test("another Space's page does not show the last Space's Threads", async ({
     .getByRole("list", { name: "Spaces" })
     .getByRole("link", { name: "Mobile app" })
     .click();
-  await expect(details.getByText("Riley Park")).toBeVisible();
+  await expect(details.getByRole("img", { name: /^Riley Park/ })).toBeVisible();
   await expect(billingRow).toHaveCount(0);
   release();
   // Its one Thread is done, so it shows once Done opens.
@@ -281,13 +283,13 @@ test("a non-member opens a Space and joins it", async ({ dashboard, page }) => {
     }),
   ).toBeVisible();
 
-  // A member can leave from the Space menu.
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Leave Space" }).click();
+  // A member can leave from the Conversation menu.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Leave").click();
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 
-test("a phone header names the Space and holds its actions", async ({
+test("a phone header names the Space and holds its menu", async ({
   dashboard,
   page,
 }) => {
@@ -297,10 +299,9 @@ test("a phone header names the Space and holds its actions", async ({
     page.getByRole("heading", { name: "Docs refresh" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Join" }).click();
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Leave Space" }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(conversationMenuRow(page, "Leave")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Back to the Inbox entries" }).click();
   await expect(page).toHaveURL(/\/inbox$/);
 });
@@ -310,8 +311,8 @@ test("archiving a Space asks first, and a restore brings back its composer", asy
   page,
 }) => {
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Archive Space" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Archive").click();
   const confirm = page.getByRole("alertdialog");
   await expect(confirm).toContainText("stops and archives every conversation");
   await confirm.getByRole("button", { name: "Archive" }).click();
@@ -326,8 +327,8 @@ test("archiving a Space asks first, and a restore brings back its composer", asy
     }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Restore Space" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Restore").click();
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
 });
 
@@ -356,10 +357,6 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
       .getByRole("complementary", { name: "Conversation details" })
       .getByText("Keep checkout fast and error-free."),
   ).toBeVisible();
-  // Its new Lead introduces itself.
-  await expect(
-    page.getByRole("heading", { name: "This Space's Lead" }),
-  ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Spaces" }).getByRole("link", {
       name: "Checkout reliability",
@@ -367,18 +364,33 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
   ).toHaveAttribute("aria-current", "page");
 });
 
-test("a member edits a Space from its menu or from the pane", async ({
+test("a member renames a Space from its Lead, and edits it from the pane", async ({
   dashboard,
   page,
 }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  await page.getByRole("button", { name: "Space menu" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Rename").click();
+  const title = page.getByRole("textbox", { name: "Conversation title" });
+  await title.fill("Billing cutover");
+  await title.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Billing cutover" }),
+  ).toBeVisible();
+  const spaces = page.getByRole("list", { name: "Spaces" });
+  await expect(
+    spaces.getByRole("link", { name: "Billing cutover" }),
+  ).toHaveAttribute("aria-current", "page");
+
+  await spaces
+    .getByRole("link", { name: "Billing cutover" })
+    .click({ button: "right" });
   await page.getByRole("menuitem", { name: "Edit Space" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Space" });
   const name = dialog.getByRole("textbox", { name: "Name" });
   const save = dialog.getByRole("button", { name: "Save" });
-  await expect(name).toHaveValue("Billing migration");
+  await expect(name).toHaveValue("Billing cutover");
   await expect(
     dialog.getByRole("textbox", { name: "Description" }),
   ).toHaveValue(
@@ -387,17 +399,9 @@ test("a member edits a Space from its menu or from the pane", async ({
   // A Space keeps the visibility it was created with.
   await expect(dialog.getByRole("radiogroup")).toHaveCount(0);
   await expect(save).toBeDisabled();
-  await name.fill("Billing cutover");
   await screenshot(page, "space-edit", { lightTheme: true });
-  await save.click();
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Billing cutover" }),
-  ).toBeVisible();
-  const spaces = page.getByRole("list", { name: "Spaces" });
-  await expect(
-    spaces.getByRole("link", { name: "Billing cutover" }),
-  ).toHaveAttribute("aria-current", "page");
 
   // A Space's row in the pane has the same menu, and the page stays.
   await spaces
@@ -507,13 +511,13 @@ test("creating a private Space shows its lock, and its last member cannot leave"
   await screenshot(page, "space-create-private", { view: "desktop" });
   await dialog.getByRole("button", { name: "Create Space" }).click();
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
-  // The lock shows on the Space's header and on both private pane rows.
+  // The lock shows on both private pane rows.
   await expect(
     page.getByRole("img", { name: "Private Space" }).filter({ visible: true }),
-  ).toHaveCount(3);
+  ).toHaveCount(2);
 
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Leave Space" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Leave").click();
   await expect(page.getByRole("alert")).toContainText(
     "The last member can't leave a private Space.",
   );
@@ -528,9 +532,9 @@ test("a member adds people to a private Space with the people picker", async ({
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   const members = page
     .getByRole("complementary", { name: "Conversation details" })
-    .getByRole("region", { name: "Members" });
-  await members.getByRole("button", { name: "Add" }).click();
-  const search = members.getByRole("combobox", { name: "Add members" });
+    .getByRole("region", { name: "Participants" });
+  await members.getByRole("button", { name: "Invite" }).click();
+  const search = members.getByRole("combobox", { name: "Invite people" });
   const settled = members.getByRole("listbox", { includeHidden: true });
   await expect(search).toBeFocused();
   // Part of an email finds a person.
@@ -548,7 +552,7 @@ test("a member adds people to a private Space with the people picker", async ({
   await expect(settled).toHaveAttribute("aria-busy", "false");
   const avery = members.getByRole("option", { name: /Avery Chen/ });
   await expect(avery).toHaveAttribute("aria-disabled", "true");
-  await expect(avery).toContainText("Member");
+  await expect(avery).toContainText("Participant");
   await screenshot(page, "space-add-members", {
     lightTheme: true,
     target: members,
@@ -560,11 +564,10 @@ test("a member adds people to a private Space with the people picker", async ({
     members.getByRole("list", { name: "Chosen people" }).getByRole("listitem"),
   ).toHaveText(["Casey Nguyen"]);
 
-  await members.getByRole("button", { exact: true, name: "Add" }).click();
+  await members.getByRole("button", { exact: true, name: "Invite" }).click();
   await expect(search).toHaveCount(0);
-  await expect(members.getByText("Casey Nguyen")).toBeVisible();
   await expect(
-    members.getByRole("heading", { level: 3, name: "Members 3" }),
+    members.getByRole("img", { name: /^Casey Nguyen/ }),
   ).toBeVisible();
 });
 
@@ -576,8 +579,8 @@ test("leaving a private Space leaves the page, and a non-member cannot find it",
   // A member talks to the Lead of a private Space without being one of
   // its Participants first.
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
-  await page.getByRole("button", { name: "Space menu" }).click();
-  await page.getByRole("menuitem", { name: "Leave Space" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Leave").click();
   await expect(page).toHaveURL(/\/inbox$/);
   await expect(
     page

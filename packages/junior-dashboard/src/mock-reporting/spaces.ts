@@ -236,8 +236,20 @@ export function withMockSpace<T extends ConversationDetailReport>(
   detail: T,
 ): T {
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
+  const leadSpaceId = mockLeadSpaceId(detail.conversationId);
+  const leadSpace = leadSpaceId ? readMockSpace(leadSpaceId) : undefined;
   return {
     ...detail,
+    // A Lead has its Space's name, its Participants are the Space's
+    // members, and a Space archive archives it.
+    ...(leadSpace
+      ? {
+          archivedAt: leadSpace.archivedAt,
+          displayTitle: leadSpace.name,
+          isParticipant: leadSpace.viewerMember,
+          subscribed: leadSpace.viewerMember ? true : undefined,
+        }
+      : undefined),
     space: spaceRef(
       mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
     ),
