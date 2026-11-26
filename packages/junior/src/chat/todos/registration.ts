@@ -12,7 +12,12 @@ import {
   renderTodosSnapshot,
 } from "./prompt";
 import { todosSystemPromptRegistration } from "./prompt-rules";
-import { deleteTodos, listTodos, todosDb } from "./store";
+import {
+  closeTodosOfFinishedChildren,
+  deleteTodos,
+  listTodos,
+  todosDb,
+} from "./store";
 import { createUpdateTodosTool } from "./tools/update";
 
 // The longest text of one prompt message. A long list of To-dos goes in
@@ -44,8 +49,8 @@ function promptMessages(text: string | null): PromptMessage[] | undefined {
  * Core registration of durable To-dos: work that outlives a Turn. It
  * reaches the agent only through plugin hooks: its tool, its system prompt
  * guidance, the To-do changes in each Turn context, the snapshot in each
- * compaction summary, the parent's To-dos in a child's team listing, and
- * purge.
+ * compaction summary, the parent's To-dos in a child's team listing,
+ * purge, and the heartbeat.
  */
 export const todosRegistration: PluginRegistration = {
   manifest: todosSystemPromptRegistration.manifest,
@@ -78,5 +83,10 @@ export const todosRegistration: PluginRegistration = {
       await deleteTodos(todosDb(ctx.db), ctx.conversationIds);
     },
     parentAgentField: () => parentTodosField,
+    // A child's Watch keeps its To-dos open. Watches expire with no Event,
+    // so each heartbeat closes the To-dos of children whose Watches ended.
+    async heartbeat() {
+      await closeTodosOfFinishedChildren(getSqlExecutor());
+    },
   },
 };

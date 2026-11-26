@@ -2,20 +2,27 @@
  * Durable To-dos of a Conversation. The list's own agent changes them with
  * `todos_updateTodos`; a person can change a status in the dashboard. A child
  * agent can close the To-dos assigned to it, and a read closes the rest
- * once the child's result has reached this Conversation. Each
+ * once the child's result has reached this Conversation. A child that still
+ * has an active Watch keeps its To-dos open, and the heartbeat closes them
+ * once its Watches end. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { and, asc, eq, inArray, is, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, is, isNull, ne, sql } from "drizzle-orm";
 import { alias, PgAsyncDatabase } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
+  juniorConversations,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
+import { listOpenChildAgents } from "@/chat/agent-invocations/list";
+import { childAgentStillWorks } from "@/chat/agent-invocations/store";
+import { getConversationEventStore } from "@/chat/db";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { listConversationsWithWatches } from "@/chat/events/store";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
@@ -454,8 +461,9 @@ async function readReceivedChildResults(
 /**
  * Close the open To-dos of a Conversation whose child's result reached it
  * after the To-do last changed: done when the child completed, dropped when
- * it was stopped. The received results decide it, so a repeat read changes
- * nothing.
+ * it was stopped. A child with an active Watch is not done yet, so its done
+ * result leaves its To-dos open. The received results decide it, so a
+ * repeat read changes nothing.
  */
 async function settleChildTodos(
   executor: JuniorSqlDatabase,
@@ -468,6 +476,15 @@ async function settleChildTodos(
   if (assigned.length === 0) return false;
   const results = await readReceivedChildResults(conversationId);
   if (results.length === 0) return false;
+  const watching = await listConversationsWithWatches({
+    conversationIds: [
+      ...new Set(
+        results.flatMap((result) =>
+          result.status === "done" ? [result.childConversationId] : [],
+        ),
+      ),
+    ],
+  });
   const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
   for (const todo of assigned) {
     if (todo.assignee.kind !== "agent") continue;
@@ -486,6 +503,7 @@ async function settleChildTodos(
         undefined,
       );
     if (!latest) continue;
+    if (latest.status === "done" && watching.has(childId)) continue;
     const statuses =
       byChild.get(childId) ?? new Map<number, ClosedTodoStatus>();
     statuses.set(todo.id, latest.status);
@@ -519,6 +537,139 @@ async function settleChildTodos(
     /* oxlint-enable no-await-in-loop */
   });
   return true;
+}
+
+// The most To-dos that one heartbeat checks. Children with the newest
+// activity go first.
+const FINISHED_CHILD_SWEEP_LIMIT = 200;
+
+/**
+ * Return when the newest Turn of a child ended done, unless a Turn runs
+ * now. A blocked, cancelled, or failed Turn is not done.
+ */
+async function readDoneTurnEndMs(
+  childConversationId: string,
+): Promise<number | undefined> {
+  const event = await getConversationEventStore().loadLatestEventOfTypes(
+    childConversationId,
+    ["turn_started", "turn_completed", "turn_failed"],
+  );
+  return event?.data.type === "turn_completed" &&
+    (event.data.outcome === "success" || event.data.outcome === "no_reply")
+    ? event.createdAtMs
+    : undefined;
+}
+
+/**
+ * Close To-dos that a child's Watch kept open: done once the child's newest
+ * Turn ended done after the To-do changed, and the child has no active
+ * Watch and no open work. Watches expire with no Event, so the heartbeat
+ * runs it, and a To-do closes also when no later Turn reads it.
+ */
+export async function closeTodosOfFinishedChildren(
+  executor: JuniorSqlDatabase,
+): Promise<void> {
+  const child = alias(juniorConversations, "child");
+  const rows = await executor
+    .db()
+    .select({
+      childConversationId: child.conversationId,
+      conversationId: juniorTodos.conversationId,
+      id: juniorTodos.id,
+      updatedAt: juniorTodos.updatedAt,
+      version: juniorTodos.version,
+    })
+    .from(juniorTodos)
+    .innerJoin(
+      child,
+      and(
+        eq(child.conversationId, juniorTodos.assigneeConversationId),
+        eq(child.parentConversationId, juniorTodos.conversationId),
+      ),
+    )
+    .where(
+      and(
+        inArray(juniorTodos.status, [...OPEN_TODO_STATUSES]),
+        // A stopped child's result drops its To-dos.
+        isNull(child.stoppedAt),
+      ),
+    )
+    .orderBy(
+      desc(sql`coalesce(${child.executionUpdatedAt}, ${child.updatedAt})`),
+    )
+    .limit(FINISHED_CHILD_SWEEP_LIMIT);
+  if (rows.length === 0) return;
+  const watching = await listConversationsWithWatches({
+    conversationIds: [...new Set(rows.map((row) => row.childConversationId))],
+  });
+  const unwatched = rows.filter(
+    (row) => !watching.has(row.childConversationId),
+  );
+  const running = new Set(
+    (
+      await mapBounded(
+        new Set(unwatched.map((row) => row.conversationId)),
+        listOpenChildAgents,
+      )
+    ).flat(),
+  );
+  const doneAtMs = new Map<string, number>();
+  await mapBounded(
+    new Set(
+      unwatched
+        .map((row) => row.childConversationId)
+        .filter((id) => !running.has(id)),
+    ),
+    async (childConversationId) => {
+      const endMs = await readDoneTurnEndMs(childConversationId);
+      if (
+        endMs !== undefined &&
+        !(await childAgentStillWorks(childConversationId))
+      ) {
+        doneAtMs.set(childConversationId, endMs);
+      }
+    },
+  );
+  const byParent = new Map<string, typeof rows>();
+  for (const row of unwatched) {
+    const endMs = doneAtMs.get(row.childConversationId);
+    if (endMs === undefined || endMs <= row.updatedAt.getTime()) continue;
+    byParent.set(row.conversationId, [
+      ...(byParent.get(row.conversationId) ?? []),
+      row,
+    ]);
+  }
+  const nowMs = Date.now();
+  await mapBounded(byParent, async ([conversationId, closing]) => {
+    await withTodosLock(executor, conversationId, async (db) => {
+      // Close only To-dos that no change replaced since the read.
+      const current = new Map(
+        (await readTodos(db, conversationId)).map((todo) => [
+          todo.id,
+          todo.version,
+        ]),
+      );
+      const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
+      for (const row of closing) {
+        if (current.get(row.id) !== row.version) continue;
+        const statuses =
+          byChild.get(row.childConversationId) ??
+          new Map<number, ClosedTodoStatus>();
+        statuses.set(row.id, "done");
+        byChild.set(row.childConversationId, statuses);
+      }
+      /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
+      for (const [childConversationId, statuses] of byChild) {
+        await closeChildTodos(db, {
+          childConversationId,
+          conversationId,
+          nowMs,
+          statuses,
+        });
+      }
+      /* oxlint-enable no-await-in-loop */
+    });
+  });
 }
 
 /**
