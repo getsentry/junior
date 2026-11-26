@@ -271,6 +271,46 @@ describe("review again after a comment-only review", () => {
     }
   });
 
+  it("asks again after a long discussion of more comment-only reviews than GitHub returns", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const state = memoryState();
+    // 25 thread replies, more than the 20 reviews that the read returns.
+    const ids = Array.from({ length: 25 }, (_, index) => 801 + index);
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: [],
+      reviewRequests: [{ at: "2026-07-02T09:00:00Z", login: "Requester" }],
+      reviews: ids.map((id, index) => ({
+        body: "",
+        comments: [id],
+        id,
+        state: "COMMENTED",
+        submitted_at: new Date(
+          Date.parse("2026-07-02T10:00:00Z") + index * 60_000,
+        ).toISOString(),
+        user: { login: "Requester" },
+      })),
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      route(fixture, calls, [], { close: 0 }, [], state);
+      for (const id of ids) {
+        await markFeedback(state, { id, kind: "review" }, "addressed", fixture);
+      }
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("says so when Junior answers the requester's comment-only review with a question", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];

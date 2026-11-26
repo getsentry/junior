@@ -236,10 +236,6 @@ function requiredChecksPass(
   return true;
 }
 
-// How many of the reviewer's latest reviews `PULL_REQUEST_REVIEW_AGAIN`
-// reads.
-const REVIEWS_READ = 20;
-
 type FeedbackReview = NonNullable<
   z.output<
     typeof reviewAgainSchema
@@ -255,8 +251,9 @@ type FeedbackReview = NonNullable<
  * comment-only reviews after a later ask count, so a comment on an
  * approved pull request does not ask again. For others, a comment-only
  * review is left out, so a reply to Junior does not hide their change
- * request. A full page of comment-only reviews can hide older reviews,
- * which count as open.
+ * request. A long discussion can push the decision and older comments out
+ * of the reviews read. Junior answers each comment as it comes, so it asks
+ * once the comments it reads are marked, and the discussion does not stall.
  */
 async function feedbackReviews(
   reviews: FeedbackReview[],
@@ -283,7 +280,6 @@ async function feedbackReviews(
     );
   const changeRequest = decided?.state === "CHANGES_REQUESTED";
   if (comments.length > 0 && (await commentsCount())) {
-    if (decided === undefined && reviews.length >= REVIEWS_READ) return;
     return changeRequest ? [decided, ...comments] : comments;
   }
   return changeRequest ? [decided] : undefined;
