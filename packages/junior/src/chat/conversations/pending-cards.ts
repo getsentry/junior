@@ -1,11 +1,12 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, sql } from "drizzle-orm";
 import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import { juniorConversations } from "@/db/schema";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
+import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 import { listChildMessages } from "@/chat/child-agents/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
@@ -113,22 +114,26 @@ async function selectChildResultCards(
   }
 }
 
-const root = alias(juniorConversations, "pending_cards_root");
-
-// The person who started the root of the Conversation, when Junior knows
-// their User. System work, such as an Automation run, has none.
+// The person who started the top-level Conversation of this one, when
+// Junior knows their User. In a Space that is the Lead's child, not the
+// Lead: a thread moved into a Space keeps the person who started it, and
+// only the Lead's own work reads as the Space's creator. System work, such
+// as an Automation run, has none.
 async function readConversationOwner(
   conversationId: string,
 ): Promise<User | undefined> {
   const db = getDb();
   const [row] = await db
-    .select({ identityId: root.actorIdentityId })
+    .select({ identityId: juniorConversations.actorIdentityId })
     .from(juniorConversations)
-    .innerJoin(
-      root,
-      eq(root.conversationId, juniorConversations.rootConversationId),
+    .where(
+      and(
+        sql<boolean>`${juniorConversations.conversationId} in ${conversationAncestorsOrSelf(sql`${conversationId}`)}`,
+        topLevelConversation(),
+      ),
     )
-    .where(eq(juniorConversations.conversationId, conversationId));
+    .orderBy(sql`coalesce(${juniorConversations.kind} = 'lead', false)`)
+    .limit(1);
   return row?.identityId
     ? (await readIdentityByIdFromSql(db, row.identityId))?.user
     : undefined;

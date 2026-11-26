@@ -1,5 +1,8 @@
 import { readConversationDetail } from "@/api/conversations/detail";
-import { testViewer } from "../fixtures/user";
+import { signedInViewer, testViewer } from "../fixtures/user";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { setConversationSpace } from "@/chat/spaces/conversations";
+import { createSpace } from "@/chat/spaces/store";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   defineJuniorPlugin,
@@ -679,6 +682,26 @@ it("reads each delivered card once with the access of the person who started the
         status: "merged",
         title: "Retry uploads",
       }),
+    ]);
+    // Bo moves the thread into a Space that Bo created. Bo cannot see the
+    // repository, but the card still reads with Alice's access.
+    const bo = await signedInViewer("bo@example.com");
+    const space = await createSpace({
+      creator: bo,
+      description: null,
+      name: "Uploads",
+      visibility: "public",
+    });
+    const lead = await getSpaceLead({ member: bo, space });
+    await expect(
+      setConversationSpace(
+        conversationId,
+        { leadConversationId: lead.conversationId, spaceId: space.id },
+        null,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
+      expect.objectContaining({ status: "merged", title: "Retry uploads" }),
     ]);
     // Delivery stores nothing: the Annotation keeps what the tool saved.
     await expect(
