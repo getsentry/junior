@@ -203,17 +203,34 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   };
 }
 
-/** Keep the feed rows of one Space. */
+/**
+ * Keep the feed rows of one Space, each with its tree state, as the API
+ * reads it for a Space's Threads.
+ */
 export function filterMockConversationsBySpace(
   feed: ConversationFeed,
   spaceId: string,
 ): ConversationFeed {
   return {
     ...feed,
-    conversations: feed.conversations.filter(
-      (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
-    ),
+    conversations: feed.conversations
+      .filter(
+        (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
+      )
+      .map((row) => ({ ...row, treeState: mockTreeState(row) })),
   };
+}
+
+/** A mock row's tree state. A row with none reads one from its own status. */
+function mockTreeState(row: ConversationFeed["conversations"][number]) {
+  return (
+    row.treeState ??
+    (row.status === "needs_input"
+      ? "needs_you"
+      : row.turnActive || row.status === "working"
+        ? "working"
+        : "done")
+  );
 }
 
 /**
@@ -334,7 +351,7 @@ const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 
 /**
  * Roll up the state of a Space's active feed rows, as the API's Space list
- * does. A mock row with no tree state reads one from its own status.
+ * does.
  */
 function spaceState(
   spaceId: string,
@@ -344,15 +361,7 @@ function spaceState(
       !row.archivedAt &&
       mockConversationSpaces.get(row.conversationId) === spaceId,
   );
-  const states = rows.map(
-    (row) =>
-      row.treeState ??
-      (row.status === "needs_input"
-        ? "needs_you"
-        : row.turnActive || row.status === "working"
-          ? "working"
-          : "done"),
-  );
+  const states = rows.map(mockTreeState);
   return {
     latestTurnFailed: rows.some((row) => row.latestTurnFailed),
     treeState:
