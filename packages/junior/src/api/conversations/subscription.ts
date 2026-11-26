@@ -253,12 +253,23 @@ export async function leaveConversation(
 /**
  * Archive the tree for everyone when no Participant still has it in their
  * feed. Returns the archive time, or null when a subscriber remains. Runs
- * under the root's row lock.
+ * under the root's row lock. A Lead's tree is its whole Space, which only
+ * a Space archive ends, so it never archives here.
  */
 async function archiveWithoutSubscribers(
   db: JuniorDatabase,
   rootConversationId: string,
 ): Promise<string | null> {
+  const [lead] = await db
+    .select({ id: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.conversationId, rootConversationId),
+        eq(juniorConversations.kind, "lead"),
+      ),
+    );
+  if (lead) return null;
   if (await hasSubscriber(db, rootConversationId)) return null;
   const archivedAt = new Date();
   // Archive the root and each descendant that is not archived, so an

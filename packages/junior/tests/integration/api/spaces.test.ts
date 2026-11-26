@@ -386,6 +386,18 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+
+    // Leave by the last subscriber never archives the Space's work.
+    const left = await request(
+      ana,
+      "POST",
+      `/conversations/${encodeURIComponent(inSpace)}/leave`,
+    );
+    expect(left.status).toBe(200);
+    expect(await left.json()).toEqual({ archivedAt: null });
+    expect(
+      (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
+    ).toEqual([inSpace]);
   });
 
   it("finds and moves Conversations into, between, and out of Spaces with the agent tools", async () => {

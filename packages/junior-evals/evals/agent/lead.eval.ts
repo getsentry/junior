@@ -92,7 +92,7 @@ describe("Lead", () => {
         space: expect.objectContaining({ name: "Eval work" }),
       }),
     );
-    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+    expect(toolCallsOf("startAgent", conversation)).toEqual([]);
   });
 
   // Only a member of a Space moves work into it. The case measures whether
@@ -114,7 +114,7 @@ describe("Lead", () => {
     expect(completedToolCalls("moveConversationToSpace", conversation)).toEqual(
       [],
     );
-    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+    expect(toolCallsOf("startAgent", conversation)).toEqual([]);
     expect(toolCallsOf("messageAgent", conversation)).toEqual([]);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -150,6 +150,6 @@ describe("Lead", () => {
     expect(completedToolCalls("moveConversationToSpace", conversation)).toEqual(
       [],
     );
-    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+    expect(toolCallsOf("startAgent", conversation)).toEqual([]);
   });
 });
