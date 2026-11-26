@@ -4,6 +4,7 @@ import {
   cleanupPostgresTestDatabases,
   createEmptyPostgresTestDatabase,
 } from "./admin";
+import { ensureComposePostgres } from "./compose";
 
 export interface SetupPostgresTemplateOptions extends PostgresHarnessOptions {
   migrateTemplate(connectionString: string): Promise<void>;
@@ -13,6 +14,7 @@ export interface SetupPostgresTemplateOptions extends PostgresHarnessOptions {
 export async function setupPostgresTemplate(
   options: SetupPostgresTemplateOptions,
 ): Promise<PostgresHarnessConfig> {
+  await ensureComposePostgres(options.connectionString);
   const config = createPostgresHarnessConfig(options);
   await createEmptyPostgresTestDatabase(config, config.templateDatabaseName);
   try {
