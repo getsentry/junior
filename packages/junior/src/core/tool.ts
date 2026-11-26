@@ -4,6 +4,7 @@ import type {
   JsonValue,
   TextContent,
   Tool,
+  ToolCall,
 } from "@earendil-works/pi-ai";
 
 /**
@@ -46,7 +47,32 @@ export type ToolExecutionContext = {
  */
 export type StepTools = {
   definitions: ToolDefinition[];
+  /** Host code that core runs around the step's tool calls. */
+  hooks?: ToolExecutionHooks;
   close(): void;
+};
+
+/**
+ * Core runs these in order: `beforeCall` per call, `beforeBatch` once, the
+ * calls, then `afterCall` per call. A throw from any of them fails the step.
+ */
+export type ToolExecutionHooks = {
+  /** Before a call runs. Return a result to skip the call; the model sees it instead. */
+  beforeCall?(
+    call: ToolCall,
+    signal: AbortSignal,
+  ): Promise<ToolResult | undefined>;
+  /** Once, before any call runs, with the calls not yet skipped. A result for a call id skips that call. */
+  beforeBatch?(
+    calls: ToolCall[],
+    signal: AbortSignal,
+  ): Promise<Map<string, ToolResult>>;
+  /** After each call, skipped ones included. The returned result replaces the call's result. */
+  afterCall?(
+    call: ToolCall,
+    result: ToolResult,
+    signal: AbortSignal,
+  ): Promise<ToolResult>;
 };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */

@@ -1,3 +1,8 @@
+import {
+  definePluginTool,
+  PluginToolInputError,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { findChildAgentConversationId } from "@/chat/agent-invocations/bindings";
@@ -29,7 +34,6 @@ import {
   type FindMentionedUserId,
 } from "@/chat/inbox-items/assignees";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
@@ -133,19 +137,6 @@ const updateTodosOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
-export const updateTodosToolDefinition = zodToolDefinition({
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  description:
-    "Change your To-dos: the durable list of work that outlives this Turn, such as work queued for a later Turn, work for a child agent, or work for a person. They survive context compaction and sandbox resets. Do not add steps that you finish in this Turn. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Returns the To-dos that changed, or every open To-do when the call changes nothing.",
-  inputSchema: updateTodosInputSchema,
-  outputSchema: updateTodosOutputSchema,
-});
-
 function outputTodoWithAssignee(todo: Todo) {
   return outputTodo(todo, renderTodoAssignee(todo.assignee));
 }
@@ -227,103 +218,126 @@ async function splitParentUpdates(
   return { own, parent };
 }
 
-/** Create the tool that changes the durable To-dos of one conversation. */
-export function createUpdateTodosTool(
+// Change the To-dos of one conversation and return the changed ones.
+async function updateTodos(
   context: Pick<ToolRuntimeContext, "conversationId">,
   findMentionedUserId: FindMentionedUserId,
-) {
+  input: z.output<typeof updateTodosInputSchema>,
+): Promise<z.input<typeof updateTodosOutputSchema>> {
   const assignee = (value: string) =>
     resolveTodoAssignee(context, value, findMentionedUserId);
-  return zodTool({
-    ...updateTodosToolDefinition,
-    execute: async (input) => {
-      const add = input.add ?? [];
-      const remove = (input.remove ?? []).map(parseTodoRef);
-      const executor = getSqlExecutor();
-      // Split before any write, so a bad change to a parent's To-do fails
-      // the whole call.
-      const split = await splitParentUpdates(
-        context.conversationId,
-        input.update ?? [],
-      );
-      const update = split.own;
-      if (
-        add.length + update.length + remove.length + split.parent.size ===
-        0
-      ) {
-        const todos = await listTodos(executor, context.conversationId);
-        return {
-          todos: todos
-            .filter((todo) => isOpenTodoStatus(todo.status))
-            .map(outputTodoWithAssignee),
-        };
+  const add = input.add ?? [];
+  const remove = (input.remove ?? []).map(parseTodoRef);
+  const executor = getSqlExecutor();
+  // Split before any write, so a bad change to a parent's To-do fails
+  // the whole call.
+  const split = await splitParentUpdates(
+    context.conversationId,
+    input.update ?? [],
+  );
+  const update = split.own;
+  if (add.length + update.length + remove.length + split.parent.size === 0) {
+    const todos = await listTodos(executor, context.conversationId);
+    return {
+      todos: todos
+        .filter((todo) => isOpenTodoStatus(todo.status))
+        .map(outputTodoWithAssignee),
+    };
+  }
+  const own =
+    add.length + update.length + remove.length > 0
+      ? await changeTodos(executor, {
+          conversationId: context.conversationId,
+          nowMs: Date.now(),
+          change: {
+            add: await Promise.all(
+              // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
+              add.map(async (todo) => ({
+                title: todo.title,
+                ...(todo.notes ? { notes: todo.notes } : undefined),
+                status: todo.status ?? "open",
+                assignee: await assignee(todo.assignee ?? SELF_TODO_ASSIGNEE),
+              })),
+            ),
+            update: await Promise.all(
+              // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
+              update.map(async (todo) => ({
+                id: parseTodoRef(todo.id),
+                ...(todo.title ? { title: todo.title } : undefined),
+                ...(todo.notes !== undefined
+                  ? { notes: todo.notes }
+                  : undefined),
+                ...(todo.status ? { status: todo.status } : undefined),
+                ...(todo.assignee
+                  ? { assignee: await assignee(todo.assignee) }
+                  : undefined),
+              })),
+            ),
+            remove,
+          },
+        })
+      : { todos: [], replacedPersonChanges: [] };
+  const closedForParent =
+    split.parent.size > 0
+      ? await closeTodosForChild(executor, {
+          childConversationId: context.conversationId,
+          nowMs: Date.now(),
+          statuses: split.parent,
+        })
+      : [];
+  return {
+    todos: [
+      ...own.todos.map(outputTodoWithAssignee),
+      // The parent assigned these to this child, so they show assignee self.
+      ...closedForParent.map((todo) => outputTodo(todo, SELF_TODO_ASSIGNEE)),
+    ],
+    ...(remove.length > 0 ? { removed_ids: remove.map(todoRef) } : undefined),
+    ...(own.replacedPersonChanges.length > 0
+      ? {
+          replaced_person_changes: own.replacedPersonChanges.map((todo) => ({
+            id: todoRef(todo.id),
+            status: todo.status,
+            changed_by: todo.changedBy!.email,
+          })),
+        }
+      : undefined),
+  };
+}
+
+/**
+ * Create the tool that changes the durable To-dos of one conversation: the
+ * Turn's conversation, or `context` when it is not undefined. A Slack
+ * mention names a person through `findMentionedUserId`.
+ */
+export function createUpdateTodosTool(
+  context: Pick<ToolRuntimeContext, "conversationId"> | undefined,
+  findMentionedUserId: FindMentionedUserId,
+) {
+  return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
+    description:
+      "Change your To-dos: the durable list of work that outlives this Turn, such as work queued for a later Turn, work for a child agent, or work for a person. They survive context compaction and sandbox resets. Do not add steps that you finish in this Turn. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Returns the To-dos that changed, or every open To-do when the call changes nothing.",
+    exposure: "direct",
+    inputSchema: updateTodosInputSchema,
+    outputSchema: updateTodosOutputSchema,
+    // A caller that binds `context` passes no Turn context.
+    execute: async (
+      input,
+      _options,
+      ctx: ToolRegistrationHookContext | void,
+    ) => {
+      const conversationId = context?.conversationId ?? ctx?.conversationId;
+      if (!conversationId) {
+        throw new PluginToolInputError(
+          "This Turn has no conversation, so it has no To-dos.",
+        );
       }
-      const own =
-        add.length + update.length + remove.length > 0
-          ? await changeTodos(executor, {
-              conversationId: context.conversationId,
-              nowMs: Date.now(),
-              change: {
-                add: await Promise.all(
-                  // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
-                  add.map(async (todo) => ({
-                    title: todo.title,
-                    ...(todo.notes ? { notes: todo.notes } : undefined),
-                    status: todo.status ?? "open",
-                    assignee: await assignee(
-                      todo.assignee ?? SELF_TODO_ASSIGNEE,
-                    ),
-                  })),
-                ),
-                update: await Promise.all(
-                  // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
-                  update.map(async (todo) => ({
-                    id: parseTodoRef(todo.id),
-                    ...(todo.title ? { title: todo.title } : undefined),
-                    ...(todo.notes !== undefined
-                      ? { notes: todo.notes }
-                      : undefined),
-                    ...(todo.status ? { status: todo.status } : undefined),
-                    ...(todo.assignee
-                      ? { assignee: await assignee(todo.assignee) }
-                      : undefined),
-                  })),
-                ),
-                remove,
-              },
-            })
-          : { todos: [], replacedPersonChanges: [] };
-      const closedForParent =
-        split.parent.size > 0
-          ? await closeTodosForChild(executor, {
-              childConversationId: context.conversationId,
-              nowMs: Date.now(),
-              statuses: split.parent,
-            })
-          : [];
-      return {
-        todos: [
-          ...own.todos.map(outputTodoWithAssignee),
-          // The parent assigned these to this child, so they show assignee self.
-          ...closedForParent.map((todo) =>
-            outputTodo(todo, SELF_TODO_ASSIGNEE),
-          ),
-        ],
-        ...(remove.length > 0
-          ? { removed_ids: remove.map(todoRef) }
-          : undefined),
-        ...(own.replacedPersonChanges.length > 0
-          ? {
-              replaced_person_changes: own.replacedPersonChanges.map(
-                (todo) => ({
-                  id: todoRef(todo.id),
-                  status: todo.status,
-                  changed_by: todo.changedBy!.email,
-                }),
-              ),
-            }
-          : undefined),
-      };
+      return await updateTodos({ conversationId }, findMentionedUserId, input);
     },
   });
 }

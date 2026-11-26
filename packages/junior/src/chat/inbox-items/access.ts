@@ -213,6 +213,15 @@ export function inboxItemNeedsInput(): SQL {
 }
 
 /**
+ * SQL: the Inbox item sets the status of the Conversation that owns it. A
+ * To-do's item waits only on its assignee, so it shows only to them, through
+ * their tree state and Inbox. It does not change that status.
+ */
+export function inboxItemSetsConversationStatus(): SQL {
+  return notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`);
+}
+
+/**
  * SQL: the Inbox item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnInboxItem`; keep the two the same.

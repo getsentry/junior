@@ -55,7 +55,8 @@
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck-coverage:check": "node scripts/check.mjs typecheck-coverage",
     "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint && tsc --noEmit -p tools/configs",
-    "skills:check": "pnpm --filter @sentry/junior skills:check"
+    "skills:check": "pnpm --filter @sentry/junior skills:check",
+    "plugin-package-content:check": "node scripts/check.mjs plugin-package-content"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",

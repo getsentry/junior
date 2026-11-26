@@ -11,10 +11,8 @@ import {
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
 import { getConversationStore, getDb } from "@/chat/db";
-import {
-  EVENT_WAIT_MS,
-  type EventMailboxMetadata,
-} from "@/chat/events/notification";
+import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderDataTag } from "@/chat/input-tags";
 import { readLeadSpace } from "@/chat/lead/conversation";
