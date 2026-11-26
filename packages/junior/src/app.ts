@@ -153,10 +153,6 @@ import {
   type SignInAuth,
   type SignInAuthConfig,
 } from "@/chat/sign-in/auth";
-import {
-  assertNoLegacyAllowedDomains,
-  resolveAllowedDomains,
-} from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -362,6 +358,7 @@ function appConfigInput(
     deployment: {
       configuredBaseUrl: dashboard?.baseURL?.trim() || undefined,
     },
+    signIn: { allowedDomains: options?.allowedDomains },
     functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
     limits: options?.limits,
     slack: {
@@ -545,8 +542,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
     restoreChatConfig = () => installChatConfig(previousChatConfig);
     // One domain list for Slack authors and dashboard sign-ins.
-    assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
-    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
+    // Fail startup on the removed Google-specific option. Ignoring it would
+    // leave the list empty, which lets every Slack workspace member in.
+    if (Object.keys(dashboard ?? {}).includes("allowedGoogleDomains")) {
+      throw new Error(
+        "dashboard.allowedGoogleDomains was removed; set createApp({ allowedDomains }) instead",
+      );
+    }
+    allowedDomains = getChatConfig().signIn.allowedDomains;
     previousTrustConfig = setTrustConfig({
       allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
       allowedDomains,

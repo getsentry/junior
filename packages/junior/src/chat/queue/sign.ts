@@ -1,7 +1,7 @@
 /** Sign and check queue messages before public callbacks run them. */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as z from "zod";
-import { readJuniorSecret } from "@/chat/secrets";
+import { getChatConfig } from "@/chat/config";
 
 export const QUEUE_SIGNATURE_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -66,7 +66,7 @@ export function signQueueMessage<
   signatureVersion: Version;
   signedAtMs: number;
 } {
-  const key = readJuniorSecret();
+  const key = getChatConfig().secrets.juniorSecret;
   if (!key) {
     throw new Error("Cannot sign queue message without JUNIOR_SECRET");
   }
@@ -115,7 +115,7 @@ export function verifyQueueMessage<
     return { status: "rejected", reason: "malformed" };
   }
 
-  const key = readJuniorSecret();
+  const key = getChatConfig().secrets.juniorSecret;
   if (!key) {
     return { status: "unavailable", reason: "missing_secret" };
   }

@@ -6,6 +6,12 @@ import {
   TURN_REASONING_LEVELS,
 } from "@/chat/reasoning-level";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import {
+  readAccessEnv,
+  secretsSchema,
+  signInSchema,
+  webPushSchema,
+} from "@/config-access";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -361,6 +367,9 @@ const configObjectSchema = z.strictObject({
    * the keyring. Startup fails when they are missing or invalid.
    */
   encryption: encryptionSchema,
+  secrets: secretsSchema,
+  signIn: signInSchema,
+  webPush: webPushSchema,
   // No prefault: the database URL has no default.
   sql: z.strictObject({
     databaseUrl: z.string().trim().min(1),
@@ -781,6 +790,7 @@ function readEnv(env: Env): ConfigInput {
       env["JUNIOR_CONVERSATION_WORK_ENABLED"],
     ),
     encryption: readEncryption(env),
+    ...readAccessEnv(env),
     sql: {
       databaseUrl: toOptionalTrimmed(env["DATABASE_URL"]),
       driver: parseSqlDriver(env["JUNIOR_DATABASE_DRIVER"]),

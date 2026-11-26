@@ -298,6 +298,140 @@ describe("chat config", () => {
     ).toBe("https://dashboard.example.com");
   });
 
+  it("reads JUNIOR_SECRET trimmed, with an empty value unset", () => {
+    expect(loadConfig({ env: BASE_ENV }).secrets.juniorSecret).toBeUndefined();
+    expect(
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_SECRET: " s3cret " } }).secrets
+        .juniorSecret,
+    ).toBe("s3cret");
+    expect(
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_SECRET: "   " } }).secrets
+        .juniorSecret,
+    ).toBeUndefined();
+  });
+
+  it("falls back to CRON_SECRET for the scheduler secret", () => {
+    const schedulerSecret = (env: Record<string, string>) =>
+      loadConfig({ env: { ...BASE_ENV, ...env } }).secrets.schedulerSecret;
+
+    expect(schedulerSecret({ CRON_SECRET: " cron " })).toBe("cron");
+    expect(
+      schedulerSecret({
+        JUNIOR_SCHEDULER_SECRET: " own ",
+        CRON_SECRET: "cron",
+      }),
+    ).toBe("own");
+    expect(
+      schedulerSecret({ JUNIOR_SCHEDULER_SECRET: " ", CRON_SECRET: "cron" }),
+    ).toBe("cron");
+  });
+
+  it("keeps the sign-in secret untrimmed, and an empty BETTER_AUTH_SECRET does not fall back", () => {
+    const secret = (env: Record<string, string>) =>
+      loadConfig({ env: { ...BASE_ENV, ...env } }).signIn.secret;
+
+    expect(secret({ JUNIOR_SECRET: " junior " })).toBe(" junior ");
+    expect(
+      secret({ BETTER_AUTH_SECRET: " auth ", JUNIOR_SECRET: "junior" }),
+    ).toBe(" auth ");
+    expect(secret({ BETTER_AUTH_SECRET: "", JUNIOR_SECRET: "junior" })).toBe(
+      "",
+    );
+  });
+
+  it("reads the Google client and trusted origins for sign-in as given", () => {
+    const { signIn } = loadConfig({
+      env: {
+        ...BASE_ENV,
+        GOOGLE_CLIENT_ID: " client-id ",
+        GOOGLE_CLIENT_SECRET: "client-secret",
+        JUNIOR_DASHBOARD_TRUSTED_ORIGINS: '["https://a.example.com"]',
+      },
+    });
+
+    expect(signIn).toMatchObject({
+      googleClientId: " client-id ",
+      googleClientSecret: "client-secret",
+      trustedOrigins: ["https://a.example.com"],
+    });
+    expect(loadConfig({ env: BASE_ENV }).signIn.trustedOrigins).toBeUndefined();
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_DASHBOARD_TRUSTED_ORIGINS: "[1]" },
+      }),
+    ).toThrow("JUNIOR_DASHBOARD_TRUSTED_ORIGINS must be a JSON string array");
+  });
+
+  it("requires dashboard sign-in unless JUNIOR_DASHBOARD_AUTH_REQUIRED is false", () => {
+    const required = (value?: string) =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_DASHBOARD_AUTH_REQUIRED: value },
+      }).signIn.dashboardAuthRequired;
+
+    expect(required()).toBe(true);
+    expect(required(" false ")).toBe(false);
+    expect(required("FALSE")).toBe(true);
+    expect(required("no")).toBe(true);
+  });
+
+  it("reads JUNIOR_ALLOWED_DOMAINS as a JSON array or comma separated values", () => {
+    const allowedDomains = (value: string) =>
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: value } }).signIn
+        .allowedDomains;
+
+    expect(allowedDomains('["Sentry.io", "example.com"]')).toEqual([
+      "sentry.io",
+      "example.com",
+    ]);
+    expect(allowedDomains(" sentry.io, example.com,SENTRY.io ")).toEqual([
+      "sentry.io",
+      "example.com",
+    ]);
+    expect(loadConfig({ env: BASE_ENV }).signIn.allowedDomains).toEqual([]);
+  });
+
+  it("prefers the createApp allowed domains over the env list", () => {
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: "example.com" },
+        options: { signIn: { allowedDomains: ["Sentry.io"] } },
+      }).signIn.allowedDomains,
+    ).toEqual(["sentry.io"]);
+  });
+
+  it("rejects an allowed domains env list that is not a JSON string array", () => {
+    expect(() =>
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_ALLOWED_DOMAINS: "[1]" } }),
+    ).toThrow("JUNIOR_ALLOWED_DOMAINS must be a JSON string array");
+  });
+
+  it("rejects the removed JUNIOR_DASHBOARD_GOOGLE_DOMAINS", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_DASHBOARD_GOOGLE_DOMAINS: "sentry.io" },
+      }),
+    ).toThrow(
+      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
+    );
+  });
+
+  it("reads the web push keys and subject trimmed", () => {
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_WEB_PUSH_PRIVATE_KEY: " private ",
+          JUNIOR_WEB_PUSH_PUBLIC_KEY: " public ",
+          JUNIOR_WEB_PUSH_SUBJECT: " mailto:junior@example.com ",
+        },
+      }).webPush,
+    ).toEqual({
+      privateKey: "private",
+      publicKey: "public",
+      subject: "mailto:junior@example.com",
+    });
+  });
+
   it("enables conversation work by default", () => {
     const config = loadConfig({ env: BASE_ENV });
     expect(config.conversationWorkEnabled).toBe(true);

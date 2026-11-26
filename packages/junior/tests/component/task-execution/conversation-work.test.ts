@@ -58,6 +58,7 @@ import {
   runTestHeartbeat,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
+import { useConfig } from "../../fixtures/config";
 const OTHER_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -104,8 +105,6 @@ function metadataEventsStore(events: string[]): ConversationStore {
 }
 
 describe("conversation work execution", () => {
-  const originalJuniorSecret = process.env["JUNIOR_SECRET"];
-
   beforeEach(async () => {
     await disconnectStateAdapter();
   });
@@ -113,11 +112,6 @@ describe("conversation work execution", () => {
   afterEach(async () => {
     await closeDb();
     await disconnectStateAdapter();
-    if (originalJuniorSecret === undefined) {
-      delete process.env["JUNIOR_SECRET"];
-    } else {
-      process.env["JUNIOR_SECRET"] = originalJuniorSecret;
-    }
     vi.useRealTimers();
   });
 
@@ -2808,7 +2802,7 @@ describe("conversation work execution", () => {
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {
-    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
+    useConfig({ secrets: { juniorSecret: "conversation-work-secret" } });
     const signedAtMs = 12_345;
     const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
@@ -2846,7 +2840,7 @@ describe("conversation work execution", () => {
   });
 
   it("keeps queue signatures valid across default visibility redelivery", () => {
-    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
+    useConfig({ secrets: { juniorSecret: "conversation-work-secret" } });
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
       conversationQueueMessage(),

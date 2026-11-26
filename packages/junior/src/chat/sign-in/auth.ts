@@ -21,9 +21,7 @@ import {
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { getChatConfig } from "@/chat/config";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
-import { readSignInSecret } from "@/chat/secrets";
 import { isAllowedDomain } from "@/chat/identities/trust";
-import { readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -115,7 +113,7 @@ function withHttps(host: string): string {
     : `https://${host}`;
 }
 
-/** Resolve sign-in settings from dashboard options and environment. */
+/** Resolve sign-in settings from dashboard options and config. */
 export function resolveSignInAuthConfig(
   agentName: string,
   allowedDomains: string[],
@@ -137,9 +135,7 @@ export function resolveSignInAuthConfig(
     baseURL,
     sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
     trustedOrigins:
-      options.trustedOrigins ??
-      readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS") ??
-      [],
+      options.trustedOrigins ?? getChatConfig().signIn.trustedOrigins ?? [],
   };
 }
 
@@ -152,7 +148,7 @@ function required(value: string | undefined, name: string): string {
 
 function createBetterAuth(config: SignInAuthConfig) {
   const secret = required(
-    config.secret ?? readSignInSecret(),
+    config.secret ?? getChatConfig().signIn.secret,
     "JUNIOR_SECRET or BETTER_AUTH_SECRET",
   );
   const sessionMaxAgeSeconds =
@@ -176,11 +172,12 @@ function createBetterAuth(config: SignInAuthConfig) {
     socialProviders: {
       google: {
         clientId: required(
-          config.googleClientId ?? process.env["GOOGLE_CLIENT_ID"],
+          config.googleClientId ?? getChatConfig().signIn.googleClientId,
           "GOOGLE_CLIENT_ID",
         ),
         clientSecret: required(
-          config.googleClientSecret ?? process.env["GOOGLE_CLIENT_SECRET"],
+          config.googleClientSecret ??
+            getChatConfig().signIn.googleClientSecret,
           "GOOGLE_CLIENT_SECRET",
         ),
         hd: hostedDomain,

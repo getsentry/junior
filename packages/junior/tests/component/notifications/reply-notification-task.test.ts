@@ -49,12 +49,6 @@ import { mswServer } from "../../msw/server";
 
 const EMAIL = "alice@example.com";
 const PUSH_ORIGIN = "https://fcm.googleapis.com/fcm/send";
-const ENV_NAMES = [
-  "JUNIOR_WEB_PUSH_PUBLIC_KEY",
-  "JUNIOR_WEB_PUSH_PRIVATE_KEY",
-  "JUNIOR_WEB_PUSH_SUBJECT",
-] as const;
-
 /** A browser subscription with real P-256 keys, so Web Push can encrypt. */
 function browserSubscription(device: string) {
   const ecdh = createECDH("prime256v1");
@@ -258,16 +252,19 @@ async function completeDashboardTurn(
 }
 
 describe("reply notification task", () => {
-  const savedEnv = new Map<string, string | undefined>();
+  let keys: ReturnType<typeof webPush.generateVAPIDKeys>;
   let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
   let pushes: Request[];
 
   beforeEach(async () => {
-    for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
-    const keys = webPush.generateVAPIDKeys();
-    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
-    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
-    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
+    keys = webPush.generateVAPIDKeys();
+    useConfig({
+      webPush: {
+        privateKey: keys.privateKey,
+        publicKey: keys.publicKey,
+        subject: "mailto:junior@example.com",
+      },
+    });
     previousLinks = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -287,10 +284,6 @@ describe("reply notification task", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    for (const [name, value] of savedEnv) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
     setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
@@ -498,8 +491,10 @@ describe("reply notification task", () => {
   });
 
   it("signs pushes with the Vercel URL when no subject or base URL is set", async () => {
-    delete process.env["JUNIOR_WEB_PUSH_SUBJECT"];
-    useConfig({ deployment: { vercelProductionUrl: "junior.example.com" } });
+    useConfig({
+      deployment: { vercelProductionUrl: "junior.example.com" },
+      webPush: { privateKey: keys.privateKey, publicKey: keys.publicKey },
+    });
     const api = await viewerApi();
     await api(
       "POST",

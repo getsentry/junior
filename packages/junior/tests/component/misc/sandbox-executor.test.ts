@@ -215,6 +215,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { useConfig } from "../../fixtures/config";
 interface SandboxFixtureOptions {
   sandboxId?: string;
   /** The stored ref of an earlier Run. Wins over `sandboxId`. */
@@ -609,14 +610,13 @@ describe("createTestSandbox", () => {
     delete process.env["VERCEL_OIDC_TOKEN"];
     delete process.env["VERCEL_SANDBOX_KEEPALIVE_MS"];
     delete process.env["SANDBOX_VCPUS"];
-    process.env["JUNIOR_SECRET"] = "test-secret";
+    useConfig({ secrets: { juniorSecret: "test-secret" } });
   });
 
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     await disconnectStateAdapter();
-    delete process.env["JUNIOR_SECRET"];
   });
 
   it("preserves an unopened sandbox reference without rewriting its profile", () => {
