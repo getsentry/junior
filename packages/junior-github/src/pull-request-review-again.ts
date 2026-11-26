@@ -493,11 +493,11 @@ export async function dropHeldGitHubReviewAsk(
 }
 
 /**
- * Why Junior asked a reviewer again: `handled` when the last comment was
- * marked and the checks already passed, `checks` when passing checks
- * released a held ask.
+ * Why Junior asked a reviewer: `handled` when the last comment was marked
+ * and the checks already passed, `checks` when passing checks released a
+ * held ask, `question` when a Junior comment asked the requester.
  */
-export type GitHubReviewAskReason = "checks" | "handled";
+export type GitHubReviewAskReason = "checks" | "handled" | "question";
 
 // The tool asks on GitHub, and GitHub's review request webhook shows the
 // item. The mark only needs to outlive that delivery.
@@ -505,10 +505,12 @@ const ASKED_TTL_MS = 60 * 60 * 1000;
 
 const askedSchema = z.object({
   at: z.iso.datetime(),
+  // Unset means `handled`.
+  reason: z.enum(["handled", "question"]).optional(),
   reviewer: z.string().min(1),
 });
 
-/** A review that the feedback tool asked for, until the item shows it. */
+/** A review that a Junior tool asked for, until the item shows it. */
 export type GitHubReviewAsked = z.output<typeof askedSchema>;
 
 function askedKey(target: {
@@ -518,7 +520,7 @@ function askedKey(target: {
   return `pull-request-review-asked:${target.repositoryFullName.toLowerCase()}#${target.number}`;
 }
 
-/** Record that the feedback tool asked `reviewer` again on one pull request. */
+/** Record that a Junior tool asked `reviewer` on one pull request. */
 export async function markGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
@@ -527,7 +529,7 @@ export async function markGitHubReviewAsked(
   await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
 }
 
-/** Return the review that the feedback tool asked for on one pull request. */
+/** Return the review that a Junior tool asked for on one pull request. */
 export async function readGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
@@ -536,7 +538,7 @@ export async function readGitHubReviewAsked(
   return saved.success ? saved.data : undefined;
 }
 
-/** Drop the record of a review that the feedback tool asked for. */
+/** Drop the record of a review that a Junior tool asked for. */
 export async function dropGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },

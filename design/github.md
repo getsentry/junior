@@ -55,6 +55,9 @@ also wake a Conversation or run an Event automation.
   them again until someone asks them again on GitHub.
 - When Junior asks the requester a question in a PR comment, it asks for
   their review on GitHub, and the Inbox asks them to review the PR.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox says that Junior asked them a
+  question.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
