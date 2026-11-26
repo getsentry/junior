@@ -282,13 +282,13 @@ describe("Lead child results", () => {
     const { run } = await agent({ limits: { maxToolCallsPerTurn: 8 } });
     const reported = await run(
       childResult(
-        "Land the craft tag-parsing fix",
+        "Land the craft picomatch patch",
         `${MERGED_PULL_REQUEST} is held: it waits on a maintainer review before it can merge.`,
       ),
       {
         history: [
           webMessage(
-            `get the craft tag-parsing fix in ${MERGED_PULL_REQUEST} landed. I want to cut a craft release once it's in`,
+            `get the craft picomatch patch in ${MERGED_PULL_REQUEST} landed. I want to cut a craft release once it's in`,
           ),
           reply(
             `Started a Thread to land ${MERGED_PULL_REQUEST}. I'll tell you when it's in.`,
@@ -313,7 +313,7 @@ describe("Lead child results", () => {
     }
 
     const asked = await reported.continue(
-      webMessage("is the fix in? can I cut the craft release now?"),
+      webMessage("is the patch in? can I cut the craft release now?"),
     );
 
     // The member's release decision depends on the claim, so a child reads
