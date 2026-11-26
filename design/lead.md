@@ -55,7 +55,7 @@ theirs to decide.
 
 - The Lead starts work with `startConversation`, and has no `startAgent`,
   `listAgents`, `stopAgent`, or `archiveAgent`. This breaks the tool list
-  and "one toolset" in `./agent-teams.md`. getsentry/junior#4413 tracks it.
+  and `one-toolset` in `./agent-teams.md`. getsentry/junior#4413 tracks it.
 - The Lead lists no `addInboxItem`, `updateInboxItem`, or provider read
   tools yet. So it asks members in its reply, and it cannot check a child's
   claim. getsentry/junior#4421 tracks it.

@@ -246,6 +246,7 @@ const LEAD_TOOLS = [
   "systemTime",
   "updateUserCustomization",
   "setConfiguration",
+  "listSpaces",
   "moveConversationToSpace",
   "noReply",
 ] as const satisfies readonly StaticToolName[];

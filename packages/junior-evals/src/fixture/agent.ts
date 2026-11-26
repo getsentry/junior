@@ -29,6 +29,7 @@ import {
   createSpace,
   jsonRequest,
   postWebMessage,
+  readConversationSpace,
   readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
@@ -149,6 +150,10 @@ export interface FixtureAgent {
    * person is not a member of it.
    */
   createOtherSpace(name: string): Promise<{ id: string }>;
+  /** Read the Space of a Conversation as the web person sees it. */
+  readConversationSpace(
+    conversationId: string,
+  ): Promise<{ id: string; name: string } | null>;
 }
 
 /** Create the Junior app for one test and the calls that drive it. */
@@ -923,5 +928,12 @@ export async function createFixtureAgent(
   const createOtherSpace = (name: string) =>
     createSpace(api, OTHER_WEB_VIEWER_EMAIL, name);
 
-  return { run, close, redeploy, createOtherSpace };
+  return {
+    run,
+    close,
+    redeploy,
+    createOtherSpace,
+    readConversationSpace: (conversationId) =>
+      readConversationSpace(api, WEB_VIEWER_EMAIL, conversationId),
+  };
 }

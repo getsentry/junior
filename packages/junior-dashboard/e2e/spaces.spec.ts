@@ -58,17 +58,18 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
       "Move invoicing to the new billing provider without double charges.",
     ),
   ).toBeVisible();
+  // Both of its Threads are done, so they show once Done opens.
+  const threads = details.getByRole("region", { exact: true, name: "Threads" });
+  await threads.getByRole("button", { name: "Done · 2" }).click();
   await expect(
-    details
-      .getByRole("region", { exact: true, name: "Conversations" })
-      .getByRole("link", { name: /Plan the billing migration/ }),
+    threads.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
   await expect(
     details.getByRole("region", { name: "Members" }).getByText("Avery Chen"),
   ).toBeVisible();
   await screenshot(page, "space-page", { view: "desktop" });
 
-  // A Conversation row opens it, and Back returns to the Space.
+  // A Thread row opens it, and Back returns to the Space.
   await details
     .getByRole("link", { name: /Plan the billing migration/ })
     .click();
@@ -164,7 +165,7 @@ test("each pane row shows what its Space's Conversations need", async ({
     ).toBeVisible();
     // A failure outranks work that still runs.
     await expect(
-      row("Mobile app").getByRole("img", { name: "A Conversation failed" }),
+      row("Mobile app").getByRole("img", { name: "A Thread failed" }),
     ).toBeVisible();
     await expect(
       row("Pricing launch").getByRole("status", { name: "Working" }),
@@ -217,7 +218,7 @@ test("a Space's page shows its settings when they are opened", async ({
   ).toBeVisible();
 });
 
-test("another Space's page does not show the last Space's Conversations", async ({
+test("another Space's page does not show the last Space's Threads", async ({
   dashboard,
   page,
 }) => {
@@ -227,6 +228,7 @@ test("another Space's page does not show the last Space's Conversations", async 
   const billingRow = details.getByRole("link", {
     name: /Plan the billing migration/,
   });
+  await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(billingRow).toBeVisible();
 
   // Hold the next Space's list, so the page shows it loading.
@@ -250,6 +252,8 @@ test("another Space's page does not show the last Space's Conversations", async 
   await expect(details.getByText("Riley Park")).toBeVisible();
   await expect(billingRow).toHaveCount(0);
   release();
+  // Its one Thread is done, so it shows once Done opens.
+  await details.getByRole("button", { name: "Done · 1" }).click();
   await expect(
     details.getByRole("link", { name: /SDK changelog summary 8/ }),
   ).toBeVisible();

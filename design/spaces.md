@@ -11,9 +11,9 @@ Conversation. What the Lead does is in `./lead.md`.
 
 - A Space is a Conversation tree. Parents, roots, Participants, visibility,
   access, stops, archives, Watches, and updates work the same as in every
-  other tree (`./child-agents.md`, `./agent-teams.md`). A Space adds only
-  the layers under "Space layers", so a fix to the tree also fixes Spaces,
-  and no Space code repeats tree code.
+  other tree (`./agent-teams.md`). A Space adds only the layers under
+  "Space layers", so a fix to the tree also fixes Spaces, and no Space code
+  repeats tree code.
 - Large work has a home that people choose. A Space holds one body of work,
   big or small, short or long, with a name that people pick. Its Lead keeps
   track of that work only, so a person can hand it a lot without mixing it

@@ -17,7 +17,7 @@ import { SpaceOverview } from "./SpaceDetails";
 
 /**
  * One Space, which shows its Lead. Members talk to the Lead here, and the
- * Space's details beside it list its Conversations and members. Anyone can
+ * Space's details beside it list its Threads and members. Anyone can
  * open a Space, and read its Lead once a member has talked to it.
  */
 export function SpacePage(props: {
