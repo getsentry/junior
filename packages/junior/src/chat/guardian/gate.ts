@@ -39,6 +39,8 @@ export interface ToolActionReviewContext {
   conversationId: string;
   credentialContext?: CredentialContext | undefined;
   destination: Destination;
+  /** The Run is a Space's Lead. */
+  lead?: boolean;
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -307,6 +309,7 @@ function buildProposal(
       conversationId: context.conversationId,
       ...(credential ? { credential } : undefined),
       destination: context.destination,
+      ...(context.lead ? { lead: true as const } : undefined),
       source: context.source,
       userIntent: context.userIntent(),
     },
