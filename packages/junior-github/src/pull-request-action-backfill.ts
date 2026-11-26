@@ -33,7 +33,8 @@ import {
 export const GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK =
   "backfillPullRequestActions";
 
-const VERSION = "v1";
+// v2: a requester without write access gets no merge ask.
+const VERSION = "v2";
 const CURSOR_KEY = `pull-request-action-backfill:${VERSION}:cursor`;
 const DONE_KEY = `pull-request-action-backfill:${VERSION}:done`;
 // How often a page ran again, so its next run has a new task key.
