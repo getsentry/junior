@@ -11,6 +11,7 @@ import {
 import type { EngineContext } from "@/core/engine-context";
 import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
+import { TurnFailedError } from "@/core/turn/failure";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import {
@@ -150,6 +151,47 @@ describe("advanceTurn at the end of a Turn", () => {
   });
 });
 
+describe("advanceTurn when host code fails the Turn", () => {
+  it("ends the Turn as failed on the first try, and runs no tool of the batch", async () => {
+    const executed: string[] = [];
+    harness = await createTurnHarness({
+      tools: () =>
+        Promise.resolve({
+          definitions: [sendTool(executed)],
+          hooks: {
+            beforeBatch: () =>
+              Promise.reject(
+                new TurnFailedError("tool_call_limit", {
+                  failureCode: "agent_run_failed",
+                  eventId: "event-1",
+                }),
+              ),
+          },
+          close: () => {},
+        }),
+    });
+    onTestFinished(() => harness.close());
+    await setModelReplies([
+      createAssistantMessage({
+        type: "toolCalls",
+        calls: [{ name: "send", arguments: {}, id: "call-1" }],
+      }),
+    ]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runUntilIdle();
+
+    expect(executed).toEqual([]);
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      attempts: 1,
+      endReason: "tool_call_limit",
+      failureCode: "agent_run_failed",
+      failureEventId: "event-1",
+    });
+  });
+});
+
 // These cases need a fault or a timing that no edge can give: an input that
 // arrives while the model request runs, or a prompt loader that fails.
 describe("advanceTurn at the end of a Turn, with a test step", () => {
@@ -234,6 +276,38 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
       expect.objectContaining({ id: lateId, turnId: next!.id }),
     );
     expect(engine.sentStepMessages(next!.id)).toBe(0);
+  });
+
+  it("ends the Turn as failed on the first try when a required loader throws TurnFailedError", async () => {
+    await engine.addTestInput("How many Turns?");
+    // Core names the loader in a new error, with this one as its cause.
+    const memory = loader(
+      "memory",
+      () =>
+        Promise.reject(
+          new TurnFailedError("memory_refused", {
+            failureCode: "agent_run_failed",
+          }),
+        ),
+      { timeoutMs: 1_000 },
+    );
+    const prompt = promptForEveryTurn(
+      testPrompt([
+        testInputs(),
+        fragment("memory", {
+          loader: memory,
+          format: (text): FragmentMessage => ({ role: "user", content: text }),
+        }),
+      ]),
+    );
+
+    await engine.advance({ prompt });
+
+    await expect(engine.readTurn()).resolves.toMatchObject({
+      state: "failed",
+      endReason: "memory_refused",
+      failureCode: "agent_run_failed",
+    });
   });
 
   it("drops the inputs when every try of a step throws, and moves none", async () => {
