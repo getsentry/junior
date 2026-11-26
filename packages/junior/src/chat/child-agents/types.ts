@@ -16,7 +16,8 @@ export const agentNameSchema = exactStringSchema.max(64);
 
 /**
  * Kind of a child agent, stored as its Conversation kind. A Thread is a
- * child that people can message; a Task is one that only its parent messages.
+ * child that people can message; a Task is one that only its parent gives
+ * work.
  */
 export const CHILD_AGENT_KINDS = ["thread", "task"] as const;
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];

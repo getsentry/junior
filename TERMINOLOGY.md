@@ -33,7 +33,7 @@ Canonical words for Junior code and docs. One concept, one word.
   is a root, or a child agent that `startAgent` starts as a `thread`. The
   dashboard calls each child of a Lead a Thread. Say "Slack thread" for the
   Location. A bare "Thread" is the Conversation.
-- **Task**: a child Conversation that only its parent messages. People can
+- **Task**: a child Conversation that only its parent gives work. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
 - **Team**: an agent and its child agents. It sets who manages an agent,
@@ -203,11 +203,11 @@ Canonical words for Junior code and docs. One concept, one word.
   before it runs it. The child's final text, or a failed, blocked, or
   stopped result, reaches the parent. Do not say "Agent invocation"; it is the
   retired name.
-- **Agent message**: `messageAgent` text to a parent, a child, or another
-  top-level agent (the agent of a root Conversation). To a child it is the
-  child's instruction: a Parent message that starts work or steers a running
-  Turn.
-  To a parent or a top-level agent it is an Event Inbound message. The
+- **Agent message**: `messageAgent` text to a parent, a child, another agent
+  of the same tree, or, from a top-level agent, another top-level agent. To a
+  child it is the child's instruction: a Parent message that starts work or
+  steers a running Turn.
+  To any other agent it is an Event Inbound message. The
   agent's own text gives no user approval. A person's own words that it
   passes on, linked to where the person wrote them, count as that person's
   lines.

@@ -38,8 +38,8 @@ export class AgentStoppedError extends Error {
 }
 
 /**
- * A messageAgent target is not the parent, a child, or a top-level agent that
- * the sender can message.
+ * A messageAgent target is not the parent, a child, another agent of the same
+ * tree, or a top-level agent that the sender can message.
  */
 export class AgentMessageTargetError extends Error {
   constructor(message: string) {

@@ -1076,8 +1076,8 @@ async function executeAgentRunInPrivacyContext(
     // instead of rejecting. Preserve Junior's yield so runAgentStep can
     // restore it after the Pi run settles without leaking Pi mechanics into
     // the resume API.
-    // A Task inherits the person's actor, but only its parent agent sends it
-    // Turns. Keep its gaps out of the histograms of people.
+    // A Task inherits the person's actor, but only agents send it Turns.
+    // Keep its gaps out of the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
       {

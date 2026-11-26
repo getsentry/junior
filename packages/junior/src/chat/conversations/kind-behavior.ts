@@ -8,10 +8,9 @@ import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import type { StaticToolName } from "@/chat/tool-support/registry";
 
 /**
- * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
- * when spawnAgent is available. `children_and_parent`: the same, but
- * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn.
+ * Which agent tools a Turn gets. Each gets messageAgent. `children`: also
+ * spawnAgent. `children_and_parent`: also spawnAgent, unless the Turn is too
+ * deep to spawn.
  */
 export type AgentTools = "children" | "children_and_parent";
 

@@ -68,7 +68,7 @@ const childInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "thread: a work item that people open, message, and steer. A request for a thread means this, not a Slack thread. task (default): background work that only you message.",
+        "thread: a work item that people open, message, and steer. A request for a thread means this, not a Slack thread. task (default): background work that only you give work to.",
       ),
     agent_type: z
       .enum(AGENT_TYPES)

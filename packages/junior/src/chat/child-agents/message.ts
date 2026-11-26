@@ -13,7 +13,7 @@ import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import { messageChildAgent } from "./create";
-import { enqueueTopLevelAgentMessage } from "./top-level-message";
+import { enqueueReachableAgentMessage } from "./reachable-agent-message";
 import { PARENT_AGENT_TARGET } from "./types";
 
 type MessageOptions = {
@@ -23,10 +23,11 @@ type MessageOptions = {
 };
 
 /**
- * Bind a Run's Actor and credentials to messages for its parent and child
- * agents, and for other top-level agents. A message to a child continues that
- * child. A message to the parent wakes the parent like a result. A top-level
- * agent can also message another top-level agent that it has access to.
+ * Bind a Run's Actor and credentials to messages for its parent, its child
+ * agents, and the other agents of its tree. A top-level agent can also
+ * message another top-level agent that it has access to. A message to a
+ * child continues that child. A message to the parent wakes the parent like
+ * a result. A message to any other agent wakes it as an Event.
  */
 export function bindMessageAgent(
   run: AgentRun,
@@ -68,7 +69,7 @@ export function bindMessageAgent(
       target: input.to,
     });
     if (!childConversationId) {
-      await enqueueTopLevelAgentMessage({
+      await enqueueReachableAgentMessage({
         askingActor: isPersonInput(run.source.kind) ? actor : undefined,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
