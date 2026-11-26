@@ -52,11 +52,8 @@ import {
   actorLogContext,
   credentialUserSubjectId,
 } from "@/chat/credentials/context";
-import {
-  GEN_AI_PROVIDER_NAME,
-  getGatewayApiKey,
-  resolveGatewayModel,
-} from "@/chat/pi/client";
+import { GEN_AI_PROVIDER_NAME, getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   readAgentHistory,
   type AgentRequestStreamFn,

@@ -1,3 +1,5 @@
+import { getChatConfig } from "@/chat/config";
+
 export function shouldEmitDevAgentTrace(): boolean {
-  return process.env["NODE_ENV"] === "development";
+  return getChatConfig().development.enabled;
 }
