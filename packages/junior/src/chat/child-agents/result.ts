@@ -79,7 +79,7 @@ function renderResultInput(
     : agentResult;
 }
 
-const NO_REPLY_REMINDER = `If this is only a status update that needs nothing from a member or from another Conversation, end with \`${NO_REPLY_TOOL_NAME}\`.`;
+const NO_REPLY_REMINDER = `If this result changes nothing for the members or for another Conversation, end with \`${NO_REPLY_TOOL_NAME}\`.`;
 
 // A blocked, failed, or stopped child needs the parent to act, so only a
 // child's done result and its messages get the reminder.
