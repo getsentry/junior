@@ -444,7 +444,9 @@ async function loadRepositoryAccess(
     "repository role",
   );
   return await cache.getOrLoad(
-    `repository-access:${owner}/${name}:${target.login}`.toLowerCase(),
+    // Not `repository-access:`, which `repository-access.ts` keeps a boolean
+    // under in the same plugin cache.
+    `repository-permission:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
       const token = await issueInstallationToken({
         ...env,

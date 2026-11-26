@@ -32,12 +32,13 @@ rules:
   - id: alert-trigger
     serves: [alert-visibility, notice-never-asks]
     rows:
-      - when: { trigger_available: false, viewer.creator: true }
+      - when: { state: active, trigger_available: false, viewer.creator: true }
         output: { notice: { step: that names the problem } }
   - id: alert-run-failed
     serves: [alert-steps]
     rows:
-      - when: { last_run: "failed, blocked", viewer.creator: true }
+      - when:
+          { state: active, last_run: "failed, blocked", viewer.creator: true }
         output:
           ask:
             content: an ask with the steps that fit, such as Run again and Pause

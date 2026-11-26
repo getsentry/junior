@@ -19,8 +19,10 @@ rules:
   - id: todo-closed
     serves: [todo-follows]
     rows:
-      - when: { state: "done, dropped" }
+      - when: { state: done }
         output: { close: done }
+      - when: { state: dropped }
+        output: { close: dismissed }
       - when: { person_owner: false }
         output: { close: dismissed }
   - id: todo-access
