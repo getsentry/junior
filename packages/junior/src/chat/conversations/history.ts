@@ -117,6 +117,12 @@ const legacyHandoffEventDataSchema = z
   })
   .strict();
 
+/** The data of an event that replaces the active agent history. */
+export const historyReplacementDataSchema = z.discriminatedUnion("type", [
+  historyReplacementEventDataSchema,
+  legacyHandoffEventDataSchema,
+]);
+
 /** Validate an event that intentionally replaces active model history. */
 export const historyReplacementSchema = z
   .object({
