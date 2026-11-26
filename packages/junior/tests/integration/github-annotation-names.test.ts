@@ -686,7 +686,14 @@ describe("a GitHub issue of a renamed repository", () => {
       }),
     ]);
 
-    // With no row of its own here, the issue takes its key's stale row.
+    // With no row of its own here, the issue takes its key's stale row as
+    // a new Annotation: the other issue's time and created action go.
+    await getDb()
+      .update(juniorConversationAnnotations)
+      .set({ action: "created" })
+      .where(
+        eq(juniorConversationAnnotations.key, "getsentry/junior-next#4254"),
+      );
     await getDb()
       .delete(juniorConversationAnnotations)
       .where(
@@ -710,10 +717,18 @@ describe("a GitHub issue of a renamed repository", () => {
     );
     expect(await annotationsOf(slackParentConversationId)).toEqual([
       expect.objectContaining({
+        action: "changed",
         key: "getsentry/junior-next#4254",
         subjectId: "4254000",
       }),
     ]);
+    const [taken] = await getDb()
+      .select({ createdAt: juniorConversationAnnotations.createdAt })
+      .from(juniorConversationAnnotations)
+      .where(
+        eq(juniorConversationAnnotations.key, "getsentry/junior-next#4254"),
+      );
+    expect(taken!.createdAt.getTime()).toBeGreaterThan(1_000);
   });
 
   it("stays on the new name when a tool changes the issue by its old name", async () => {
