@@ -498,6 +498,15 @@ ORDER BY table_name ASC, ordinal_position ASC
           (column) => column !== "brief_version",
         ),
       );
+      // The schema drops these, and space_lead_holds_name keeps them for one
+      // release. Remove this when the follow-up migration drops them.
+      actual.delete("junior_space_members");
+      actual.set(
+        "junior_spaces",
+        (actual.get("junior_spaces") ?? []).filter(
+          (column) => !["archived_at", "name", "visibility"].includes(column),
+        ),
+      );
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 

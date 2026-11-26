@@ -9,7 +9,6 @@ import {
   or,
   sql,
   type SQL,
-  type SQLWrapper,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
@@ -17,7 +16,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
@@ -66,27 +64,21 @@ export function conversationHasParticipantUser(userId: string): SQL {
   return exists(memberParticipantRow({ userId }));
 }
 
-function privateSpaceIds() {
-  return getDb()
-    .select({ id: juniorSpaces.id })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.visibility, "private"));
-}
-
 const spaceLead = alias(juniorConversations, "membership_space_lead");
 
 /**
- * The Leads of some Spaces, as one array. Every Conversation in a Space has
- * its Lead as its tree root, so this finds the Space of every row. The
- * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
- * once, where a hashed subquery in a filter is charged on each index probe.
+ * The Leads of private Spaces, as one array. A Space has its Lead's
+ * visibility, and every Conversation in a Space has its Lead as its tree
+ * root, so this finds the Space of every row. The uncorrelated `array(...)`
+ * runs once as an InitPlan, which Postgres charges once, where a hashed
+ * subquery in a filter is charged on each index probe.
  */
-function spaceLeadArray(spaceIds: SQLWrapper): SQL {
+function privateSpaceLeadArray(): SQL {
   const leads = getDb()
     .select({ id: spaceLead.conversationId })
     .from(spaceLead)
     .where(
-      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
+      and(eq(spaceLead.kind, "lead"), eq(spaceLead.visibility, "private")),
     );
   return sql`array(${leads})`;
 }
@@ -95,7 +87,7 @@ function spaceLeadArray(spaceIds: SQLWrapper): SQL {
 function outsidePrivateSpaces(): SQL {
   return or(
     isNull(juniorConversations.rootConversationId),
-    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
+    sql`${juniorConversations.rootConversationId} <> all(${privateSpaceLeadArray()})`,
   )!;
 }
 

@@ -6,16 +6,11 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorSpaces,
-} from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { conversationIdsWithParticipantUser } from "./membership";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
-const rootSpace = alias(juniorSpaces, "access_root_space");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
@@ -100,8 +95,10 @@ export async function readConversationAccessRows(
       visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
-      spaceId: rootSpace.id,
-      spaceVisibility: rootSpace.visibility,
+      // A Space has its Lead's visibility. The Lead is the root of every
+      // Conversation in it.
+      spaceId: rootConversation.spaceId,
+      spaceVisibility: rootConversation.visibility,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -115,7 +112,6 @@ export async function readConversationAccessRows(
       rootDestination,
       eq(rootDestination.id, rootConversation.destinationId),
     )
-    .leftJoin(rootSpace, eq(rootSpace.id, rootConversation.spaceId))
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 }
 

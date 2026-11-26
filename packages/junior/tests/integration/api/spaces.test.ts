@@ -471,7 +471,7 @@ describe("Spaces API", () => {
       move({ conversation_id: conversationId, space: others.id }),
     ).rejects.toThrow("Join the Space to add work to it.");
     // A Lead moves it into its own Space with no Space named.
-    const lead = await getSpaceLead({ member: anaUser, space: first });
+    const lead = await getSpaceLead(first.id);
     expect(
       await move(
         { conversation_id: conversationId },
@@ -876,8 +876,29 @@ describe("Spaces API", () => {
     const second = await startConversation(ana, "short-second", {
       spaceId: space.id,
     });
+    const done = await startConversation(ana, "short-done", {
+      spaceId: space.id,
+    });
     const outside = await startConversation(ana, "short-outside");
     const thread = await startThread(first, "local:spaces-archive-thread");
+    const archiveConversation = async (conversationId: string) => {
+      const conversation = await getConversationStore().get({
+        conversationId,
+      });
+      return await request(
+        ana,
+        "PATCH",
+        `/conversations/${encodeURIComponent(conversationId)}/archive`,
+        {
+          applyToChildren: true,
+          lastSeenAt: new Date(
+            conversation?.lastActivityAtMs ?? 0,
+          ).toISOString(),
+        },
+      );
+    };
+    // A Conversation archived on its own stays archived after a restore.
+    expect((await archiveConversation(done)).status).toBe(200);
 
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
     expect(await spaceFeed(ana, space.id)).toEqual([]);
@@ -885,7 +906,7 @@ describe("Spaces API", () => {
       (await spaceFeed(ana, space.id, "archived"))
         .map((row) => row.conversationId)
         .sort(),
-    ).toEqual([first, second].sort());
+    ).toEqual([first, second, done].sort());
     expect(await getConversationStoppedAtMs(first)).toBeDefined();
     expect(await getConversationStoppedAtMs(second)).toBeDefined();
     expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
@@ -909,5 +930,14 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
     ).toEqual([first, second].sort());
+
+    // The Space's archive is its Lead's, so archiving the Lead as any root
+    // archives the Space.
+    const lead = await getSpaceLead(space.id);
+    expect((await archiveConversation(lead.conversationId)).status).toBe(200);
+    expect(
+      spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
+        .archivedAt,
+    ).not.toBeNull();
   });
 });

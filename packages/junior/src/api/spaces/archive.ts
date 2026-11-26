@@ -1,6 +1,8 @@
 import { Hono } from "hono";
-import { setSpaceArchive } from "@/chat/spaces/conversations";
+import { stopConversation } from "@/chat/conversations/stop";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { archiveConversation } from "../conversations/archive";
 import type { JuniorApiEnv } from "../route";
 import { archiveSpaceBodySchema } from "../schema/space";
 import { validateRequest } from "../validation";
@@ -11,9 +13,12 @@ import {
   spaceResponse,
 } from "./access";
 
-/** Create the route that archives or restores a Space with its Conversations. */
+/**
+ * Create the route that archives or restores a Space: its Lead, with the
+ * Conversations below it, as any root archives with its children.
+ */
 export function createSpaceArchiveRoutes(options: {
-  /** Archive stops the Conversations of the Space through it. */
+  /** Archive stops the Lead, with every child agent below it, through it. */
   queue: ConversationWorkQueue;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
@@ -24,15 +29,28 @@ export function createSpaceArchiveRoutes(options: {
     spaceParamsValidator,
     validateRequest("json", archiveSpaceBodySchema, "Invalid request body."),
     async (context) => {
-      const viewerUserId = context.get("viewer").id;
+      const viewer = context.get("viewer");
       const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
-      await setSpaceArchive({
-        archived: context.req.valid("json").archived,
-        queue: options.queue,
-        spaceId,
-      });
-      return await spaceResponse(viewerUserId, spaceId);
+      const { archived } = context.req.valid("json");
+      const space = await requireMemberSpace(viewer.id, spaceId);
+      const lead = await getSpaceLead(spaceId);
+      // Archiving again would write a new time to the Lead, so a restore
+      // would leave the Conversations of the first archive archived.
+      if (archived !== Boolean(space.archivedAt)) {
+        await archiveConversation(viewer, lead.conversationId, {
+          applyToChildren: true,
+          archived,
+          lastSeenAt: new Date(lead.lastActivityAtMs).toISOString(),
+        });
+      }
+      // A retry stops what an earlier try left running.
+      if (archived) {
+        await stopConversation({
+          conversationId: lead.conversationId,
+          queue: options.queue,
+        });
+      }
+      return await spaceResponse(viewer.id, spaceId);
     },
   );
 

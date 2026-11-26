@@ -1,0 +1,97 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "c1ba0d98-7efa-44cd-ac99-8ee019d66c13",
+  "prevIds": ["7fa7b36c-167a-4f6b-8b90-a14c8028e3a5"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_space_members"],
+      "writes": [
+        "s|tbl|public.junior_space_members",
+        "n|tbl|public.junior_space_members",
+        "e|tbl|public.junior_space_members",
+        "n|rel|public.junior_space_members",
+        "n|type|public.junior_space_members"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "name"],
+      "writes": [
+        "s|col|public.junior_spaces.name",
+        "n|col|public.junior_spaces.name",
+        "e|col|public.junior_spaces.name"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "archived_at"],
+      "writes": [
+        "s|col|public.junior_spaces.archived_at",
+        "n|col|public.junior_spaces.archived_at",
+        "e|col|public.junior_spaces.archived_at"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "visibility"],
+      "writes": [
+        "s|col|public.junior_spaces.visibility",
+        "n|col|public.junior_spaces.visibility",
+        "e|col|public.junior_spaces.visibility"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_space_members\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_space_members\",\"space_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_space_members\",\"user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_space_members\",\"joined_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"name\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"archived_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"visibility\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_space_members_user_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_space_members\",\"junior_space_members_space_id_junior_spaces_id_fkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_space_members\",\"junior_space_members_user_id_junior_users_id_fkey\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_space_members\",\"junior_space_members_space_user_pk\"]"
+    }
+  ]
+}

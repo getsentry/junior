@@ -43,7 +43,6 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
-  juniorSpaces,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
@@ -223,20 +222,19 @@ export async function searchConversations(
       ),
       // The Conversations of a private Space share one audience, the members.
       // Space work can have other Destinations than the requester's root, so
-      // only this match reaches all of it.
+      // only this match reaches all of it. The requester's root in a Space is
+      // its Lead, which has the Space's visibility.
       eq(
         rootSpaceIdSql(roots),
         db
-          .select({ id: juniorSpaces.id })
+          .select({ id: rootSpaceIdSql(requesterRoot) })
           .from(requesterRoot)
-          .innerJoin(
-            juniorSpaces,
+          .where(
             and(
-              eq(juniorSpaces.id, rootSpaceIdSql(requesterRoot)),
-              eq(juniorSpaces.visibility, "private"),
+              eq(requesterRoot.conversationId, requesterRootId),
+              eq(requesterRoot.visibility, "private"),
             ),
-          )
-          .where(eq(requesterRoot.conversationId, requesterRootId)),
+          ),
       ),
     ),
     search.annotation

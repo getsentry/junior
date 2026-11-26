@@ -43,11 +43,7 @@ import {
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
-import {
-  juniorSpaceConfigurations,
-  juniorSpaceMembers,
-  juniorSpaces,
-} from "./schema/spaces";
+import { juniorSpaceConfigurations, juniorSpaces } from "./schema/spaces";
 import { juniorTurnInbox } from "./schema/turn-inbox";
 import { juniorTurnOutbox } from "./schema/turn-outbox";
 import { juniorTurns } from "./schema/turns";
@@ -91,7 +87,6 @@ export {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorSpaceConfigurations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
@@ -141,7 +136,6 @@ export const juniorSqlSchema = {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorSpaceConfigurations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
