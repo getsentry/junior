@@ -28,7 +28,8 @@ import type {
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
@@ -219,6 +220,22 @@ describe("Spaces API", () => {
       await (await send(bo, "GET", `/${space.id}`)).json(),
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
+
+    // A mention in the Space's work does not make them a member: people
+    // join a Space themselves.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-api-bo@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESBO",
+    });
+    await startConversation(ana, "spaces-api-mention", {
+      message: "<@USPACESBO> look",
+      spaceId: space.id,
+    });
+    expect(
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
     const joined = await send(bo, "PUT", `/${space.id}/members/me`);
     expect(joined.status).toBe(200);
