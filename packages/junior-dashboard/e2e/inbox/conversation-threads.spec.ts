@@ -67,6 +67,8 @@ test.describe("new UI", () => {
     );
 
     const threads = details.getByRole("region", { name: "Threads" });
+    // Its one Thread is done, so it shows once Done opens.
+    await threads.getByRole("button", { name: "Done · 1" }).click();
     await expect(threads.getByRole("listitem")).toHaveCount(1);
     await threads.getByRole("button", { name: "Show archived (1)" }).click();
     await expect(
