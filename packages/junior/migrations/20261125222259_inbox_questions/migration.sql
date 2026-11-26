@@ -18,40 +18,51 @@ ALTER TABLE "junior_questions" ADD CONSTRAINT "junior_questions_HSrO9i8pUj0G_fke
 CREATE INDEX "junior_questions_conversation_idx" ON "junior_questions" ("conversation_id");--> statement-breakpoint
 CREATE INDEX "junior_questions_search_idx" ON "junior_questions" USING gin ((setweight(to_tsvector('simple', "title"), 'A') || setweight(to_tsvector('simple', "body"), 'B')));--> statement-breakpoint
 CREATE INDEX "junior_questions_title_trgm_idx" ON "junior_questions" USING gin (lower("title") gin_trgm_ops);--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ALTER COLUMN "title" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ALTER COLUMN "body" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" DROP CONSTRAINT "junior_inbox_items_kind_check";--> statement-breakpoint
 -- Old workers still write a question item's content on the item while this
 -- release rolls out: its title, body, and request when they add or change
--- it, and its answer when they close it. This trigger moves that content to
--- the item's question, so new code reads it there. A new item's question
+-- it, and its answer when they close it. This trigger copies that content
+-- to the item's question, so new code reads it there. A new item's question
 -- takes the item's id, and the request's `evidence` key becomes `related`.
--- The backfill below fires the same trigger. Its name
--- sorts after `junior_inbox_items_legacy_subject`, which gives an old
--- worker's new item its subject kind first.
+-- A notice keeps its link in `subject_url`, which becomes its one related
+-- link. The item keeps its own copy, because the old columns and checks
+-- stay for the release before this one. The trigger copies only content
+-- that changed, so a write of new code, which leaves the item's copy as it
+-- is, never copies an old copy over the question. The backfill below fires
+-- the same trigger. Its name sorts after `junior_inbox_items_legacy_subject`,
+-- which gives an old worker's new item its subject kind first.
 CREATE OR REPLACE FUNCTION "junior_inbox_items_legacy_question"()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
+DECLARE
+  question_request jsonb := NEW."request";
 BEGIN
+  IF TG_OP = 'UPDATE'
+    AND NEW."subject_id" IS NOT DISTINCT FROM OLD."subject_id"
+    AND NEW."title" IS NOT DISTINCT FROM OLD."title"
+    AND NEW."body" IS NOT DISTINCT FROM OLD."body"
+    AND NEW."request" IS NOT DISTINCT FROM OLD."request"
+    AND NEW."answer" IS NOT DISTINCT FROM OLD."answer"
+  THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'INSERT' THEN
     NEW."subject_id" := NEW."id";
   END IF;
-  IF NEW."request" ? 'evidence' THEN
-    NEW."request" := (NEW."request" - 'evidence') || jsonb_build_object('related', NEW."request" -> 'evidence');
+  IF question_request ? 'evidence' THEN
+    question_request := (question_request - 'evidence') || jsonb_build_object('related', question_request -> 'evidence');
+  END IF;
+  IF question_request IS NULL AND NEW."kind" = 'notice' AND NEW."subject_url" ~* '^https?://' THEN
+    question_request := jsonb_build_object('related', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), NEW."subject_url"), 120), 'url', "junior_inbox_items_web_link"(NEW."subject_url"))));
   END IF;
   INSERT INTO "junior_questions" ("id", "conversation_id", "turn_id", "title", "body", "request", "answer", "created_at", "updated_at")
-  VALUES (NEW."subject_id", NEW."owner_id", NEW."added_by_turn_id", coalesce(NEW."title", ''), coalesce(NEW."body", ''), NEW."request", NEW."answer", NEW."created_at", NEW."updated_at")
+  VALUES (NEW."subject_id", NEW."owner_id", NEW."added_by_turn_id", coalesce(NEW."title", ''), coalesce(NEW."body", ''), question_request, NEW."answer", NEW."created_at", NEW."updated_at")
   ON CONFLICT ("id") DO UPDATE SET
     "title" = coalesce(NEW."title", "junior_questions"."title"),
     "body" = coalesce(NEW."body", "junior_questions"."body"),
-    "request" = coalesce(NEW."request", "junior_questions"."request"),
+    "request" = coalesce(question_request, "junior_questions"."request"),
     "answer" = coalesce(NEW."answer", "junior_questions"."answer"),
     "updated_at" = NEW."updated_at";
-  NEW."title" := NULL;
-  NEW."body" := NULL;
-  NEW."request" := NULL;
-  NEW."answer" := NULL;
   RETURN NEW;
 END;
 $function$;--> statement-breakpoint
@@ -62,8 +73,4 @@ CREATE TRIGGER "junior_inbox_items_legacy_subject_question" BEFORE INSERT OR UPD
 -- junior:bounded-backfill: it deletes only the question items whose owner Conversation row is gone, which Junior does not expect to find, once.
 DELETE FROM "junior_inbox_items" WHERE "subject_kind" = 'question' AND NOT EXISTS (SELECT 1 FROM "junior_conversations" WHERE "junior_conversations"."conversation_id" = "junior_inbox_items"."owner_id");--> statement-breakpoint
 -- junior:bounded-backfill: each question item moves its content to a new question once, through the trigger above, and the question takes the item's id. It reads only the question items, which are asks and notices for people, and writes each row once.
-UPDATE "junior_inbox_items" SET "subject_id" = "id" WHERE "subject_kind" = 'question';--> statement-breakpoint
--- NOT VALID: the backfill left no question item with an answer of its
--- own, and the check holds for every new write. The next migration
--- validates it without a lock that blocks reads.
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("kind" = 'notice' and "request" -> 'question' is null and "answer" is null) or ("kind" = 'action' and ("request" -> 'question' is not null or ("subject_kind" <> 'reply' and "answer" is null)))) NOT VALID;
+UPDATE "junior_inbox_items" SET "subject_id" = "id" WHERE "subject_kind" = 'question';

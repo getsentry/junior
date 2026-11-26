@@ -1,10 +1,10 @@
-ALTER TABLE "junior_inbox_items" DROP CONSTRAINT "junior_inbox_items_kind_check";--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" DROP CONSTRAINT "junior_inbox_items_owner_check";--> statement-breakpoint
 DROP INDEX "junior_inbox_items_open_dedupe_uidx";--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_kind" text;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> statement-breakpoint
 -- Each item gets its subject. The kind comes from the old key prefix. The
--- subject kind and id now name the item, so new code writes no dedupe key.
+-- subject kind and id now name the item. New code still gets a dedupe key,
+-- and the other old columns and checks stay, so the release before this
+-- one can still read and write every row after a rollback
+-- (20261125223025_inbox_item_owners). A later release drops them.
 -- A GitHub pull request has one item for all of its asks, and its id is
 -- GitHub's id of the pull request, read from the code change records by the
 -- repository and number in the old key, or else by the number and the owner
@@ -12,7 +12,9 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- link as the id when it had one. An agent's item is a question, and its
 -- old key is its id, so two questions about one object stay two items. Its
 -- old subject link, in `subject_url` or else in `subject_id`, becomes its
--- first evidence link.
+-- first evidence link. A notice keeps no request, so its link stays in
+-- `subject_url`, and its question reads it from there
+-- (20261125222259_inbox_questions).
 -- `automation_id` needs no copy:
 -- the run of the owner Conversation names the same Automation.
 --
@@ -93,9 +95,12 @@ BEGIN
     NEW."request" := jsonb_set(NEW."request", '{evidence}', (SELECT coalesce(jsonb_agg(CASE WHEN entry->>'url' ~* '^https?://' THEN jsonb_set(entry, '{url}', to_jsonb("junior_inbox_items_web_link"(entry->>'url'))) ELSE entry END ORDER BY position), '[]'::jsonb) FROM jsonb_array_elements(NEW."request"->'evidence') WITH ORDINALITY AS evidence(entry, position)));
   END IF;
   -- A question reads what it is about from its evidence links, so its old
-  -- subject link becomes its first evidence link. A notice had no request,
-  -- so it gets one with only that link.
-  IF NEW."subject_kind" = 'question'
+  -- subject link becomes its first evidence link. A notice keeps no request,
+  -- because the old kind check still holds, so its link stays in
+  -- `subject_url`.
+  IF NEW."subject_kind" = 'question' AND NEW."kind" = 'notice' AND legacy_link IS NOT NULL THEN
+    NEW."subject_url" := legacy_link;
+  ELSIF NEW."subject_kind" = 'question'
     AND legacy_link IS NOT NULL
     AND NOT coalesce(NEW."request"->'evidence', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('url', legacy_link))
   THEN
@@ -125,9 +130,7 @@ CREATE UNIQUE INDEX "junior_inbox_items_open_subject_uidx" ON "junior_inbox_item
 -- hold for every new write. The next migration validates the NOT NULL checks without a
 -- lock that blocks reads, then sets NOT NULL.
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" -> 'question' is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" -> 'question' is not null or ("junior_inbox_items"."subject_kind" not in ('question', 'reply') and "junior_inbox_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_owner_check" CHECK (("junior_inbox_items"."owner_kind" = 'automation') = ("junior_inbox_items"."subject_kind" = 'automation')) NOT VALID;
+ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;
 -- The snapshot no longer has subject_title, subject_url, subject_title_parts,
 -- automation_id, its foreign key, or junior_inbox_items_automation_idx. They
 -- stay in the database for one release, because old workers still name them

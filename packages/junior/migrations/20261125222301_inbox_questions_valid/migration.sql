@@ -1,3 +1,3 @@
--- VALIDATE CONSTRAINT takes only SHARE UPDATE EXCLUSIVE, so reads and writes
--- keep going during the scan.
-ALTER TABLE "junior_inbox_items" VALIDATE CONSTRAINT "junior_inbox_items_kind_check";
+-- Nothing to do. The old `junior_inbox_items_kind_check` stays for the
+-- release before this one, and it is already valid
+-- (20261125223025_inbox_item_owners).

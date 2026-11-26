@@ -11,7 +11,7 @@ const migrations = readMigrationFiles({
 // subject's open item unique in all provider tenants.
 const owners = migrations.find((entry) =>
   entry.sql.some((statement) =>
-    statement.includes('ALTER COLUMN "owner_id" DROP NOT NULL'),
+    statement.includes('TRIGGER "junior_inbox_items_legacy_write"'),
   ),
 );
 const index = migrations.find((entry) =>
@@ -27,7 +27,7 @@ function oldWorkerItem(
   updatedAt: string,
   subjectId = "slack:C123:1.000001",
 ): string {
-  return `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, subject_kind, subject_id, owner_kind, owner_id, provider, provider_tenant_id, created_at, updated_at) VALUES ('${id}', 'notice', 'open', 'public', 'Reply', 'Junior replied.', 'reply', '${subjectId}', 'conversation', '${subjectId}', 'slack', '${tenant}', '${updatedAt}', '${updatedAt}')`;
+  return `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_kind, subject_id, owner_kind, owner_id, provider, provider_tenant_id, created_at, updated_at) VALUES ('${id}', 'notice', 'open', 'public', 'Reply', 'Junior replied.', 'reply:${subjectId}', 'reply', '${subjectId}', 'conversation', '${subjectId}', 'slack', '${tenant}', '${updatedAt}', '${updatedAt}')`;
 }
 
 describe("inbox item owner migration", () => {
@@ -86,8 +86,9 @@ describe("inbox item owner migration", () => {
           ),
         ),
       ).rejects.toThrow(/junior_inbox_items_open_subject_key_uidx/);
-      // A worker of the last release still writes the owner columns, and a
-      // new worker leaves them empty.
+      // A worker of the last release writes the old columns itself. For a
+      // new worker, the trigger writes them from the owner that it names
+      // for its transaction, so the last release can still read the row.
       await fixture.sql.execute(
         oldWorkerItem(
           "old-worker",
@@ -96,21 +97,36 @@ describe("inbox item owner migration", () => {
           "slack:C123:3.000001",
         ),
       );
+      const newWorkerItem = (id: string, subjectId: string) =>
+        `INSERT INTO junior_inbox_items (id, kind, status, title, body, subject_kind, subject_id, created_at, updated_at) SELECT '${id}', 'notice', 'open', 'Reply', 'Junior replied.', 'reply', '${subjectId}', now(), now()`;
       await fixture.sql.execute(
-        `INSERT INTO junior_inbox_items (id, kind, status, title, body, subject_kind, subject_id, created_at, updated_at) VALUES ('new-worker', 'notice', 'open', 'Reply', 'Junior replied.', 'reply', 'slack:C123:4.000001', now(), now())`,
+        `WITH owner AS (SELECT set_config('junior.inbox_item_owner_kind', 'conversation', true), set_config('junior.inbox_item_owner_id', 'slack:C123:4.000001', true)) ${newWorkerItem("new-worker", "slack:C123:4.000001")} FROM owner`,
       );
       expect(
         await fixture.sql.query(
-          `SELECT id, owner_id, visibility FROM junior_inbox_items WHERE id IN ('old-worker', 'new-worker') ORDER BY id`,
+          `SELECT id, dedupe_key, owner_kind, owner_id, visibility FROM junior_inbox_items WHERE id IN ('old-worker', 'new-worker') ORDER BY id`,
         ),
       ).toEqual([
-        { id: "new-worker", owner_id: null, visibility: null },
         {
+          dedupe_key: "reply:slack:C123:4.000001",
+          id: "new-worker",
+          owner_id: "slack:C123:4.000001",
+          owner_kind: "conversation",
+          // The owner Conversation has no Destination here.
+          visibility: "private",
+        },
+        {
+          dedupe_key: "reply:slack:C123:3.000001",
           id: "old-worker",
           owner_id: "slack:C123:3.000001",
+          owner_kind: "conversation",
           visibility: "public",
         },
       ]);
+      // A new write that names no owner fails, so no row goes without one.
+      await expect(
+        fixture.sql.execute(newWorkerItem("no-owner", "slack:C123:5.000001")),
+      ).rejects.toThrow(/has no owner to write/);
     } finally {
       await fixture.close();
     }

@@ -460,10 +460,12 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
-    // A take changes whom a running Task's item for Everyone waits on.
+    // A take changes whom a running Task's item up for grabs waits on. The
+    // Conversation is private, so the item has no assignees: it cannot name
+    // Everyone yet.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
-      assignedToEveryone: true,
+      assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone may approve.",
       conversationIds: [`${OWN}:child`],

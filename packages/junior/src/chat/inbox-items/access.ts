@@ -576,8 +576,11 @@ export async function requireInboxItemLinks(args: {
 }
 
 /**
- * Check who an agent assigns a private item to. Everyone means the people
- * who can see its owner (`inboxItemForEveryoneOfOwner`). Each User must be the current Actor, a Participant of one of the given
+ * Check who an agent assigns a private item to. It cannot go to Everyone
+ * yet: the old visibility check stays for the release before this one
+ * (migration `20261125223025_inbox_item_owners`), and a later release lets
+ * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
+ * Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that
  * added it), or the creator of the Automation that added the item. An
  * Automation run often has no Actor and no people yet, and its creator wrote
@@ -591,6 +594,11 @@ export async function requireInboxItemAssignees(args: {
   visibility: InboxItemVisibility;
 }): Promise<void> {
   if (args.visibility === "public") return;
+  if (args.assignees.everyone) {
+    throw new ToolInputError(
+      "A private item cannot be assigned to Everyone. Assign Users instead.",
+    );
+  }
   const creatorId = args.automationId
     ? await automationCreatorUserId(getDb(), args.automationId)
     : undefined;
