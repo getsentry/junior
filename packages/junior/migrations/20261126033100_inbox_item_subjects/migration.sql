@@ -1,4 +1,3 @@
-DROP INDEX "junior_inbox_items_open_dedupe_uidx";--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_kind" text;--> statement-breakpoint
 -- Each item gets its subject. The kind comes from the old key prefix. The
 -- subject kind and id now name the item. New code still gets a dedupe key,
@@ -132,7 +131,10 @@ CREATE UNIQUE INDEX "junior_inbox_items_open_subject_uidx" ON "junior_inbox_item
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;
 -- The snapshot no longer has subject_title, subject_url, subject_title_parts,
--- automation_id, its foreign key, or junior_inbox_items_automation_idx. They
+-- automation_id, its foreign key, junior_inbox_items_automation_idx, or
+-- junior_inbox_items_open_dedupe_uidx. That index still lets an old worker
+-- add only one open item per dedupe key, because a question it adds gets
+-- the item's id as its subject (20261126033259_inbox_questions). They
 -- stay in the database for one release, because old workers still name them
 -- in every insert while this migration runs. The next release drops them
 -- with the trigger above.
