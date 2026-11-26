@@ -260,9 +260,15 @@ export const ConversationComposer = memo(function ConversationComposer(
       ]),
     ),
   );
-  const attachLinkedWork = useAttachLinkedWork(
-    props.linksWork ? props.conversation : undefined,
-  );
+  const attachToConversation = useAttachLinkedWork();
+  const linkedWorkConversationId = props.linksWork
+    ? props.conversation?.conversationId
+    : undefined;
+  const attachLinkedWork = (text: string) => {
+    if (linkedWorkConversationId) {
+      attachToConversation(linkedWorkConversationId, text);
+    }
+  };
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for

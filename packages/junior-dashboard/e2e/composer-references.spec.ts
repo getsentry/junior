@@ -267,6 +267,27 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await readSaved;
 });
 
+test("the first Message of a new Conversation links its links", async ({
+  page,
+  dashboard,
+}) => {
+  const { linked } = recordWrites(page);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  const composer = page.getByLabel("Start a conversation");
+  await composer.click();
+  await composer.pressSequentially("Review ");
+  await pasteText(page, DOC_URL);
+  await composer.press("Enter");
+
+  await expect(page).toHaveURL(/\/conversations\/(?!new)/);
+  await expect.poll(() => linked).toEqual([DOC_URL]);
+  await expect(
+    page
+      .getByTestId("conversation-transcript")
+      .getByRole("link", { name: /Release 4\.2 checklist/ }),
+  ).toBeVisible();
+});
+
 test("# inserts a pull request only once its card says whether it is a draft", async ({
   page,
   dashboard,
