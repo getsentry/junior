@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { ConversationThreads } from "../src/client/conversations/ConversationChildAgents";
+import { DetailsList } from "../src/client/conversations/DetailsList";
 import { SpaceStateIcon } from "../src/client/spaces/SpaceStateIcon";
 
 function thread(
@@ -56,34 +57,50 @@ describe("a Conversation's Threads", () => {
     thread("Reconcile Stripe balances", 2, { lastResult: "failed" }),
   ];
 
-  it("labels each group with its count, needs you first", () => {
+  it("lists every Thread in attention order, with no group headings", () => {
     const markup = render(threads);
     expect(markup).toContain(">Threads<");
     const found = positions(markup, [
-      "Needs you · 2",
-      "Working · 2",
-      "Waiting · 1",
-      "Done · 1",
+      "Approve the cutover window",
+      "Reconcile Stripe balances",
+      "Close the books",
     ]);
     expect(found.every((at) => at >= 0)).toBe(true);
     expect(found).toEqual([...found].sort((left, right) => left - right));
+    // The list shows its first rows, and the rest wait behind Show more.
+    expect(markup).toContain("Show 3 more");
+    expect(markup).not.toContain("Check refund webhooks");
+    expect(markup).not.toMatch(/Needs you ·|Working ·|Waiting ·|Done ·/);
   });
 
-  it("lists rows newest first, each with its state and a Thread link", () => {
-    const markup = render(threads);
-    expect(markup.indexOf("Approve the cutover window")).toBeLessThan(
-      markup.indexOf("Reconcile Stripe balances"),
-    );
+  it("shows each row's state and a Thread link", () => {
+    const first = render(threads);
     // A finished Thread shows how its last Turn ended.
-    expect(markup).toContain('<span class="sr-only">failed</span>');
+    expect(first).toContain('<span class="sr-only">failed</span>');
     // A wait on the viewer, work in its tree, or a Watch shows over the
     // run's own status.
-    expect(markup).toContain('aria-label="Waiting on you"');
-    expect(markup).toContain('aria-label="Watching for an event"');
-    expect(markup).toContain('aria-label="Working"');
-    expect(markup).toContain(
+    expect(first).toContain('aria-label="Waiting on you"');
+    expect(first).toContain('aria-label="Working"');
+    const rest = render(threads.slice(0, 3));
+    expect(rest).toContain('aria-label="Watching for an event"');
+    expect(rest).toContain(
       'href="/conversations/internal%3Acheck-refund-webhooks"',
     );
+  });
+
+  it("shows every row when the list starts expanded", () => {
+    // Show archived starts the Threads list expanded, since archived
+    // Threads sort last.
+    const markup = renderToStaticMarkup(
+      <DetailsList
+        defaultExpanded
+        itemKey={(item) => item}
+        items={["a", "b", "c", "d"]}
+        renderItem={(item) => <span>row-{item}</span>}
+      />,
+    );
+    expect(markup).toContain("row-d");
+    expect(markup).toContain("Show fewer");
   });
 
   it("marks a failed Thread that waits on the viewer as waiting on you", () => {
@@ -94,12 +111,6 @@ describe("a Conversation's Threads", () => {
       }),
     ]);
     expect(markup).toContain('aria-label="Waiting on you"');
-  });
-
-  it("starts Done collapsed", () => {
-    const markup = render(threads);
-    expect(markup).toMatch(/<button[^>]*aria-expanded="false"[^>]*>Done · 1/);
-    expect(markup).not.toContain("Map plan IDs");
   });
 
   it("names a Space's failed child a Thread", () => {
