@@ -259,16 +259,31 @@ async function endTurnOnTurnFailedError<T>(
   try {
     return await run();
   } catch (error) {
-    if (!(error instanceof TurnFailedError)) {
+    const failed = findTurnFailedError(error);
+    if (!failed) {
       throw error;
     }
     if (
-      await endFailedTurn({ executor }, claim, error.message, error.failure)
+      await endFailedTurn({ executor }, claim, failed.message, failed.failure)
     ) {
       await reconcileTurn({ executor, queue }, claim.turnId);
     }
     return undefined;
   }
+}
+
+/**
+ * The `TurnFailedError` that `error` is or wraps. `assemblePrompt` wraps a
+ * fragment's or a required loader's error, with the original as `cause`, so
+ * that the error names the fragment or loader.
+ */
+function findTurnFailedError(error: unknown): TurnFailedError | undefined {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    if (cause instanceof TurnFailedError) {
+      return cause;
+    }
+  }
+  return undefined;
 }
 
 // Main's provider backoff: 2 s, 4 s, 8 s, before jitter. With jitter, the
