@@ -741,7 +741,7 @@ export function ConversationPage(props: {
                 actions: {
                   archive: () => {
                     if (lead) {
-                      spaceActions.archive();
+                      spaceActions.archive(!conversation?.archivedAt);
                     } else if (conversation?.archivedAt) {
                       setArchived(false);
                     } else if (!conversation!.parentConversationId) {

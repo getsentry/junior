@@ -37,7 +37,7 @@ const SpaceFormDialog = lazy(() =>
  * A member's Space actions: edit, rename, archive or restore the Space, or
  * join or leave it. The pane renders `rows` in a Space's menu, and a Lead's
  * Conversation menu calls the actions. The caller renders `dialogs` once.
- * Without a Space, the actions do nothing.
+ * Without a Space, the actions say that it has not loaded.
  */
 export function useSpaceActions(space: SpaceReport | undefined) {
   const navigate = useNavigate();
@@ -91,14 +91,19 @@ export function useSpaceActions(space: SpaceReport | undefined) {
         }),
     );
   };
-  const toggleArchive = () => {
+  // Archiving asks first, because it stops every Conversation in the Space.
+  const setArchived = (archived: boolean) => {
     if (!space) return notLoaded();
-    if (space.archivedAt)
-      archive.mutate({ archived: false, spaceId: space.id });
-    else setConfirmArchive(true);
+    if (archived) setConfirmArchive(true);
+    else archive.mutate({ archived: false, spaceId: space.id });
   };
+  const toggleArchive = () => setArchived(!space?.archivedAt);
   return {
-    archive: toggleArchive,
+    /**
+     * Takes the state that the caller's row shows, so a stale row does not
+     * undo the latest change.
+     */
+    archive: setArchived,
     join: () => {
       if (!space) return notLoaded();
       membership.mutate({ join: true, spaceId: space.id });
