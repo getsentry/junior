@@ -87,7 +87,7 @@ const VIA_LABELS: Record<
 > = {
   automation: "the creator, the stored instruction of this Automation",
   brief: "the brief that another agent handed over",
-  instruction: "the person, the request that created this Watch",
+  instruction: "the person, the request that started this work",
   "linked-account": "the person, from their linked account",
   typed: "the person, typed in this conversation",
 };

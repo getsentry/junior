@@ -252,7 +252,7 @@ export function createAgentGuardian(options: {
         steps.push(
           `readDestination():\n${readDestination(destinationFacts, authority)}`,
         );
-      } else if (ref === null) {
+      } else if (ref === null || ref.trim() === "") {
         steps.push(
           "readProvenance needs a ref. Name the exact value to trace.",
         );
@@ -278,10 +278,8 @@ export function createAgentGuardian(options: {
               outcome: decision.decision,
             };
           } catch (error) {
-            // The caller's abort is a stop, not an unavailable review.
-            if (signal?.aborted) {
-              throw error;
-            }
+            // On the caller's abort, the other reviews of the batch still
+            // finish, so the gate can record them before it stops.
             return { error, outcome: "unavailable" };
           }
         },
