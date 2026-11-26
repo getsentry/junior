@@ -544,33 +544,42 @@ describe("runStep", () => {
     expect(executed).toEqual(["send"]);
   });
 
-  it("starts no tool when the Turn stops during a before hook", async () => {
-    const executed: string[] = [];
-    const controller = new AbortController();
-    const stopped = new Error("stopped");
+  it("reaches no later hook or tool when the Turn stops during a before hook", async () => {
+    const reached: string[] = [];
     const send = tool("send", {
       replay: "never",
       execute: () => {
-        executed.push("send");
+        reached.push("send");
         return Promise.resolve({ content: [] });
       },
     });
-
-    await expect(
-      runStep(
+    const stopped = new Error("stopped");
+    const stopDuring = (hook: "beforeCall" | "beforeBatch") => {
+      const controller = new AbortController();
+      const stop = () => controller.abort(stopped);
+      return runStep(
         stepInput({
           history: [user, replyWithCalls("send")],
           tools: [send],
           signal: controller.signal,
           hooks: {
+            beforeCall: () => {
+              if (hook === "beforeCall") stop();
+              return Promise.resolve(undefined);
+            },
             beforeBatch: () => {
-              controller.abort(stopped);
+              reached.push("beforeBatch");
+              if (hook === "beforeBatch") stop();
               return Promise.resolve(new Map());
             },
           },
         }),
-      ),
-    ).rejects.toBe(stopped);
-    expect(executed).toEqual([]);
+      );
+    };
+
+    await expect(stopDuring("beforeCall")).rejects.toBe(stopped);
+    expect(reached).toEqual([]);
+    await expect(stopDuring("beforeBatch")).rejects.toBe(stopped);
+    expect(reached).toEqual(["beforeBatch"]);
   });
 });

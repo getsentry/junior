@@ -185,6 +185,10 @@ async function runToolCalls(
       return result ? replaced(check, result) : check;
     }),
   );
+  // A Turn stopped during beforeCall must reach no later hook or tool.
+  if (input.signal.aborted) {
+    throw input.signal.reason;
+  }
   const ready = checked.flatMap((check) =>
     "run" in check ? [] : [check.call],
   );
@@ -192,7 +196,7 @@ async function runToolCalls(
     hooks.beforeBatch && ready.length > 0
       ? await hooks.beforeBatch(ready, input.signal)
       : new Map<string, ToolResult>();
-  // A Turn stopped during a before hook must start no tool.
+  // A Turn stopped during beforeBatch must start no tool.
   if (input.signal.aborted) {
     throw input.signal.reason;
   }
