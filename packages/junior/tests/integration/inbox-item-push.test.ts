@@ -356,7 +356,9 @@ describe("inbox item push", () => {
         }),
       ]),
     });
-    // App setup reads the dashboard link from its own config.
+    // The app loads config again, without the web push keys, and reads the
+    // dashboard link from its own config.
+    useConfig({ webPush: webPushConfig });
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
