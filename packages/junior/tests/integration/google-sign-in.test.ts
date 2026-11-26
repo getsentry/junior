@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { closeDb, getDb } from "@/chat/db";
 import { createSignInAuth } from "@/chat/sign-in/auth";
+import { createSignInSession } from "@/chat/sign-in/sessions";
 import { juniorIdentities } from "@/db/schema";
 import { mswServer } from "../msw/server";
 
@@ -186,5 +187,71 @@ describe("Google sign-in", () => {
       code: "ID_TOKEN_NOT_SUPPORTED",
     });
     expect(direct.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("stores each sign-in so sign-out ends it on the server", async () => {
+    const auth = createAuth(["example.org"]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    const { session } = await signIn(auth);
+    const cookie = session.headers.get("cookie") ?? "";
+    // Only the stored session's cookie stays. Better Auth's own is cleared.
+    expect(cookie).toMatch(/__Host-junior_session=jr_ses_/);
+    expect(cookie).not.toMatch(/better-auth\.session_(token|data)=[^;]/);
+    expect(await auth.getSession(session)).toMatchObject({
+      credential: "cookie",
+      user: { email: "person@example.org", emailVerified: true },
+    });
+
+    // A web session works only as a cookie.
+    const token = /__Host-junior_session=([^;]+)/.exec(cookie)?.[1] ?? "";
+    const bearer = new Request(`${BASE_URL}/api/me`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(await auth.getSession(bearer)).toBeNull();
+
+    const signedOut = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-out`, {
+        method: "POST",
+        headers: { cookie, origin: BASE_URL },
+      }),
+    );
+    expect(signedOut.status).toBe(200);
+    // A browser drops a `__Host-` clear that is not Secure.
+    expect(signedOut.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^__Host-junior_session=;.*Secure/),
+    );
+    expect(await auth.getSession(session)).toBeNull();
+  });
+
+  it("accepts an app session only as a bearer token", async () => {
+    const auth = createAuth(["example.org"]);
+    const app = await createSignInSession({
+      client: "ios",
+      email: "person@example.org",
+      lifetimeMs: 60 * 60 * 1000,
+    });
+    expect(
+      await auth.getSession(
+        new Request(`${BASE_URL}/api/me`, {
+          headers: { authorization: `Bearer ${app.token}` },
+        }),
+      ),
+    ).toMatchObject({
+      credential: "bearer",
+      user: { email: "person@example.org" },
+    });
+    // A stolen app token sent as the cookie must not pass as a browser
+    // session, which can manage personal tokens.
+    expect(
+      await auth.getSession(
+        new Request(`${BASE_URL}/api/personal-tokens`, {
+          method: "POST",
+          headers: {
+            cookie: `__Host-junior_session=${app.token}`,
+            origin: BASE_URL,
+          },
+        }),
+      ),
+    ).toBeNull();
   });
 });

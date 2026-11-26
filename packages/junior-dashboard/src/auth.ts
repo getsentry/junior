@@ -8,7 +8,13 @@ export type { DashboardSession };
 /** Google sign-in session that core owns. */
 export interface DashboardAuth {
   handler(request: Request): Promise<Response>;
-  getSession(request: Request): Promise<DashboardSession | null>;
+  /**
+   * `credential` says how the request carried the session: a browser cookie,
+   * or an `Authorization: Bearer` token, such as the iOS app's.
+   */
+  getSession(
+    request: Request,
+  ): Promise<(DashboardSession & { credential?: "bearer" | "cookie" }) | null>;
   signInWithGoogle(
     request: Request,
     callbackURL: string,

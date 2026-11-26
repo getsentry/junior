@@ -1,6 +1,38 @@
 import { escapeHtml, renderHtmlPage } from "@/api/html";
 
 /**
+ * Return the CSP `form-action` source of a client redirect. A custom-scheme
+ * redirect, such as the iOS app's, has the origin "null", which matches
+ * nothing in CSP, so its scheme is allowed instead.
+ */
+export function formActionSource(redirectUri: string): string {
+  const url = new URL(redirectUri);
+  return url.protocol === "https:" || url.protocol === "http:"
+    ? url.origin
+    : url.protocol;
+}
+
+/**
+ * Read the action and form token of a consent form POST.
+ */
+export async function readConsentForm(
+  request: Request,
+): Promise<{ action?: string | undefined; csrf?: string | undefined }> {
+  try {
+    const form = await request.formData();
+    const action = form.get("action");
+    const csrf = form.get("csrf");
+    return {
+      action: typeof action === "string" ? action : undefined,
+      csrf: typeof csrf === "string" ? csrf : undefined,
+    };
+  } catch {
+    // Invalid form input is handled as a blocked request.
+    return {};
+  }
+}
+
+/**
  * Render one MCP sign-in page. It loads no resources and sends no referrer to
  * other origins.
  */

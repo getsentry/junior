@@ -1,13 +1,14 @@
 /**
  * Google sign-in session for the dashboard.
  *
- * Better Auth runs the Google OAuth flow and keeps the browser session in an
- * encrypted cookie. With allowed domains, only Google Workspace accounts on
- * those domains can sign in. Each sign-in also saves the native Google
- * identity.
+ * Better Auth runs the Google OAuth flow. Each sign-in then creates a stored
+ * session (`./sessions`) and puts its token in an HttpOnly cookie, so
+ * sign-out can end it on the server. With allowed domains, only Google
+ * Workspace accounts on those domains can sign in. Each sign-in also saves
+ * the native Google identity.
  */
 import { createAuthMiddleware } from "better-auth/api";
-import { getSessionCookie } from "better-auth/cookies";
+import { deleteSessionCookie } from "better-auth/cookies";
 import { betterAuth } from "better-auth/minimal";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
@@ -24,9 +25,30 @@ import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { readSignInSecret } from "@/chat/secrets";
 import { isAllowedDomain } from "@/chat/identities/trust";
 import { readEnvList } from "./allowlist";
+import {
+  authenticateSignInSession,
+  bearerSignInSessionToken,
+  createSignInSession,
+  revokeSignInSession,
+} from "./sessions";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+
+// `__Host-` makes the browser keep the cookie on this exact origin over HTTPS.
+function sessionCookieName(baseURL: string): string {
+  return baseURL.startsWith("https://")
+    ? "__Host-junior_session"
+    : "junior_session";
+}
+
+function readCookie(headers: Headers, name: string): string | undefined {
+  for (const part of (headers.get("cookie") ?? "").split(";")) {
+    const [key, ...value] = part.trim().split("=");
+    if (key === name) return value.join("=") || undefined;
+  }
+  return undefined;
+}
 
 /** Set one attribute on the request span that runs this sign-in step. */
 function setRequestSpanAttribute(key: string, value: number | string): void {
@@ -62,8 +84,10 @@ function readGoogleClaims(idToken: string): GoogleProfile | undefined {
   return parsed.success ? payload : undefined;
 }
 
-/** Verified Google account of one browser session. */
+/** Verified Google account of one stored session. */
 export interface SignInSession {
+  /** `bearer` for a token in the `Authorization` header, such as the iOS app's. */
+  credential: "bearer" | "cookie";
   user: { email: string; emailVerified: boolean; name?: string };
 }
 
@@ -155,6 +179,13 @@ function createBetterAuth(config: SignInAuthConfig) {
   );
   const sessionMaxAgeSeconds =
     config.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS;
+  const cookieName = sessionCookieName(config.baseURL);
+  const cookieOptions = {
+    httpOnly: true,
+    path: "/",
+    sameSite: "lax",
+    secure: config.baseURL.startsWith("https://"),
+  } as const;
   // `hd` limits the Google account chooser: to the one allowed domain, or to
   // Workspace accounts when more than one domain is allowed. It is only a
   // hint, so `getUserInfo` checks the `hd` claim.
@@ -233,9 +264,18 @@ function createBetterAuth(config: SignInAuthConfig) {
       },
     },
     hooks: {
-      // Save the native Google identity of each sign-in. `getUserInfo`
-      // already rejected accounts outside the allowed domains.
+      // Save the native Google identity of each sign-in and replace Better
+      // Auth's cookie with a stored session. `getUserInfo` already rejected
+      // accounts outside the allowed domains.
       after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-out") {
+          const token = ctx.headers && readCookie(ctx.headers, cookieName);
+          if (token) await revokeSignInSession(token);
+          // A browser ignores a `__Host-` cookie that is not Secure, so
+          // clearing it needs the same attributes as setting it.
+          ctx.setCookie(cookieName, "", { ...cookieOptions, maxAge: 0 });
+          return;
+        }
         const created = ctx.context.newSession;
         if (!created || !ctx.path.startsWith("/callback/")) return;
         const email = normalizeIdentityEmail(created.user.email);
@@ -271,6 +311,18 @@ function createBetterAuth(config: SignInAuthConfig) {
             Math.round((nowMs - previousSignedInAtMs) / 1000),
           );
         }
+        const session = await createSignInSession({
+          client: "web",
+          email,
+          lifetimeMs: sessionMaxAgeSeconds * 1000,
+          name: created.user.name,
+          now: new Date(nowMs),
+        });
+        deleteSessionCookie(ctx);
+        ctx.setCookie(cookieName, session.token, {
+          ...cookieOptions,
+          maxAge: sessionMaxAgeSeconds,
+        });
       }),
     },
   });
@@ -283,24 +335,38 @@ function createBetterAuth(config: SignInAuthConfig) {
 export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
   let auth: ReturnType<typeof createBetterAuth> | undefined;
   const getAuth = () => (auth ??= createBetterAuth(config));
+  const cookieName = sessionCookieName(config.baseURL);
   return {
     handler(request) {
       return getAuth().handler(request);
     },
+    // A cookie wins over a bearer token. Browsers send only the cookie.
     async getSession(request) {
-      const session = await getAuth().api.getSession({
-        headers: request.headers,
-      });
+      const cookieToken = readCookie(request.headers, cookieName);
+      const token = cookieToken ?? bearerSignInSessionToken(request);
+      const session = token
+        ? await authenticateSignInSession(token)
+        : undefined;
       if (!session) return null;
-      const { email, emailVerified, name } = session.user;
-      return { user: { email, emailVerified, name } };
+      // The transport must match the client the session was made for. A
+      // stolen app token sent as a cookie must not reach cookie-only routes,
+      // such as personal tokens.
+      const credential = cookieToken ? "cookie" : "bearer";
+      if ((session.client === "web") !== (credential === "cookie")) {
+        return null;
+      }
+      return {
+        credential,
+        // Only a verified Google email creates a session.
+        user: { ...session.user, emailVerified: true },
+      };
     },
     async signInWithGoogle(request, callbackURL, errorCallbackURL) {
       // A cookie that reaches here was rejected. Without one, the session
       // expired or this browser never signed in.
       setRequestSpanAttribute(
         "app.sign_in.session_cookie",
-        getSessionCookie(request) ? "present" : "missing",
+        readCookie(request.headers, cookieName) ? "present" : "missing",
       );
       const result = await getAuth().api.signInSocial({
         body: { provider: "google", callbackURL, errorCallbackURL },

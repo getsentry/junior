@@ -362,6 +362,15 @@ function unauthorized(
   );
 }
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function requestHasSameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return (
+    origin !== null && URL.parse(origin)?.origin === new URL(request.url).origin
+  );
+}
+
 function forbidden(request: Request, agentName: string): Response {
   if (!isJsonRoute(new URL(request.url).pathname)) {
     return renderForbiddenPage(agentName);
@@ -478,8 +487,13 @@ export function createDashboardApp(
     if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
     }
+    // A bearer session cannot open pages, so sending it back would loop.
     const session = await auth.getSession(c.req.raw);
-    if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
+    if (
+      session &&
+      session.credential !== "bearer" &&
+      dashboardSessionIsAuthorized(session, allowedDomains)
+    ) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(
@@ -571,11 +585,29 @@ export function createDashboardApp(
         authenticatedRoutes,
       });
     }
-    const browserSession = await auth.getSession(c.req.raw);
+    const isApiPath = pathname.startsWith("/api/") && !appRoute;
+    const signedIn = await auth.getSession(c.req.raw);
+    // A bearer session, such as the iOS app's, reads and writes `/api/*`. It
+    // cannot open pages or manage personal tokens.
+    const signInSession =
+      signedIn?.credential === "bearer" &&
+      (!isApiPath || pathname.startsWith("/api/personal-tokens"))
+        ? null
+        : signedIn;
+    // Browsers send the cookie on every request, so a cookie write must come
+    // from this origin. Browsers set `Origin` on every write.
+    if (
+      signInSession?.credential === "cookie" &&
+      isApiPath &&
+      !SAFE_METHODS.has(c.req.method) &&
+      !requestHasSameOrigin(c.req.raw)
+    ) {
+      return forbidden(c.req.raw, agentName);
+    }
     const token = dashboardPersonalBearerToken(c.req.raw);
     const tokenEmail =
       !appRoute &&
-      !browserSession &&
+      !signInSession &&
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
       pathname.startsWith("/api/") &&
@@ -583,8 +615,7 @@ export function createDashboardApp(
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
-      browserSession ??
-      (tokenEmail ? dashboardBearerSession(tokenEmail) : null);
+      signInSession ?? (tokenEmail ? dashboardBearerSession(tokenEmail) : null);
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         authenticatedRoutes,

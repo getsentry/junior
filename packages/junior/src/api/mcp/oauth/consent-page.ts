@@ -17,7 +17,7 @@ import {
 } from "./authorization";
 import { issueAuthorizationCode } from "./grants";
 import { resolveMcpUrls } from "./metadata";
-import { renderMcpPage } from "./page";
+import { formActionSource, readConsentForm, renderMcpPage } from "./page";
 import { MCP_SCOPE_DESCRIPTIONS, parseMcpScopes } from "./scopes";
 import { sha256Hex, type McpState } from "./state";
 
@@ -35,15 +35,6 @@ function blockedPage(): Response {
     status: 403,
     title: "Request blocked",
   });
-}
-
-// A custom-scheme redirect, such as the iOS app's, has the origin "null",
-// which matches nothing in CSP. Allow its scheme instead.
-function formActionSource(redirectUri: string): string {
-  const url = new URL(redirectUri);
-  return url.protocol === "https:" || url.protocol === "http:"
-    ? url.origin
-    : url.protocol;
 }
 
 function consentPage(args: {
@@ -82,23 +73,6 @@ function csrfMatches(value: string, expectedHash: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-async function readForm(
-  request: Request,
-): Promise<{ action?: string | undefined; csrf?: string | undefined }> {
-  try {
-    const form = await request.formData();
-    const action = form.get("action");
-    const csrf = form.get("csrf");
-    return {
-      action: typeof action === "string" ? action : undefined,
-      csrf: typeof csrf === "string" ? csrf : undefined,
-    };
-  } catch {
-    // Invalid form input is handled as a blocked request.
-    return {};
-  }
-}
-
 /** Show or complete MCP consent for one dashboard-authenticated user. */
 export async function handleMcpConsentPage(args: {
   agentName: string;
@@ -124,7 +98,7 @@ export async function handleMcpConsentPage(args: {
     return consentPage({ agentName: args.agentName, authorization, csrfToken });
   }
 
-  const form = await readForm(args.request);
+  const form = await readConsentForm(args.request);
   if (
     !requestHasSameOrigin(args.request) ||
     consent?.userId !== args.user.id ||

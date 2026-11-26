@@ -148,6 +148,17 @@ import { createAcpHttpHandler } from "@/api/acp/route";
 import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
 import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
+import { handleClientSignInAuthorize } from "@/api/client-sign-in/authorize-page";
+import {
+  handleClientMcpToken,
+  handleClientSignInToken,
+  handleClientSignOut,
+  CLIENT_MCP_TOKEN_PATH,
+  CLIENT_SIGN_IN_AUTHORIZE_PATH,
+  CLIENT_SIGN_IN_PUBLIC_PATHS,
+  CLIENT_SIGN_IN_TOKEN_PATH,
+  CLIENT_SIGN_OUT_PATH,
+} from "@/api/client-sign-in/routes";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -686,6 +697,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     method: ["GET", "POST"],
     path: MCP_CONSENT_PATH,
   };
+  const clientSignInRoute: AuthenticatedRoute = {
+    handler: (request, user) =>
+      handleClientSignInAuthorize({
+        agentName: botConfig.userName,
+        request,
+        state: getMcpState(),
+        user,
+      }),
+    method: ["GET", "POST"],
+    path: CLIENT_SIGN_IN_AUTHORIZE_PATH,
+  };
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -700,13 +722,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
           },
-          ...(mcpEnabled ? [mcpConsentRoute] : []),
+          ...(mcpEnabled ? [mcpConsentRoute, clientSignInRoute] : []),
         ]
       : [];
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
-      coreRoutePaths: mcpEnabled ? MCP_ROUTE_PATHS : [],
+      coreRoutePaths: mcpEnabled
+        ? [...MCP_ROUTE_PATHS, ...CLIENT_SIGN_IN_PUBLIC_PATHS]
+        : [],
       dashboard,
       routes: pluginRoutes,
     });
@@ -756,6 +780,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
       return handleMcpRequest(c.req.raw);
     });
+    app.post(CLIENT_SIGN_IN_TOKEN_PATH, (c) =>
+      handleClientSignInToken({ request: c.req.raw, state: getMcpState() }),
+    );
+    app.post(CLIENT_MCP_TOKEN_PATH, (c) =>
+      handleClientMcpToken({
+        baseURL: resolvePublicBaseURL(dashboard),
+        request: c.req.raw,
+        state: getMcpState(),
+      }),
+    );
+    app.post(CLIENT_SIGN_OUT_PATH, (c) => handleClientSignOut(c.req.raw));
   }
   mountRoutes(app, pluginRoutes);
   mountRoutes(
