@@ -29,6 +29,7 @@ import {
   readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
+import { readMockWaitingConversations } from "./inbox-items";
 import { mockLeadSpaceId } from "./sends";
 
 type SpaceConfigEntry = SpaceConfigurationReport["entries"][number];
@@ -203,17 +204,50 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   };
 }
 
-/** Keep the feed rows of one Space. */
+/**
+ * Keep the feed rows of one Space, each with its tree state, as the API
+ * reads it for a Space's Threads.
+ */
 export function filterMockConversationsBySpace(
   feed: ConversationFeed,
   spaceId: string,
 ): ConversationFeed {
+  const waiting = mockWaitingIds();
   return {
     ...feed,
-    conversations: feed.conversations.filter(
-      (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
-    ),
+    conversations: feed.conversations
+      .filter(
+        (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
+      )
+      .map((row) => ({ ...row, treeState: mockTreeState(row, waiting) })),
   };
+}
+
+/** The roots whose open action items wait on the viewer. */
+function mockWaitingIds(): Set<string> {
+  return new Set(
+    readMockWaitingConversations(NOW_MS).conversations.map(
+      (conversation) => conversation.conversationId,
+    ),
+  );
+}
+
+/**
+ * A mock row's tree state. A row with none reads one from the viewer's open
+ * action items, as the API does, then from its own status.
+ */
+function mockTreeState(
+  row: ConversationFeed["conversations"][number],
+  waiting: Set<string>,
+) {
+  return (
+    row.treeState ??
+    (waiting.has(row.conversationId) || row.status === "needs_input"
+      ? "needs_you"
+      : row.turnActive || row.status === "working"
+        ? "working"
+        : "done")
+  );
 }
 
 /**
@@ -334,7 +368,7 @@ const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 
 /**
  * Roll up the state of a Space's active feed rows, as the API's Space list
- * does. A mock row with no tree state reads one from its own status.
+ * does.
  */
 function spaceState(
   spaceId: string,
@@ -344,15 +378,8 @@ function spaceState(
       !row.archivedAt &&
       mockConversationSpaces.get(row.conversationId) === spaceId,
   );
-  const states = rows.map(
-    (row) =>
-      row.treeState ??
-      (row.status === "needs_input"
-        ? "needs_you"
-        : row.turnActive || row.status === "working"
-          ? "working"
-          : "done"),
-  );
+  const waiting = mockWaitingIds();
+  const states = rows.map((row) => mockTreeState(row, waiting));
   return {
     latestTurnFailed: rows.some((row) => row.latestTurnFailed),
     treeState:

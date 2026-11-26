@@ -232,10 +232,11 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByText("No member has talked to this Space's Lead yet."),
   ).toBeVisible();
+  // Its one Thread is done, so it shows once Done opens.
+  const threads = page.getByRole("region", { exact: true, name: "Threads" });
+  await threads.getByRole("button", { name: "Done · 1" }).click();
   await expect(
-    page
-      .getByRole("region", { name: "Conversations" })
-      .getByRole("link", { name: /Onboarding doc review/ }),
+    threads.getByRole("link", { name: /Onboarding doc review/ }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attentionGroups,
+  attentionOrder,
   buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
@@ -135,6 +137,68 @@ describe("conversation activity sections", () => {
       "recent",
       "older",
       "tool-only",
+    ]);
+  });
+});
+
+describe("attention order", () => {
+  const at = (hour: number) =>
+    `2026-08-03T${String(hour).padStart(2, "0")}:00:00-07:00`;
+  const feed: Conversation[] = [
+    conversation("done-new", at(11)),
+    { ...conversation("working-old", at(2)), treeState: "working" },
+    {
+      ...conversation("waiting", at(9)),
+      treeState: "done",
+      watching: true,
+    },
+    { ...conversation("needs-old", at(1)), treeState: "needs_you" },
+    { ...conversation("working-new", at(10)), treeState: "working" },
+    { ...conversation("failed", at(8)), latestTurnFailed: true },
+    {
+      ...conversation("pinned-done", at(7)),
+      pinnedAt: "2026-08-03T08:00:00-07:00",
+    },
+    {
+      ...conversation("tool-only", at(12)),
+      lastMessageAt: at(3),
+      treeState: "needs_you",
+    },
+    conversation("done-old", at(4)),
+  ];
+
+  it("groups needs you, working, waiting, then done, each newest Message first", () => {
+    expect(
+      attentionGroups(feed).map(({ conversations, group }) => ({
+        group,
+        ids: conversations.map((item) => item.id),
+      })),
+    ).toEqual([
+      // A failed latest Turn needs the viewer. A tool event does not move a
+      // row: the last Message sorts it.
+      { group: "needs_you", ids: ["failed", "tool-only", "needs-old"] },
+      { group: "working", ids: ["working-new", "working-old"] },
+      { group: "waiting", ids: ["waiting"] },
+      // A pin does not change the group.
+      { group: "done", ids: ["done-new", "pinned-done", "done-old"] },
+    ]);
+  });
+
+  it("leaves out empty groups and flattens to one order", () => {
+    const rows = feed.filter((item) => !item.id.startsWith("working"));
+    expect(attentionGroups(rows).map(({ group }) => group)).toEqual([
+      "needs_you",
+      "waiting",
+      "done",
+    ]);
+    expect(attentionOrder(rows).map((item) => item.id)).toEqual([
+      "failed",
+      "tool-only",
+      "needs-old",
+      "waiting",
+      "done-new",
+      "pinned-done",
+      "done-old",
     ]);
   });
 });

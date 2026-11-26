@@ -5,27 +5,13 @@ import { ActorAvatar } from "../../../components/ActorAvatar";
 import { DetailsPanel } from "../../../components/DetailsPanel";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
-import { conversationPath } from "../../../conversations/conversationRoutes";
-import { newestFirst } from "../../../conversations/conversationSections";
 import {
   DetailsCard,
   DetailsList,
   DetailsRow,
 } from "../../../conversations/DetailsList";
-import { buildConversations, conversationDisplayTitle } from "../../../format";
-import {
-  useWaitingConversations,
-  useWaitingConversationsSettled,
-} from "../../../inbox/queries";
-import { leadWorkState, type LeadWorkState } from "../../../lead/leadWork";
-import { leadWorkStatus } from "../../../lead/LeadWorkStatus";
-import {
-  useSpaceConversationsData,
-  useSpaceData,
-  useSpaceMembersData,
-} from "../../../spaces/queries";
-import { cn } from "../../../styles";
-import { formatCompactAge } from "../../../time";
+import { useSpaceData, useSpaceMembersData } from "../../../spaces/queries";
+import { SpaceThreads } from "../../../spaces/SpaceThreads";
 
 // The picker opens only after a click, so it loads with the first open
 // instead of with every Space page.
@@ -44,7 +30,7 @@ const SpaceSettings = lazy(() =>
 );
 
 /**
- * The Space beside its Lead: what the Space is for, its Conversations, its
+ * The Space beside its Lead: what the Space is for, its Threads, its
  * members, and its settings. On a phone it is a bottom sheet.
  */
 export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
@@ -70,7 +56,7 @@ export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
   );
 }
 
-/** A Space's description, its Conversations, its members, and its settings. */
+/** A Space's description, its Threads, its members, and its settings. */
 export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
@@ -80,74 +66,10 @@ export function SpaceOverview(props: { space: SpaceReport }) {
           {space.description}
         </p>
       ) : null}
-      <SpaceConversations spaceId={space.id} />
+      <SpaceThreads spaceId={space.id} />
       <SpaceMembers space={space} />
       <SpaceSettingsCard space={space} />
     </>
-  );
-}
-
-function SpaceConversations(props: { spaceId: string }) {
-  const feed = useSpaceConversationsData(props.spaceId);
-  const waitingMap = useWaitingConversations();
-  // Until the Inbox items load, no row reads as Done before Needs you.
-  const waiting = useWaitingConversationsSettled() ? waitingMap : undefined;
-  const conversations = newestFirst(
-    buildConversations(feed.data?.conversations ?? []),
-  );
-  return (
-    <DetailsCard
-      count={conversations.length}
-      label="Conversations"
-      title="Conversations"
-    >
-      {feed.error ? (
-        <p className="m-0">Conversations are unavailable.</p>
-      ) : !feed.data ? (
-        <Skeleton className="h-4 w-3/5" />
-      ) : conversations.length === 0 ? (
-        <p className="m-0">No conversations in this Space yet.</p>
-      ) : (
-        <DetailsList
-          itemKey={(conversation) => conversation.id}
-          items={conversations}
-          renderItem={(conversation) => (
-            <DetailsRow
-              icon={
-                <StateIcon
-                  state={
-                    waiting
-                      ? leadWorkState(
-                          conversation,
-                          waiting.get(conversation.id),
-                        )
-                      : undefined
-                  }
-                />
-              }
-              meta={formatCompactAge(conversation.lastSeenAt)}
-              title={conversationDisplayTitle(conversation)}
-              to={conversationPath(conversation.id)}
-            />
-          )}
-        />
-      )}
-    </DetailsCard>
-  );
-}
-
-/** A Conversation's state as the Lead shows it, or a blank before it loads. */
-function StateIcon(props: { state: LeadWorkState | undefined }) {
-  if (!props.state) return <span aria-hidden="true" className="size-4" />;
-  const status = leadWorkStatus[props.state];
-  const Icon = status.icon;
-  return (
-    <Icon
-      aria-label={status.label}
-      className={cn("size-4", status.text)}
-      role="img"
-      strokeWidth={2}
-    />
   );
 }
 
