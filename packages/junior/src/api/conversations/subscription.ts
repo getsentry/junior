@@ -8,7 +8,6 @@ import {
   readMentionedUserIds,
   resolveRootConversationId,
 } from "@/chat/conversations/sql/participants";
-import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
@@ -62,12 +61,11 @@ import {
  *   MCP tool act only on the signed-in person or the Turn actor. No argument
  *   of theirs names a person.
  * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person they mention, or send a dashboard or Slack Message
- *   that mentions them, then that person becomes a subscribed Participant.
- *   A dashboard Message adds them when it is accepted. Any Message adds them
- *   when it starts or joins a Turn, like its author. This is the only way to
- *   subscribe another person. It gives no access: anyone can already read a
- *   public Conversation and join it by posting.
+ *   they Invite a person they mention, then that person becomes a
+ *   subscribed Participant. This is the only way to subscribe another
+ *   person. A mention in a dashboard or Slack Message adds nobody. Invite
+ *   gives no access: anyone can already read a public Conversation and join
+ *   it by posting.
  * - Given a private Conversation, when a Participant Invites a person, then
  *   that person becomes a Participant and can read it. Only Invite does
  *   this: a mention in a Message adds nobody, so sharing private content
@@ -81,10 +79,8 @@ import {
  *   another person. When they were the last subscriber, the root and its
  *   unarchived descendants are archived for everyone.
  * - Given any Invite, an archived root refuses it, because no
- *   feed shows it and a restore is for everyone. A Message that mentions
- *   someone in an archived root still adds them, because that Message
- *   restores the root. The mention names a Slack user of the Conversation's
- *   workspace. An existing Participant keeps their row, so Invite does not
+ *   feed shows it and a restore is for everyone. The mention names a Slack
+ *   user of the Conversation's workspace. An existing Participant keeps their row, so Invite does not
  *   undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
@@ -314,33 +310,6 @@ export async function inviteToConversation(
     { refuseArchived: true },
   );
   return { added: added > 0 };
-}
-
-/**
- * Invite each person that a viewer's Message mentions, as if the viewer
- * chose Invite on each mention. The contract is in the comment above, with
- * one change: an archived root still adds them, because the Message itself
- * restores the root. A mention of someone who is not a User adds nobody.
- */
-export async function inviteMentionedPeople(
-  viewer: User,
-  conversationId: string,
-  text: string,
-): Promise<void> {
-  const slackUserIds = slackMentionedUserIds(text);
-  if (slackUserIds.length === 0) return;
-  const conversation = await readInvitableConversation(viewer, conversationId);
-  // A mention never shares a private Conversation. Only Invite does.
-  if (conversation?.visibility !== "public") return;
-  const userIds = await readMentionedUserIds(
-    getSqlExecutor(),
-    slackUserIds,
-    conversation.slackTeamId,
-  );
-  if (userIds.length === 0) return;
-  await addInvitedParticipants(conversation.rootConversationId, userIds, {
-    refuseArchived: false,
-  });
 }
 
 /**

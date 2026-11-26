@@ -1,5 +1,4 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
@@ -7,8 +6,6 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
-import { loadConversationSlackTenantId } from "./event-actor";
-import { resolveRootVisibility } from "./privacy";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -144,46 +141,6 @@ export async function isLeadConversation(
       ),
     );
   return Boolean(lead);
-}
-
-/**
- * Subscribe the people that a person's Turn input Message mentions, when the
- * root is public. It is an Invite by mention (contract:
- * `api/conversations/subscription.ts`), so an existing Participant keeps
- * their row and their unsubscribe.
- */
-export async function recordMentionedParticipants(
-  executor: JuniorSqlDatabase,
-  args: { atMs: number; conversationId: string; text: string },
-): Promise<void> {
-  const slackUserIds = slackMentionedUserIds(args.text);
-  if (slackUserIds.length === 0) return;
-  const { rootConversationId, visibility } = await resolveRootVisibility(
-    executor,
-    args.conversationId,
-  );
-  if (visibility !== "public") return;
-  const userIds = await readMentionedUserIds(
-    executor,
-    slackUserIds,
-    await loadConversationSlackTenantId(executor, rootConversationId),
-  );
-  if (userIds.length === 0) return;
-  const at = new Date(args.atMs);
-  // The caller bumps the Conversation in the same transaction, as for
-  // `recordConversationParticipant`.
-  // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
-  await executor
-    .db()
-    .insert(juniorConversationParticipants)
-    .values(
-      userIds.map((userId) => ({
-        lastMessageAt: at,
-        rootConversationId,
-        userId,
-      })),
-    )
-    .onConflictDoNothing();
 }
 
 /**

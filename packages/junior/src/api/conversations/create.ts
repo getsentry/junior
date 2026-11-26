@@ -37,7 +37,6 @@ import {
 } from "./access";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { requireSpaceForWork } from "./space";
-import { inviteMentionedPeople } from "./subscription";
 
 /** Check uploads before accepting work. A bad upload is a request error. */
 async function verifyUploads(
@@ -168,7 +167,6 @@ export async function createConversationForViewer(
   } catch (error) {
     throwApiError(500, "Unable to create conversation.", error);
   }
-  await inviteMentionedPeople(viewer, accepted.conversationId, body.message);
   return accepted;
 }
 
@@ -211,10 +209,8 @@ export async function appendConversationMessageForViewer(
   // this Conversation, like a typed Slack reply. The viewer also saw the
   // transcript so far. The message can wait as pending with no event, so
   // move the read position here: it closes the reply notice, and a reply
-  // task that runs later sees the read and adds no notice. The people it
-  // mentions join now too, not when its Turn starts.
+  // task that runs later sees the read and adds no notice.
   const applyAccepted = async () => {
-    await inviteMentionedPeople(viewer, conversationId, body.message);
     await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
