@@ -180,7 +180,10 @@ test("a new Lead opens as an empty Conversation", async ({
   await screenshot(page, "space-lead-empty");
 });
 
-test("a non-member reads the Lead", async ({ page, dashboard }) => {
+test("a non-member reads and can message a public Lead", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${DOCS}`);
   const transcript = page.getByLabel("Conversation transcript");
@@ -189,10 +192,8 @@ test("a non-member reads the Lead", async ({ page, dashboard }) => {
       "Which onboarding pages still describe the old setup flow?",
     ),
   ).toBeVisible();
-  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
-  await expect(
-    page.getByText("Join Docs refresh to message its Lead."),
-  ).toBeVisible();
+  // As in any public Conversation, a message joins them.
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await screenshot(page, "space-lead-non-member");
 });
 
@@ -215,7 +216,6 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByRole("region", { exact: true, name: "Threads" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 
 test.describe("on a touch screen", () => {
