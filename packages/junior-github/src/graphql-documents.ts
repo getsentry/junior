@@ -334,9 +334,11 @@ export const PULL_REQUEST_REQUIRED_CHECKS = githubGraphql(`
 /**
  * Read what decides whether a reviewer's change request is ready for their
  * review again: whether GitHub asks them, when GitHub last asked people for
- * a review, their latest 20 reviews with the reactors of each body and
- * comment, the checks of the head
- * commit, and the branch protection's required checks of the base branch.
+ * a review, their latest approval or change request and their latest 20
+ * comment-only reviews with the reactors of each body and comment, the
+ * checks of the head commit, and the branch protection's required checks
+ * of the base branch. The decision is read on its own, so a long
+ * discussion does not push it out of view.
  */
 export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
   query PullRequestReviewAgain($owner: String!, $name: String!, $number: Int!, $reviewer: String!) {
@@ -355,18 +357,11 @@ export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
             }
           }
         }
-        reviews(last: 20, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
-          nodes {
-            databaseId
-            state
-            submittedAt
-            body
-            ...FeedbackReactors
-            comments(first: 100) {
-              totalCount
-              nodes { databaseId ...FeedbackReactors }
-            }
-          }
+        decision: reviews(last: 1, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+          nodes { ...FeedbackReview }
+        }
+        reviews(last: 20, author: $reviewer, states: [COMMENTED]) {
+          nodes { ...FeedbackReview }
         }
         commits(last: 1) {
           nodes {
@@ -385,6 +380,18 @@ export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
           }
         }
       }
+    }
+  }
+
+  fragment FeedbackReview on PullRequestReview {
+    databaseId
+    state
+    submittedAt
+    body
+    ...FeedbackReactors
+    comments(first: 100) {
+      totalCount
+      nodes { databaseId ...FeedbackReactors }
     }
   }
 

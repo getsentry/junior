@@ -12,7 +12,7 @@
 // path in `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { withConversationEventLock } from "@/core/history/lock";
 import { publishDelivery } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
 import {

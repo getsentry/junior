@@ -2,11 +2,8 @@
 // current History version, after the History replacement that starts it.
 // Every other event type in the Conversation is the host's, and core does not
 // read it. The host gives the model its facts as inputs or prompt fragments.
+import { agentHistoryItemSchema, historyReplacementDataSchema } from "./items";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
-import {
-  agentHistoryItemSchema,
-  historyReplacementDataSchema,
-} from "@/chat/conversations/history";
 import { eventFromRow } from "@/chat/conversations/sql/history";
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";

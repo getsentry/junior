@@ -108,6 +108,11 @@ export function nextAction(
     /** `requesterFeedback`: the requester waits for Junior's answer. */
     feedback: boolean;
     login: string | undefined;
+    /**
+     * GitHub lets the requester merge on the repository. Without it, a
+     * person with write access merges, so the requester gets no merge ask.
+     */
+    mergeAccess: boolean;
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
@@ -116,6 +121,7 @@ export function nextAction(
   // review request comes first, even where GitHub requires no review. So
   // does the requester's feedback, because Junior acts next.
   const canMerge =
+    requester.mergeAccess &&
     !state.draft &&
     !state.autoMerge &&
     !state.reviewPending &&

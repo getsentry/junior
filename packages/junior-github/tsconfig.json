@@ -25,6 +25,7 @@
     "tests/pull-request-action-backfill.test.ts",
     "tests/pull-request-comment-only-review.test.ts",
     "tests/pull-request-limbo.test.ts",
+    "tests/pull-request-merge-access.test.ts",
     "tests/pull-request-requester-backfill.test.ts",
     "tests/pull-request-review-again.test.ts"
   ]

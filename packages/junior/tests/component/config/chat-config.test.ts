@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { getChatConfig, setSlackReactionConfig } from "@/chat/config";
-import { loadConfig } from "@/config";
+import { describe, expect, it } from "vitest";
+import { loadConfig, type ConfigInput } from "@/config";
 
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 const ENCRYPTION_ENV = {
@@ -563,42 +562,74 @@ describe("loadConfig", () => {
       }),
     ).toThrow(/^bot\.contextWindowTokens \(AI_MODEL_CONTEXT_WINDOW_TOKENS\): /);
   });
-});
 
-// `setSlackReactionConfig` changes the module's config, so these cases use
-// the module and put the defaults back after each one.
-describe("setSlackReactionConfig", () => {
-  afterEach(() => {
-    setSlackReactionConfig({
-      completedReactionEmoji: "white_check_mark",
-      processingReactionEmoji: "eyes",
+  it("applies createApp limits over env and only caps the turn timeout", () => {
+    const { bot } = loadConfig({
+      env: { ...BASE_ENV, AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000" },
+      options: {
+        limits: {
+          contextWindowTokens: 2_000,
+          eventAutomationRunLimit: { maxRuns: 2 },
+          turnTimeoutMs: 5_000,
+        },
+      },
+    });
+
+    expect(bot).toMatchObject({
+      contextWindowTokens: 2_000,
+      eventAutomationRunWindowMs: 60_000,
+      maxEventAutomationRuns: 2,
+      turnTimeoutMs: 5_000,
     });
   });
 
+  it("names the createApp option in an option error", () => {
+    expect(() =>
+      loadConfig({
+        env: BASE_ENV,
+        options: { limits: { maxSlicesPerTurn: 0 } },
+      }),
+    ).toThrow(/^limits\.maxSlicesPerTurn must be a positive integer$/);
+    expect(() =>
+      loadConfig({ env: BASE_ENV, options: { bot: { userName: " " } } }),
+    ).toThrow(/^botName must not be empty$/);
+  });
+});
+
+describe("Slack reaction emoji options", () => {
+  const slackConfig = (slack: ConfigInput["slack"]) =>
+    loadConfig({ env: BASE_ENV, options: { slack } }).slack;
+
   it("overrides processingReactionEmoji when provided", () => {
-    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
-    expect(getChatConfig().slack.processingReactionEmoji).toBe("jr-thinking");
+    expect(
+      slackConfig({ processingReactionEmoji: "jr-thinking" })
+        .processingReactionEmoji,
+    ).toBe("jr-thinking");
   });
 
   it("overrides completedReactionEmoji when provided", () => {
-    setSlackReactionConfig({ completedReactionEmoji: "jr-done" });
-    expect(getChatConfig().slack.completedReactionEmoji).toBe("jr-done");
+    expect(
+      slackConfig({ completedReactionEmoji: "jr-done" }).completedReactionEmoji,
+    ).toBe("jr-done");
   });
 
   it("normalizes colon-wrapped emoji names", () => {
-    setSlackReactionConfig({ processingReactionEmoji: ":tada:" });
-    expect(getChatConfig().slack.processingReactionEmoji).toBe("tada");
+    expect(
+      slackConfig({ processingReactionEmoji: ":tada:" })
+        .processingReactionEmoji,
+    ).toBe("tada");
   });
 
   it("throws when override emoji name is invalid", () => {
     expect(() =>
-      setSlackReactionConfig({ processingReactionEmoji: "not valid emoji!" }),
+      slackConfig({ processingReactionEmoji: "not valid emoji!" }),
     ).toThrow("processingReactionEmoji must be a valid Slack emoji name");
   });
 
   it("leaves unspecified fields unchanged", () => {
-    const original = getChatConfig().slack.completedReactionEmoji;
-    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
-    expect(getChatConfig().slack.completedReactionEmoji).toBe(original);
+    expect(
+      slackConfig({ processingReactionEmoji: "jr-thinking" })
+        .completedReactionEmoji,
+    ).toBe("white_check_mark");
   });
 });
