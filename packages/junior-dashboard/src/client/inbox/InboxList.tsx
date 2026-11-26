@@ -11,6 +11,7 @@ import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Skeleton } from "../components/ui/skeleton";
 import { MessageObjectsProvider } from "../display-text/DisplayText";
+import { useMobileLayout } from "../layoutMedia";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import {
@@ -137,11 +138,17 @@ export function InboxList(props: {
     state.toggle(key);
   };
   const focus = useInboxFocus(state.scroller, state.expandedKey);
-  useCollapseOutside(state.expandedKey, () => toggle(state.expandedKey));
+  // On a phone, an open row is a sheet: only the sheet closes it, and a row
+  // that leaves takes the reader back to the list.
+  const mobile = useMobileLayout();
+  useCollapseOutside(mobile ? "" : state.expandedKey, () =>
+    toggle(state.expandedKey),
+  );
   const leave = useLeaveRow(
     state.scroller,
     state.expandedKey,
     state.setExpandedKey,
+    !mobile,
   );
   const leaveCard = useLeaveCard(state.scroller, leave);
   const act = useInboxRowActs({

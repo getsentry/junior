@@ -13,7 +13,9 @@ import {
   DetailsRow,
 } from "../../conversations/DetailsList";
 import { cn, dashboardDisclosureChevronClass } from "../../styles";
+import { useMobileLayout } from "../../layoutMedia";
 import { InboxItemCard } from "./InboxItemCard";
+import { InboxItemSheet } from "../../inbox/InboxItemSheet";
 import { AskKindIcon, askIcon } from "../../inbox/askKind";
 import { inboxItemKind } from "../../inbox/inboxModel";
 import { useInboxItemsData } from "../../inbox/queries";
@@ -22,7 +24,8 @@ import { inboxItemTitleText } from "../../inbox/inboxItemFormat";
 /**
  * Show the open Inbox items linked to a Conversation in its details. Each
  * item is one line, like its sidebar chip, and expands to the full card in
- * place. `highlight` marks the card when a sidebar link opened it.
+ * place, or opens it in a sheet on a phone. `highlight` marks the card
+ * when a sidebar link opened it.
  */
 export function ConversationInboxItems(props: {
   conversationId: string;
@@ -79,33 +82,52 @@ function InboxItemRow(props: {
   item: InboxItemPayload;
 }) {
   const [expanded, setExpanded] = useState(props.defaultExpanded);
+  // A phone opens the item in a sheet, not in place.
+  const mobile = useMobileLayout();
   const kind = inboxItemKind(props.item);
   // Details can already be open when a sidebar review chip highlights it.
   useEffect(() => {
     if (props.defaultExpanded) setExpanded(true);
   }, [props.defaultExpanded]);
+  const row = (
+    <DetailsRow
+      disclosure={!mobile}
+      icon={
+        // The kind's icon, as the Inbox pills show it.
+        askIcon(kind) ? (
+          <AskKindIcon kind={kind} />
+        ) : (
+          <Inbox aria-hidden="true" className="size-3.5" />
+        )
+      }
+      meta={
+        <span className="grid size-5 place-items-center">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
+        </span>
+      }
+      onClick={mobile ? () => setExpanded(true) : undefined}
+      title={inboxItemTitleText(props.item)}
+    />
+  );
+  if (mobile) {
+    return (
+      <>
+        {row}
+        {expanded ? (
+          <InboxItemSheet
+            item={props.item}
+            onClose={() => setExpanded(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
   return (
     <Collapsible className="min-w-0" onOpenChange={setExpanded} open={expanded}>
-      <DetailsRow
-        disclosure
-        icon={
-          // The kind's icon, as the Inbox pills show it.
-          askIcon(kind) ? (
-            <AskKindIcon kind={kind} />
-          ) : (
-            <Inbox aria-hidden="true" className="size-3.5" />
-          )
-        }
-        meta={
-          <span className="grid size-5 place-items-center">
-            <ChevronRight
-              aria-hidden="true"
-              className={dashboardDisclosureChevronClass}
-            />
-          </span>
-        }
-        title={inboxItemTitleText(props.item)}
-      />
+      {row}
       <CollapsibleContent className="px-1.5 pb-1">
         <InboxItemCard item={props.item} />
       </CollapsibleContent>

@@ -112,8 +112,11 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
     await expect(
       dialog.getByRole("group", { name: "New condition" }),
     ).toBeVisible();
+    // Desktop only: a phone opens the row in a sheet, which a resize
+    // would close.
     await screenshot(page, "inbox-snooze-custom-condition", {
       lightTheme: true,
+      view: "desktop",
     });
     await dialog.getByLabel("Wake at").fill("2099-01-05T09:00");
     const created = snoozePost(page);
@@ -146,8 +149,11 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
         events.getByRole("option", { exact: true, name: phrase }),
       ).toBeVisible();
     }
+    // Desktop only: a phone opens the row in a sheet, which a resize
+    // would close.
     await screenshot(page, "inbox-snooze-pull-request-events", {
       lightTheme: true,
+      view: "desktop",
     });
     await pickOption(
       events.getByRole("option", { exact: true, name: "gets new commits" }),
@@ -207,7 +213,12 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
     await expect(
       events.getByRole("group", { name: "Merge conflict" }),
     ).toBeVisible();
-    await screenshot(page, "inbox-snooze-event-filter", { lightTheme: true });
+    // Desktop only: a phone opens the row in a sheet, which a resize
+    // would close.
+    await screenshot(page, "inbox-snooze-event-filter", {
+      lightTheme: true,
+      view: "desktop",
+    });
     await filter.fill("nothing like this");
     await expect(events.getByText("No events match.")).toBeVisible();
     // Every Event here is a pull request Event, so that part matches none.
@@ -460,7 +471,11 @@ test.describe("custom snooze conditions", { tag: "@new" }, () => {
     await page.goto(
       `${dashboard.baseURL}/inbox?view=inbox&type=prs&item=${prReview.id}`,
     );
-    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    // A phone opens the linked row in a sheet.
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { exact: true, name: "Snooze" })
+      .click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);

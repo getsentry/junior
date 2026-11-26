@@ -681,7 +681,16 @@ export function rowHead(scope: Page | Locator, title: string) {
  */
 export async function openRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
-  const open = row.getByRole("link", { name: "Open conversation" }).first();
+  // A phone opens the row in a sheet.
+  const open = row
+    .getByRole("link", { name: "Open conversation" })
+    .or(
+      head
+        .page()
+        .getByRole("dialog")
+        .getByRole("link", { name: "Open conversation" }),
+    )
+    .first();
   await head.hover();
   if (!(await open.isVisible())) {
     const expand = row.locator('[aria-controls^="inbox-row-"]').first();

@@ -112,6 +112,8 @@ export function useLeaveRow(
   scroller: RefObject<HTMLElement | null>,
   expandedKey: string,
   setExpandedKey: (key: string) => void,
+  /** False closes an open row that leaves, as a phone's sheet does. */
+  advance = true,
 ) {
   // A Retry calls a leave from an earlier render. Read the open row now.
   const expanded = useRef(expandedKey);
@@ -156,7 +158,8 @@ export function useLeaveRow(
     const wasOpen = rows.find(
       (row) => row.dataset["inboxRow"] === expanded.current,
     );
-    const opened = wasOpen && leaving(wasOpen) ? next : undefined;
+    const opened =
+      wasOpen && leaving(wasOpen) ? (advance ? next : "") : undefined;
     if (opened !== undefined) setExpandedKey(opened);
     void leaveCard(card).then(() => {
       // The row goes now, before its shut card shows again.
@@ -190,8 +193,12 @@ export function useLeaveCard(
           (candidate) => candidate.dataset["inboxRow"] === key,
         )
       : undefined;
+    // On a phone, an open row's cards are in its sheet.
+    const sheet = row
+      ? document.querySelector(`[data-inbox-sheet="${CSS.escape(key)}"]`)
+      : null;
     const cards = row
-      ? [...row.querySelectorAll<HTMLElement>("[data-inbox-card]")]
+      ? [...(sheet ?? row).querySelectorAll<HTMLElement>("[data-inbox-card]")]
       : [];
     const at = cards.findIndex((card) => card.dataset["inboxCard"] === itemId);
     const card = cards[at];
