@@ -29,10 +29,9 @@ end-of-Turn contract. A person can see and steer each agent.
 
 **Teams and tools**
 
-- `team` A team is an agent and its child agents. A Lead's child agents are
-  the Conversations in its Space. A team sets who manages an agent, not who
-  can read it. Visibility and access come from the root, as
-  `../policies/conversation-access.md` states.
+- `team` A team is an agent and its child agents. A team sets who manages
+  an agent, not who can read it. Visibility and access come from the root,
+  as `../policies/conversation-access.md` states.
 - `one-toolset` An agent starts, messages, finds, stops, archives, and
   watches other agents with the same tools for every kind. The kind sets
   which arguments a Turn can use, not which tools exist.
@@ -47,8 +46,8 @@ end-of-Turn contract. A person can see and steer each agent.
   in, or on which kind is the top of a person's work.
 - `limits` A parent other than a Lead has at most 8 active child agents.
   Only `limits.maxAgentDepth` levels of child agents can start their own.
-  The children of a Lead count as roots for this limit. The default is 1, so
-  a root's child can start children. With 0, only a root can.
+  The children of a Lead count as roots for this limit. The default is 1, so a root's child can start children. With 0, only a root
+  can.
 
 **Authority**
 
@@ -74,13 +73,13 @@ end-of-Turn contract. A person can see and steer each agent.
 - `automation-answers` An Automation run ends each Turn with an answer
   tool, because its reply goes to people in a channel. Stray text never
   posts.
-- `final-text` The final text of a Turn is part of the update that the agent
-  sends. Only a Conversation that has its own Location delivers it there,
-  such as a root, or a Slack Conversation that moved into a Space. A Lead
-  delivers it to its Space. Other children show their Turns to people. Final
-  text that was cut off, such as by a length limit or an abort, is a
-  failure, not a reply. `messageAgent` sends text to another agent at any
-  time. It is not the reply, and it does not end the Turn.
+- `final-text` The final text of a Turn is part of the update that the
+  agent sends. Only a Conversation that has its own Location delivers it
+  there: a root, or a Conversation that moved into a Space. A Lead delivers
+  it to its Space. Other children show their Turns to people. Final text that was cut off,
+  such as by a length limit or an abort, is a failure, not a reply.
+  `messageAgent` sends text to another agent at any time. It is not the
+  reply, and it does not end the Turn.
 - `always-reports` A child agent always tells the agent that started it how
   each Turn ended: its reply, or what it is blocked on. Only a person's
   Turn or an Automation run can end quietly.
@@ -149,9 +148,6 @@ end-of-Turn contract. A person can see and steer each agent.
 
 ## Gaps
 
-- `one-toolset`: a Lead starts and finds agents with `startConversation`
-  and `searchConversations`. Every other agent uses `startAgent` and
-  `listAgents`.
 - `ordinary-conversation`: some behavior of a child agent depends on its
   kind in more than one place. getsentry/junior#3060, getsentry/junior#4275,
   and getsentry/junior#2567 track it.
@@ -167,8 +163,6 @@ end-of-Turn contract. A person can see and steer each agent.
   that the item links, not only to the agent that asked.
 - `asker-asks`: when a person's Turn in a Thread adds an Inbox item, the
   parent gets no `waiting` update. Only a watcher gets it.
-- `asker-asks`, `one-contract`: a Lead asks people in its reply, not with
-  an Inbox item.
 - `one-update`: a Turn that only Watch Events started sends no update to a
   Watch, also when it replies. Only the agent that started it gets one.
 - `watch-is-start`: a parent cannot make the updates of its child agents

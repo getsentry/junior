@@ -32,3 +32,14 @@ export function isAgentUpdateEventType(eventType: string): boolean {
 
 /** Event type of a message that a child agent sends to its parent. */
 export const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
+
+/** Event type of a message from another top-level agent. */
+export const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
+
+/** True when an Event type names a message that another agent sent. */
+export function isAgentMessageEventType(eventType: string): boolean {
+  return (
+    eventType === AGENT_MESSAGE_EVENT_TYPE ||
+    eventType === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE
+  );
+}

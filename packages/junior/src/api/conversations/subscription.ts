@@ -4,6 +4,7 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import {
+  isLeadConversation,
   readMentionedUserIds,
   resolveRootConversationId,
 } from "@/chat/conversations/sql/participants";
@@ -260,16 +261,7 @@ async function archiveWithoutSubscribers(
   db: JuniorDatabase,
   rootConversationId: string,
 ): Promise<string | null> {
-  const [lead] = await db
-    .select({ id: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.conversationId, rootConversationId),
-        eq(juniorConversations.kind, "lead"),
-      ),
-    );
-  if (lead) return null;
+  if (await isLeadConversation(db, rootConversationId)) return null;
   if (await hasSubscriber(db, rootConversationId)) return null;
   const archivedAt = new Date();
   // Archive the root and each descendant that is not archived, so an
@@ -340,6 +332,11 @@ export async function inviteMentionedPeople(
   const conversation = await readInvitableConversation(viewer, conversationId);
   // A mention never shares a private Conversation. Only Invite does.
   if (conversation?.visibility !== "public") return;
+  // The Participants of a Lead are its Space's members, and a person joins
+  // a Space on purpose, so a mention there adds nobody.
+  if (await isLeadConversation(getDb(), conversation.rootConversationId)) {
+    return;
+  }
   const userIds = await readMentionedUserIds(
     getSqlExecutor(),
     slackUserIds,

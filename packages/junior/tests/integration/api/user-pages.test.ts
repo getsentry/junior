@@ -11,7 +11,7 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 function plugin() {

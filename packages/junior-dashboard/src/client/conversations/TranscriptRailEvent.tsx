@@ -25,6 +25,7 @@ import type { TranscriptViewStructuredEventPart } from "../types";
 import { transcriptColumnsClass } from "./TranscriptRows";
 
 type TranscriptRailEventKind =
+  | "agent_message"
   | "attachments_delivered"
   | "compaction"
   | "message_context"
@@ -86,7 +87,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
   className: string;
   icon: LucideIcon;
 } {
-  if (kind === "message_context") {
+  if (kind === "message_context" || kind === "agent_message") {
     return {
       className: "text-dashboard-text-muted",
       icon: MessageSquareText,
