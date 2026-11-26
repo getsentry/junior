@@ -222,6 +222,36 @@ describe("advanceTurn", () => {
     expect(systemPromptOf(call)).toBe(layoutSystemPrompt(layouts.local));
   });
 
+  it("gives the model only agent history, not the host's events", async () => {
+    await createSqlConversationEventStore(harness.engineCtx.executor).append(
+      harness.conversationId,
+      [
+        {
+          data: {
+            type: "authorization_completed",
+            kind: "mcp",
+            provider: "linear",
+            actorId: "U123",
+            authorizationId: "auth-1",
+          },
+          idempotencyKey: "authorization_completed:auth-1",
+          createdAtMs: Date.now(),
+        },
+      ],
+    );
+    await setModelReplies([
+      createAssistantMessage({ type: "text", text: "Three." }),
+    ]);
+    await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    const [call] = await modelCalls();
+    const sent = JSON.stringify(call?.messages);
+    expect(sent).toContain("How many Turns?");
+    expect(sent).not.toContain("linear");
+  });
+
   it.each(["completed", "cancelled"] as const)(
     "does not run a step of a %s Turn",
     async (state) => {
