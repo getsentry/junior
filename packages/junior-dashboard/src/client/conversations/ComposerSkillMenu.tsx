@@ -75,6 +75,12 @@ export function ComposerSkillMenu(props: { typeahead: ComposerTypeahead }) {
       : [];
   const open = rows.length > 0;
   const shown = open || Boolean(cardSkill);
+  // A query with a space and no rows ends the reference, so the words
+  // typed after it are text and search nothing.
+  const ended = /\s/.test(typeahead.query ?? "") && Boolean(skills) && !shown;
+  useEffect(() => {
+    if (ended) typeahead.end();
+  }, [ended, typeahead]);
   const active = Math.min(activeIndex, rows.length - 1);
   const cellId = (index: number) => `${gridId}-${index}`;
 
