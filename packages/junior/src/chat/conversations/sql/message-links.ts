@@ -66,17 +66,30 @@ export async function writeMessageLinks(
     await readEditedMessageSeqs(executor, conversationId, rows),
   );
   const db = executor.db();
+  // An edit or hydration rewrites a message's links. A link that stays keeps
+  // its queued attach, so the heartbeat still adds it to linked work.
+  const attachDue = new Map<string, Date>();
   if (replacedSeqs.length > 0) {
-    await db
+    const replaced = await db
       .delete(juniorMessageAttachments)
       .where(
         and(
           eq(juniorMessageAttachments.conversationId, conversationId),
           inArray(juniorMessageAttachments.seq, replacedSeqs),
         ),
-      );
+      )
+      .returning({
+        attachDueAt: juniorMessageAttachments.attachDueAt,
+        attachmentId: juniorMessageAttachments.attachmentId,
+        seq: juniorMessageAttachments.seq,
+      });
+    for (const row of replaced) {
+      if (row.attachDueAt) {
+        attachDue.set(`${row.seq}:${row.attachmentId}`, row.attachDueAt);
+      }
+    }
   }
-  await insertLinks(executor, conversationId, links);
+  await insertLinks(executor, conversationId, links, attachDue);
 }
 
 /**
@@ -152,6 +165,7 @@ async function insertLinks(
     seq: number;
     url: string;
   }>,
+  attachDue: ReadonlyMap<string, Date> = new Map(),
 ): Promise<void> {
   if (links.length === 0) return;
   const db = executor.db();
@@ -180,6 +194,7 @@ async function insertLinks(
     .insert(juniorMessageAttachments)
     .values(
       withIds.map(({ attachmentId, position, seq }) => ({
+        attachDueAt: attachDue.get(`${seq}:${attachmentId}`) ?? null,
         attachmentId,
         conversationId,
         position,

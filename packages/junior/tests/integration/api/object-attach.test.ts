@@ -400,6 +400,36 @@ describe("attach a linked object", () => {
     expect(await nextTurnNotes("next-turn")).toEqual([]);
   });
 
+  it("keeps a queued link that an edit of its Message keeps", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await linkSlackUser("alice@example.com", "UALICE");
+    await sendSlackMessages([
+      {
+        authorIdentityId: "identity:UALICE",
+        id: "ask",
+        text: `Read ${DOC_URL} and ${EVENT_URL}`,
+      },
+    ]);
+    await startTurn("slack-turn", ["ask"]);
+    await getConversationEventStore().append(CONVERSATION_ID, [
+      {
+        createdAtMs: Date.now(),
+        data: {
+          authorIdentityId: "identity:UALICE",
+          messageId: "ask",
+          role: "user" as const,
+          text: `Read ${DOC_URL} today`,
+          type: "message_updated" as const,
+        },
+      },
+    ]);
+
+    await runTestHeartbeat(queue, Date.now());
+    expect(await listConversationAnnotations(getDb(), CONVERSATION_ID)).toEqual(
+      [expect.objectContaining({ url: DOC_URL })],
+    );
+  });
+
   it("tries a failed attach again after its retry delay", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await linkSlackUser("alice@example.com", "UALICE");
