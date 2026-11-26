@@ -280,6 +280,42 @@ describe("next action item", () => {
     }
   });
 
+  it("asks to merge only a requester whose repository role can merge", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["clean"],
+      merged: false,
+      requesterRole: "triage",
+      reviews: [{ state: "APPROVED", user: { login: "reviewer" } }],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+
+      // GitHub says that it can merge, but triage cannot merge.
+      await webhook.handler(reviewSubmitted("approved"));
+      expect(calls).not.toContainEqual(
+        expect.objectContaining({
+          notice: expect.objectContaining({ title: "Ready to merge · #946" }),
+        }),
+      );
+
+      // A maintainer can merge, so the same state asks them to.
+      github.requesterRole = "maintain";
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("closes the merge conflict notice when the conflict is gone", async () => {
     const fixture = await createGitHubFixture();
     const github: GitHubState = {
@@ -495,7 +531,7 @@ describe("next action item", () => {
     }
   });
 
-  it("reuses one installation token for later webhooks", async () => {
+  it("reuses the installation tokens for later webhooks", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];
     mockGitHub(
@@ -529,7 +565,9 @@ describe("next action item", () => {
       await webhook.handler(checkSuiteCompleted());
       await webhook.handler(reviewSubmitted("approved"));
       expect(requests).toEqual(["pull", "pull"]);
-      expect(minted).toBe(1);
+      // One token reads the pull request, and a metadata-only one reads the
+      // requester's role. The second webhook mints none.
+      expect(minted).toBe(2);
     } finally {
       await fixture.close();
     }

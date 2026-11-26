@@ -1,45 +1,35 @@
+# The rules of the `todo` Inbox kind (`design/inbox-kinds.md`). People write
+# its code, in `inbox-items.ts`.
 kind: todo
 source: todo
+feature: inbox
 hit: first
-doc: design/inbox-kinds.md
 inputs:
   state:
     values: [open, in_progress, done, dropped]
-    phrases:
-      open: the To-do is open
-      in_progress: the To-do is in progress
-      done: the To-do is done
-      dropped: the To-do is dropped
   person_owner:
     values: bool
-    phrases:
-      true: a person owns it
-      false: a person does not own it
+    description: A person owns the To-do.
   viewer.sees_private:
     values: bool
-    phrases:
-      true: the assignee can see the Conversation's private content
-      false: the assignee cannot see the Conversation's private content
+    description: The assignee can see the Conversation's private content.
   viewer.assignee:
     values: bool
-    phrases:
-      true: { is: they are the assignee, who: the assignee }
-      false: they are not the assignee
-commands:
-  mark-done: marks the To-do done
-  drop: drops it
 rules:
   - id: todo-closed
+    serves: [todo-follows]
     rows:
       - when: { state: "done, dropped" }
         output: { close: done }
       - when: { person_owner: false }
         output: { close: dismissed }
   - id: todo-access
+    serves: [todo-private]
     rows:
       - when: { viewer.sees_private: false }
         output: { close: dismissed }
   - id: todo-ask
+    serves: [todo-item, todo-close]
     rows:
       - when: { viewer.assignee: true }
         output:

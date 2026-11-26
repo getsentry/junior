@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { embedRuleList, renderRuleList } from "./inbox-kinds/render.mjs";
-import { ruleText } from "./inbox-kinds/text.mjs";
+import {
+  designRuleIds,
+  linkProblems,
+  subFeatureIds,
+} from "./inbox-kinds/links.mjs";
 import {
   MAX_COMBINATIONS,
   analyzeTable,
@@ -10,14 +13,8 @@ import {
 } from "./inbox-kinds/table.mjs";
 
 const STATES = ["open", "merged", "closed"];
-const STATE = {
-  values: STATES,
-  phrases: { open: "it is open", merged: "it merged", closed: "it closed" },
-};
-const DRAFT = {
-  values: "bool",
-  phrases: { true: "it is a draft", false: "it is not a draft" },
-};
+const STATE = { values: STATES };
+const DRAFT = { values: "bool" };
 
 function table(inputs, rules, extra = {}) {
   return parseTable(
@@ -25,7 +22,7 @@ function table(inputs, rules, extra = {}) {
       kind: "github:example",
       source: "github.example",
       hit: "first",
-      doc: "design/github.md",
+      feature: "github",
       inputs,
       ...extra,
       rules,
@@ -33,17 +30,12 @@ function table(inputs, rules, extra = {}) {
   );
 }
 
-function rule(id, rows) {
-  return { id, rows };
+function rule(id, rows, serves = ["first-rule-wins"]) {
+  return { id, serves, rows };
 }
 
-/** An input whose phrases are its values. */
 function plain(values) {
-  const domain = values === "bool" ? ["true", "false"] : values;
-  return {
-    values,
-    phrases: Object.fromEntries(domain.map((item) => [item, item])),
-  };
+  return { values };
 }
 
 test("parses each kind of unary test cell", () => {
@@ -70,11 +62,12 @@ test("reads YAML 1.2, so `no` stays a string", () => {
           "kind: github:example",
           "source: github.example",
           "hit: first",
-          "doc: design/github.md",
+          "feature: github",
           "code: packages/junior-github/src/example.generated.ts",
-          "inputs: { draft: { values: bool, phrases: {} } }",
+          "inputs: { draft: { values: bool } }",
           "rules:",
           "  - id: example",
+          "    serves: [first-rule-wins]",
           "    rows: [{ when: { draft: no }, output: keep }]",
         ].join("\n"),
       ),
@@ -84,7 +77,7 @@ test("reads YAML 1.2, so `no` stays a string", () => {
 
 test("reads an input with a description", () => {
   const parsed = table(
-    { asked: { values: "bool", phrases: {}, text: "Junior asked." } },
+    { asked: { values: "bool", description: "Junior asked." } },
     [rule("asked", [{ when: { asked: true }, output: "keep" }])],
   );
   assert.deepEqual(parsed.inputs, [
@@ -92,8 +85,7 @@ test("reads an input with a description", () => {
       name: "asked",
       bool: true,
       domain: ["true", "false"],
-      phrases: {},
-      text: "Junior asked.",
+      description: "Junior asked.",
     },
   ]);
 });
@@ -161,112 +153,57 @@ test("reports a table with too many combinations to enumerate", () => {
   ]);
 });
 
-test("embeds the rule list between the markers of its table", () => {
+test("reads the rule IDs of a design file, but not its Gap lines", () => {
+  const markdown = [
+    "## Rules",
+    "",
+    "- `dismiss-holds` A dismiss holds while the output comes from the",
+    "  same rule.",
+    "",
+    "## Gaps",
+    "",
+    "- `dismiss-holds`: nothing checks it.",
+  ].join("\n");
+  assert.deepEqual(designRuleIds(markdown), ["dismiss-holds"]);
+});
+
+test("reads only the Sub-features of a verification map file", () => {
+  const markdown = [
+    "## Sub-features",
+    "",
+    "- `pr-merge` The requester gets Ready to merge.",
+    "",
+    "## Driving it with gh",
+    "",
+    "- `not-a-sub-feature` A driving step.",
+  ].join("\n");
+  assert.deepEqual(subFeatureIds(markdown), ["pr-merge"]);
+});
+
+test("reports a rule that serves an unknown ID or has no sub-feature", () => {
   const parsed = table({ state: STATE }, [
-    rule("ended", [
-      { when: { state: "not(open)" }, output: { close: "done" } },
-    ]),
-  ]);
-  const start = "<!-- Generated from inbox-kinds/example.yaml. -->";
-  const end = "<!-- End of inbox-kinds/example.yaml. -->";
-  const doc = ["# Example", start, "- `old` Old text.", end, ""].join("\n");
-  assert.equal(
-    embedRuleList(
-      doc,
-      "design/inbox-kinds/example.yaml",
-      renderRuleList(parsed),
+    rule(
+      "ended",
+      [{ when: { state: "not(open)" }, output: { close: "done" } }],
+      ["first-rule-wins", "no-such-rule"],
     ),
+    rule("ready", [{ output: "keep" }]),
+  ]);
+  assert.deepEqual(
+    linkProblems(parsed, new Set(["first-rule-wins"]), new Set(["ended"])),
     [
-      "# Example",
-      start,
-      "- `ended` When it merged or closed, nobody gets it.",
-      end,
-      "",
-    ].join("\n"),
-  );
-  assert.throws(
-    () => embedRuleList("# Example\n", "design/inbox-kinds/example.yaml", ""),
-    /needs the lines/,
-  );
-});
-
-test("generates each rule's text from its rows and phrases", () => {
-  const parsed = table(
-    {
-      state: STATE,
-      draft: DRAFT,
-      requester: {
-        values: "bool",
-        phrases: {
-          true: { is: "they are the requester", who: "the requester" },
-          false: { is: "they are not the requester", who: "a reviewer" },
-        },
-      },
-      requested: plain("bool"),
-      replied: {
-        values: "bool",
-        phrases: { false: "they did not reply" },
-      },
-    },
-    [
-      rule("ended", [
-        { when: { state: "merged" }, output: { close: "done" } },
-        { when: { state: "closed" }, output: { close: "dismissed" } },
-      ]),
-      rule("ready", [
-        {
-          when: { draft: false, requester: true },
-          output: { ask: { label: "Ready to merge" } },
-        },
-        { when: { draft: "not(false)" }, output: "keep" },
-      ]),
-      rule("review", [
-        {
-          when: { state: "open", requester: false },
-          output: { ask: { label: "Review", dismiss: "remove" } },
-        },
-        {
-          when: { state: "open", replied: false },
-          output: { ask: { label: "Review", dismiss: "remove" } },
-        },
-      ]),
-      rule("show", [
-        {
-          when: { requester: true },
-          output: { notice: { step: "with the next step" } },
-        },
-      ]),
+      "Rule `ended` serves `no-such-rule`, which no design/*.md rule has.",
+      "Rule `ready` has no line in the Sub-features of .agents/skills/verify-junior/features/github.md.",
     ],
-    { commands: { remove: "removes them" } },
   );
-  const [ended, ready, review, show] = parsed.rules.map((item) =>
-    ruleText(parsed, item),
-  );
-  assert.equal(ended, "When it merged or closed, nobody gets it.");
-  assert.equal(
-    ready,
-    'When it is not a draft, the requester gets "Ready to merge". When it is a draft, their output stays as it is.',
-  );
-  assert.equal(
-    review,
-    'When it is open and either they are not the requester or did not reply, they get "Review". Dismiss removes them.',
-  );
-  assert.equal(show, "The requester gets a notice with the next step.");
+  assert.deepEqual(linkProblems(parsed, new Set(), undefined), [
+    "`feature: github` names no file .agents/skills/verify-junior/features/github.md.",
+  ]);
 });
 
-test("reports a row that names a value with no phrase", () => {
-  const parsed = table({ state: { values: STATES, phrases: {} } }, [
-    rule("ended", [{ when: { state: "merged" }, output: { close: "done" } }]),
-  ]);
+test("rejects a rule that serves no design rule", () => {
   assert.throws(
-    () => renderRuleList(parsed),
-    /Rule `ended` row 1: `state` value `merged` has no phrase/,
-  );
-  const missingCommand = table({ state: STATE }, [
-    rule("ask", [{ output: { ask: { label: "Ask", dismiss: "drop" } } }]),
-  ]);
-  assert.throws(
-    () => renderRuleList(missingCommand),
-    /command `drop` has no phrase/,
+    () => table({ state: STATE }, [rule("ended", [{ output: "keep" }], [])]),
+    /serves/,
   );
 });

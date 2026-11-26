@@ -1,52 +1,41 @@
+# The rules of the `automation` Inbox kind (`design/inbox-kinds.md`). People
+# write its code, in `alert-items.ts`.
 kind: automation
 source: automation
+feature: inbox
 hit: first
-doc: design/inbox-kinds.md
 inputs:
   dismissed:
     values: bool
-    phrases:
-      true: >-
-        a person dismissed an alert of the Automation after it last
-        recovered (a pause is no recovery)
-      false: nobody dismissed an alert of the Automation after it last recovered
+    description: >-
+      A person dismissed an alert of the Automation after it last recovered.
+      A pause is no recovery.
   state:
     values: [active, paused, blocked]
-    phrases:
-      active: the Automation is active
-      paused: the Automation is paused
-      blocked: the Automation is blocked
   trigger_available:
     values: bool
-    phrases:
-      true: its trigger is available
-      false: its trigger is not available
   last_run:
     values: [none, succeeded, failed, blocked]
-    phrases:
-      none: it did not run yet
-      succeeded: its last run succeeded
-      failed: its last run failed
-      blocked: its last run blocked
   viewer.creator:
     values: bool
-    phrases:
-      true: { is: they are the creator, who: the creator }
-      false: they are not the creator
 rules:
   - id: alert-dismissed
+    serves: [alert-dismiss]
     rows:
       - when: { dismissed: true }
         output: { close: dismissed }
   - id: alert-blocked
+    serves: [alert-visibility, notice-never-asks]
     rows:
       - when: { state: blocked, viewer.creator: true }
         output: { notice: { step: to fix the problem and resume it } }
   - id: alert-trigger
+    serves: [alert-visibility, notice-never-asks]
     rows:
       - when: { trigger_available: false, viewer.creator: true }
         output: { notice: { step: that names the problem } }
   - id: alert-run-failed
+    serves: [alert-steps]
     rows:
       - when: { last_run: "failed, blocked", viewer.creator: true }
         output:

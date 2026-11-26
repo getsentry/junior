@@ -69,6 +69,7 @@
  */
 import type {
   ConversationInboxItemChange,
+  PluginCache,
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
@@ -86,6 +87,7 @@ import { GitHubRequestError } from "../credential-support.js";
 import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
+  canMergeRole,
   inLimbo,
   latestActivity,
   nextAction,
@@ -127,6 +129,7 @@ import { GitHubGraphqlError } from "./graphql-request.js";
 import {
   loadGraphqlRateLimitReset,
   loadPullRequestMergeState,
+  loadRepositoryRole,
   loadReviewAgainReader,
   requestPullRequestReviewers,
   type GitHubInstallationEnv,
@@ -460,6 +463,8 @@ interface PullRequestActionSyncContext {
    */
   askAfterRequesterActed?: boolean | undefined;
   botEmail: string | undefined;
+  /** Caches the requester's repository role. */
+  cache: PluginCache;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   env: GitHubInstallationEnv;
@@ -527,6 +532,15 @@ async function syncOne(
       requesterLogin,
     );
     const activity = latestActivity(state.activity, requesterLogin);
+    // Without a linked login, Junior cannot read the requester's role.
+    const canMerge =
+      requesterLogin !== undefined &&
+      canMergeRole(
+        await loadRepositoryRole(args.env, args.cache, {
+          login: requesterLogin,
+          repositoryFullName: target.repositoryFullName,
+        }),
+      );
     const asked = await askHeldReview(args, target, state, requesterLogin);
     const reason = await askReason(args.state, target, {
       asked,
@@ -538,6 +552,7 @@ async function syncOne(
       {
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
         askedAgain: asked !== undefined && reason !== undefined,
+        canMerge,
         feedback: requesterFeedback(state, activity),
         login: requesterLogin,
       },
@@ -796,6 +811,7 @@ export function startedTaskSyncContext(
 ): PullRequestActionSyncContext {
   return {
     botEmail: options.botEmail,
+    cache: ctx.cache,
     codeChanges: ctx.codeChanges,
     db: gitHubDbSchema.parse(ctx.db),
     env: { ...options.env, responses: ctx.state, tokens: new Map() },

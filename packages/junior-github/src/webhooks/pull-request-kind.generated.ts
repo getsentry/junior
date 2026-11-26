@@ -1,16 +1,40 @@
-// Generated from design/inbox-kinds/github-pull-request.yaml.
+// Generated from the Inbox kind table packages/junior-github/src/webhooks/pull-request-kind.yaml.
 // Edit the table, then run `pnpm inbox-kinds:check --update`.
 
 /** The facts that the `github.pull_request` source gives about one viewer of a `github:pull_request` item. */
 export interface Inputs {
   state: "open" | "merged" | "closed";
   draft: boolean;
+  /**
+   * A person turned on auto-merge, so GitHub merges it without them.
+   */
   auto_merge: boolean;
+  /**
+   * GitHub still requests a review from a person or a team.
+   */
   review_pending: boolean;
+  /**
+   * `clean` when GitHub reports that it can merge, `conflict` with a merge
+   * conflict, `blocked` when GitHub blocks the merge, and `unknown` while
+   * GitHub still computes it.
+   */
   merge_state: "clean" | "conflict" | "blocked" | "unknown";
+  /**
+   * `approved` with at least one approval and no reviewer who still
+   * requests changes, `changes_requested` while a reviewer requests
+   * changes, and `none` with neither.
+   */
   review_outcome: "approved" | "changes_requested" | "none";
   viewer: {
     requester: boolean;
+    /**
+     * The viewer's role on the repository is write, maintain, or admin, so
+     * GitHub lets them merge.
+     */
+    can_merge: boolean;
+    /**
+     * GitHub still requests the viewer's review.
+     */
     requested: boolean;
     /**
      * Junior handled every comment of the viewer's change request, the
@@ -22,11 +46,11 @@ export interface Inputs {
      */
     asked_again: boolean;
     /**
-     * The viewer's latest review requests changes, or it is a comment-only
-     * review, which Junior handles like a change request. After the viewer
-     * approves, or after their review is dismissed, only a comment-only
-     * review after a later ask counts. A draft never waits, because it
-     * cannot merge.
+     * The viewer's latest review waits for Junior's answer: it requests
+     * changes, or it is a comment-only review, which Junior handles like a
+     * change request. After the viewer approves, or after their review is
+     * dismissed, only a comment-only review after a later ask counts. A
+     * draft never waits, because it cannot merge.
      */
     feedback: boolean;
     /**
@@ -34,7 +58,13 @@ export interface Inputs {
      * it. The source reads it for drafts too.
      */
     approved: boolean;
+    /**
+     * The viewer commented or reviewed after GitHub last asked them.
+     */
     replied: boolean;
+    /**
+     * The output that the viewer has now.
+     */
     shown: "nothing" | "merge" | "review" | "review_draft" | "mark_ready";
   };
 }
@@ -99,6 +129,7 @@ export function decide(inputs: Inputs): Outcome {
     inputs.merge_state === "clean" &&
     inputs.review_outcome !== "changes_requested" &&
     inputs.viewer.requester &&
+    inputs.viewer.can_merge &&
     !inputs.viewer.feedback
   ) {
     return { kind: "ask", rule: "pr-merge", label: "Ready to merge" };
@@ -134,6 +165,7 @@ export function decide(inputs: Inputs): Outcome {
     inputs.merge_state === "clean" &&
     inputs.review_outcome === "approved" &&
     !inputs.viewer.requester &&
+    inputs.viewer.can_merge &&
     inputs.viewer.requested
   ) {
     return { kind: "ask", rule: "pr-merge-reviewer", label: "Ready to merge" };

@@ -2,11 +2,12 @@ import { parse } from "yaml";
 import * as z from "zod";
 
 /**
- * Inbox kind decision tables (`design/inbox-kinds/*.yaml`).
+ * Inbox kind decision tables: each `<name>-kind.yaml` in a package's `src/`,
+ * next to the code of the kind's owner.
  *
- * A table lists the inputs of a kind with their domains and the phrase of
- * each value, and its rules in order. Each rule has an ID and one or more
- * rows, and its text comes from the phrases of its cells. A row matches
+ * A table lists the inputs of a kind with their domains, and its rules in
+ * order. Each rule has an ID, the `design/` rules that it serves, and one
+ * or more rows. A row matches
  * when each of its cells matches, and the first row that matches gives its
  * output (the FIRST hit policy of DMN). The key is `output`, not `then`, so
  * no parsed row is a thenable. Each cell is a unary test from DMN's
@@ -21,24 +22,12 @@ const NAME = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)?$/;
 const VALUE = /^[a-z][a-z0-9_-]*$/;
 const COMMAND = /^[a-z][a-z0-9-]*$/;
 const RULE_ID = /^[a-z][a-z0-9-]*$/;
+const ruleId = z.string().regex(RULE_ID);
 
 const value = z.string().regex(VALUE);
 const command = z.string().regex(COMMAND);
 const cell = z.union([z.boolean(), z.string()]);
 const domainSchema = z.union([z.literal("bool"), z.array(value).min(2)]);
-// The phrase of a value is a clause, such as "it is open". `not` is the
-// clause for `not(v)`, and `who` names the viewer that has the value, such
-// as "the requester".
-const phraseSchema = z.union([
-  z.string().min(1),
-  z
-    .strictObject({
-      is: z.string().min(1).optional(),
-      not: z.string().min(1).optional(),
-      who: z.string().min(1).optional(),
-    })
-    .refine((phrase) => Object.keys(phrase).length > 0, "It needs a phrase."),
-]);
 
 const outputSchema = z.union([
   z.literal("keep"),
@@ -70,7 +59,9 @@ const tableSchema = z.strictObject({
   kind: z.string().regex(/^[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?$/),
   source: z.string().min(1),
   hit: z.literal("first"),
-  doc: z.string().regex(/^design\/[a-z0-9-]+\.md$/),
+  // The verification map file, in `.agents/skills/verify-junior/features/`,
+  // whose sub-features are the rules of the table.
+  feature: z.string().regex(/^[a-z][a-z0-9-]*$/),
   // Only a kind whose code Junior generates names its code file.
   code: z
     .string()
@@ -80,18 +71,17 @@ const tableSchema = z.strictObject({
     z.string().regex(NAME),
     z.strictObject({
       values: domainSchema,
-      phrases: z.record(z.string(), phraseSchema),
-      // An input whose meaning its phrases do not show in full, such as a
-      // fact that the source derives, says it in `text`.
-      text: z.string().min(1).optional(),
+      // What the input means, when its name does not say it, such as a
+      // fact that the source derives. The generated code keeps it.
+      description: z.string().min(1).optional(),
     }),
   ),
-  // The phrase of each command, such as "removes them from the reviewers".
-  commands: z.record(command, z.string().min(1)).default({}),
   rules: z
     .array(
       z.strictObject({
-        id: z.string().regex(RULE_ID),
+        id: ruleId,
+        // The IDs of the `design/` rules that the rule serves.
+        serves: z.array(ruleId).min(1),
         rows: z
           .array(
             z.strictObject({
@@ -109,7 +99,7 @@ const tableSchema = z.strictObject({
  * Split a unary test cell that is not `-` into the values that it names,
  * and whether `not(...)` negates them.
  */
-export function cellTerms(raw) {
+function cellTerms(raw) {
   const text = String(raw).trim();
   const negated = /^not\((.*)\)$/.exec(text);
   const values = (negated ? negated[1] : text)
@@ -150,20 +140,8 @@ export function parseTable(text) {
   const table = tableSchema.parse(parse(text, { version: "1.2" }));
   const inputs = Object.entries(table.inputs).map(([name, spec]) => {
     const domain = spec.values === "bool" ? ["true", "false"] : spec.values;
-    for (const item of Object.keys(spec.phrases)) {
-      if (!domain.includes(item)) {
-        throw new Error(
-          `\`${name}\` has a phrase for \`${item}\`, which is not one of ${domain.join(", ")}.`,
-        );
-      }
-    }
-    const input = {
-      name,
-      bool: spec.values === "bool",
-      domain,
-      phrases: spec.phrases,
-    };
-    if (spec.text !== undefined) input.text = spec.text;
+    const input = { name, bool: spec.values === "bool", domain };
+    if (spec.description !== undefined) input.description = spec.description;
     return input;
   });
   for (const input of inputs) {
@@ -196,15 +174,7 @@ export function parseTable(text) {
           });
         }
       });
-      // `when` keeps the order of the cells in the table, which is the
-      // order that the rule text names them in.
-      rows.push({
-        id: rule.id,
-        index,
-        cells,
-        when: row.when,
-        output: row.output,
-      });
+      rows.push({ id: rule.id, index, cells, output: row.output });
     }
   }
   return { ...table, inputs, rows };

@@ -14,6 +14,16 @@ A user asks Junior to work in a GitHub repository: read code, change it, open an
 - `watch` A user asks Junior to watch a PR. Matching activity wakes the Conversation, and Junior does not poll.
 - `default-repo` A user sets a default repo once. Later requests use it, and a named `owner/repo` wins.
 - `cards` A Conversation that links a PR or issue shows its card only when the viewer's linked GitHub account can see the repo.
+- `pr-ended` A Junior PR merges or closes. Its Inbox item closes: done when it merged, dismissed when it closed.
+- `pr-merge` A Junior PR is open, not a draft, with auto-merge off, no pending review, and no requester feedback that waits for Junior. GitHub says that it can merge, and no reviewer requests changes. The requester gets "Ready to merge" when their repository role can merge. While GitHub still computes the merge state, the item stays as it is.
+- `pr-merge-reviewer` A Junior PR is approved, GitHub says that it can merge, it is not a draft, and auto-merge is off. A reviewer whose review GitHub still requests, and whose repository role can merge, gets "Ready to merge".
+- `pr-review-again` Junior handles every comment of the requester's change request, and the required checks pass. The requester gets "Review requested" again, with the reason. On a draft, the item says to review it, then mark it ready for review.
+- `pr-review` GitHub requests a person's review on a Junior PR. They get "Review requested", and Dismiss removes them from the reviewers. The requester's reply after their own feedback ends it, because Junior acts next. On a draft, the item says to review it, then mark it ready for review.
+- `pr-mark-ready` The requester approves a draft that Junior held. Their item says to mark it ready for review.
+- `conflict-ended` A Junior PR with a merge conflict item merges or closes. The item closes.
+- `conflict-gone` GitHub no longer reports a merge conflict on a Junior PR. Its conflict item closes as done.
+- `conflict-dismissed` The requester dismisses the merge conflict item. It stays closed until the next Resume.
+- `conflict-stuck` The head commit is the same a day after Junior's conflict fix. The requester gets "Resume", and one click starts a fix.
 
 ## How to get to it (user POV)
 

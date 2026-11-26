@@ -224,6 +224,8 @@ export interface GitHubState {
   state: "closed" | "open";
   /** The pull request title. */
   title?: string;
+  /** The requester's repository role. Defaults to `write`. */
+  requesterRole?: string;
 }
 
 // Each pull request read takes the next merge state, after any hold.
@@ -347,6 +349,14 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         HttpResponse.json({
           expires_at: "2027-01-01T00:00:00.000Z",
           token: "installation-token",
+        }),
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+      () =>
+        HttpResponse.json({
+          permission: "read",
+          role_name: github.requesterRole ?? "write",
         }),
     ),
     http.get(
@@ -745,7 +755,10 @@ export function route(
       async update() {},
       delete: unused,
       get: unused,
-      getOrLoad: unused,
+      // The requester's role is read on each sync.
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
     },
     inboxItems,
     state,

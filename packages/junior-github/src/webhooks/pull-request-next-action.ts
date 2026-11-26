@@ -140,16 +140,26 @@ function askAction(ask: Ask): GitHubPullRequestAction {
   return ask.label === "Ready to merge" ? "merge" : "review";
 }
 
+/** The repository roles that GitHub lets merge a pull request. */
+const MERGE_ROLES = new Set(["admin", "maintain", "write"]);
+
+/** Whether a repository role from `loadRepositoryRole` can merge. */
+export function canMergeRole(role: string): boolean {
+  return MERGE_ROLES.has(role.toLowerCase());
+}
+
 /**
  * Derive the requester's next action from the rules in
- * `design/inbox-kinds/github-pull-request.yaml`. Return undefined when it
- * cannot be known yet, so a later event decides.
+ * `pull-request-kind.yaml`. Return undefined when it cannot be known yet,
+ * so a later event decides.
  */
 export function nextAction(
   state: GitHubPullRequestMergeState,
   requester: {
     actedLast: boolean;
     askedAgain: boolean;
+    /** `canMergeRole`: the requester's repository role can merge. */
+    canMerge: boolean;
     /** `requesterFeedback`: the requester waits for Junior's answer. */
     feedback: boolean;
     login: string | undefined;
@@ -169,6 +179,7 @@ export function nextAction(
     viewer: {
       approved: state.requesterApproved,
       asked_again: requester.askedAgain,
+      can_merge: requester.canMerge,
       feedback: requester.feedback,
       replied: requester.actedLast,
       requested: isRequested(state, requester.login),

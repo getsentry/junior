@@ -1,29 +1,34 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  FEATURES_DIR,
+  designRuleIds,
+  linkProblems,
+  subFeatureIds,
+} from "./inbox-kinds/links.mjs";
+import {
+  CODE_HEADER_START,
   UPDATE_COMMAND,
-  embedRuleList,
   renderKindCode,
-  renderRuleList,
 } from "./inbox-kinds/render.mjs";
 import { analyzeTable, parseTable } from "./inbox-kinds/table.mjs";
 
 /**
- * Inbox kind check. Each `design/inbox-kinds/*.yaml` decision table states
- * the rules of one Inbox kind (`design/inbox-kinds.md`). From each table,
- * this check generates the rule list in its design file, and the kind's
- * code when the table names a code file, and fails when either differs
- * from the files. It also fails when a row of a table can never be the
- * first match, when an input can be unknown and no rule names `unknown`,
- * or when a row names a value that has no phrase.
+ * Inbox kind check (`design/inbox-kinds.md`). Each `<name>-kind.yaml`
+ * decision table in a package's `src/` states the rules of one Inbox kind.
+ * For a table that names a code file, this check generates the kind's code
+ * and fails when it differs from the file. It also fails when a row of a
+ * table can never be the first match, when an input can be unknown and no
+ * rule names `unknown` (`table-checks`), when a rule serves an ID that no
+ * `design/` rule has, or when a rule has no sub-feature in the
+ * verification map (`table-links`).
  *
  * Run `pnpm inbox-kinds:check --update` to write the generated files.
  */
 
-const TABLE = /^design\/inbox-kinds\/[^/]+\.yaml$/;
+const TABLE = /^packages\/[^/]+\/src\/.+-kind\.yaml$/;
+const DESIGN = /^design\/[^/]+\.md$/;
 const GENERATED = /\.generated\.ts$/;
-// The start of the header that `renderKindCode` writes.
-const CODE_HEADER_START = "// Generated from design/inbox-kinds/";
 const FIX = `Edit the table, then run \`${UPDATE_COMMAND}\`.`;
 
 /** Check every table, or write its generated files with `--update`. */
@@ -31,8 +36,17 @@ export async function run({ root, files, args }) {
   const update = args.includes("--update");
   const problems = [];
   const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-  const write = (file, contents) =>
-    fs.writeFileSync(path.join(root, file), contents);
+  const designIds = new Set(
+    files
+      .filter((file) => DESIGN.test(file))
+      .flatMap((file) => designRuleIds(read(file))),
+  );
+  const featureIds = (feature) => {
+    const file = `${FEATURES_DIR}/${feature}.md`;
+    return files.includes(file)
+      ? new Set(subFeatureIds(read(file)))
+      : undefined;
+  };
   const codeFiles = new Set();
   for (const tablePath of files.filter((file) => TABLE.test(file))) {
     let table;
@@ -43,41 +57,20 @@ export async function run({ root, files, args }) {
       continue;
     }
     problems.push(
-      ...analyzeTable(table).map((problem) => `${tablePath}: ${problem}`),
+      ...[
+        ...analyzeTable(table),
+        ...linkProblems(table, designIds, featureIds(table.feature)),
+      ].map((problem) => `${tablePath}: ${problem}`),
     );
-    if (table.code !== undefined) {
-      codeFiles.add(table.code);
-      const code = await renderKindCode(table, tablePath);
-      const current = fs.existsSync(path.join(root, table.code))
-        ? read(table.code)
-        : undefined;
-      if (current !== code) {
-        if (update) write(table.code, code);
-        else problems.push(`${table.code}: differs from ${tablePath}. ${FIX}`);
-      }
-    }
-    let list;
-    let doc;
-    try {
-      list = renderRuleList(table);
-    } catch (error) {
-      problems.push(`${tablePath}: ${error.message}`);
-      continue;
-    }
-    try {
-      doc = embedRuleList(read(table.doc), tablePath, list);
-    } catch (error) {
-      problems.push(`${table.doc}: ${error.message}`);
-      continue;
-    }
-    if (doc !== read(table.doc)) {
-      if (update) write(table.doc, doc);
-      else {
-        problems.push(
-          `${table.doc}: its rule list differs from ${tablePath}. ${FIX}`,
-        );
-      }
-    }
+    if (table.code === undefined) continue;
+    codeFiles.add(table.code);
+    const code = await renderKindCode(table, tablePath);
+    const current = fs.existsSync(path.join(root, table.code))
+      ? read(table.code)
+      : undefined;
+    if (current === code) continue;
+    if (update) fs.writeFileSync(path.join(root, table.code), code);
+    else problems.push(`${table.code}: differs from ${tablePath}. ${FIX}`);
   }
   // A generated file outlives its table when the table moves or goes.
   for (const file of files.filter((item) => GENERATED.test(item))) {

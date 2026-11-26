@@ -1,26 +1,10 @@
 import { format } from "oxfmt";
-import { ruleText } from "./text.mjs";
-
-/** The width that the design files wrap their rule lists at. */
-const DOC_WIDTH = 76;
 
 /** The command that writes the generated files from the tables. */
 export const UPDATE_COMMAND = "pnpm inbox-kinds:check --update";
 
-// Design files and tables are both in `design/`.
-function docRelative(tablePath) {
-  return tablePath.replace(/^design\//, "");
-}
-
-/** The line that starts a generated rule list in a design file. */
-function docStartMarker(tablePath) {
-  return `<!-- Generated from ${docRelative(tablePath)}. -->`;
-}
-
-/** The line that ends a generated rule list in a design file. */
-function docEndMarker(tablePath) {
-  return `<!-- End of ${docRelative(tablePath)}. -->`;
-}
+/** The start of the first line of every generated file. */
+export const CODE_HEADER_START = "// Generated from the Inbox kind table ";
 
 function wrap(words, width, indent) {
   const lines = [];
@@ -35,45 +19,6 @@ function wrap(words, width, indent) {
   }
   lines.push(line);
   return lines;
-}
-
-/**
- * Render the rule list of a table, as the design file shows it. Throw when
- * a cell or a command has no phrase.
- */
-export function renderRuleList(table) {
-  return table.rules
-    .flatMap((rule) =>
-      wrap(
-        ["-", `\`${rule.id}\``, ...ruleText(table, rule).split(/\s+/)],
-        DOC_WIDTH,
-        "  ",
-      ),
-    )
-    .join("\n");
-}
-
-/**
- * Replace the generated rule list between the markers of one table in a
- * design file. Throw when the file does not have the markers once.
- */
-export function embedRuleList(doc, tablePath, list) {
-  const start = docStartMarker(tablePath);
-  const end = docEndMarker(tablePath);
-  const lines = doc.split("\n");
-  const from = lines.indexOf(start);
-  const to = lines.indexOf(end);
-  if (
-    from === -1 ||
-    to < from ||
-    lines.lastIndexOf(start) !== from ||
-    lines.lastIndexOf(end) !== to
-  ) {
-    throw new Error(
-      `It needs the lines \`${start}\` and \`${end}\` once, in this order, around the rule list.`,
-    );
-  }
-  return [...lines.slice(0, from + 1), list, ...lines.slice(to)].join("\n");
 }
 
 function outcomeOf(row) {
@@ -106,7 +51,7 @@ function inputsType(table) {
     const type = input.bool
       ? "boolean"
       : input.domain.map((item) => `"${item}"`).join(" | ");
-    const field = { text: input.text, type };
+    const field = { description: input.description, type };
     const [head, tail] = input.name.split(".");
     if (tail === undefined) {
       fields.set(head, field);
@@ -119,8 +64,8 @@ function inputsType(table) {
     [...map]
       .map(([name, field]) => {
         if (field instanceof Map) return `${name}: { ${render(field)} };`;
-        const doc = field.text
-          ? `/**\n${wrap(field.text.split(/\s+/), 70, "")
+        const doc = field.description
+          ? `/**\n${wrap(field.description.split(/\s+/), 70, "")
               .map((line) => ` * ${line}`)
               .join("\n")}\n */\n`
           : "";
@@ -162,7 +107,7 @@ export async function renderKindCode(table, tablePath) {
     ),
   ];
   const source = [
-    `// Generated from ${tablePath}.`,
+    `${CODE_HEADER_START}${tablePath}.`,
     `// Edit the table, then run \`${UPDATE_COMMAND}\`.`,
     "",
     `/** The facts that the \`${table.source}\` source gives about one viewer of a \`${table.kind}\` item. */`,
