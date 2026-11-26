@@ -404,14 +404,38 @@ describe("Spaces API", () => {
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
 
-    // Leave by the last subscriber never archives the Space's work.
+    // Only a root is left or unsubscribed. The Space's work follows its
+    // Lead, so its detail offers neither, and both refuse.
+    const inSpaceDetail = await detail(ana, inSpace);
+    expect(inSpaceDetail).not.toHaveProperty("subscribed");
+    const leadId = inSpaceDetail.parentConversationId!;
+    for (const [path, body] of [
+      ["leave", undefined],
+      ["subscription", { subscribed: false }],
+    ] as const) {
+      const refused = await request(
+        ana,
+        path === "leave" ? "POST" : "PATCH",
+        `/conversations/${encodeURIComponent(inSpace)}/${path}`,
+        body,
+      );
+      expect(refused.status).toBe(409);
+    }
+    const ownFeed = async () =>
+      (await spaceFeed(ana, "")).map((row) => row.conversationId);
+    expect(await ownFeed()).toContain(inSpace);
+
+    // Leaving the Lead takes all of the Space's work out of the leaver's
+    // feed. The last subscriber leaving never archives it.
+    expect(await detail(ana, leadId)).toHaveProperty("subscribed", true);
     const left = await request(
       ana,
       "POST",
-      `/conversations/${encodeURIComponent(inSpace)}/leave`,
+      `/conversations/${encodeURIComponent(leadId)}/leave`,
     );
     expect(left.status).toBe(200);
     expect(await left.json()).toEqual({ archivedAt: null });
+    expect(await ownFeed()).not.toContain(inSpace);
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);

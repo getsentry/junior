@@ -62,9 +62,14 @@ export function createSetConversationSubscriptionTool(
         context.conversationId,
         input.subscribed,
       );
-      if (!result) {
+      if (result === "not_participant") {
         throw new ToolInputError(
           "This person is not a participant of this conversation, so they have no subscription to change. No change to the call can fix this.",
+        );
+      }
+      if (result === "not_root") {
+        throw new ToolInputError(
+          "This conversation is a child of another conversation and follows its root's subscription, so only the root can be joined or left. No change to the call can fix this.",
         );
       }
       return {
