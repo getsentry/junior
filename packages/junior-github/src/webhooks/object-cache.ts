@@ -12,7 +12,9 @@ import {
   githubPullRequestFieldsSchema,
   type GitHubPullRequestFields,
   mergeGitHubObject,
+  markGitHubReviewCleared,
   mergeGitHubPullRequest,
+  withoutGitHubReview,
 } from "../object-cache.js";
 import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
 import { startGitHubPullRequestPatch } from "../pull-request-patches.js";
@@ -41,12 +43,6 @@ const REVIEW_ACTIONS = {
   pull_request_review: new Set(["dismissed", "submitted"]),
 };
 
-function withoutReview(
-  fields: GitHubPullRequestFields,
-): GitHubPullRequestFields {
-  const { review: _, ...rest } = fields;
-  return rest;
-}
 const checkPullRequestsSchema = z.array(
   z.object({ number: z.number().int().positive() }),
 );
@@ -97,6 +93,7 @@ async function refreshPullRequest(
   );
   let patch = false;
   let conflicted = false;
+  if (reviewChanged) await markGitHubReviewCleared(args.cache, key);
   await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
     const merged = mergeGitHubPullRequest(current, payload);
     patch = merged?.patch ?? false;
@@ -108,7 +105,9 @@ async function refreshPullRequest(
     return (
       merged && {
         ...GITHUB_PULL_REQUEST_CACHE,
-        value: reviewChanged ? withoutReview(merged.fields) : merged.fields,
+        value: reviewChanged
+          ? withoutGitHubReview(merged.fields)
+          : merged.fields,
       }
     );
   });
@@ -210,10 +209,11 @@ export async function refreshGitHubObjectCache(
       event.data.repository.full_name,
       event.data.pull_request.number,
     );
+    await markGitHubReviewCleared(args.cache, key);
     await args.cache.update<GitHubPullRequestFields | null>(key, (current) =>
       current?.review === undefined
         ? undefined
-        : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutReview(current) },
+        : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) },
     );
     return;
   }
