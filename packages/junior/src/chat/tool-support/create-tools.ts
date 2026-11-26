@@ -68,6 +68,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
@@ -268,6 +269,7 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  listSpaces: (run) => createListSpacesTool(run.context),
   moveConversationToSpace: (run) =>
     createMoveConversationToSpaceTool(run.context),
   // The Turn keeps the tool listed, so its tool list stays the same, but only
