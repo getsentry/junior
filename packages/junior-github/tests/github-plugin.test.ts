@@ -1872,6 +1872,9 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-pull-request-subscribe" },
     );
     expect(result).toMatchObject({
+      // The Watch delivers pending checks later, so the result says to end
+      // the Turn instead of waiting for them.
+      note: expect.any(String),
       subscribable: {
         suggested_events: expect.not.arrayContaining([
           "pull_request.checks.failed",
@@ -2063,6 +2066,8 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     expect(result).not.toHaveProperty("subscription");
+    // With no Watch, no later Turn delivers the checks.
+    expect(result).not.toHaveProperty("note");
     expect(subscribe).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledWith(
       "github.pull_request.subscribe_after_create.failed",
