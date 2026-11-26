@@ -1,0 +1,76 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "327dcd99-2e9b-401c-8212-57400f212633",
+  "prevIds": ["8e2b0f6c-ca38-4edf-b706-246b9d502445"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_plugin_conversation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "n|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "e|idx|public.junior_conversation_events_plugin_conversation_idx",
+        "n|rel|public.junior_conversation_events_plugin_conversation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_plugin_conversation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "(\"payload\"->>'namespace')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "(\"payload\"->>'name')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_events\".\"type\" = 'structured_event'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

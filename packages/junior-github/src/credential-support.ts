@@ -9,16 +9,24 @@ import type {
   PluginCredentialResult,
   PluginGrant,
   PluginProviderAccount,
+  PluginState,
   PluginStoredTokens,
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { sendConditionalRequest } from "./conditional-requests.js";
 import {
-  type GitHubAppPermissions,
-  readGrantPermissions,
-} from "./permissions.js";
+  parseInstallationTokenResponse,
+  readInstallationPermissions,
+} from "./installation-responses.js";
+import {
+  type InstallationToken,
+  type InstallationTokens,
+  reuseInstallationToken,
+} from "./installation-tokens.js";
+import type { GitHubAppPermissions } from "./permissions.js";
 
-export type JsonRecord = Record<string, unknown>;
 export type GitHubGrantName =
   | "installation-read"
   | "installation-write"
@@ -40,6 +48,8 @@ export type GitHubGrant = PluginGrant & {
 interface GitHubRequestParams {
   body?: unknown;
   method?: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
   token: string;
 }
 
@@ -53,16 +63,18 @@ interface RefreshUserAccessTokenInput {
   clientIdEnv: string;
   clientSecretEnv: string;
   refreshToken: string;
-  requestedScope?: string;
+  requestedScope?: string | undefined;
 }
 
 interface CredentialLeaseInput {
-  account?: PluginProviderAccount;
-  authorization?: {
-    provider: "github";
-    scope?: string;
-    type: "oauth";
-  };
+  account?: PluginProviderAccount | undefined;
+  authorization?:
+    | {
+        provider: "github";
+        scope?: string;
+        type: "oauth";
+      }
+    | undefined;
   domains?: string[];
   expiresAtMs: number;
   token: string;
@@ -75,13 +87,15 @@ type TokenResolution =
 interface UserCredentialOptions {
   clientIdEnv: string;
   clientSecretEnv: string;
-  userScope?: string;
+  userScope?: string | undefined;
 }
 
 interface InstallationCredentialBaseOptions {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }
 
 type InstallationCredentialOptions = InstallationCredentialBaseOptions &
@@ -159,10 +173,27 @@ export class GitHubPluginSetupError extends Error {
   }
 }
 
-/** Return whether a provider value is a JSON object. */
-export function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+/** GitHub REST error body with a `message`. */
+export const githubMessageSchema = z.object({ message: z.string() });
+// Fields stay `unknown` where the parser below reports a specific error for
+// each wrong field.
+const oauthErrorSchema = z.object({ error: z.string() });
+const oauthTokenResponseSchema = z.object({
+  access_token: z.unknown().optional(),
+  expires_in: z.unknown().optional(),
+  refresh_token: z.unknown().optional(),
+  refresh_token_expires_in: z.unknown().optional(),
+  scope: z.unknown().optional(),
+});
+const userAccountSchema = z.object({
+  html_url: z.unknown().optional(),
+  id: z.unknown().optional(),
+  login: z.unknown().optional(),
+});
+const verifiedEmailSchema = z.object({
+  email: z.string(),
+  verified: z.literal(true),
+});
 
 /** Read a non-empty GitHub plugin environment value. */
 export function readEnv(name: string): string | undefined {
@@ -271,16 +302,22 @@ export async function githubRequest(
   path: string,
   params: GitHubRequestParams,
 ): Promise<unknown> {
-  const response = await fetch(`${apiBase}${path}`, {
-    method: params.method ?? "GET",
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${params.token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(params.body ? { "Content-Type": "application/json" } : undefined),
-    },
-    ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
-  });
+  const method = params.method ?? "GET";
+  const url = `${apiBase}${path}`;
+  const responses = method === "GET" ? params.responses : undefined;
+  const response = await sendConditionalRequest(responses, url, (headers) =>
+    fetch(url, {
+      method,
+      headers: {
+        ...headers,
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${params.token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(params.body ? { "Content-Type": "application/json" } : undefined),
+      },
+      ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
+    }),
+  );
 
   const text = await response.text();
   let parsed: unknown;
@@ -293,10 +330,10 @@ export async function githubRequest(
   }
 
   if (!response.ok) {
-    const message =
-      isRecord(parsed) && typeof parsed.message === "string"
-        ? parsed.message
-        : `GitHub API error ${response.status}`;
+    const error = githubMessageSchema.safeParse(parsed);
+    const message = error.success
+      ? error.data.message
+      : `GitHub API error ${response.status}`;
     throw new GitHubRequestError(message, response.status);
   }
   return parsed;
@@ -332,9 +369,8 @@ function parseOAuthResponseJson(responseText: string): unknown {
 }
 
 function oauthErrorCode(data: unknown): string | undefined {
-  return isRecord(data) && typeof data.error === "string"
-    ? data.error
-    : undefined;
+  const parsed = oauthErrorSchema.safeParse(data);
+  return parsed.success ? parsed.data.error : undefined;
 }
 
 function isRejectedRefreshError(errorCode: string | undefined): boolean {
@@ -342,52 +378,60 @@ function isRejectedRefreshError(errorCode: string | undefined): boolean {
 }
 
 function parseOAuthTokenResponse(
-  data: unknown,
+  value: unknown,
   requestedScope?: string,
 ): PluginStoredTokens {
-  if (!isRecord(data)) {
+  const parsed = oauthTokenResponseSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("OAuth token response is invalid");
   }
-  if (typeof data.access_token !== "string" || !data.access_token.trim()) {
+  const data = parsed.data;
+  if (
+    typeof data["access_token"] !== "string" ||
+    !data["access_token"].trim()
+  ) {
     throw new Error("OAuth token response missing access_token");
   }
-  if (typeof data.refresh_token !== "string" || !data.refresh_token.trim()) {
+  if (
+    typeof data["refresh_token"] !== "string" ||
+    !data["refresh_token"].trim()
+  ) {
     throw new Error("OAuth token response missing refresh_token");
   }
   let scope = normalizeOAuthScope(requestedScope);
-  if (data.scope !== undefined) {
-    if (typeof data.scope !== "string") {
+  if (data["scope"] !== undefined) {
+    if (typeof data["scope"] !== "string") {
       throw new Error("OAuth token response returned invalid scope");
     }
-    scope = normalizeOAuthScope(data.scope) ?? scope;
+    scope = normalizeOAuthScope(data["scope"]) ?? scope;
   }
   const result: PluginStoredTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    accessToken: data["access_token"],
+    refreshToken: data["refresh_token"],
     ...(scope ? { scope } : undefined),
   };
-  if (data.expires_in !== undefined) {
+  if (data["expires_in"] !== undefined) {
     if (
-      typeof data.expires_in !== "number" ||
-      !Number.isFinite(data.expires_in) ||
-      data.expires_in <= 0
+      typeof data["expires_in"] !== "number" ||
+      !Number.isFinite(data["expires_in"]) ||
+      data["expires_in"] <= 0
     ) {
       throw new Error("OAuth token response returned invalid expires_in");
     }
-    result.expiresAt = Date.now() + data.expires_in * 1000;
+    result.expiresAt = Date.now() + data["expires_in"] * 1000;
   }
-  if (data.refresh_token_expires_in !== undefined) {
+  if (data["refresh_token_expires_in"] !== undefined) {
     if (
-      typeof data.refresh_token_expires_in !== "number" ||
-      !Number.isFinite(data.refresh_token_expires_in) ||
-      data.refresh_token_expires_in <= 0
+      typeof data["refresh_token_expires_in"] !== "number" ||
+      !Number.isFinite(data["refresh_token_expires_in"]) ||
+      data["refresh_token_expires_in"] <= 0
     ) {
       throw new Error(
         "OAuth token response returned invalid refresh_token_expires_in",
       );
     }
     result.refreshTokenExpiresAt =
-      Date.now() + data.refresh_token_expires_in * 1000;
+      Date.now() + data["refresh_token_expires_in"] * 1000;
   }
   return result;
 }
@@ -512,37 +556,6 @@ export function credentialUnavailable(message: string): PluginCredentialResult {
   };
 }
 
-function parseInstallationTokenResponse(data: unknown): {
-  expiresAtMs: number;
-  token: string;
-} {
-  if (!isRecord(data)) {
-    throw new Error("GitHub installation token response is invalid");
-  }
-  const token = data.token;
-  if (typeof token !== "string" || !token.trim()) {
-    throw new Error("GitHub installation token response missing token");
-  }
-  const expiresAt = data.expires_at;
-  const expiresAtMs =
-    typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-    throw new Error(
-      "GitHub installation token response returned invalid expires_at",
-    );
-  }
-  return { token, expiresAtMs };
-}
-
-function readInstallationPermissions(
-  installation: unknown,
-): Record<string, "read"> {
-  if (!isRecord(installation) || !isRecord(installation.permissions)) {
-    throw new Error("GitHub installation response missing permissions");
-  }
-  return readGrantPermissions(installation.permissions);
-}
-
 function decodeGitHubPathSegment(value: string): string | undefined {
   try {
     const decoded = decodeURIComponent(value).trim();
@@ -577,14 +590,17 @@ export function githubRepositoryFromUrl(
 export async function resolveUserAccount(
   tokens: PluginStoredTokens,
 ): Promise<PluginProviderAccount> {
-  const account = await githubRequest("https://api.github.com", "/user", {
-    token: tokens.accessToken,
-  });
-  if (!isRecord(account)) {
+  const parsed = userAccountSchema.safeParse(
+    await githubRequest("https://api.github.com", "/user", {
+      token: tokens.accessToken,
+    }),
+  );
+  if (!parsed.success) {
     throw new Error("GitHub user response is invalid");
   }
-  const id = account.id;
-  const login = account.login;
+  const account = parsed.data;
+  const id = account["id"];
+  const login = account["login"];
   if (
     (typeof id !== "number" && typeof id !== "string") ||
     typeof login !== "string" ||
@@ -593,7 +609,7 @@ export async function resolveUserAccount(
     throw new Error("GitHub user response missing id or login");
   }
   const url =
-    typeof account.html_url === "string" ? account.html_url : undefined;
+    typeof account["html_url"] === "string" ? account["html_url"] : undefined;
   return {
     handle: login.trim(),
     id: String(id),
@@ -628,14 +644,11 @@ export async function listVerifiedUserEmails(
   if (!Array.isArray(emails)) {
     throw new Error("GitHub user emails response is invalid");
   }
-  return emails.flatMap((entry) =>
-    isRecord(entry) &&
-    entry.verified === true &&
-    typeof entry.email === "string" &&
-    entry.email.trim()
-      ? [entry.email.trim()]
-      : [],
-  );
+  return emails.flatMap((entry) => {
+    const parsed = verifiedEmailSchema.safeParse(entry);
+    const email = parsed.success ? parsed.data.email.trim() : "";
+    return email ? [email] : [];
+  });
 }
 
 async function tokensWithAccount(
@@ -827,10 +840,24 @@ async function issueUserCredential(
   return credentialNeeded("Your GitHub authorization has expired.", scope);
 }
 
-/** Issue a bounded raw token for plugin-owned GitHub API calls. */
+/**
+ * Issue a bounded raw token for plugin-owned GitHub API calls. With
+ * `tokens`, reuse a token of the same scope.
+ */
 export async function issueInstallationToken(
   options: InstallationCredentialOptions,
-): Promise<{ expiresAtMs: number; token: string }> {
+): Promise<InstallationToken> {
+  if (!options.tokens || options.loadPermissions) {
+    return await mintInstallationToken(options);
+  }
+  return await reuseInstallationToken(options.tokens, options, () =>
+    mintInstallationToken(options),
+  );
+}
+
+async function mintInstallationToken(
+  options: InstallationCredentialOptions,
+): Promise<InstallationToken> {
   const appId = requireEnv(options.appIdEnv);
   const installationIdRaw = requireEnv(options.installationIdEnv);
   const installationId = Number(installationIdRaw);

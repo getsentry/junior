@@ -9,7 +9,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 export const teamId = `TEVENT${Date.now()}`;
 /**
@@ -63,7 +63,8 @@ export function context(
     }),
     userText: "Create a task for review feedback.",
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
   } as ToolRuntimeContext;

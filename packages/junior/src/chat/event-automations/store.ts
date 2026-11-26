@@ -1,3 +1,4 @@
+import { syncAutomationAlert } from "@/chat/automations/alert-items";
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
@@ -30,7 +31,7 @@ type AutomationRow = typeof juniorAutomations.$inferSelect;
 export type StoredEventAutomation = EventAutomation & {
   status: EventAutomationStatus;
   /** Why a run blocked this automation, until its creator resumes it. */
-  statusReason?: string;
+  statusReason?: string | undefined;
 };
 
 /**
@@ -163,6 +164,7 @@ export async function createEventAutomation(
     if (inserted[0]) {
       const created = parseEventAutomationRow(inserted[0]);
       await recordAutomationVersion(tx, created, undefined);
+      await syncAutomationAlert(tx, created.id);
       return created;
     }
     const existing = await getEventAutomation(tx, task.id);
@@ -195,6 +197,7 @@ export async function createEventAutomation(
     }
     const revived = parseEventAutomationRow(rows[0]);
     await recordAutomationVersion(tx, revived, undefined);
+    await syncAutomationAlert(tx, revived.id);
     return revived;
   });
 }
@@ -227,6 +230,7 @@ export async function saveEventAutomation(
       .returning();
     const saved = parseEventAutomationRow(updated[0]!);
     await recordAutomationVersion(tx, saved, current, editedBy);
+    await syncAutomationAlert(tx, saved.id);
     return saved;
   });
 }
@@ -241,7 +245,9 @@ export async function deleteEventAutomation(
     .set({ status: "deleted" })
     .where(and(eq(juniorAutomations.id, id), activeEventAutomationWhere()))
     .returning();
-  return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+  if (!rows[0]) return undefined;
+  await syncAutomationAlert(db, id);
+  return parseEventAutomationRow(rows[0]);
 }
 
 /**
@@ -514,6 +520,7 @@ export async function setEventAutomationStatus(
       .update(juniorAutomations)
       .set({ status: next.status, statusReason: next.statusReason ?? null })
       .where(eventAutomationWhere(id));
+    await syncAutomationAlert(tx, id);
     const { statusReason: _statusReason, ...rest } = current;
     return {
       ...rest,
@@ -555,5 +562,6 @@ export async function blockEventAutomation(
       ),
     )
     .returning({ status: juniorAutomations.status });
+  if (updated[0]) await syncAutomationAlert(db, id);
   return updated[0]?.status === "blocked";
 }

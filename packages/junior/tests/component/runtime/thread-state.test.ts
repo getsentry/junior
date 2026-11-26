@@ -7,28 +7,36 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
 
 describe("thread sandbox state", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 
-  it("clears a stale profile hash when the replacement reference omits one", async () => {
+  it("keeps the last tool session and clears stale fields when the replacement reference omits them", async () => {
     const conversationId = "local:test:thread-sandbox-state";
+    const toolSession = { sandboxId: "sandbox-old", sessionId: "session-old" };
     await persistThreadStateById(conversationId, {
-      sandboxRef: { id: "sandbox-old", profileHash: "profile-old" },
+      sandboxRef: {
+        id: "sandbox-old",
+        profileHash: "profile-old",
+        toolSession,
+      },
     });
+    expect(
+      getPersistedSandboxState(await getPersistedThreadState(conversationId)),
+    ).toEqual({ id: "sandbox-old", profileHash: "profile-old", toolSession });
 
     await persistThreadStateById(conversationId, {
       sandboxRef: { id: "sandbox-new" },
@@ -38,6 +46,7 @@ describe("thread sandbox state", () => {
     expect(state).toMatchObject({
       app_sandbox_id: "sandbox-new",
       app_sandbox_dependency_profile_hash: "",
+      app_sandbox_tool_session_id: "",
     });
     expect(getPersistedSandboxState(state)).toEqual({ id: "sandbox-new" });
   });

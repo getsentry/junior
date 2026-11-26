@@ -1,9 +1,10 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, SQL } from "drizzle-orm";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { conversationSubtree, conversationSubtreeColumns } from "./subtree";
 
 /** One Conversation in a tree, with the fields that archive rules read. */
 export type ConversationTreeNode = {
@@ -11,27 +12,34 @@ export type ConversationTreeNode = {
   conversationId: string;
   kind: ConversationKind;
   parentConversationId?: string;
+  rootConversationId?: string;
 };
 
 /**
- * Read every Conversation in the trees of the given roots. Every descendant
- * shares `root_conversation_id`, so one indexed read covers any depth.
+ * Read each given Conversation and every descendant at any depth. A root
+ * reads its whole tree in one indexed read. A Lead's child reads only its
+ * own subtree, not the Lead's whole tree.
  */
 export async function readConversationTrees(
   db: JuniorDatabase,
-  rootConversationIds: readonly string[],
+  conversationIds: readonly string[],
 ): Promise<Map<string, ConversationTreeNode>> {
-  if (rootConversationIds.length === 0) return new Map();
+  if (conversationIds.length === 0) return new Map();
   const rows = await db
     .select({
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
-    .where(
-      inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
+    .innerJoin(
+      conversationSubtree(conversationIds),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
+      ),
     );
   return new Map(
     rows.map((row) => [
@@ -42,6 +50,9 @@ export async function readConversationTrees(
         kind: conversationKindFromRow(row),
         ...(row.parentConversationId
           ? { parentConversationId: row.parentConversationId }
+          : undefined),
+        ...(row.rootConversationId
+          ? { rootConversationId: row.rootConversationId }
           : undefined),
       },
     ]),
@@ -92,17 +103,32 @@ export function conversationDescendants(
   return descendants;
 }
 
-/** Set or clear the shared archive of the given Conversations. */
+/**
+ * Set or clear the shared archive and count the rows written. This is the
+ * only write of `archived_at`. `conversations` names the rows by id or by a
+ * condition. `guard` is a condition that each row must still meet when it is
+ * written, so a stale read loses to a newer change.
+ */
 export async function setArchivedAt(
   db: JuniorDatabase,
-  conversationIds: readonly string[],
+  conversations: readonly string[] | SQL,
   archivedAt: Date | null,
-): Promise<void> {
-  if (conversationIds.length === 0) return;
-  await db
+  guard?: SQL,
+): Promise<number> {
+  if (!(conversations instanceof SQL) && conversations.length === 0) return 0;
+  const updated = await db
     .update(juniorConversations)
     .set({ archivedAt, detailVersion: nextDetailVersion })
-    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+    .where(
+      and(
+        conversations instanceof SQL
+          ? conversations
+          : inArray(juniorConversations.conversationId, [...conversations]),
+        guard,
+      ),
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  return updated.length;
 }
 
 /**

@@ -44,7 +44,6 @@ interface Result extends PluginToolOutput {
  * App bot posted. Comments by other users are refused before the write.
  */
 export function createGitHubUpdateIssueCommentTool(
-  egress: PluginEgress,
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -55,10 +54,14 @@ export function createGitHubUpdateIssueCommentTool(
       readOnlyHint: false,
     },
     description:
-      "Replace the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
+      "Edit the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      { egress }: { egress: PluginEgress },
+    ): Promise<Result> {
       const repo = parseRepo(input.repo);
       const botUserId = botUserIdFromEmail(botEmail);
       if (botUserId === undefined) {
@@ -71,7 +74,11 @@ export function createGitHubUpdateIssueCommentTool(
       });
       if (!lookup.ok) {
         const message = `GitHub issue comment lookup failed with HTTP ${lookup.status}: ${githubErrorMessage(lookup.body)}`;
-        if (lookup.status === 404) throw new PluginToolInputError(message);
+        if (lookup.status === 404) {
+          throw new PluginToolInputError(
+            `${message}. Check repo and comment_id.`,
+          );
+        }
         throw new Error(message);
       }
       const author = z
@@ -79,7 +86,7 @@ export function createGitHubUpdateIssueCommentTool(
         .safeParse(lookup.body);
       if (!author.success || author.data.user?.id !== botUserId) {
         throw new PluginToolInputError(
-          "This bot can only edit issue comments it posted.",
+          "This bot can only edit issue comments it posted. Post a new comment instead.",
         );
       }
 
@@ -92,7 +99,9 @@ export function createGitHubUpdateIssueCommentTool(
       if (!response.ok) {
         const message = `GitHub issue comment update failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
         if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
+          throw new PluginToolInputError(
+            `${message}. Check repo and comment_id, and fix any field that GitHub names.`,
+          );
         }
         throw new Error(message);
       }

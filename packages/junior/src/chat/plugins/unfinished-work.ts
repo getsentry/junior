@@ -1,10 +1,14 @@
-import { inArray } from "drizzle-orm";
+import {
+  type ConversationTreeNode,
+  readConversationTrees,
+} from "@/chat/conversations/sql/conversation-tree";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { logWarn } from "@/chat/logging";
-import { juniorConversations } from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 
 export type ConversationWork = {
   assignedIds: string[];
@@ -20,8 +24,8 @@ export type ConversationWork = {
 
 export type ConversationDoneInput = {
   assignedWork?: boolean;
-  finishedWorkAt?: string;
-  lastUserMessageAt?: string;
+  finishedWorkAt?: string | undefined;
+  lastUserMessageAt?: string | undefined;
   unfinishedWork?: boolean;
 };
 
@@ -51,18 +55,12 @@ export function isConversationWorkDone(
  * counts for. A child agent runs under its own conversation id, so a plugin
  * links the work that the child does, such as a pull request, to the child.
  */
-async function readWorkOwners(
+function workOwners(
   conversationIds: string[],
-): Promise<Map<string, string>> {
+  tree: ReadonlyMap<string, ConversationTreeNode>,
+): Map<string, string> {
   const owners = new Map(conversationIds.map((id) => [id, id]));
-  const children = await getDb()
-    .select({
-      conversationId: juniorConversations.conversationId,
-      rootConversationId: juniorConversations.rootConversationId,
-    })
-    .from(juniorConversations)
-    .where(inArray(juniorConversations.rootConversationId, conversationIds));
-  for (const child of children) {
+  for (const child of tree.values()) {
     if (child.rootConversationId && !owners.has(child.conversationId)) {
       owners.set(child.conversationId, child.rootConversationId);
     }
@@ -73,10 +71,12 @@ async function readWorkOwners(
 /**
  * Return assigned and unfinished plugin work for the candidate conversations.
  * Work in a child conversation counts for its root candidate. Feed Priority
- * combines these signals with conversation activity on the host.
+ * combines these signals with conversation activity on the host. A caller
+ * that already read the trees of the candidates passes them as `tree`.
  */
 export async function listConversationWork(
   conversationIds: string[],
+  tree?: ReadonlyMap<string, ConversationTreeNode>,
 ): Promise<ConversationWork> {
   if (conversationIds.length === 0) {
     return {
@@ -86,17 +86,22 @@ export async function listConversationWork(
       unfinishedIds: [],
     };
   }
-  const owners = await readWorkOwners(conversationIds);
+  const owners = workOwners(
+    conversationIds,
+    tree ?? (await readConversationTrees(getDb(), conversationIds)),
+  );
   const queriedIds = [...owners.keys()];
   const assigned = new Set<string>();
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
   let failed = false;
-  for (const plugin of getPlugins()) {
+  // Merging is order-free: sets, and the latest finish time.
+  await mapBounded(getPlugins(), async (plugin) => {
     const hook = plugin.hooks?.unfinishedWork;
-    if (!hook) continue;
+    if (!hook) return;
     try {
       const result = await hook({
+        codeChanges: createPluginCodeChanges(plugin.manifest.name),
         conversationIds: queriedIds,
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),
@@ -127,15 +132,15 @@ export async function listConversationWork(
       }
     } catch (error) {
       failed = true;
-      // Fail open: a broken plugin must not invent assigned or unfinished work
-      // and demote recent conversations out of Priority.
+      // Fail open: a broken plugin must not invent assigned or unfinished
+      // work and demote recent conversations out of Priority.
       logWarn("plugin.unfinished_work.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
     }
-  }
+  });
   return {
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),

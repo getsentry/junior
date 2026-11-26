@@ -1,20 +1,23 @@
 import { ForkConversationButton } from "./ForkConversationButton";
 import {
   TranscriptAttachments,
-  TranscriptLocalImages,
+  TranscriptLocalFiles,
 } from "./TranscriptAttachment";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectRow } from "./ObjectRow";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { memo, type ReactNode } from "react";
+import { useHref } from "react-router";
+import { Link } from "lucide-react";
 
+import { PersonReference } from "../components/PersonReference";
 import {
-  formatMessageTimestamp,
   transcriptMessageActor,
   transcriptMessageActorLabel,
+  transcriptMessagePerson,
   transcriptRoleKind,
 } from "../format";
 import { cn } from "../styles";
@@ -27,13 +30,15 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SourceMark } from "./SourceMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
+import { formatMessageTimestamp } from "../time";
+import { conversationPath } from "./conversationRoutes";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
+    footer?: ReactNode;
     message: TranscriptViewMessage;
     conversation: ConversationTranscript;
   }) {
@@ -55,6 +60,7 @@ export const TranscriptMessageView = memo(
               chat={chatText}
               key={index}
               mentions={props.message.mentions}
+              skills={roleKind === "user"}
               text={part.text ?? ""}
             />
           ) : null,
@@ -66,7 +72,8 @@ export const TranscriptMessageView = memo(
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
-        fromAgent={Boolean(props.message.agentInvocationId)}
+        fromAgent={props.message.fromParentAgent === true}
+        lead={props.conversation.kind === "lead"}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
         }
@@ -88,7 +95,7 @@ export const TranscriptMessageView = memo(
         />
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
-              <ReviewItemChangeRow
+              <InboxItemChangeRow
                 conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
@@ -96,21 +103,20 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
-        <TranscriptRecalledMemories message={props.message} />
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}
             conversationId={props.conversation.conversationId}
           />
         ) : null}
-        {props.message.images?.length ? (
-          <TranscriptLocalImages images={props.message.images} />
+        {props.message.files?.length ? (
+          <TranscriptLocalFiles files={props.message.files} />
         ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {
             case "object":
               return (
-                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                <ObjectRow key={`${card.plugin}:${card.key}`} card={card} />
               );
             case "automation":
               return (
@@ -118,14 +124,19 @@ export const TranscriptMessageView = memo(
               );
           }
         })}
-        {roleKind === "assistant" &&
-        !props.message.pending &&
-        (rawText || forkMessageId) ? (
+        {props.footer}
+        {chatText && !props.message.pending && (rawText || forkMessageId) ? (
           // The margins line the first icon up with the text edge and let the
           // icon padding use the space that is already around the message.
           <MessageActions className="-mt-1.5 -mb-2.5 -ml-2 [&>button]:size-8">
             {rawText ? (
               <CopyButton getText={() => rawText} label="Copy message" />
+            ) : null}
+            {props.message.messageId ? (
+              <CopyMessageLinkButton
+                conversationId={props.conversation.conversationId}
+                messageId={props.message.messageId}
+              />
             ) : null}
             {forkMessageId ? (
               <ForkConversationButton
@@ -133,7 +144,7 @@ export const TranscriptMessageView = memo(
                 messageId={forkMessageId}
               />
             ) : null}
-            {props.message.messageId ? (
+            {roleKind === "assistant" && props.message.messageId ? (
               <ReplyRatingActions
                 conversationId={props.conversation.conversationId}
                 messageId={props.message.messageId}
@@ -145,6 +156,7 @@ export const TranscriptMessageView = memo(
     );
   },
   (previous, next) =>
+    previous.footer === next.footer &&
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
@@ -153,8 +165,25 @@ export const TranscriptMessageView = memo(
     previous.conversation.authors === next.conversation.authors,
 );
 
+function CopyMessageLinkButton(props: {
+  conversationId: string;
+  messageId: string;
+}) {
+  const href = useHref(
+    conversationPath(props.conversationId, { messageId: props.messageId }),
+  );
+  return (
+    <CopyButton
+      getText={() => new URL(href, window.location.origin).href}
+      icon={Link}
+      label="Copy link to message"
+    />
+  );
+}
+
 /** Render a redacted primary chat message without exposing body content. */
 export function RedactedMessageView(props: {
+  footer?: ReactNode;
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
@@ -162,7 +191,8 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
-      fromAgent={Boolean(props.message.agentInvocationId)}
+      fromAgent={props.message.fromParentAgent === true}
+      lead={props.conversation.kind === "lead"}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
       }
@@ -171,13 +201,14 @@ export function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         {props.message.parts.map((_part, index) => (
           <div className="py-1" key={index}>
             <RedactedMarker />
           </div>
         ))}
       </div>
+      {props.footer}
     </TranscriptMessageShell>
   );
 }
@@ -221,11 +252,21 @@ function TranscriptMessageHeader(props: {
     props.conversation,
     props.message,
   );
+  const person = transcriptMessagePerson(props.conversation, props.message);
 
   return (
     <TranscriptMessageHeading action={props.action}>
       <span className={transcriptRoleLabelClass(props.message.role)}>
-        {roleLabel}
+        {person ? (
+          // The large photo beside the message already shows who wrote it.
+          <PersonReference
+            avatar={false}
+            className="text-inherit no-underline hover:underline"
+            person={person}
+          />
+        ) : (
+          roleLabel
+        )}
       </span>
       {source || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">

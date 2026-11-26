@@ -31,6 +31,7 @@ import {
   createConfiguredJuniorSqlFixture,
   createJuniorSqlFixture,
 } from "../fixtures/sql";
+import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
@@ -193,7 +194,7 @@ describe("conversation SQL store", () => {
 
       await expect(
         store.get({ conversationId: "kind-root" }),
-      ).resolves.toMatchObject({ kind: "root" });
+      ).resolves.toMatchObject({ kind: "thread" });
       await expect(
         store.get({ conversationId: "agent:kind-task" }),
       ).resolves.toMatchObject({ kind: "task" });
@@ -218,8 +219,8 @@ describe("conversation SQL store", () => {
           .insert(juniorConversations)
           .values({
             ...row,
-            conversationId: "agent:kind-root-child",
-            kind: "root",
+            conversationId: "agent:kind-lead-child",
+            kind: "lead",
             parentConversationId: "kind-root",
           }),
       ).rejects.toMatchObject({
@@ -884,7 +885,7 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("persists visibility from source signals and converges on newer signals", async () => {
+  it("keeps the first visibility of a root as its Destination changes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -920,7 +921,8 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({ visibility: "private" });
 
-      // A channel converted private -> public converges on the next signal.
+      // A channel converted private -> public updates its Destination, but
+      // the root keeps the visibility it was created with.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination,
@@ -928,24 +930,51 @@ describe("conversation SQL store", () => {
         nowMs: 3_000,
       });
       await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "public" });
-      await expect(
         store.getDestinationVisibility({
           provider: "slack",
           providerTenantId: "T123",
           providerDestinationId: "C123",
         }),
       ).resolves.toBe("public");
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({ visibility: "private" });
 
+      // A new root in the channel takes the current value. A later change
+      // back to private leaves it public: a known limitation.
+      const otherThreadId = `${CONVERSATION_ID}.other`;
       await store.recordActivity({
-        conversationId: CONVERSATION_ID,
+        conversationId: otherThreadId,
         destination,
         nowMs: 4_000,
       });
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        visibility: "private",
+        nowMs: 5_000,
+      });
       await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
+        store.get({ conversationId: otherThreadId }),
       ).resolves.toMatchObject({ visibility: "public" });
+
+      // A child copies its root's visibility, and an explicit change moves
+      // the whole tree.
+      await store.createChild({
+        childConversationId: "agent:visibility-task",
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+        nowMs: 6_000,
+      });
+      await expect(
+        store.get({ conversationId: "agent:visibility-task" }),
+      ).resolves.toMatchObject({ visibility: "private" });
+      await setConversationVisibility(fixture.sql, CONVERSATION_ID, "public");
+      for (const conversationId of [CONVERSATION_ID, "agent:visibility-task"]) {
+        await expect(store.get({ conversationId })).resolves.toMatchObject({
+          visibility: "public",
+        });
+      }
     } finally {
       await fixture.close();
     }
@@ -976,6 +1005,29 @@ describe("conversation SQL store", () => {
           providerDestinationId: "C123",
         }),
       ).resolves.toBeUndefined();
+
+      // A child of a root with no visibility has none either. The first
+      // live signal fills both.
+      await store.createChild({
+        childConversationId: "agent:unsigned-task",
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      });
+      await expect(
+        store.get({ conversationId: "agent:unsigned-task" }),
+      ).resolves.not.toHaveProperty("visibility");
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("signed").destination,
+        visibility: "public",
+        nowMs: 3_000,
+      });
+      for (const conversationId of [CONVERSATION_ID, "agent:unsigned-task"]) {
+        await expect(store.get({ conversationId })).resolves.toMatchObject({
+          visibility: "public",
+        });
+      }
     } finally {
       await fixture.close();
     }
@@ -1312,7 +1364,7 @@ ORDER BY metric
       ).toEqual([
         { metric: "cache_creation_tokens", value: 2 },
         { metric: "cached_input_tokens", value: 5 },
-        { metric: "cost_usd", value: 0.015 },
+        { metric: "cost_micro_usd", value: 15_000 },
         { metric: "duration_ms", value: 1_500 },
         { metric: "input_tokens", value: 5 },
         { metric: "output_tokens", value: 3 },
@@ -1434,7 +1486,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "failed",
+            status: "needs_input",
           }),
         ],
       });
@@ -1444,7 +1496,7 @@ ORDER BY metric
     }
   });
 
-  it("reports stale running SQL execution status as active", async () => {
+  it("reports stale running SQL execution status as working", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1468,7 +1520,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "active",
+            status: "working",
           }),
         ],
       });
@@ -1479,7 +1531,7 @@ ORDER BY metric
     }
   });
 
-  it("maps idle SQL execution status to completed", async () => {
+  it("maps idle SQL execution status to done", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1506,7 +1558,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "completed",
+            status: "done",
           }),
         ],
       });
@@ -1558,7 +1610,7 @@ ORDER BY metric
             conversationId: CONVERSATION_ID,
             lastProgressAt: new Date(600_000).toISOString(),
             lastSeenAt: new Date(600_000).toISOString(),
-            status: "active",
+            status: "working",
           }),
         ],
       });

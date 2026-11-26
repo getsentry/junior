@@ -1,8 +1,10 @@
 /** Store web input in a Conversation mailbox. */
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { storeInputImages } from "@/chat/attachments/images";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import {
+  recordAttachmentUploads,
+  type VerifiedAttachmentUpload,
+} from "@/chat/attachments/uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -15,27 +17,33 @@ import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type {
   Conversation,
   ConversationStore,
+  TopLevelConversationKind,
 } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { getActiveTraceContext } from "@/chat/logging";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
   appendAndEnqueueExclusiveInboundMessage,
   type InboundMessage,
+  type InboundMessageDelivery,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import {
+  isThread,
+  isTopLevel,
+  ownsLocation,
+} from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -45,28 +53,41 @@ type EnqueueOptions = {
 export interface CreateConversationInput {
   actor: WebActor;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of the first message. */
+  uploads?: VerifiedAttachmentUpload[];
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
   /** Saved title. Title generation runs only when it is omitted. */
   title?: string;
   /** New roots default public. Continues never rewrite visibility. */
   visibility?: ConversationPrivacy;
+  /**
+   * Lead of the Space that the new Conversation starts in, as the Lead's
+   * child. The caller checks that the person may use the Space.
+   */
+  leadConversationId?: string;
 }
 
 /** Input for one web Message. */
 export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
+  /** `interrupt` joins the running Turn at its next step. Default `defer`. */
+  delivery?: InboundMessageDelivery | undefined;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of this Message. */
+  uploads?: VerifiedAttachmentUpload[] | undefined;
   idempotencyKey: string;
-  /** Review item change that this Message reports. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  /** Inbox item change that this Message reports. */
+  reviewItemChange?: InboxItemChangeRecord | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the conversation root. */
+  rootSpaceId?: string;
+  /** Applied only when this call creates the Conversation, as its parent. */
+  leadConversationId?: string;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -131,9 +152,12 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
  * Conversation: a dashboard Conversation, a Slack thread, or a Thread.
  */
 export function acceptsWebMessages(
-  conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
+  conversation: Pick<
+    Conversation,
+    "conversationId" | "destination" | "kind" | "parentConversationId"
+  >,
 ): boolean {
-  if (!isTopLevelKind(conversation.kind)) return conversation.kind === "thread";
+  if (!isTopLevel(conversation)) return isThread(conversation);
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
@@ -147,7 +171,7 @@ export function acceptsWebMessages(
  */
 export function webActorFromUser(
   user: Pick<User, "displayName" | "email" | "id">,
-  profile?: { userName?: string },
+  profile?: { userName?: string | undefined },
 ): WebActor {
   return {
     platform: "web",
@@ -162,16 +186,17 @@ export function webActorFromUser(
 export function buildWebInboundMessage(args: {
   actor: WebActor;
   /** Identity of the web Actor, resolved at ingress. */
-  authorIdentityId?: string;
+  authorIdentityId?: string | undefined;
   conversationId: string;
   createdAtMs?: number;
+  delivery?: InboundMessageDelivery | undefined;
   /** Existing Conversation Destination. A child's work keeps none. */
-  destination?: Destination;
+  destination?: Destination | undefined;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: InboxItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -186,7 +211,7 @@ export function buildWebInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
-    delivery: "defer",
+    delivery: args.delivery ?? "defer",
     // TODO(dcramer): Remove InboundMessage.destination after workers read the
     // Conversation Location and no mailbox reader requires Destination.
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -230,15 +255,35 @@ export function buildWebInboundMessage(args: {
 export async function recordWebConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the Conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the Conversation root. */
+  rootKind?: TopLevelConversationKind;
+  /** Applied only when this call creates the Conversation root. */
+  rootSpaceId?: string;
+  /**
+   * Applied only when this call creates the Conversation: it starts as a
+   * child of this Lead, in the Lead's Space, with the Lead's Location.
+   */
+  leadConversationId?: string;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
-  const existing = await store.get({ conversationId: args.conversationId });
+  let existing = await store.get({ conversationId: args.conversationId });
+  if (!existing && args.leadConversationId) {
+    await store.createChild({
+      childConversationId: args.conversationId,
+      kind: "thread",
+      nowMs: args.nowMs,
+      parentConversationId: args.leadConversationId,
+      source: "web",
+      ...(args.rootTitle ? { title: args.rootTitle } : undefined),
+    });
+    existing = await store.get({ conversationId: args.conversationId });
+  }
   const destination = resolveConversationDestination({
     conversationId: args.conversationId,
     existing: existing?.destination,
@@ -263,8 +308,12 @@ export async function recordWebConversationActivity(args: {
     ...(source ? { sessionSource: source } : undefined),
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
+    ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
+    ...(isNewRoot && args.rootSpaceId
+      ? { spaceId: args.rootSpaceId }
+      : undefined),
   });
-  return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
+  return existing && !ownsLocation(existing) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */
@@ -285,9 +334,12 @@ export async function createAndEnqueueConversation(
       conversationId,
       idempotencyKey: input.idempotencyKey,
       message: input.message,
-      images: input.images,
+      uploads: input.uploads,
       ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
+      ...(input.leadConversationId
+        ? { leadConversationId: input.leadConversationId }
+        : undefined),
     },
     options,
   );
@@ -307,7 +359,7 @@ export async function appendAndEnqueueWebMessage(
   options: EnqueueOptions & { exclusive?: boolean },
 ): Promise<WebMessageResult> {
   const text = input.message.trim();
-  if (!text && !input.images?.length) {
+  if (!text && !input.uploads?.length) {
     throw new Error("Web Message must not be empty");
   }
   if (!input.actor.email) {
@@ -325,15 +377,22 @@ export async function appendAndEnqueueWebMessage(
     nowMs,
     ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
+    ...(input.rootSpaceId && { rootSpaceId: input.rootSpaceId }),
+    ...(input.leadConversationId && {
+      leadConversationId: input.leadConversationId,
+    }),
   });
   let attachments: MessageAttachment[] = [];
-  if (input.images?.length) {
+  if (input.uploads?.length) {
     if (!options.attachmentStorage)
       throw new Error("Attachment storage is unavailable.");
-    attachments = await storeInputImages({
+    // The Conversation row exists now, so attachment rows can refer to it.
+    attachments = await recordAttachmentUploads({
       conversationId: input.conversationId,
-      files: input.images,
+      db: getSqlExecutor(),
+      nowMs,
       storage: options.attachmentStorage,
+      uploads: input.uploads,
     });
   }
   const enqueue = options.exclusive
@@ -349,6 +408,7 @@ export async function appendAndEnqueueWebMessage(
         actor: input.actor,
         authorIdentityId,
         conversationId: input.conversationId,
+        delivery: input.delivery,
         destination,
         message: text,
         attachments,

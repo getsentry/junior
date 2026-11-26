@@ -1,5 +1,11 @@
-import type { WaitingConversation } from "../review-desk/queries";
 import type { Conversation } from "../types";
+import { conversationDisplayState } from "./ConversationStateIcon";
+import {
+  calendarDay,
+  calendarDaysAgo,
+  dateTimeFormat,
+  formatTime,
+} from "../time";
 
 export type ConversationSection = {
   conversations: Conversation[];
@@ -7,55 +13,19 @@ export type ConversationSection = {
   label: string;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-// Pinned sorts first, then Needs you, then every time section.
-const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
-const NEEDS_YOU_SECTION = { key: "needs-you", label: "Needs you", order: -1 };
-
-/** Conversations that wait on the viewer, by id, with their wait start. */
-type Waiting = Pick<
-  ReadonlyMap<string, Pick<WaitingConversation, "waitingSince">>,
-  "get" | "has"
->;
-
 /**
- * Group conversations into Pinned, then Needs you, then by last Message:
- * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
- * month.
- *
- * Needs you holds the conversations that wait on the viewer: an open Review
- * item in `waiting`, or a Turn that waits on an authorization. Open work
- * does not move a row. A pinned conversation
- * shows only in Pinned, even when it waits on the viewer. Pinned follows the
- * viewer's order. Needs you lists the longest wait first, so the queue keeps
- * its order while the viewer works it. Every other section lists the newest
- * Message first.
+ * Put each conversation, newest Message first, in the section that
+ * `sectionOf` names, and order the sections by their `order`.
  */
-export function buildConversationSections(
+function groupSections(
   conversations: Conversation[],
-  options: {
-    nowMs: number;
-    timeZone: string;
-    waiting: Waiting;
-  },
+  sectionOf: (
+    conversation: Conversation,
+  ) => Pick<ConversationSection, "key" | "label"> & { order: number },
 ): ConversationSection[] {
-  const nowDay = calendarDay(options.nowMs, options.timeZone);
   const sections = new Map<string, ConversationSection & { order: number }>();
-  const sorted = [...conversations].sort(
-    (left, right) => activityTime(right) - activityTime(left),
-  );
-
-  for (const conversation of sorted) {
-    const section = conversation.pinnedAt
-      ? PINNED_SECTION
-      : waitsOnViewer(conversation, options.waiting)
-        ? NEEDS_YOU_SECTION
-        : conversationSection(
-            activityTime(conversation),
-            nowDay,
-            options.nowMs,
-            options.timeZone,
-          );
+  for (const conversation of newestFirst(conversations)) {
+    const section = sectionOf(conversation);
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -63,53 +33,106 @@ export function buildConversationSections(
       sections.set(section.key, { ...section, conversations: [conversation] });
     }
   }
-
-  sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
-  sections
-    .get(NEEDS_YOU_SECTION.key)
-    ?.conversations.sort(compareWaitStart(options.waiting));
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
 }
 
 /**
- * True when the conversation waits on the viewer: an open Review item waits
- * on them, or a Turn waits on a person to finish an authorization.
+ * Sort pinned conversations to the front: pins in the viewer's order, then
+ * the newest Message first. Paginated lists call this before paging, so
+ * page 1 holds every pin.
  */
-function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
-  return (
-    waiting.has(conversation.id) || conversation.awaitingAuthorization === true
+export function pinnedFirst(conversations: Conversation[]): Conversation[] {
+  return newestFirst(conversations).sort((left, right) => {
+    const leftRank = left.pinnedAt ? 0 : 1;
+    return (
+      leftRank - (right.pinnedAt ? 0 : 1) ||
+      (leftRank === 0 ? comparePinOrder(left, right) : 0)
+    );
+  });
+}
+
+/** What a row needs, in the order that attention lists show it. */
+const ATTENTION_GROUPS = ["needs_you", "working", "waiting", "done"] as const;
+
+export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
+
+/** The attention group of one row, and when it last moved. */
+export type Attention = { group: AttentionGroup; time: number };
+
+/**
+ * Group rows in `ATTENTION_GROUPS` order, each group newest first. Groups
+ * with no rows are left out. In flight and every Threads list use this
+ * order.
+ */
+export function attentionGroups<T>(
+  rows: readonly T[],
+  attention: (row: T) => Attention,
+): { group: AttentionGroup; rows: T[] }[] {
+  const read = rows.map((row) => ({ row, ...attention(row) }));
+  read.sort((left, right) => right.time - left.time);
+  return ATTENTION_GROUPS.flatMap((group) => {
+    const grouped = read
+      .filter((item) => item.group === group)
+      .map((item) => item.row);
+    return grouped.length > 0 ? [{ group, rows: grouped }] : [];
+  });
+}
+
+/**
+ * Read a feed row's attention from its tree state and last Message. A failed
+ * latest Turn needs the viewer, as on the Space's own row. A tree that
+ * watches for an Event or a Timer waits. A pin does not change the group.
+ */
+function conversationAttention(conversation: Conversation): Attention {
+  const state = conversationDisplayState(conversation);
+  return {
+    group:
+      state === "needs_you" || conversation.latestTurnFailed
+        ? "needs_you"
+        : state === "working"
+          ? "working"
+          : state === "watching"
+            ? "waiting"
+            : "done",
+    time: activityTime(conversation),
+  };
+}
+
+/** Sort feed rows in attention order, as In flight shows them. */
+export function attentionOrder(conversations: Conversation[]): Conversation[] {
+  return attentionGroups(conversations, conversationAttention).flatMap(
+    (group) => group.rows,
+  );
+}
+
+/** Sort conversations by their last Message, newest first. */
+export function newestFirst(conversations: Conversation[]): Conversation[] {
+  return [...conversations].sort(
+    (left, right) => activityTime(right) - activityTime(left),
   );
 }
 
 /**
- * Sort pinned, then waiting conversations to the front, in the order that
- * `buildConversationSections` shows them: pins in the viewer's order, the
- * longest wait first, then the newest Message first. Paginated lists call
- * this before paging, so page 1 holds every pinned and waiting conversation,
- * and pages split where the sections do.
+ * Group conversations by last Message: Today, Yesterday, Previous 7 days,
+ * Previous 30 days, then one section per month. A pin or a wait on the
+ * viewer stays in its time section, and its row carries the marker.
+ * Sections and their rows run newest first.
  */
-export function pinnedAndWaitingFirst(
+export function buildTimeSections(
   conversations: Conversation[],
-  waiting: Waiting,
-): Conversation[] {
-  const rank = (conversation: Conversation) =>
-    conversation.pinnedAt ? 0 : waitsOnViewer(conversation, waiting) ? 1 : 2;
-  const byWait = compareWaitStart(waiting);
-  return [...conversations]
-    .sort((left, right) => activityTime(right) - activityTime(left))
-    .sort((left, right) => {
-      const leftRank = rank(left);
-      return (
-        leftRank - rank(right) ||
-        (leftRank === 0
-          ? comparePinOrder(left, right)
-          : leftRank === 1
-            ? byWait(left, right)
-            : 0)
-      );
-    });
+  options: { nowMs: number; timeZone: string },
+): ConversationSection[] {
+  const nowDay = calendarDay(options.nowMs, options.timeZone);
+  return groupSections(conversations, (conversation) =>
+    conversationSection(
+      activityTime(conversation),
+      nowDay,
+      options.nowMs,
+      options.timeZone,
+    ),
+  );
 }
 
 /**
@@ -128,25 +151,6 @@ function comparePinOrder(left: Conversation, right: Conversation): number {
 
 function pinTime(conversation: Conversation): number {
   return conversation.pinnedAt ? Date.parse(conversation.pinnedAt) || 0 : 0;
-}
-
-/**
- * Order the longest wait first. A conversation with no known wait start
- * follows those that have one, newest first. The stable sort keeps that
- * activity order.
- */
-function compareWaitStart(
-  waiting: Waiting,
-): (left: Conversation, right: Conversation) => number {
-  const start = (conversation: Conversation) => {
-    const time = Date.parse(waiting.get(conversation.id)?.waitingSince ?? "");
-    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
-  };
-  return (left, right) => {
-    const leftStart = start(left);
-    const rightStart = start(right);
-    return leftStart === rightStart ? 0 : leftStart < rightStart ? -1 : 1;
-  };
 }
 
 /**
@@ -191,11 +195,11 @@ function conversationSection(
   const nowMonth = yearMonth(nowMs, timeZone);
   return {
     key: `month-${month.year}-${month.month}`,
-    label: new Intl.DateTimeFormat("en-US", {
+    label: formatTime(time, {
       month: "long",
       timeZone,
       ...(month.year === nowMonth.year ? undefined : { year: "numeric" }),
-    }).format(time),
+    }),
     // Month sections follow the rolling windows, newest month first.
     order:
       4 + (nowMonth.year - month.year) * 12 + (nowMonth.month - month.month),
@@ -206,36 +210,11 @@ function yearMonth(
   time: number,
   timeZone: string,
 ): { month: number; year: number } {
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = dateTimeFormat({
     month: "numeric",
     timeZone,
     year: "numeric",
   }).formatToParts(time);
   const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
   return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
-}
-
-/** Count the calendar days from `time` to `nowDay` (a `calendarDay` value). */
-export function calendarDaysAgo(
-  time: number,
-  nowDay: number,
-  timeZone: string,
-): number {
-  return Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS);
-}
-
-/** Return the UTC midnight of the calendar day that holds `time` in `timeZone`. */
-export function calendarDay(time: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "numeric",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(time);
-  const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
-  return Date.UTC(
-    values.get("year") ?? 0,
-    (values.get("month") ?? 1) - 1,
-    values.get("day") ?? 1,
-  );
 }

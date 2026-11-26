@@ -1,8 +1,8 @@
 /**
- * Stops event wakes after too many automated Turns with no user Turn.
+ * Counts automated Turns in a row with no user Turn. At the limit, the
+ * Turn that reached it stops the Conversation tree.
  *
- * Counts on the Conversation only. A finished user Turn clears the count so
- * later automated wakes can run again.
+ * Counts on the Conversation only. A finished user Turn clears the count.
  */
 import type { Source } from "@sentry/junior-plugin-api";
 import type { Lock, StateAdapter } from "chat";
@@ -15,32 +15,23 @@ const AUTOMATED_TURN_LIMIT_LOCK_TTL_MS = 5_000;
 const AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS = 2_000;
 const AUTOMATED_TURN_LIMIT_LOCK_RETRY_MS = 25;
 
-/** Stored consecutive automated-turn count for one Conversation. */
-const automatedTurnLimitStateSchema = z
-  .object({
-    consecutiveAutomatedTurns: z.number().int().nonnegative(),
-    noticePostedAtMs: z.number().finite().nonnegative().optional(),
-    paused: z.boolean(),
-    updatedAtMs: z.number().finite().nonnegative(),
-  })
-  .strict();
+/**
+ * Stored consecutive automated-turn count for one Conversation. Parsing
+ * strips the fields of the old pause, so its count still applies.
+ */
+const automatedTurnLimitStateSchema = z.object({
+  consecutiveAutomatedTurns: z.number().int().nonnegative(),
+  updatedAtMs: z.number().finite().nonnegative(),
+});
 
 export type AutomatedTurnLimitState = z.output<
   typeof automatedTurnLimitStateSchema
 >;
 
-export type AutomatedTurnLimitDecision =
-  | { status: "allow"; consecutiveAutomatedTurns: number }
-  | {
-      status: "paused";
-      consecutiveAutomatedTurns: number;
-      shouldPostNotice: boolean;
-    };
-
 export type AutomatedTurnLimitUpdate = {
   consecutiveAutomatedTurns: number;
-  paused: boolean;
-  shouldPostNotice: boolean;
+  /** True when this Turn reached or passed the limit. */
+  reached: boolean;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -68,6 +59,7 @@ async function acquireConversationLock(
   key: string,
   waitDeadlineMs = Date.now() + AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS,
 ): Promise<Lock> {
+  /* oxlint-disable no-await-in-loop -- Poll the lock until it is free or the wait ends. */
   while (true) {
     const lock = await state.acquireLock(
       lockKey(key),
@@ -81,6 +73,7 @@ async function acquireConversationLock(
     }
     await sleep(AUTOMATED_TURN_LIMIT_LOCK_RETRY_MS);
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 async function withConversationLock<T>(
@@ -99,7 +92,6 @@ async function withConversationLock<T>(
 function emptyState(nowMs: number): AutomatedTurnLimitState {
   return {
     consecutiveAutomatedTurns: 0,
-    paused: false,
     updatedAtMs: nowMs,
   };
 }
@@ -114,7 +106,7 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
     source.kind === "event_automation" ||
     source.kind === "scheduled_automation" ||
     source.kind === "plugin_dispatch" ||
-    source.kind === "agent_invocation"
+    source.kind === "parent_message"
   );
 }
 
@@ -123,7 +115,8 @@ export function buildAutomatedTurnLimitResponse(args: {
   maxTurns: number;
 }): string {
   return (
-    `I stopped automatic updates after ${args.maxTurns} replies without a new message from you. ` +
+    `I stopped automatic updates after ${args.maxTurns} automated turns without a new message from you. ` +
+    `Turns with no reply also count. ` +
     `Send a message or @mention me in this thread to continue.`
   );
 }
@@ -143,63 +136,12 @@ export async function getAutomatedTurnLimitState(args: {
   );
 }
 
-/**
- * Allow one automated wake, or refuse once the consecutive-turn limit is full.
- * If a prior pause never posted its notice, claim the notice slot so one caller
- * posts it. Clear the claim if that post fails or is skipped.
- */
-export async function admitAutomatedTurn(args: {
-  conversationId: string;
-  maxTurns: number;
-  nowMs?: number;
-  state?: StateAdapter;
-}): Promise<AutomatedTurnLimitDecision> {
-  if (args.maxTurns < 1) {
-    throw new Error("Automated turn limit must be at least 1");
-  }
-  const state = args.state ?? getStateAdapter();
-  await state.connect();
-  const nowMs = args.nowMs ?? Date.now();
-  const key = conversationKey(args.conversationId);
-  return await withConversationLock(state, key, async () => {
-    const current = parseState(await state.get(key)) ?? emptyState(nowMs);
-    if (current.paused || current.consecutiveAutomatedTurns >= args.maxTurns) {
-      const shouldPostNotice = current.noticePostedAtMs === undefined;
-      const next: AutomatedTurnLimitState = {
-        consecutiveAutomatedTurns: Math.max(
-          current.consecutiveAutomatedTurns,
-          args.maxTurns,
-        ),
-        paused: true,
-        updatedAtMs: nowMs,
-        // Claim the notice slot so concurrent paused wakes do not all post.
-        // Callers must mark success or clear the claim if the post fails.
-        ...(shouldPostNotice
-          ? { noticePostedAtMs: nowMs }
-          : current.noticePostedAtMs !== undefined
-            ? { noticePostedAtMs: current.noticePostedAtMs }
-            : undefined),
-      };
-      await state.set(key, next, JUNIOR_THREAD_STATE_TTL_MS);
-      return {
-        status: "paused" as const,
-        consecutiveAutomatedTurns: next.consecutiveAutomatedTurns,
-        shouldPostNotice,
-      };
-    }
-    return {
-      status: "allow" as const,
-      consecutiveAutomatedTurns: current.consecutiveAutomatedTurns,
-    };
-  });
-}
-
 /** Count one finished automated Turn toward the consecutive-turn limit. */
 export async function countAutomatedTurn(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AutomatedTurnLimitUpdate> {
   if (args.maxTurns < 1) {
     throw new Error("Automated turn limit must be at least 1");
@@ -211,56 +153,17 @@ export async function countAutomatedTurn(args: {
   return await withConversationLock(state, key, async () => {
     const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     const consecutiveAutomatedTurns = current.consecutiveAutomatedTurns + 1;
-    const paused = consecutiveAutomatedTurns >= args.maxTurns;
-    const shouldPostNotice = paused && current.noticePostedAtMs === undefined;
-    const next: AutomatedTurnLimitState = {
-      consecutiveAutomatedTurns,
-      paused,
-      updatedAtMs: nowMs,
-      // Claim the notice slot before posting. Mark success after the post
-      // lands; clear the claim if the post fails or is skipped.
-      ...(shouldPostNotice
-        ? { noticePostedAtMs: nowMs }
-        : current.noticePostedAtMs !== undefined
-          ? { noticePostedAtMs: current.noticePostedAtMs }
-          : undefined),
-    };
-    await state.set(key, next, JUNIOR_THREAD_STATE_TTL_MS);
-    return {
-      consecutiveAutomatedTurns,
-      paused,
-      shouldPostNotice,
-    };
-  });
-}
-
-/**
- * Drop a failed notice claim so a later paused wake can post the notice.
- * Keeps the pause and consecutive count.
- */
-export async function clearAutomatedTurnLimitNoticeClaim(args: {
-  conversationId: string;
-  nowMs?: number;
-  state?: StateAdapter;
-}): Promise<void> {
-  const state = args.state ?? getStateAdapter();
-  await state.connect();
-  const nowMs = args.nowMs ?? Date.now();
-  const key = conversationKey(args.conversationId);
-  await withConversationLock(state, key, async () => {
-    const current = parseState(await state.get(key));
-    if (!current || current.noticePostedAtMs === undefined) {
-      return;
-    }
-    const { noticePostedAtMs: _noticePostedAtMs, ...rest } = current;
     await state.set(
       key,
-      {
-        ...rest,
-        updatedAtMs: nowMs,
-      },
+      { consecutiveAutomatedTurns, updatedAtMs: nowMs },
       JUNIOR_THREAD_STATE_TTL_MS,
     );
+    return {
+      consecutiveAutomatedTurns,
+      // A count from before a person's input can already exceed the limit.
+      // Each Turn past it stops again, as the Turn that reached it did.
+      reached: consecutiveAutomatedTurns >= args.maxTurns,
+    };
   });
 }
 
@@ -268,7 +171,7 @@ export async function clearAutomatedTurnLimitNoticeClaim(args: {
 export async function resetAutomatedTurnLimit(args: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const state = args.state ?? getStateAdapter();
   await state.connect();
@@ -281,8 +184,7 @@ export async function resetAutomatedTurnLimit(args: {
 /**
  * Update consecutive automated-turn counts after one finished Turn.
  *
- * Automated Turns count on the Conversation. User Turns clear that count so
- * later event wakes can run again.
+ * Automated Turns count on the Conversation. User Turns clear that count.
  */
 export async function recordFinishedTurnForAutomatedLimit(args: {
   conversationId: string;

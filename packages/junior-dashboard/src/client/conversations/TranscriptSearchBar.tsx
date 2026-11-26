@@ -1,6 +1,8 @@
+import { X } from "lucide-react";
 import type { RefObject } from "react";
 
 import { SearchInput } from "../components/SearchInput";
+import { Button } from "../components/ui/button";
 import { cn } from "../styles";
 import type { TranscriptSearchMatch } from "./transcriptSearch";
 
@@ -56,6 +58,15 @@ export function TranscriptSearchBar(props: {
             : `${props.match.index + 1}/${props.match.count}`}
         </span>
       ) : null}
+      <Button
+        aria-label="Close search"
+        onClick={props.onClose}
+        className="size-7"
+        size="icon"
+        variant="ghost"
+      >
+        <X aria-hidden="true" size={14} strokeWidth={2} />
+      </Button>
     </div>
   );
 }

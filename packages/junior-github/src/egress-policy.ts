@@ -16,6 +16,8 @@ import {
   type PluginGraphqlOperation,
   type PluginGraphqlRequest,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { assertGitHubSandboxGraphqlBudgetLeft } from "./graphql-budget.js";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
@@ -24,8 +26,8 @@ import {
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
+  githubMessageSchema,
   githubRepositoryFromUrl,
-  isRecord,
   type GitHubGrant,
   type GitHubGrantName,
   type GitHubRepository,
@@ -56,7 +58,8 @@ function githubSmartHttpAccess(
   return undefined;
 }
 
-function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
+/** Whether a URL is GitHub's GraphQL endpoint. */
+export function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
   return (
     upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
     upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
@@ -113,6 +116,12 @@ function githubGraphqlAccess(
   return githubGraphqlOperation(graphql)?.type === "query" ? "read" : "write";
 }
 
+const githubGraphqlErrorsSchema = z.object({ errors: z.array(z.unknown()) });
+const githubGraphqlErrorSchema = z.object({
+  message: z.string(),
+  type: z.unknown().optional(),
+});
+
 function githubGraphqlPermissionDeniedMessage(
   bodyText: string,
 ): string | undefined {
@@ -122,16 +131,18 @@ function githubGraphqlPermissionDeniedMessage(
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.errors)) {
+  const body = githubGraphqlErrorsSchema.safeParse(parsed);
+  if (!body.success) {
     return undefined;
   }
-  for (const error of parsed.errors) {
-    if (!isRecord(error) || typeof error.message !== "string") {
+  for (const entry of body.data.errors) {
+    const error = githubGraphqlErrorSchema.safeParse(entry);
+    if (!error.success) {
       continue;
     }
-    const message = error.message;
+    const message = error.data.message;
     if (
-      error.type === "NOT_FOUND" &&
+      error.data.type === "NOT_FOUND" &&
       /\bCould not resolve to a Repository with the name\b/.test(message)
     ) {
       return `GitHub GraphQL could not access the repository: ${message}`;
@@ -182,10 +193,8 @@ function githubErrorMessage(bodyText: string | undefined): string | undefined {
     return undefined;
   }
   try {
-    const parsed: unknown = JSON.parse(bodyText);
-    return isRecord(parsed) && typeof parsed.message === "string"
-      ? parsed.message.trim()
-      : undefined;
+    const parsed = githubMessageSchema.safeParse(JSON.parse(bodyText));
+    return parsed.success ? parsed.data.message.trim() : undefined;
   } catch {
     return undefined;
   }
@@ -196,7 +205,15 @@ async function githubForbiddenPermissionDeniedMessage(
 ): Promise<string | undefined> {
   const sso = ctx.response.headers.get("x-github-sso");
   if (sso?.startsWith("required")) {
-    const url = sso.match(/\burl=(https:\/\/github\.com\/\S+)/)?.[1];
+    // The header looks like `required; url=https://github.com/orgs/...`.
+    const url = sso
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("url="))
+      ?.slice("url=".length);
+    if (url && URL.parse(url)?.origin !== "https://github.com") {
+      return "GitHub requires SAML SSO authorization for this credential.";
+    }
     return `GitHub requires SAML SSO authorization for this credential.${url ? ` Authorize it at ${url}` : ""}`;
   }
   const message = githubErrorMessage(
@@ -648,6 +665,11 @@ export async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const upstreamUrl = new URL(ctx.request.url);
   const grant = await selectGitHubGrant(ctx, env, upstreamUrl);
+  // Last, after every other denial, because the check takes an in-flight
+  // slot that only the response frees.
+  if (isGitHubGraphqlUrl(upstreamUrl)) {
+    await assertGitHubSandboxGraphqlBudgetLeft(ctx);
+  }
   const repository = githubRepositoryFromUrl(upstreamUrl);
   return repository
     ? {

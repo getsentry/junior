@@ -489,6 +489,15 @@ ORDER BY table_name ASC, ordinal_position ASC
       );
 
       for (const columns of actual.values()) columns.sort();
+      // The schema drops these, and 0173 keeps them for one release.
+      // Remove this when the follow-up migration drops them.
+      actual.delete("junior_conversation_briefs");
+      actual.set(
+        "junior_conversation_embeddings",
+        (actual.get("junior_conversation_embeddings") ?? []).filter(
+          (column) => column !== "brief_version",
+        ),
+      );
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
@@ -808,7 +817,7 @@ CREATE TABLE junior_conversations (
 `);
 
         await expect(migrateSchema(fixture.sql)).rejects.toThrow(
-          "Stop old Junior workers, install @sentry/junior@0.107.1, run `junior upgrade`, then restore this Junior version",
+          "Stop old workers, install @sentry/junior@0.107.1, run `junior upgrade`, then restore this version",
         );
         await expectNoDrizzleMigrationState(fixture.sql);
       } finally {

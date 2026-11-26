@@ -1,6 +1,12 @@
 import * as z from "zod";
 import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import type {
+  Dispatch,
+  DispatchOptions,
+  DispatchResult,
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
+} from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
@@ -9,24 +15,39 @@ import type {
   PluginConversationEventReader,
   PluginConversationEventStats,
 } from "./conversation-events";
-import type { CodeChangePublisher } from "./code";
-import type { PluginConversationReviewItems } from "./review-items";
+import type { PluginCodeChanges } from "./code";
+import type { PluginConversationChanges } from "./conversation-changes";
+import type { PluginConversationInboxItems } from "./inbox-items";
+import type { PluginTaskStarter } from "./tasks";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
+    /**
+     * Start a public Conversation for one person. Each call counts toward the
+     * dispatch limit of this heartbeat. See the route context version.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
   };
   /** Conversation annotations, as from a plugin route. */
   annotations: PluginConversationAnnotations;
   /** Junior's native code index, as from a plugin route. */
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
+  /** Annotation and Inbox item changes in one write, as from a plugin route. */
+  conversationChanges: PluginConversationChanges;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Start this plugin's tasks, as from a plugin route. */
+  tasks: PluginTaskStarter;
 }
 
 export interface HeartbeatResult {
@@ -34,6 +55,8 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /**
    * Bounded conversation candidates selected by the host, with the child
    * conversations of candidate roots. Work in a child counts for its root.
@@ -169,15 +192,36 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  agent: {
+    /**
+     * Start a public Conversation for one person, as if they sent `input` from
+     * the dashboard. It has no Slack Destination. Core starts work only when
+     * the person maps to exactly one current Slack member on the allowed
+     * domains: through an Identity of this plugin's provider that the OAuth
+     * account-linking flow linked, or through a verified email that is the
+     * User's primary email and the member's Slack email. Otherwise it returns
+     * `not_linked` and calls no model.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
+  };
   annotations: PluginConversationAnnotations;
-  /** Provider-neutral write boundary for Junior's native code index. */
-  codeChanges: CodeChangePublisher;
+  /** Provider-neutral boundary for Junior's native code index. */
+  codeChanges: PluginCodeChanges;
+  /** Annotation and Inbox item changes that readers must see together. */
+  conversationChanges: PluginConversationChanges;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
-  /** Review desk items that the plugin adds and closes from its events. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items that the plugin adds and closes from its events. */
+  inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
+  /**
+   * Start a task with a `payload` schema from this plugin's `tasks`. Use it
+   * when a write fails and must run again after the route returns.
+   */
+  tasks: PluginTaskStarter;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

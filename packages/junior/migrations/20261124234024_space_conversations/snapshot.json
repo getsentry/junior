@@ -1,0 +1,103 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0514d19a-1daa-4385-aff9-b961e59b7f83",
+  "prevIds": ["3b8e1770-fccd-49ac-8a14-7178c056dede"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "space_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.space_id",
+        "n|col|public.junior_conversations.space_id",
+        "e|col|public.junior_conversations.space_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_space_id_junior_spaces_id_fkey",
+        "n|fk|public.junior_conversations.junior_conversations_space_id_junior_spaces_id_fkey",
+        "e|fk|public.junior_conversations.junior_conversations_space_id_junior_spaces_id_fkey",
+        "n|con|public.junior_conversations.junior_conversations_space_id_junior_spaces_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_spaces",
+        "n|sch|public",
+        "n|col|public.junior_conversations.space_id",
+        "n|col|public.junior_spaces.id",
+        "e|uniqueness|public.junior_spaces.id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_space_root_check",
+        "n|ck|public.junior_conversations.junior_conversations_space_root_check",
+        "e|ck|public.junior_conversations.junior_conversations_space_root_check",
+        "n|con|public.junior_conversations.junior_conversations_space_root_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.space_id",
+        "n|col|public.junior_conversations.parent_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "space_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_space_id_junior_spaces_id_fkey",
+        "nameExplicit": false,
+        "columns": ["space_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_spaces",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_space_root_check",
+        "value": "\"space_id\" is null or \"parent_conversation_id\" is null",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

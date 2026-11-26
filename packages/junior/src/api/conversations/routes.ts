@@ -1,32 +1,47 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { jsonResponse, throwApiError } from "../http";
+import { setSentryUser } from "@/chat/logging";
+import { contentVersion, contentVersionHeaders } from "../content-version";
+import { emptyResponse, jsonResponse, throwApiError } from "../http";
+import { CONTENT_VERSION_HEADER } from "../schema/response";
+import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
-  acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
+} from "../schema/conversation-fork";
+import {
+  acceptedConversationMessageSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
+} from "../schema/conversation-create";
+import {
   conversationAttachmentParamsSchema,
+  conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
-  createConversationBodySchema,
-  createConversationMessageBodySchema,
 } from "../schema/conversation";
-import { conversationFeedSchema } from "../schema/conversation-feed";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  attachmentUploadParamsSchema,
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "../schema/conversation-attachment-upload";
+import {
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
 } from "../schema/conversation-catch-up";
 import {
-  pinConversationBodySchema,
-  pinConversationResponseSchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
@@ -35,18 +50,10 @@ import {
   conversationDeliveryResponseSchema,
 } from "../schema/conversation-delivery";
 import {
-  conversationSubscriptionBodySchema,
-  conversationSubscriptionResponseSchema,
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
 } from "../schema/conversation-subscription";
 import {
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
-  archiveDoneConversationsResponseSchema,
-  conversationAutoArchiveSchema,
-} from "../schema/conversation-archive";
-import {
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
   steerConversationPendingMessagesResponseSchema,
   conversationDetailWithMailboxReportSchema,
@@ -54,36 +61,56 @@ import {
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
-import {
-  renameConversationBodySchema,
-  renameConversationResponseSchema,
-} from "../schema/conversation-title";
 import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
-import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
+import {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+} from "../schema/object-link";
+import { attachObjectLink } from "../objects/attach";
 import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
-import { conversationWatchesReportSchema } from "../schema/watch";
+import {
+  conversationWatchesReportSchema,
+  watchParamsSchema,
+} from "../schema/watch";
+import {
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoParamsSchema,
+  todoStatusBodySchema,
+} from "../schema/todos";
+import { apiOperationHandler } from "../operation";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
 import { reportConversationRead } from "./read-position";
-import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
-import { pinConversation, reorderPinnedConversations } from "./pin";
-import { setConversationSubscription } from "./subscription";
+import { reorderPinnedConversations } from "./pin";
+import { inviteToConversation } from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
-import { renameConversation } from "./rename";
 import {
-  archiveViewerDoneConversations,
-  setConversationAutoArchive,
-} from "./auto-archive";
+  archiveConversationOperation,
+  cancelQueuedMessagesOperation,
+  leaveConversationOperation,
+  archiveDoneConversationsOperation,
+  pinConversationOperation,
+  renameConversationOperation,
+  setConversationSpaceOperation,
+  setConversationAutoArchiveOperation,
+  setConversationSubscriptionOperation,
+  stopConversationOperation,
+} from "./operations";
 import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
+import {
+  createAttachmentUploadForViewer,
+  writeAttachmentUploadForViewer,
+} from "./attachment-uploads";
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
@@ -93,26 +120,26 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
+import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
-import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
-import { stopConversationTurnForViewer } from "./stop";
-import { requireConversationWatches } from "./watches";
+import {
+  cancelConversationWatchForViewer,
+  requireConversationWatches,
+} from "./watches";
+import { requireConversationTodos, setConversationTodoStatus } from "./todos";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
-  options: WebInputServices,
+  options: WebInputServices & { waitUntil: WaitUntilFn },
 ): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const messageBodyLimit = bodyLimit({
-    maxSize: 4_450_000,
-    onError: () => {
-      throwApiError(413, "Images must total 3 MB or less.");
-    },
-  });
+  // Files go to attachment storage first, so a Message body holds only text
+  // and upload ids.
+  const messageBodyLimit = bodyLimit({ maxSize: 262_144 });
 
   app.get(
     "/",
@@ -122,25 +149,50 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, cursor, q, status } =
-        context.req.valid("query");
+      const {
+        actorEmail,
+        codeRepositoryId,
+        cursor,
+        include,
+        q,
+        spaceId,
+        status,
+      } = context.req.valid("query");
       const viewer = context.get("viewer");
-      return jsonResponse(
-        conversationFeedSchema,
-        await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : undefined),
-          ...(codeRepositoryId ? { codeRepositoryId } : undefined),
-          ...(cursor ? { cursor } : undefined),
-          ...(q ? { q } : undefined),
-          status,
-          ...(viewer ? { viewer } : undefined),
-        }),
+      // The feed does not mark waiting rows, so the read reports their count.
+      let waitingRows = 0;
+      const feed = await readConversationFeed({
+        ...(actorEmail ? { actorEmail } : undefined),
+        ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+        ...(cursor ? { cursor } : undefined),
+        include,
+        onWaitingRows: (count) => {
+          waitingRows = count;
+        },
+        ...(q ? { q } : undefined),
+        ...(spaceId ? { spaceId } : undefined),
+        status,
+        ...(viewer ? { viewer } : undefined),
+      });
+      // The token hashes the page itself, so it holds everything that the
+      // query and the viewer change on it. Comparing it here, not in
+      // `revalidateContent`, skips the response parse and serialization.
+      const version = contentVersion(feed);
+      const headers = contentVersionHeaders(version);
+      if (context.req.header(CONTENT_VERSION_HEADER) === version) {
+        return new Response(null, { status: 304, headers });
+      }
+      return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
+        serializeConversationFeed(parsed, waitingRows),
       );
     },
   );
 
   app.get("/stats", async () =>
-    jsonResponse(conversationStatsReportSchema, await readConversationStats()),
+    jsonResponse(
+      conversationStatsReportSchema,
+      await readConversationStats({ waitUntil: options.waitUntil }),
+    ),
   );
 
   app.post(
@@ -159,6 +211,54 @@ export function createConversationRoutes(
         acceptedConversationMessageSchema,
         await createConversationForViewer(viewer, body, options),
       );
+    },
+  );
+
+  app.post(
+    "/attachment-uploads",
+    requireViewer,
+    bodyLimit({ maxSize: 8_192 }),
+    validateRequest(
+      "json",
+      createAttachmentUploadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachmentUploadSchema,
+        await createAttachmentUploadForViewer(
+          context.get("viewer"),
+          context.req.valid("json"),
+          options.attachmentStorage,
+        ),
+      ),
+  );
+
+  app.put(
+    "/attachment-uploads/:uploadId",
+    requireViewer,
+    bodyLimit({
+      maxSize: MAX_ATTACHMENT_BYTES,
+      onError: () => {
+        throwApiError(
+          413,
+          `Files must be ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB or less.`,
+        );
+      },
+    }),
+    validateRequest(
+      "param",
+      attachmentUploadParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      await writeAttachmentUploadForViewer({
+        readBody: () => context.req.arrayBuffer(),
+        storage: options.attachmentStorage,
+        uploadId: context.req.valid("param").uploadId,
+        viewer: context.get("viewer"),
+      });
+      return context.body(null, 204);
     },
   );
 
@@ -182,11 +282,13 @@ export function createConversationRoutes(
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
+        // A dashboard message steers the running Turn, like a Slack mention.
         await appendConversationMessageForViewer(
           viewer,
           conversationId,
           body,
           options,
+          "interrupt",
         ),
       );
     },
@@ -195,19 +297,7 @@ export function createConversationRoutes(
   app.post(
     "/:conversationId/stop",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    async (context) => {
-      const viewer = context.get("viewer");
-      const { conversationId } = context.req.valid("param");
-      return jsonResponse(
-        stopConversationTurnResponseSchema,
-        await stopConversationTurnForViewer(viewer, conversationId, options),
-      );
-    },
+    apiOperationHandler(stopConversationOperation, options),
   );
 
   app.post(
@@ -281,45 +371,19 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/archive",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      archiveConversationBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) => {
-      const viewer = context.get("viewer");
-      const { conversationId } = context.req.valid("param");
-      const body = context.req.valid("json");
-      return jsonResponse(
-        archiveConversationResponseSchema,
-        await archiveConversation(viewer, conversationId, body),
-      );
-    },
+    apiOperationHandler(archiveConversationOperation, options),
+  );
+
+  app.put(
+    "/:conversationId/space",
+    requireViewer,
+    apiOperationHandler(setConversationSpaceOperation, options),
   );
 
   app.patch(
     "/:conversationId/pin",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest("json", pinConversationBodySchema, "Invalid request body."),
-    async (context) =>
-      jsonResponse(
-        pinConversationResponseSchema,
-        await pinConversation(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json"),
-        ),
-      ),
+    apiOperationHandler(pinConversationOperation, options),
   );
 
   app.patch(
@@ -346,8 +410,20 @@ export function createConversationRoutes(
       ),
   );
 
+  app.post(
+    "/:conversationId/leave",
+    requireViewer,
+    apiOperationHandler(leaveConversationOperation, options),
+  );
+
   app.patch(
     "/:conversationId/subscription",
+    requireViewer,
+    apiOperationHandler(setConversationSubscriptionOperation, options),
+  );
+
+  app.post(
+    "/:conversationId/invites",
     requireViewer,
     validateRequest(
       "param",
@@ -356,13 +432,13 @@ export function createConversationRoutes(
     ),
     validateRequest(
       "json",
-      conversationSubscriptionBodySchema,
+      conversationInviteBodySchema,
       "Invalid request body.",
     ),
     async (context) =>
       jsonResponse(
-        conversationSubscriptionResponseSchema,
-        await setConversationSubscription(
+        conversationInviteResponseSchema,
+        await inviteToConversation(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
@@ -373,6 +449,12 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/title",
     requireViewer,
+    apiOperationHandler(renameConversationOperation, options),
+  );
+
+  app.post(
+    "/:conversationId/annotations",
+    requireViewer,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -380,16 +462,16 @@ export function createConversationRoutes(
     ),
     validateRequest(
       "json",
-      renameConversationBodySchema,
+      attachObjectLinkBodySchema,
       "Invalid request body.",
     ),
     async (context) =>
       jsonResponse(
-        renameConversationResponseSchema,
-        await renameConversation(
+        attachObjectLinkResponseSchema,
+        await attachObjectLink(
           context.get("viewer"),
           context.req.valid("param").conversationId,
-          context.req.valid("json"),
+          context.req.valid("json").url,
         ),
       ),
   );
@@ -436,35 +518,16 @@ export function createConversationRoutes(
       ),
   );
 
-  app.post("/archive-done", requireViewer, async (context) =>
-    jsonResponse(
-      archiveDoneConversationsResponseSchema,
-      await archiveViewerDoneConversations(context.get("viewer")),
-    ),
+  app.post(
+    "/archive-done",
+    requireViewer,
+    apiOperationHandler(archiveDoneConversationsOperation, options),
   );
 
   app.patch(
     "/:conversationId/auto-archive",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      conversationAutoArchiveSchema,
-      "Invalid request body.",
-    ),
-    async (context) =>
-      jsonResponse(
-        conversationAutoArchiveSchema,
-        await setConversationAutoArchive(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json").autoArchive,
-        ),
-      ),
+    apiOperationHandler(setConversationAutoArchiveOperation, options),
   );
 
   app.post(
@@ -482,6 +545,8 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const viewer = context.get("viewer");
+      // Count catch-up readers in Sentry.
+      setSentryUser({ id: viewer.id });
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
@@ -569,6 +634,57 @@ export function createConversationRoutes(
     },
   );
 
+  app.delete(
+    "/:conversationId/watches/:watchId",
+    requireViewer,
+    validateRequest("param", watchParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { conversationId, watchId } = context.req.valid("param");
+      await cancelConversationWatchForViewer(
+        context.get("viewer"),
+        conversationId,
+        watchId,
+      );
+      return emptyResponse();
+    },
+  );
+
+  app.get(
+    "/:conversationId/todos",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationTodosReportSchema,
+        await requireConversationTodos(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.patch(
+    "/:conversationId/todos/:todoId",
+    requireViewer,
+    validateRequest("param", todoParamsSchema, "Invalid route parameters."),
+    validateRequest("json", todoStatusBodySchema, "Invalid request body."),
+    async (context) => {
+      const { conversationId, todoId } = context.req.valid("param");
+      return jsonResponse(
+        conversationTodoSchema,
+        await setConversationTodoStatus(
+          context.get("viewer"),
+          conversationId,
+          todoId,
+          context.req.valid("json"),
+        ),
+      );
+    },
+  );
+
   app.get(
     "/:conversationId/pending-messages",
     validateRequest(
@@ -619,29 +735,7 @@ export function createConversationRoutes(
   app.delete(
     "/:conversationId/pending-messages",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      cancelConversationPendingMessagesBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) => {
-      const viewer = context.get("viewer");
-      const { conversationId } = context.req.valid("param");
-      const body = context.req.valid("json");
-      return jsonResponse(
-        cancelConversationPendingMessagesResponseSchema,
-        await cancelConversationPendingMessagesForViewer(
-          viewer,
-          conversationId,
-          body,
-        ),
-      );
-    },
+    apiOperationHandler(cancelQueuedMessagesOperation, options),
   );
 
   app.get(
@@ -651,12 +745,21 @@ export function createConversationRoutes(
       conversationAttachmentParamsSchema,
       "Invalid route parameters.",
     ),
+    validateRequest(
+      "query",
+      conversationAttachmentQuerySchema,
+      "Invalid query parameters.",
+    ),
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
+      const { download } = context.req.valid("query");
       const viewer = context.get("viewer");
       return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        download: download === true,
+        // Hono answers HEAD with the GET route and drops the body.
+        headOnly: context.req.method === "HEAD",
         range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),

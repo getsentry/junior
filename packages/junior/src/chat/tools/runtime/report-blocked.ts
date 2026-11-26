@@ -1,10 +1,10 @@
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 
 const DESCRIPTIONS = {
   parent: {
-    tool: "End this delegated task as blocked. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
+    tool: "End this Turn as blocked, not with a final text reply. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
     missing:
       "What the task needs and who can give it. Add the work you already did, so the parent does not repeat it.",
   },
@@ -15,13 +15,10 @@ const DESCRIPTIONS = {
   },
 } as const;
 
-/**
- * Create the tool that ends a Turn as blocked. `parent`: a child agent reports
- * to its parent. `automation`: the Automation is blocked.
- */
-export function createReportBlockedTool(target: "parent" | "automation") {
+/** Static definition of `reportBlocked` for one report target. */
+export function reportBlockedToolDefinition(target: "parent" | "automation") {
   const descriptions = DESCRIPTIONS[target];
-  return zodTool({
+  return zodToolDefinition({
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -36,6 +33,16 @@ export function createReportBlockedTool(target: "parent" | "automation") {
       })
       .strict(),
     outputSchema: juniorToolOutputSchema.extend({ missing: z.string() }),
+  });
+}
+
+/**
+ * Create the tool that ends a Turn as blocked. `parent`: a child agent reports
+ * to its parent. `automation`: the Automation is blocked.
+ */
+export function createReportBlockedTool(target: "parent" | "automation") {
+  return zodTool({
+    ...reportBlockedToolDefinition(target),
     execute: async (input) => ({ missing: input.missing }),
   });
 }

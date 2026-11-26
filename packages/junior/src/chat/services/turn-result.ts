@@ -26,21 +26,23 @@ import type { Reply, TurnAnswer } from "@/chat/turn-answer";
 import {
   readBlockedReport,
   type BlockedReport,
-} from "@/chat/agent-invocations/blocked-report";
+} from "@/chat/child-agents/blocked-report";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
-  durationMs?: number;
-  errorMessage?: string;
-  providerError?: unknown;
+  durationMs?: number | undefined;
+  errorMessage?: string | undefined;
+  /** Sentry event that reported this failed run. The agent run sets it. */
+  eventId?: string | undefined;
+  providerError?: unknown | undefined;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
   reasoningLevel?: TurnReasoningLevel;
-  stopReason?: string;
+  stopReason?: string | undefined;
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   usedPrimaryText: boolean;
 }
 
@@ -56,8 +58,8 @@ export interface AgentRunResult {
   blocked?: BlockedReport;
   /** Set when the run ended with no reply. */
   noReply?: NoReply;
-  sandboxRef?: SandboxRef;
-  piMessages?: PiMessage[];
+  sandboxRef?: SandboxRef | undefined;
+  piMessages?: PiMessage[] | undefined;
   diagnostics: AgentTurnDiagnostics;
 }
 
@@ -65,12 +67,12 @@ export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
   toolCalls: string[];
-  sandboxRef?: SandboxRef;
+  sandboxRef?: SandboxRef | undefined;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   reasoningLevel: TurnReasoningLevel;
   assistantUserName?: string;
   modelId: string;
@@ -84,6 +86,23 @@ export interface TurnResultInput {
    * stays quiet.
    */
   missingAnswerError?: string;
+}
+
+type CutOffStopReason = "length" | "aborted";
+
+const CUT_OFF_ERRORS = {
+  length: "The final text was cut off at the model's output length limit.",
+  aborted: "The final text was cut off when the model request was aborted.",
+} as const satisfies Record<CutOffStopReason, string>;
+
+/**
+ * Return whether a Pi stop reason means that the model did not finish its
+ * message: `length` at the output token limit, or `aborted`.
+ */
+export function isCutOffStopReason(
+  stopReason: string | undefined,
+): stopReason is CutOffStopReason {
+  return stopReason === "length" || stopReason === "aborted";
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -104,14 +123,19 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n");
+  // A `noReply` call ends the Turn with nothing posted, whatever text the run
+  // also wrote.
+  const noReplyCall = readNoReply(newMessages);
+  const primaryText = noReplyCall
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
   // A tool-call tail is not a no-reply. Only the tool, or a final response that
   // is only a legacy marker, is.
   const terminalTexts = terminalAssistantMessages.map((message) =>
@@ -120,9 +144,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const legacyMarkerOnly =
     terminalTexts.some((text) => isLegacyNoReplyMarker(text)) &&
     terminalTexts.every((text) => !text || isLegacyNoReplyMarker(text));
-  const noReply = primaryText
-    ? undefined
-    : (readNoReply(newMessages) ?? (legacyMarkerOnly ? {} : undefined));
+  const noReply =
+    noReplyCall ?? (!primaryText && legacyMarkerOnly ? {} : undefined);
   const noReplyRequested = Boolean(noReply);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
@@ -139,11 +162,18 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     typeof lastAssistant?.stopReason === "string"
       ? lastAssistant.stopReason
       : undefined;
-  const errorMessage =
-    typeof lastAssistant?.errorMessage === "string"
-      ? lastAssistant.errorMessage
-      : undefined;
   const isProviderError = stopReason === "error";
+  // Final text that the model stopped at its output limit, or that an abort
+  // stopped, is not a finished reply.
+  const cutOffError =
+    primaryText && isCutOffStopReason(stopReason)
+      ? CUT_OFF_ERRORS[stopReason]
+      : undefined;
+  const errorMessage =
+    cutOffError ??
+    (typeof lastAssistant?.errorMessage === "string"
+      ? lastAssistant.errorMessage
+      : undefined);
 
   if (noReplyRequested && !isProviderError) {
     logInfo("ai.no_reply.accepted", {
@@ -172,7 +202,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (suppressedPrimaryText) {
+  } else if (suppressedPrimaryText || cutOffError) {
     outcome = "execution_failure";
   } else if (primaryText || completedWithoutTerminalText || blocked) {
     outcome = "success";
@@ -214,9 +244,9 @@ function buildDiagnostics(
   result: {
     outcome: AgentTurnDiagnostics["outcome"];
     usedPrimaryText: boolean;
-    stopReason?: string;
-    errorMessage?: string;
-    lastAssistant?: unknown;
+    stopReason?: string | undefined;
+    errorMessage?: string | undefined;
+    lastAssistant?: unknown | undefined;
   },
 ): AgentTurnDiagnostics {
   const { outcome, errorMessage, lastAssistant } = result;

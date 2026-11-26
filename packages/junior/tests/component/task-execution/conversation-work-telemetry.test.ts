@@ -1,3 +1,5 @@
+import { createPausedTurns } from "@/chat/task-execution/turn-wake";
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import {
   afterAll,
   afterEach,
@@ -331,7 +333,11 @@ describe("conversation work telemetry", () => {
       Sentry.startSpan(
         { name: "conversation.work.process", op: "queue.process" },
         () =>
-          runNextPausedTurn(conversationId, { agentRunner: doneAgentRunner }),
+          runNextPausedTurn(conversationId, {
+            agentRunner: doneAgentRunner,
+            pausedTurns: createPausedTurns(),
+            sendPluginTask: sendVercelPluginTask,
+          }),
       ),
     );
 

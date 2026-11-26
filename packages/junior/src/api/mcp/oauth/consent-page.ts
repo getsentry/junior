@@ -37,6 +37,15 @@ function blockedPage(): Response {
   });
 }
 
+// A custom-scheme redirect, such as the iOS app's, has the origin "null",
+// which matches nothing in CSP. Allow its scheme instead.
+function formActionSource(redirectUri: string): string {
+  const url = new URL(redirectUri);
+  return url.protocol === "https:" || url.protocol === "http:"
+    ? url.origin
+    : url.protocol;
+}
+
 function consentPage(args: {
   agentName: string;
   authorization: McpAuthorization;
@@ -60,7 +69,7 @@ function consentPage(args: {
       <button type="submit" name="action" value="deny">Deny</button>
       <button type="submit" name="action" value="approve" class="primary">Allow</button>
     </form>`,
-    formOrigin: new URL(args.authorization.redirectUri).origin,
+    formActionSource: formActionSource(args.authorization.redirectUri),
     message: `${clientName} wants to connect to ${args.agentName}.`,
     status: 200,
     title: `Connect ${clientName}`,
@@ -75,7 +84,7 @@ function csrfMatches(value: string, expectedHash: string): boolean {
 
 async function readForm(
   request: Request,
-): Promise<{ action?: string; csrf?: string }> {
+): Promise<{ action?: string | undefined; csrf?: string | undefined }> {
   try {
     const form = await request.formData();
     const action = form.get("action");
@@ -93,7 +102,7 @@ async function readForm(
 /** Show or complete MCP consent for one dashboard-authenticated user. */
 export async function handleMcpConsentPage(args: {
   agentName: string;
-  baseURL?: string;
+  baseURL?: string | undefined;
   request: Request;
   state: McpState;
   user: User;

@@ -1,0 +1,182 @@
+diff --git a/build/cjs/index.js b/build/cjs/index.js
+index 5136114..89d026f 100644
+--- a/build/cjs/index.js
++++ b/build/cjs/index.js
+@@ -8449,6 +8449,7 @@ const ORIGIN$7 = "auto.db.postgres";
+ const ATTR_PG_PLAN = "db.postgresql.plan";
+ const ATTR_PG_IDLE_TIMEOUT = "db.postgresql.idle.timeout.millis";
+ const ATTR_PG_MAX_CLIENT = "db.postgresql.max.client";
++const ATTR_DB_RESPONSE_RETURNED_ROWS = "db.response.returned_rows";
+ const DB_SYSTEM_POSTGRESQL$1 = "postgresql";
+ const SPAN_QUERY_FALLBACK = "pg.query";
+ const SPAN_CONNECT = "pg.connect";
+@@ -8497,13 +8498,21 @@ function subscribeQueryLikeChannel(channelName, getSpanOptions, { deferStreamedR
+ 				[_sentry_conventions_attributes.SENTRY_KIND]: "client"
+ 			}
+ 		});
+-	}, deferStreamedResult ? { deferSpanEnd({ data, end }) {
++	}, deferStreamedResult ? {
++	beforeSpanEnd(span, data) {
++		if ("error" in data || (0, _sentry_core.isObjectLike)(data.result) && hasOnMethod(data.result)) return;
++		setReturnedRows(span, data.result);
++	},
++	deferSpanEnd({ span, data, end }) {
+ 		const result = data.result;
+ 		if (!result || typeof result !== "object" || !hasOnMethod(result)) return false;
+ 		const callerScope = data._sentryCallerScope;
+ 		if (callerScope) (0, _sentry_core.bindScopeToEmitter)(result, callerScope);
+ 		result.on("error", (err) => end(err));
+-		result.on("end", () => end());
++		result.on("end", (endResult) => {
++			if (!hasReadMethod(result)) setReturnedRows(span, endResult);
++			end();
++		});
+ 		return true;
+ 	} } : void 0);
+ }
+@@ -8545,6 +8554,19 @@ function poolConnectSpanOptions(ctx) {
+ function hasOnMethod(obj) {
+ 	return "on" in obj && typeof obj.on === "function";
+ }
++function hasReadMethod(obj) {
++	return "read" in obj && typeof obj.read === "function";
++}
++function setReturnedRows(span, results) {
++	const counts = (Array.isArray(results) ? results : [results]).map(getRowCount).filter((count) => count !== void 0);
++	if (counts.length) span.setAttribute(ATTR_DB_RESPONSE_RETURNED_ROWS, counts.reduce((sum, count) => sum + count, 0));
++}
++function getRowCount(result) {
++	if (!(0, _sentry_core.isObjectLike)(result)) return void 0;
++	const { rowCount, rows } = result;
++	if (typeof rowCount === "number") return rowCount;
++	return Array.isArray(rows) ? rows.length : void 0;
++}
+ function extractQueryConfig(args) {
+ 	const arg0 = args[0];
+ 	if (typeof arg0 === "string") return { text: arg0 };
+@@ -8838,7 +8860,12 @@ function instrumentNeon() {
+ 		const span = (0, _sentry_core.startInactiveSpan)(httpQuerySpanOptions(data.arguments));
+ 		httpQuerySpans.add(span);
+ 		return span;
+-	});
++	}, { beforeSpanEnd(span, data) {
++		if ("error" in data) return;
++		const { result } = data;
++		const isBatch = Array.isArray(data.arguments[0]);
++		setReturnedRows(span, isBatch && Array.isArray(result) ? result.map(toPgResult) : toPgResult(result));
++	} });
+ 	tracingChannel(CHANNELS.NEON_RESOLVE_CONNECTION).subscribe({
+ 		start: NOOP$2,
+ 		end: NOOP$2,
+@@ -8880,6 +8907,9 @@ function httpQuerySpanOptions(args) {
+ 		attributes
+ 	};
+ }
++function toPgResult(result) {
++	return Array.isArray(result) ? { rows: result } : result;
++}
+ function getBatchOperationName(statements) {
+ 	const operations = new Set(statements.map((s) => s[_sentry_conventions_attributes.DB_OPERATION_NAME]?.toUpperCase()));
+ 	const [operation] = operations;
+diff --git a/build/esm/integrations/neon.js b/build/esm/integrations/neon.js
+index 9ff08ff..f0fa304 100644
+--- a/build/esm/integrations/neon.js
++++ b/build/esm/integrations/neon.js
+@@ -4,7 +4,7 @@ import { CHANNELS } from "../orchestrion/channels.js";
+ import { neonModuleNames } from "../orchestrion/config/neon.js";
+ import { invokeOrchestrionInstrumentation } from "../orchestrion/instrumentation.js";
+ import { bindTracingChannelToSpan } from "../tracing-channel.js";
+-import { bindPgQueryChannel, getConnectionAttributes } from "./pg.js";
++import { bindPgQueryChannel, getConnectionAttributes, setReturnedRows } from "./pg.js";
+ import { DB_OPERATION_BATCH_SIZE, DB_OPERATION_NAME, DB_QUERY_SUMMARY, DB_QUERY_TEXT, DB_SYSTEM_NAME, SENTRY_KIND, SENTRY_OP, SENTRY_ORIGIN } from "@sentry/conventions/attributes";
+ import { defineIntegration, getActiveSpan, startInactiveSpan } from "@sentry/core";
+ import { DB } from "@sentry/conventions/op";
+@@ -29,7 +29,12 @@ function instrumentNeon() {
+ 		const span = startInactiveSpan(httpQuerySpanOptions(data.arguments));
+ 		httpQuerySpans.add(span);
+ 		return span;
+-	});
++	}, { beforeSpanEnd(span, data) {
++		if ("error" in data) return;
++		const { result } = data;
++		const isBatch = Array.isArray(data.arguments[0]);
++		setReturnedRows(span, isBatch && Array.isArray(result) ? result.map(toPgResult) : toPgResult(result));
++	} });
+ 	tracingChannel(CHANNELS.NEON_RESOLVE_CONNECTION).subscribe({
+ 		start: NOOP,
+ 		end: NOOP,
+@@ -71,6 +76,9 @@ function httpQuerySpanOptions(args) {
+ 		attributes
+ 	};
+ }
++function toPgResult(result) {
++	return Array.isArray(result) ? { rows: result } : result;
++}
+ function getBatchOperationName(statements) {
+ 	const operations = new Set(statements.map((s) => s[DB_OPERATION_NAME]?.toUpperCase()));
+ 	const [operation] = operations;
+diff --git a/build/esm/integrations/pg.js b/build/esm/integrations/pg.js
+index 010f5ad..e6ef286 100644
+--- a/build/esm/integrations/pg.js
++++ b/build/esm/integrations/pg.js
+@@ -13,6 +13,7 @@ const ORIGIN = "auto.db.postgres";
+ const ATTR_PG_PLAN = "db.postgresql.plan";
+ const ATTR_PG_IDLE_TIMEOUT = "db.postgresql.idle.timeout.millis";
+ const ATTR_PG_MAX_CLIENT = "db.postgresql.max.client";
++const ATTR_DB_RESPONSE_RETURNED_ROWS = "db.response.returned_rows";
+ const DB_SYSTEM_POSTGRESQL = "postgresql";
+ const SPAN_QUERY_FALLBACK = "pg.query";
+ const SPAN_CONNECT = "pg.connect";
+@@ -61,13 +62,21 @@ function subscribeQueryLikeChannel(channelName, getSpanOptions, { deferStreamedR
+ 				[SENTRY_KIND]: "client"
+ 			}
+ 		});
+-	}, deferStreamedResult ? { deferSpanEnd({ data, end }) {
++	}, deferStreamedResult ? {
++	beforeSpanEnd(span, data) {
++		if ("error" in data || isObjectLike(data.result) && hasOnMethod(data.result)) return;
++		setReturnedRows(span, data.result);
++	},
++	deferSpanEnd({ span, data, end }) {
+ 		const result = data.result;
+ 		if (!result || typeof result !== "object" || !hasOnMethod(result)) return false;
+ 		const callerScope = data._sentryCallerScope;
+ 		if (callerScope) bindScopeToEmitter(result, callerScope);
+ 		result.on("error", (err) => end(err));
+-		result.on("end", () => end());
++		result.on("end", (endResult) => {
++			if (!hasReadMethod(result)) setReturnedRows(span, endResult);
++			end();
++		});
+ 		return true;
+ 	} } : void 0);
+ }
+@@ -109,6 +118,19 @@ function poolConnectSpanOptions(ctx) {
+ function hasOnMethod(obj) {
+ 	return "on" in obj && typeof obj.on === "function";
+ }
++function hasReadMethod(obj) {
++	return "read" in obj && typeof obj.read === "function";
++}
++function setReturnedRows(span, results) {
++	const counts = (Array.isArray(results) ? results : [results]).map(getRowCount).filter((count) => count !== void 0);
++	if (counts.length) span.setAttribute(ATTR_DB_RESPONSE_RETURNED_ROWS, counts.reduce((sum, count) => sum + count, 0));
++}
++function getRowCount(result) {
++	if (!isObjectLike(result)) return void 0;
++	const { rowCount, rows } = result;
++	if (typeof rowCount === "number") return rowCount;
++	return Array.isArray(rows) ? rows.length : void 0;
++}
+ function extractQueryConfig(args) {
+ 	const arg0 = args[0];
+ 	if (typeof arg0 === "string") return { text: arg0 };
+@@ -179,6 +201,6 @@ function getConnectionString(params) {
+ * hook or bundler plugin to be active.
+ */
+ const postgresIntegration = defineIntegration(_postgresIntegration);
+-export { bindPgQueryChannel, getConnectionAttributes, postgresIntegration };
++export { bindPgQueryChannel, getConnectionAttributes, postgresIntegration, setReturnedRows };
+ 
+ //# sourceMappingURL=pg.js.map
+\ No newline at end of file

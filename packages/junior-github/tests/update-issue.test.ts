@@ -1,5 +1,7 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
+import { githubConversationIds } from "../src/conversation-footer";
+import { gitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 const linkedUser = {
   displayName: "David Cramer",
@@ -29,16 +31,13 @@ function assignedIssue(assignees: string[]): Response {
   );
 }
 
-function toolContext(
-  response?: Response,
-  user: typeof linkedUser | undefined = undefined,
-) {
+function toolContext(response?: Response, user?: typeof linkedUser) {
   const fetch = vi.fn(async (input: { operation: string }) => {
     // Updates read the body that is on GitHub before they write.
     if (input.operation === "github.issue.get") {
       return new Response(
         JSON.stringify({
-          body: "Old body\n\n<!-- junior-request-attribution:start -->\nvia @lcian.\n<!-- junior-request-attribution:end -->",
+          body: "Old body\n\n<!-- junior-request-attribution:start -->\nvia @lcian.\n<!-- junior-request-attribution:end -->\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A111.222 -->\n<!-- junior-session-footer:end -->",
         }),
         { status: 200 },
       );
@@ -57,34 +56,54 @@ function toolContext(
       )
     );
   });
+  const actor = {
+    platform: "slack" as const,
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor,
     conversationId: "slack:C123:123.456",
+    source: {
+      kind: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "123.456",
+      visibility: "public" as const,
+    },
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    events: { canSubscribe: true },
-    conversationLink: { url: "https://example.com/session" },
-    users: {
-      resolveActor: async () => (user ? { user } : undefined),
+    events: {
+      canSubscribe: true,
+      subscribe: vi.fn(async ({ events }: { events: string[] }) => ({
+        events,
+        id: "subscription-1",
+      })),
     },
+    conversationLink: { url: "https://example.com/session" },
+    resolveWorkOwner: async () => ({
+      kind: "person" as const,
+      actor,
+      ...(user ? { user } : undefined),
+    }),
   };
-  return { fetch, tool: createGitHubUpdateIssueTool(ctx) };
+  return {
+    fetch,
+    subscribe: ctx.events.subscribe,
+    tool: bindPluginTool(gitHubUpdateIssueTool, ctx),
+  };
 }
 
 describe("updateIssue", () => {
   it("updates issue metadata and preserves runtime-owned body metadata", async () => {
-    const { fetch, tool } = toolContext();
+    const { fetch, subscribe, tool } = toolContext();
 
     await expect(
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           title: "Updated title",
           body: "Updated body",
           state: "open",
@@ -99,9 +118,20 @@ describe("updateIssue", () => {
       objectAnnotations: [{ description: "Updated body" }],
       subscribable: {
         identifier: "getsentry/junior#691",
+        suggested_events: expect.not.arrayContaining(["issue.comment.created"]),
       },
+      subscription: { events: ["issue.comment.created"], id: "subscription-1" },
       url: "https://github.com/getsentry/junior/issues/691",
     });
+    // The updated issue gets the same Watch as a created one.
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: ["issue.comment.created"],
+        resource: expect.objectContaining({
+          identifier: "getsentry/junior#691",
+        }),
+      }),
+    );
 
     expect(fetch.mock.calls[0]?.[0]).toMatchObject({
       operation: "github.issue.get",
@@ -119,6 +149,12 @@ describe("updateIssue", () => {
     // A new requester joins the requesters already on GitHub.
     expect(body.body).toContain("via @lcian, **David Cramer**.");
     expect(body.body).toContain("[View Session](https://example.com/session)");
+    // The Conversation that wrote the body before stays in the footer, so a
+    // close still reaches its card.
+    expect(githubConversationIds(body.body)).toEqual([
+      "slack:C123:123.456",
+      "slack:C123:111.222",
+    ]);
   });
 
   it("assigns the requester and keeps the other assignees", async () => {
@@ -129,7 +165,7 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).resolves.toMatchObject({ assignees: ["lcian", "dcramer"], number: 691 });
@@ -154,7 +190,7 @@ describe("updateIssue", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           state: "closed",
           assign_requester: true,
         },
@@ -169,16 +205,16 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).rejects.toThrow("GitHub did not assign @dcramer");
   });
 
   it.each([
-    { repo: "getsentry/junior", number: 691 },
-    { repo: "getsentry/junior", number: 691, title: "   " },
-    { repo: "getsentry/junior", number: 691, assign_requester: false },
+    { repo: "getsentry/junior", issue: 691 },
+    { repo: "getsentry/junior", issue: 691, title: "   " },
+    { repo: "getsentry/junior", issue: 691, assign_requester: false },
   ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 

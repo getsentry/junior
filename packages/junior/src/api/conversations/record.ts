@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
@@ -11,10 +12,15 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 
-/** The columns of one Conversation record, for `selectConversationRecords`. */
-export const conversationRecordColumns = {
+/**
+ * The columns of one Conversation record, for `selectConversationRecords`.
+ * Build them for each query: the status binds the app clock.
+ */
+export const conversationRecordColumns = () => ({
   conversation: juniorConversations,
+  status: conversationStatusSql(juniorConversations),
   location: juniorDestinations,
   identityDisplayName: juniorIdentities.displayName,
   identityEmail: juniorIdentities.email,
@@ -23,7 +29,8 @@ export const conversationRecordColumns = {
   identitySubjectId: juniorIdentities.providerSubjectId,
   identityTenantId: juniorIdentities.providerTenantId,
   userDisplayName: juniorUsers.displayName,
-};
+  spaceId: rootSpaceIdSql(juniorConversations),
+});
 
 /** Left-join conditions from a Conversation to its record tables. */
 export const conversationRecordJoins = {
@@ -38,7 +45,7 @@ export const conversationRecordJoins = {
  */
 export function selectConversationRecords(db: JuniorDatabase) {
   return db
-    .select(conversationRecordColumns)
+    .select(conversationRecordColumns())
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
     .leftJoin(juniorIdentities, conversationRecordJoins.identity)
@@ -106,6 +113,7 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
+    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
     ...(value.archivedAt
       ? { archivedAtMs: value.archivedAt.getTime() }
       : undefined),
@@ -114,6 +122,7 @@ export function conversationFromRecordRow(
     ...(value.channelName ? { channelName: value.channelName } : undefined),
     ...(value.source ? { source: value.source } : undefined),
     ...(value.title ? { title: value.title } : undefined),
+    ...(value.summary ? { summary: value.summary } : undefined),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
       : undefined),
@@ -131,6 +140,7 @@ export type ConversationRecord = {
   conversation: Conversation;
   durationMs: number;
   locationId?: string;
+  status: ConversationRecordRow["status"];
   usage: ConversationRecordRow["conversation"]["usage"];
   rootConversationId: string | null;
 };
@@ -145,6 +155,7 @@ export function conversationRecordFromRow(
     ...(row.location?.visibility === "public"
       ? { locationId: row.location.id }
       : undefined),
+    status: row.status,
     usage: row.conversation.usage,
     rootConversationId: row.conversation.rootConversationId,
   };

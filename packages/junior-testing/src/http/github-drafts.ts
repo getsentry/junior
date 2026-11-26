@@ -1,13 +1,19 @@
 // Draft pull requests whose check suite just passed. Each draft has the same
 // passing suite; they differ in other required checks and in the body.
+// #695's checks are not required, like a suite that reports before the
+// required checks start. #696 changes a file that has code owners. #697's
+// base branch has an AGENTS.md that asks for draft pull requests.
 const repo = "getsentry/junior";
 const web = `https://github.com/${repo}`;
 const api = `/repos/${repo}`;
 
 interface DraftFixture {
+  agentsMd?: string;
   body: string;
+  codeOwners?: string;
   failingCheck?: string;
   number: number;
+  requiredNotReported?: true;
   sha: string;
 }
 
@@ -31,13 +37,34 @@ const drafts: DraftFixture[] = [
     number: 694,
     sha: "6940000000000000000000000000000000000694",
   },
+  {
+    body: draftBody,
+    number: 695,
+    requiredNotReported: true,
+    sha: "6950000000000000000000000000000000000695",
+  },
+  {
+    body: draftBody,
+    codeOwners: "/src/cache/ @getsentry/cache-owners\n",
+    number: 696,
+    sha: "6960000000000000000000000000000000000696",
+  },
+  {
+    agentsMd: "# Agent Instructions\n\n- Always open PRs as draft.\n",
+    body: draftBody,
+    number: 697,
+    sha: "6970000000000000000000000000000000000697",
+  },
 ];
 
 const readied = new Set<number>();
+// The logins that the scenario asked to review each draft.
+const reviewers = new Map<number, string[]>();
 
-/** Reset the drafts that the scenario marked ready. */
+/** Reset the drafts that the scenario marked ready or asked reviewers for. */
 export function resetTestGitHubDraftFixtures(): void {
   readied.clear();
+  reviewers.clear();
 }
 
 function checkRuns(draft: DraftFixture) {
@@ -88,7 +115,7 @@ function graphqlPullRequest(draft: DraftFixture) {
                 completedAt: "2026-05-27T00:05:00Z",
                 conclusion: check.conclusion.toUpperCase(),
                 detailsUrl: check.details_url,
-                isRequired: true,
+                isRequired: draft.requiredNotReported !== true,
                 name: check.name,
                 startedAt: "2026-05-27T00:00:00Z",
                 status: "COMPLETED",
@@ -104,6 +131,10 @@ function graphqlPullRequest(draft: DraftFixture) {
     baseRefName: "main",
     body: draft.body,
     commits,
+    files: {
+      nodes: [{ path: "src/cache/warmup.ts" }],
+      pageInfo: { endCursor: null, hasNextPage: false },
+    },
     headRefName: `feat/cache-warmup-${draft.number}`,
     headRefOid: draft.sha,
     autoMergeRequest: null,
@@ -112,6 +143,12 @@ function graphqlPullRequest(draft: DraftFixture) {
     mergeStateStatus: readied.has(draft.number) ? "BLOCKED" : "DRAFT",
     number: draft.number,
     reviewDecision: null,
+    reviewRequests: {
+      nodes: (reviewers.get(draft.number) ?? []).map((login) => ({
+        requestedReviewer: { __typename: "User", login },
+      })),
+    },
+    reviews: { nodes: [] },
     state: "OPEN",
     statusCheckRollup: commits,
     title: draftTitle,
@@ -132,7 +169,10 @@ function draftFromGraphql(body: {
   );
 }
 
-/** Serve the draft scenario's pull requests, checks, and ready mutation. */
+/**
+ * Serve the draft scenario's pull requests, checks, ready mutation, and
+ * review requests.
+ */
 export async function interceptTestGitHubDraftsHttp(
   request: Request,
   url: URL,
@@ -153,9 +193,29 @@ export async function interceptTestGitHubDraftsHttp(
     }
     if (/\bmutation\b/.test(body.query ?? "")) return undefined;
     const pullRequest = graphqlPullRequest(draft);
+    // The CODEOWNERS file of the base branch, in `.github/`, and its
+    // AGENTS.md.
+    const github = draft.codeOwners ? { text: draft.codeOwners } : null;
+    const agents = draft.agentsMd ? { text: draft.agentsMd } : null;
     return Response.json({
-      data: { node: pullRequest, repository: { pullRequest } },
+      data: {
+        node: pullRequest,
+        repository: { agents, docs: null, github, pullRequest, root: null },
+      },
     });
+  }
+  if (request.method === "POST") {
+    const draft = drafts.find(
+      (candidate) =>
+        url.pathname === `${api}/pulls/${candidate.number}/requested_reviewers`,
+    );
+    if (!draft) return undefined;
+    const body = (await request.clone().json()) as { reviewers: string[] };
+    reviewers.set(draft.number, [
+      ...(reviewers.get(draft.number) ?? []),
+      ...body.reviewers,
+    ]);
+    return Response.json(restPullRequest(draft), { status: 201 });
   }
   if (request.method !== "GET") return undefined;
   for (const draft of drafts) {
@@ -163,6 +223,15 @@ export async function interceptTestGitHubDraftsHttp(
       case `${api}/pulls/${draft.number}`:
       case `${api}/issues/${draft.number}`:
         return Response.json(restPullRequest(draft));
+      // A matching Watch loads the commit authors for the `authors` field.
+      case `${api}/pulls/${draft.number}/commits`:
+        return Response.json([
+          {
+            author: restPullRequest(draft).user,
+            commit: { message: draftTitle },
+            sha: draft.sha,
+          },
+        ]);
       case `${api}/commits/${draft.sha}/check-runs`: {
         const runs = checkRuns(draft);
         return Response.json({ check_runs: runs, total_count: runs.length });

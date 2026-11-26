@@ -1,8 +1,13 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
+import { githubPlugin } from "@sentry/junior-github";
+import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { decodeImageId } from "@/chat/images/ids";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
@@ -15,8 +20,7 @@ import {
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
-import { appendConversationBrief } from "@/chat/briefs/store";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -45,31 +49,23 @@ describe("conversation detail API", () => {
       title: "Refreshed conversation",
       visibility: "public",
     });
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "brief-turn",
-      throughSeq: 0,
-      content: conversationBriefFixture({
-        summary: "The public Brief is visible without transcript access.",
-      }),
-      searchText: "public Brief visible",
-      modelId: "test-model",
+      summary: "The public summary is visible without transcript access.",
     });
 
     const app = createJuniorApi();
-    const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}`,
+    const detailResponse = await expectSqlBudget(
+      () => app.request(`http://localhost/api/conversations/${conversationId}`),
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
     );
     expect(detail.events).toEqual([]);
-    expect(detail.brief).toMatchObject({
-      content: {
-        summary: "The public Brief is visible without transcript access.",
-      },
-      version: 1,
-    });
+    expect(detail.summary).toBe(
+      "The public summary is visible without transcript access.",
+    );
 
     await getConversationEventStore().append(conversationId, [
       {
@@ -232,14 +228,12 @@ describe("conversation detail API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 5,
         data: Buffer.from("notes"),
         filename: "notes.txt",
         mimeType: "text/plain",
-        path: "/tmp/notes.txt",
+        source: { provider: "slack", id: "FNOTES" },
       },
       storage: createMemoryAttachmentStorage(),
-      source: { provider: "slack", id: "FNOTES" },
     });
     const changed = await read(`?${after(poll.appendCursor)}`);
     expect(changed.appended).toBeUndefined();
@@ -415,15 +409,9 @@ describe("conversation detail API", () => {
       status: "open",
       url: "https://github.com/getsentry/junior/pull/1081",
     });
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "private-brief-turn",
-      throughSeq: 0,
-      content: conversationBriefFixture({
-        summary: "The private Brief is participant-only.",
-      }),
-      searchText: "private Brief participant only",
-      modelId: "test-model",
+      summary: "The private summary is participant-only.",
     });
 
     const hidden = await readConversationDetail(conversationId);
@@ -431,16 +419,13 @@ describe("conversation detail API", () => {
       annotations: [],
       eventHistory: { status: "redacted" },
     });
-    expect(hidden).not.toHaveProperty("brief");
+    expect(hidden).not.toHaveProperty("summary");
     await expect(
       readConversationDetail(conversationId, {
         viewer: await signedInViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
-      brief: {
-        content: { summary: "The private Brief is participant-only." },
-        version: 1,
-      },
+      summary: "The private summary is participant-only.",
       annotations: [
         {
           key: "getsentry/junior#1081",
@@ -455,7 +440,46 @@ describe("conversation detail API", () => {
     });
   });
 
-  it("resolves mentioned Slack users with current names", async () => {
+  it("names the description images of a saved pull request by Junior image paths", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const conversationId = "local:test:preview-images";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Pull request with screenshots",
+      visibility: "public",
+    });
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      objectType: "code_change",
+      key: "getsentry/secret#7",
+      label: "getsentry/secret#7",
+      title: "Show screenshots on cards",
+      url: "https://github.com/getsentry/secret/pull/7",
+      facts: { type: "code_change", previewImageUrls: [attachment] },
+    });
+
+    const detail = await readConversationDetail(conversationId);
+    const [image] = detail?.annotations?.[0]?.previewImages ?? [];
+    const id = image?.src.match(/^\/api\/images\/([^?]+)\?w=320$/)?.[1];
+    expect(image?.srcSet).toBe(`${image?.src} 1x, /api/images/${id}?w=640 2x`);
+    // The browser gets a signed id, never the address of the image.
+    expect(JSON.stringify(image)).not.toContain("user-attachments");
+    expect(id && decodeImageId(id)).toEqual({
+      ref: encodeObjectImageRef({ key: "getsentry/secret#7", url: attachment }),
+      source: "github",
+    });
+  });
+
+  it("resolves mentioned Slack users with current names and photos", async () => {
     const conversationId = "slack:C123:mentions-detail";
     await getConversationStore().recordActivity({
       actor: {
@@ -472,6 +496,17 @@ describe("conversation detail API", () => {
       title: "Mentions",
       visibility: "public",
     });
+    // The owner's User photo is their Slack photo.
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
         userId: "UNEW1234",
@@ -507,15 +542,10 @@ describe("conversation detail API", () => {
       { fullName: "Shared Person" },
       60_000,
     );
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "mentions-brief-turn",
+      summary: "<@UOWNER1> merged the fix.",
       throughSeq: 1,
-      content: conversationBriefFixture({
-        summary: "<@UOWNER1> merged the fix.",
-      }),
-      searchText: "owner merged the fix",
-      modelId: "test-model",
     });
 
     const detail = await readConversationDetail(conversationId, {
@@ -527,8 +557,10 @@ describe("conversation detail API", () => {
     );
     expect(message).toMatchObject({
       mentions: [
-        // Known Junior users link to their People profile.
+        // Known Junior users link to their People profile and show their
+        // photo.
         {
+          avatarUrl: avatarPath(owner!.id),
           email: "owner@example.com",
           fullName: "Owner Person",
           slackUserId: "UOWNER1",
@@ -543,20 +575,111 @@ describe("conversation detail API", () => {
       ],
     });
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["UNEW1234"]);
     // Other instances can now skip Slack for UNEW1234.
     expect(
       await getStateAdapter().get("slack-user-names:T123:UNEW1234"),
     ).toEqual({ fullName: "New Person", userName: "new.person" });
-    // The Brief uses the same lookup as transcript events.
-    expect(detail?.brief?.mentions).toEqual([
+    // The summary uses the same lookup as transcript events.
+    expect(detail?.summaryMentions).toEqual([
       {
+        avatarUrl: avatarPath(owner!.id),
         email: "owner@example.com",
         fullName: "Owner Person",
         slackUserId: "UOWNER1",
       },
     ]);
+  });
+
+  it("links GitHub references and accounts in the text it shows", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const conversationId = "slack:C123:github-links-detail";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "GitHub links",
+      visibility: "public",
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          messageId: "event-1",
+          meta: {
+            eventNamespace: "github",
+            eventType: "pull_request.comment.created",
+            trustedSummary: "@octocat commented on getsentry/junior#12.",
+          },
+          role: "user",
+          text: "<task>@octocat asked a question.</task>",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "user-1",
+          role: "user",
+          text: "Is getsentry/junior#12 done?",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "reply-1",
+          role: "assistant",
+          text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 4,
+        data: {
+          plugin: "github",
+          text: "Thanks @octocat.",
+          toolCallId: "comment-1",
+          type: "reply_posted",
+        },
+      },
+    ]);
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: await signedInViewer("owner@example.com"),
+    });
+    const data = detail?.events.map((event) => event.data);
+    const octocat = "[@octocat](https://github.com/octocat)";
+    const pr12 =
+      "[getsentry/junior#12](https://github.com/getsentry/junior/issues/12)";
+    expect(data).toEqual(
+      expect.arrayContaining([
+        // An Event from GitHub: its summary links, its raw text shows as is.
+        expect.objectContaining({
+          text: "<task>@octocat asked a question.</task>",
+          trustedSummary: `${octocat} commented on ${pr12}.`,
+        }),
+        // A person's message links the same references as a reply.
+        expect.objectContaining({ text: `Is ${pr12} done?` }),
+        // A reply that names a repository. Bare links stay for their cards,
+        // and a bare Slack user ID is a Slack mention, not a GitHub login.
+        expect.objectContaining({
+          text: `Fixed ${pr12} for ${octocat} and <@U012ABCDEF>: https://github.com/getsentry/junior/pull/13`,
+        }),
+        // Text posted to GitHub names GitHub accounts.
+        expect.objectContaining({ text: `Thanks ${octocat}.` }),
+      ]),
+    );
+    expect(JSON.stringify(data)).not.toContain("github.com/U012ABCDEF");
   });
 
   it("names the participant who wrote each message", async () => {

@@ -1,8 +1,10 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { GitFork } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -37,6 +39,7 @@ import {
   selectionMarkdown,
 } from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 const HIGHLIGHT_NAME = "quick-question";
 const STARTER_PROMPTS = ["Explain this", "Is this right?", "What's the risk?"];
@@ -89,7 +92,7 @@ function readSelection(
   const message = element?.closest<HTMLElement>(
     "[data-quick-question-message-id]",
   );
-  const messageId = message?.dataset.quickQuestionMessageId;
+  const messageId = message?.dataset["quickQuestionMessageId"];
   if (!message || !messageId || !root.contains(message)) return undefined;
   return { messageId, quote, range: range.cloneRange() };
 }
@@ -277,7 +280,7 @@ function useAskQuickQuestion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      forkId?: string;
+      forkId?: string | undefined;
       /** The composer key of this ask, so a retry cannot add the question twice. */
       idempotencyKey: string;
       messageId: string;
@@ -322,10 +325,7 @@ function useKeepQuickQuestion() {
         `/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
         {},
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSuccess: () => invalidateConversationFeeds(queryClient),
   });
 }
 
@@ -460,11 +460,17 @@ export function QuickQuestionPanel(props: {
   // answer, and the person can then ask again.
   const thinking =
     unsaved.length > 0 ||
-    (fork?.status === "active" && messages.at(-1)?.role === "user");
+    (conversationTurnIsActive(fork) && messages.at(-1)?.role === "user");
   const busy = props.pending || thinking;
+  const quickQuestionConversation = useMemo(
+    () => ({ conversationId: props.conversationId }),
+    [props.conversationId],
+  );
 
   useEffect(() => {
-    footerRef.current?.querySelector("textarea")?.focus();
+    footerRef.current
+      ?.querySelector<HTMLElement>("[contenteditable='true'], textarea")
+      ?.focus();
   }, [thread.id]);
 
   // Keep the newest message in view.
@@ -564,6 +570,8 @@ export function QuickQuestionPanel(props: {
         <div className="grid gap-1.5 px-3 pt-2 pb-2" ref={footerRef}>
           <ConversationComposer
             compact
+            // Mentions find people of this Conversation's workspace.
+            conversation={quickQuestionConversation}
             disabled={busy}
             draftId={`quick-question:${props.conversationId}`}
             error={
@@ -600,7 +608,10 @@ export function QuickQuestionPanel(props: {
 }
 
 /** Keep the hidden fork: it shows in lists and is no longer read-only. */
-function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
+function KeepAsForkButton(props: {
+  disabled: boolean;
+  forkId?: string | undefined;
+}) {
   const navigate = useNavigate();
   const keep = useKeepQuickQuestion();
   const forkId = props.forkId;
@@ -611,7 +622,7 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
       onClick={() =>
         forkId &&
         keep.mutate(forkId, {
-          onSuccess: () => navigate(conversationPath(forkId)),
+          onSuccess: () => void navigate(conversationPath(forkId)),
         })
       }
       variant="ghost"

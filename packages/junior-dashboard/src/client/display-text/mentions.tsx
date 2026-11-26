@@ -1,17 +1,17 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { Link } from "react-router";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightText } from "../conversations/transcriptSearch";
-import { peoplePath } from "../format";
-import { cn } from "../styles";
+import { PersonReference } from "../components/PersonReference";
+import { personFromActor } from "../person";
 import { replaceSlackEmoji } from "./emoji";
-import { ANCHOR_CLASS } from "./links";
+import { useAnchorClass } from "./links";
+import { SkillReferenceText } from "./skills";
 
 type Mention = {
   end: number;
   id: string;
-  label?: string;
+  label?: string | undefined;
   sigil: "@" | "#";
   start: number;
 };
@@ -47,7 +47,8 @@ export function MentionPeopleProvider(props: {
 /**
  * Render one text run with Slack `<@U123>` and `<#C123|name>` tokens as
  * readable mentions, Slack `:name:` codes as emoji, and search matches
- * highlighted. It reads people from the nearest `MentionPeopleProvider`.
+ * highlighted. It reads people from the nearest `MentionPeopleProvider`, and
+ * links skills under a `SkillReferencesProvider`.
  */
 export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -55,7 +56,7 @@ export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   for (const mention of findMentions(text)) {
     if (mention.start > cursor) {
       nodes.push(
-        <HighlightText
+        <SkillReferenceText
           key={`${keyBase}-m-${cursor}`}
           text={replaceSlackEmoji(text.slice(cursor, mention.start))}
         />,
@@ -68,7 +69,7 @@ export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   }
   if (cursor < text.length) {
     nodes.push(
-      <HighlightText
+      <SkillReferenceText
         key={`${keyBase}-m-${cursor}`}
         text={replaceSlackEmoji(text.slice(cursor))}
       />,
@@ -126,23 +127,47 @@ function findMentions(text: string): Mention[] {
 function MentionView(props: { mention: Mention }) {
   const { links, people } = useContext(MentionPeople);
   const { id, sigil } = props.mention;
-  const person = sigil === "@" ? people.get(id) : undefined;
-  const text = <HighlightText text={mentionLabel(props.mention, people)} />;
-  if (links && person?.email) {
+  const actor = sigil === "@" ? people.get(id) : undefined;
+  const label = mentionLabel(props.mention, people);
+  const person = personFromActor(actor);
+  const anchorClass = useAnchorClass("person");
+  if (!person) {
     return (
-      <Link
-        // Previews sit in cards that disable pointer events on their text.
-        className={cn("pointer-events-auto", ANCHOR_CLASS)}
-        title={id}
-        to={peoplePath(person.email)}
-      >
-        {text}
-      </Link>
+      <span className="font-medium text-dashboard-accent-text" title={id}>
+        <HighlightText text={label} />
+      </span>
     );
   }
   return (
-    <span className="font-medium text-dashboard-accent-text" title={id}>
-      {text}
-    </span>
+    <PersonReference
+      card={links}
+      className={
+        links && person.email
+          ? anchorClass
+          : "font-medium text-dashboard-accent-text"
+      }
+      highlightSelf
+      label={<HighlightText text={label} />}
+      person={person}
+    />
+  );
+}
+
+/**
+ * Show one line of plain text, such as a title, with its Slack mentions as
+ * people. Set `links={false}` inside a link or button.
+ */
+export function MentionText(props: {
+  links?: boolean | undefined;
+  mentions?: readonly ActorIdentity[] | undefined;
+  text: string;
+}) {
+  return (
+    <MentionPeopleProvider
+      links={props.links ?? true}
+      mentions={props.mentions ?? []}
+    >
+      {renderTextTokens(props.text, "mention-text")}
+    </MentionPeopleProvider>
   );
 }

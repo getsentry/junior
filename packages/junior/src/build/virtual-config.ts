@@ -37,10 +37,11 @@ function dashboardEnabled(
 
 /** Render the virtual config module consumed by createApp(). */
 export function renderVirtualConfig(options: {
-  functionMaxDurationSeconds?: number;
-  dashboard?: JuniorDashboardOptions;
-  plugins?: PluginCatalogConfig;
-  pluginModule?: RuntimePluginModule;
+  botName: string;
+  functionMaxDurationSeconds?: number | undefined;
+  dashboard?: JuniorDashboardOptions | undefined;
+  plugins?: PluginCatalogConfig | undefined;
+  pluginModule?: RuntimePluginModule | undefined;
   pluginRuntimeRegistrations?: string[];
 }): string {
   const lines = [
@@ -51,6 +52,7 @@ export function renderVirtualConfig(options: {
           "export const pluginSet = juniorRuntimePluginSet;",
         ]
       : ["export const pluginSet = undefined;"]),
+    `export const botName = ${JSON.stringify(options.botName)};`,
     `export const plugins = ${JSON.stringify(options.plugins ?? { packages: [] })};`,
     `export const pluginRuntimeRegistrations = ${JSON.stringify(options.pluginRuntimeRegistrations ?? [])};`,
     `export const dashboard = ${JSON.stringify(options.dashboard)};`,
@@ -64,13 +66,14 @@ export function renderVirtualConfig(options: {
 export function injectVirtualConfig(
   nitro: Nitro,
   options: {
+    botName: string;
     functionMaxDurationSeconds?: number;
     loadPluginSet?: () => Promise<JuniorPluginSet | undefined>;
     pluginModule?: RuntimePluginModule;
-    plugins?: PluginCatalogConfig;
+    plugins?: PluginCatalogConfig | undefined;
     pluginRuntimeRegistrations?: string[];
-    dashboard?: JuniorDashboardOptions;
-  } = {},
+    dashboard?: JuniorDashboardOptions | undefined;
+  },
 ): void {
   nitro.options.virtual["#junior/config"] = async () => {
     if (!options.loadPluginSet) {
@@ -80,6 +83,7 @@ export function injectVirtualConfig(
     const pluginSet = await options.loadPluginSet();
 
     return renderVirtualConfig({
+      botName: options.botName,
       functionMaxDurationSeconds: options.functionMaxDurationSeconds,
       pluginModule: options.pluginModule,
       plugins: pluginCatalogConfigFromPluginSet(pluginSet),

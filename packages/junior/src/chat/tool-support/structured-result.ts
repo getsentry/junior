@@ -46,22 +46,23 @@ function sortJsonValue(value: unknown): unknown {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const continuationDetailsSchema = z.looseObject({
+  continuation: z.looseObject({}),
+});
 
 /** Bind continuation metadata to the exposed runtime tool name. */
 export function injectContinuationToolName(
   details: unknown,
   toolName: string,
 ): unknown {
-  if (!isRecord(details) || !isRecord(details.continuation)) {
+  const parsed = continuationDetailsSchema.safeParse(details);
+  if (!parsed.success) {
     return details;
   }
   return {
-    ...details,
+    ...parsed.data,
     continuation: juniorToolBoundContinuationSchema.parse({
-      ...details.continuation,
+      ...parsed.data.continuation,
       tool_name: toolName,
     }),
   };

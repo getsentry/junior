@@ -1,7 +1,10 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { StateAdapter } from "chat";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
   conversationDetailReportSchema,
@@ -30,7 +33,14 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import {
+  resolveMailboxTurnWork,
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
   createSlackAdapterFixture,
@@ -39,6 +49,7 @@ import {
 } from "./conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { testViewer } from "./user";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /** Default verified web Actor for Conversation tests. */
 const WEB_TEST_EMAIL = "alice@example.com";
@@ -107,7 +118,7 @@ export type ConversationWebHarness = {
   conversationStore: ConversationStore;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
-  setModelStream: (next: StreamFn) => void;
+  setModelStream: (next: AgentRequestStreamFn) => void;
   /** Create a new web root conversation and enqueue the first message. */
   start: (args: {
     idempotencyKey: string;
@@ -136,7 +147,9 @@ export type ConversationWebHarness = {
  * Fake only model generation at the agent Run boundary.
  */
 export async function createConversationWebHarness(
-  streamFn: StreamFn = streamReplies("Conversation request complete."),
+  streamFn: AgentRequestStreamFn = streamReplies(
+    "Conversation request complete.",
+  ),
 ): Promise<ConversationWebHarness> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
@@ -157,6 +170,7 @@ export async function createConversationWebHarness(
     // longer requires one for web input.
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
+    sendPluginTask: sendVercelPluginTask,
     state,
   });
   // Sign in like the dashboard and ACP, so the web Actor id is the User id.
@@ -183,7 +197,7 @@ export async function createConversationWebHarness(
     conversationStore,
     queue,
     state,
-    setModelStream(next: StreamFn) {
+    setModelStream(next: AgentRequestStreamFn) {
       modelStream = next;
     },
     start: async ({ idempotencyKey, message }) => {
@@ -263,6 +277,20 @@ export async function createConversationWebHarness(
   };
 }
 
+/**
+ * Store only the stop time of a Conversation, with no stop request and no
+ * hold, as a stop looks to a run that reads it at its next step.
+ */
+export async function storeConversationStop(
+  conversationId: string,
+  stoppedAtMs = Date.now(),
+): Promise<void> {
+  await getDb()
+    .update(juniorConversations)
+    .set({ stoppedAt: new Date(stoppedAtMs) })
+    .where(eq(juniorConversations.conversationId, conversationId));
+}
+
 /** Return the texts of Messages that saved Events for a stopped Conversation. */
 export async function stoppedConversationMessageTexts(
   conversationId: string,
@@ -272,4 +300,22 @@ export async function stoppedConversationMessageTexts(
   return projectConversationMessages(history)
     .filter((message) => message.meta?.skippedReason === "stopped conversation")
     .map((message) => message.text);
+}
+
+/** Run a mailbox Turn worker on the mailbox work of one queue message. */
+export function requireConversationTurn(
+  worker: (
+    context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
+  ) => Promise<ConversationWorkerResult>,
+) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const resolved = await resolveMailboxTurnWork(context);
+    if (!resolved) {
+      throw new Error("Expected Conversation mailbox work");
+    }
+    return await worker(context, resolved);
+  };
 }

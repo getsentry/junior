@@ -4,6 +4,7 @@ import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getConversationStore, getDb } from "@/chat/db";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
+  BUSY,
   canContinueInSlack,
   continueConversationInSlack,
   type ContinueInSlackChannel,
@@ -81,6 +82,7 @@ export async function continueConversationInSlackForViewer(
         conversation,
       }),
   });
+  if (result.status === "busy") throwApiError(409, BUSY);
   if (result.status === "refused") throwApiError(409, result.message);
   return {
     conversationId,

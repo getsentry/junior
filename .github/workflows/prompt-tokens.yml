@@ -1,0 +1,109 @@
+name: Prompt Tokens
+
+# Report the always-on prompt of the example app as the `prompt tokens`
+# commit status. It only reports: no size makes it fail. See
+# scripts/prompt-tokens.mjs.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  measure:
+    name: measure / prompt tokens
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      # The measurement Turn loads every plugin that the example app uses.
+      - run: pnpm --filter "@sentry/junior-example^..." run build
+      - run: node --test scripts/prompt-tokens.test.mjs scripts/prompt-tokens-check.test.mjs
+      - run: pnpm prompt-tokens --out prompt-tokens.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: prompt-tokens-${{ github.sha }}
+          path: prompt-tokens.json
+          if-no-files-found: error
+          retention-days: 90
+
+  # Only this job can write. It runs the report scripts, not the measured
+  # app. Fork pull requests get no write token, so they get no status.
+  report:
+    name: report / prompt tokens
+    needs: measure
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      actions: read
+      contents: read
+      statuses: write
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: prompt-tokens-${{ github.sha }}
+          path: ${{ runner.temp }}/current
+      - name: Find base stats
+        id: base
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { findPromptTokensBase } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prompt-tokens-check.mjs`);
+            await findPromptTokensBase({ github, context, core });
+      - if: steps.base.outputs.run-id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: prompt-tokens-${{ steps.base.outputs.sha }}
+          path: ${{ runner.temp }}/base
+          run-id: ${{ steps.base.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Publish status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          STATS_PATH: ${{ runner.temp }}/current/prompt-tokens.json
+          BASE_PATH: ${{ steps.base.outputs.run-id && format('{0}/base/prompt-tokens.json', runner.temp) || '' }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        with:
+          script: |
+            const { publishPromptTokensStatus } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prompt-tokens-check.mjs`);
+            await publishPromptTokensStatus({
+              github,
+              context,
+              core,
+              statsPath: process.env.STATS_PATH,
+              basePath: process.env.BASE_PATH,
+              baseSha: process.env.BASE_SHA,
+            });

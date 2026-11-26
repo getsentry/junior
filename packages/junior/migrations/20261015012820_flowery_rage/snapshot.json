@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "038a9228-d00e-4ad2-8253-91d80403c025",
+  "prevIds": ["3d6877e2-1f0c-4895-895b-c91bc542ac11"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_agent_invocations",
+        "model_profile"
+      ],
+      "writes": [
+        "s|col|public.junior_agent_invocations.model_profile",
+        "n|col|public.junior_agent_invocations.model_profile",
+        "e|col|public.junior_agent_invocations.model_profile"
+      ],
+      "reads": ["n|tbl|public.junior_agent_invocations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "model_profile",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

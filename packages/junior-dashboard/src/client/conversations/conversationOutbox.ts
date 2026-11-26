@@ -3,31 +3,30 @@ import type {
   ActorIdentity,
   ConversationPendingMessage,
   ConversationReportEvent,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
-  actorIdentity?: ActorIdentity;
+  actorIdentity?: ActorIdentity | undefined;
   createdAt: string;
   idempotencyKey: string;
   /**
    * Sent while Junior was idle and the queue was empty. The transcript shows
    * the row in place, so it does not pass through the queue first.
    */
-  inline?: boolean;
+  inline?: boolean | undefined;
   /** Client time when the accept response arrived. */
   acceptedAtMs?: number;
   message: string;
-  images?: InputImage[];
+  files?: File[];
   messageId: string;
   status: "accepted" | "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
-  images?: InputImage[];
+  files?: File[];
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -55,11 +54,11 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 
 /** Build one optimistic outbox row for a composer submit. */
 export function conversationOutboxMessageForSubmit(input: {
-  actorIdentity?: ActorIdentity;
+  actorIdentity?: ActorIdentity | undefined;
   idempotencyKey: string;
   inline?: boolean;
   message: string;
-  images?: InputImage[];
+  files?: File[] | undefined;
   messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
@@ -70,7 +69,7 @@ export function conversationOutboxMessageForSubmit(input: {
     idempotencyKey: input.idempotencyKey,
     ...(input.inline ? { inline: true } : undefined),
     message: input.message,
-    ...(input.images?.length ? { images: input.images } : undefined),
+    ...(input.files?.length ? { files: input.files } : undefined),
     messageId: input.messageId,
     status: "sending",
   };
@@ -84,7 +83,7 @@ export function mailboxMessageFromOutbox(
     actorIdentity: message.actorIdentity,
     clientStatus: message.status,
     createdAt: message.createdAt,
-    delivery: "defer",
+    delivery: "interrupt",
     idempotencyKey: message.idempotencyKey,
     inboundMessageId: message.messageId,
     messageId: message.messageId,
@@ -92,7 +91,7 @@ export function mailboxMessageFromOutbox(
     role: "user",
     source: "web",
     text: message.message,
-    ...(message.images?.length ? { images: message.images } : undefined),
+    ...(message.files?.length ? { files: message.files } : undefined),
   };
 }
 
@@ -153,7 +152,7 @@ function sameMailboxMessage(
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&
-    left.images === right.images &&
+    left.files === right.files &&
     JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
     left.redacted === right.redacted &&
     left.source === right.source &&
@@ -230,7 +229,7 @@ export function settleConversationOutboxMessages(
   snapshot: {
     events: readonly ConversationReportEvent[];
     /** Client time when the snapshot started its mailbox read. */
-    mailboxReadAtMs?: number;
+    mailboxReadAtMs?: number | undefined;
     queued: readonly ConversationPendingMessage[];
   },
 ): ConversationOutboxMessage[] {

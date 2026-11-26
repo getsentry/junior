@@ -9,7 +9,7 @@ import {
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   getEventAutomation,
   saveEventAutomation,
@@ -251,7 +251,7 @@ describe("Automation edit API", () => {
 
         // One save wins; the other must fail even when both read the same revision.
         const responses = await Promise.all(
-          ["First", "Second"].map((title) =>
+          ["First", "Second"].map(async (title) =>
             patch({ kind, revision: fromSlack.revision, title }),
           ),
         );

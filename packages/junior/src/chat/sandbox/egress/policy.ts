@@ -72,8 +72,8 @@ export function resolveSandboxEgressProviderForHost(
  */
 export function buildSandboxEgressNetworkPolicy(input?: {
   credentialToken?: string;
-  traceConfig?: SandboxEgressTracePropagationConfig;
-  traceHeaders?: TracePropagationHeaders;
+  traceConfig?: SandboxEgressTracePropagationConfig | undefined;
+  traceHeaders?: TracePropagationHeaders | undefined;
 }): Exclude<SandboxNetworkPolicy, "allow-all"> {
   const credentialToken = input?.credentialToken;
   const credentialDomains = credentialToken
@@ -126,7 +126,7 @@ export async function resolveSandboxCommandEnvironment(): Promise<
     )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
-    if (credentials?.authTokenEnv) {
+    if (credentials?.type === "oauth-bearer" && credentials.authTokenEnv) {
       env[credentials.authTokenEnv] = resolveAuthTokenPlaceholder(credentials);
     }
   }

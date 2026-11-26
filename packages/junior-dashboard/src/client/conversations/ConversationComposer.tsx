@@ -1,24 +1,22 @@
-import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
 import {
-  ComposerImages,
-  composerImagesFit,
-  readComposerImages,
-} from "./ComposerImages";
+  COMPOSER_FILE_LIMIT,
+  ComposerFiles,
+  composerFilesFit,
+} from "./ComposerFiles";
 import {
   memo,
   useEffect,
-  useId,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
   type Ref,
 } from "react";
 import { flushSync } from "react-dom";
-import { ImagePlus, Send, Square } from "lucide-react";
+import { Paperclip, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { BareTextarea } from "../components/ui/textarea";
@@ -30,8 +28,68 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useComposerLiveMarkdown } from "./composerLiveMarkdownSetting";
+import {
+  mentionablePersonSchema,
+  type MentionablePerson,
+} from "@sentry/junior/api/schema";
+import {
+  ComposerConversationContext,
+  type ComposerConversation,
+} from "./ComposerMention";
+import {
+  composerReferenceSchema,
+  referenceText,
+  splitComposerText,
+  type ComposerReference,
+} from "./composerReferences";
+import { useAttachLinkedWork } from "./composerLinkedWork";
+import type ComposerEditor from "./composer-editor/ComposerEditor";
+import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
+import editorChunkUrl from "./composer-editor/editorChunkUrl";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
+import { getDashboardAgentName } from "../agentName";
 
+const DRAFT_MAX_LENGTH = 32_000;
+
+type ComposerEditorModule = typeof import("./composer-editor/ComposerEditor");
+type ComposerEditorLoad = { module: ComposerEditorModule } | { failed: true };
+
+// A retry imports the chunk by URL, which the compiler cannot type.
+function isComposerEditorModule(value: unknown): value is ComposerEditorModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "default" in value &&
+    typeof value.default === "function"
+  );
+}
+
+// Browsers keep a failed module import, so an import of the same URL fails
+// again at once. A query on the chunk URL makes a new module.
+const loadComposerEditor = (attempt = 0): Promise<ComposerEditorLoad> => {
+  const load =
+    attempt > 0 && editorChunkUrl
+      ? import(/* @vite-ignore */ `${editorChunkUrl}?retry=${attempt}`).then(
+          (module: unknown) => {
+            if (!isComposerEditorModule(module)) {
+              throw new Error(`${editorChunkUrl} is not the composer editor`);
+            }
+            return module;
+          },
+        )
+      : import("./composer-editor/ComposerEditor");
+  return load.then(
+    (module) => ({ module }),
+    () => ({ failed: true }),
+  );
+};
+// Lexical is large, so the editor is not in the first page load. Start to
+// load it at once, so a reader who goes offline later still has it.
+const composerEditorLoad = loadComposerEditor();
+
+// A chunk error while online is often brief, so the load tries again.
+const EDITOR_RETRY_MS = 10_000;
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
@@ -51,33 +109,37 @@ export function touchKeyboardMatches() {
 }
 
 type ConversationDraft = {
-  /** Image bytes are not restored from localStorage; do not reuse their send key. */
-  hasImages?: boolean;
+  /** File bytes are not restored from localStorage; do not reuse their send key. */
+  hasFiles?: boolean;
   /** Key issued for `lastSubmittedText`. Reused while the next send matches it. */
   idempotencyKey: string;
   /** Trimmed text the current idempotency key was issued for. */
   lastSubmittedText: string;
+  /** People mentioned in `text`, so a restored draft shows their names. */
+  people?: MentionablePerson[] | undefined;
+  /** References in `text`, so a restored draft shows their kind and state. */
+  references?: ComposerReference[] | undefined;
   text: string;
 };
 
 type ConversationAttempt = {
-  images?: InputImage[];
+  files?: File[] | undefined;
   idempotencyKey: string;
   lastSubmittedText: string;
 };
 
-/** Reuse a send key only while its text and image selection stay unchanged. */
+/** Reuse a send key only while its text and file selection stay unchanged. */
 export function conversationAttemptForSubmit(
   current: ConversationAttempt,
   text: string,
-  images?: InputImage[],
+  files?: File[],
 ): ConversationAttempt {
-  if (text === current.lastSubmittedText && images === current.images)
+  if (text === current.lastSubmittedText && files === current.files)
     return current;
   return {
     idempotencyKey: crypto.randomUUID(),
     lastSubmittedText: text,
-    images,
+    files,
   };
 }
 
@@ -85,28 +147,36 @@ export function conversationAttemptForSubmit(
 export type ConversationComposerHandle = {
   /** Add text as a new paragraph after the draft, with the cursor below it. */
   appendText(text: string): void;
-  /** True when the draft has room for these images right now. */
-  canRestoreImages(images: readonly InputImage[]): boolean;
+  /** True when the draft has room for these files right now. */
+  canRestoreFiles(files: readonly File[]): boolean;
   /** Put the cursor in the draft. */
   focus(): void;
-  /** Put queued text and images ahead of the draft. Queued images win. */
-  restoreMessage(message: { images?: InputImage[]; text: string }): void;
+  /** Put queued text and files ahead of the draft. Queued files win. */
+  restoreMessage(message: { files?: File[]; text: string }): void;
 };
 
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
-  error?: string;
+  error?: string | undefined;
   /**
    * Optional chrome to the left of the send row (create-mode visibility,
    * tools, etc). Presence also forces a stacked form so accessories are not
    * crushed beside the mobile send button.
    */
   footerStart?: ReactNode;
-  /** Text only, for a narrow panel: no images, no key hint, icon-only send. */
+  /** Text only, for a narrow panel: no files, no key hint, icon-only send. */
   compact?: boolean;
+  /** The Conversation that this composer writes to, if it exists yet. */
+  conversation?: ComposerConversation | undefined;
+  /**
+   * Add the work that a sent Message references to `conversation`'s linked
+   * work. A composer whose Messages go elsewhere, such as Quick question,
+   * leaves it off.
+   */
+  linksWork?: boolean;
   label: string;
-  placeholder?: string;
+  placeholder?: string | undefined;
   /**
    * Keep the draft in place and locked until `onSubmit` resolves, then clear
    * it. Use it when no mailbox outbox shows the send (new Conversation, Quick
@@ -118,31 +188,23 @@ type ConversationComposerProps = {
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to run before a send, such as a question to the reader
-   * or answers that go with the message. `sendsMessage` is false when the
-   * draft is empty, so only those answers go. The draft stays when it
-   * resolves false. Return undefined to send at once.
+   * Return a promise to run before a send, such as a question to the reader.
+   * The draft stays when it resolves false. Return undefined to send at
+   * once.
    */
-  beforeSubmit?: (send: {
-    sendsMessage: boolean;
-  }) => Promise<boolean> | undefined;
-  /**
-   * Enable Send with an empty draft, because `beforeSubmit` has input of its
-   * own to send. An empty draft then sends no message.
-   */
-  sendsWithoutDraft?: boolean;
+  beforeSubmit?: () => Promise<boolean> | undefined;
   onFocus?: () => void;
   onSubmit(
     message: string,
     idempotencyKey: string,
-    images?: InputImage[],
+    files?: File[],
   ): Promise<void>;
   onSubmitStart?: () => void;
   /**
    * Stop the active Turn. Present only while a Turn can be stopped. Resolves
    * with queued text that the stop removed, which returns to the draft.
    */
-  onStop?: () => Promise<string | undefined>;
+  onStop?: (() => Promise<string | undefined>) | undefined;
   stopPending?: boolean;
 };
 
@@ -158,25 +220,49 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [canSend, setCanSend] = useState(() =>
     Boolean(initialDraft.text.trim()),
   );
-  const [images, setImages] = useState<InputImage[]>([]);
-  const imagesRef = useRef(images);
-  const [imageError, setImageError] = useState<string>();
-  const [readingImages, setReadingImages] = useState(false);
-  const readingImagesRef = useRef(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const filesRef = useRef(files);
+  const [fileError, setFileError] = useState<string>();
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
+  const [liveMarkdown] = useComposerLiveMarkdown();
   const enterSends = !useSyncExternalStore(
     subscribeToTouchKeyboard,
     touchKeyboardMatches,
     () => false,
   );
-  const id = useId();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useSwipeDownToBlur(textareaRef);
+  // A textarea stands in until the editor loads, and when it cannot load.
+  const [Editor, setEditor] = useState<typeof ComposerEditor>();
+  const [editorLoadAttempt, setEditorLoadAttempt] = useState(0);
+  const editorRef = useRef<ComposerEditorHandle>(null);
+  const editorElementRef = useRef<HTMLDivElement>(null);
+  // Takes text while the editor loads.
+  const standInRef = useRef<HTMLTextAreaElement>(null);
+  useSwipeDownToBlur(editorElementRef);
+  useSwipeDownToBlur(standInRef);
+  // A restored draft opens the stand-in at its full height.
+  useLayoutEffect(() => {
+    if (standInRef.current) fitToText(standInRef.current);
+  }, [Editor]);
   const draftRef = useRef(initialDraft);
+  const peopleRef = useRef(
+    new Map(initialDraft.people?.map((person) => [person.slackUserId, person])),
+  );
+  // Keyed by message text, which is what a reference read back has.
+  const referencesRef = useRef(
+    new Map(
+      initialDraft.references?.map((reference) => [
+        referenceText(reference),
+        reference,
+      ]),
+    ),
+  );
+  const attachLinkedWork = useAttachLinkedWork(
+    props.linksWork ? props.conversation : undefined,
+  );
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for
@@ -202,40 +288,32 @@ export const ConversationComposer = memo(function ConversationComposer(
     };
   }, [storageKey]);
 
-  // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
-  // longer drafts scroll inside it. Measure again when the text rewraps or
-  // the reply layout switches density.
+  // A failed load tries again after a pause, and when the dashboard is
+  // online again.
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    syncComposerHeight(textarea);
-    let width = textarea.clientWidth;
-    let frame: number | undefined;
-    const scheduleHeight = () => {
-      // A height change inside this callback starts a ResizeObserver loop
-      // error. Measure in the next frame instead.
-      if (frame !== undefined) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = undefined;
-        syncComposerHeight(textarea);
-      });
-    };
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === width) return;
-      width = textarea.clientWidth;
-      scheduleHeight();
+    if (Editor || !online) return;
+    let current = true;
+    let retryTimer: number | undefined;
+    const load =
+      editorLoadAttempt === 0
+        ? composerEditorLoad
+        : loadComposerEditor(editorLoadAttempt);
+    void load.then((result) => {
+      if (!current) return;
+      if ("module" in result) {
+        setEditor(() => result.module.default);
+        return;
+      }
+      retryTimer = window.setTimeout(
+        () => setEditorLoadAttempt((attempt) => attempt + 1),
+        EDITOR_RETRY_MS,
+      );
     });
-    observer.observe(textarea);
-    const tallViewport = replyLayout
-      ? window.matchMedia("(min-height: 62.5rem)")
-      : undefined;
-    tallViewport?.addEventListener("change", scheduleHeight);
     return () => {
-      observer.disconnect();
-      tallViewport?.removeEventListener("change", scheduleHeight);
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      current = false;
+      window.clearTimeout(retryTimer);
     };
-  }, [replyLayout]);
+  }, [Editor, online, editorLoadAttempt]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -244,40 +322,46 @@ export const ConversationComposer = memo(function ConversationComposer(
     setCanSend(nextCanSend);
   };
 
-  const replaceImages = (next: InputImage[]) => {
-    imagesRef.current = next;
-    setImages(next);
+  const replaceFiles = (next: File[]) => {
+    filesRef.current = next;
+    setFiles(next);
   };
-  const addImages = async (files: File[]) => {
-    if (!files.length || readingImagesRef.current || sendLocked) return;
-    readingImagesRef.current = true;
-    setReadingImages(true);
-    setImageError(undefined);
-    try {
-      const before = imagesRef.current;
-      const added = (await readComposerImages(files, before)).slice(
-        before.length,
-      );
-      // An edit can restore images during the read. Add to those images
-      // instead of replacing them.
-      const next = [...imagesRef.current, ...added];
-      if (!composerImagesFit(next)) {
-        setImageError("Attach up to 3 images that total 3 MB or less.");
-      } else {
-        replaceImages(next);
-      }
-      textareaRef.current?.focus({ preventScroll: true });
-    } catch (error) {
-      setImageError(
-        error instanceof Error
-          ? error.message
-          : "Could not read images. Add them again.",
-      );
-    } finally {
-      readingImagesRef.current = false;
-      setReadingImages(false);
+  const addFiles = (added: File[]) => {
+    if (!added.length || sendLocked) return;
+    const next = [...filesRef.current, ...added];
+    if (composerFilesFit(next)) {
+      replaceFiles(next);
+      setFileError(undefined);
+    } else {
+      setFileError(`Attach ${COMPOSER_FILE_LIMIT}. Files cannot be empty.`);
     }
+    focusField();
   };
+
+  const focusField = () => {
+    if (editorRef.current) editorRef.current.focus();
+    else standInRef.current?.focus({ preventScroll: true });
+  };
+
+  // Show the text in the editor, or in the stand-in while it loads.
+  const writeField = (text: string, caretAtEnd = false) => {
+    if (editorRef.current) {
+      editorRef.current.setText(text, { caretAtEnd });
+      return;
+    }
+    const field = standInRef.current;
+    if (!field) return;
+    field.value = text;
+    fitToText(field);
+    if (!caretAtEnd) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(text.length, text.length);
+  };
+
+  const draftChips = (text: string) =>
+    text.includes("<")
+      ? chipsIn(text, peopleRef.current, referencesRef.current)
+      : { people: undefined, references: undefined };
 
   const scheduleDraftStorage = () => {
     if (storageTimerRef.current !== undefined) {
@@ -289,46 +373,31 @@ export const ConversationComposer = memo(function ConversationComposer(
     }, DRAFT_STORAGE_DEBOUNCE_MS);
   };
 
-  const syncTextareaHeight = () => {
-    if (textareaRef.current) syncComposerHeight(textareaRef.current);
-  };
-
   const setMessage = (text: string) => {
     const current = draftRef.current;
     if (current.text === text) return;
-    draftRef.current = { ...current, text };
+    draftRef.current = { ...current, ...draftChips(text), text };
     updateCanSend(text);
     scheduleDraftStorage();
   };
 
-  const replaceMessage = (draft: ConversationDraft) => {
-    draftRef.current = draft;
-    const textarea = textareaRef.current;
-    if (textarea) textarea.value = draft.text;
+  const replaceMessage = (draft: ConversationDraft, caretAtEnd = false) => {
+    draftRef.current = { ...draft, ...draftChips(draft.text) };
+    writeField(draft.text, caretAtEnd);
     updateCanSend(draft.text);
-    syncTextareaHeight();
   };
 
   const canSubmit = () =>
-    Boolean(
-      draftRef.current.text.trim() ||
-      imagesRef.current.length ||
-      props.sendsWithoutDraft,
-    ) &&
+    Boolean(draftRef.current.text.trim() || filesRef.current.length) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
-    !sendLocked &&
-    !readingImagesRef.current;
+    !sendLocked;
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.beforeSubmit?.({
-      sendsMessage: Boolean(
-        draftRef.current.text.trim() || imagesRef.current.length,
-      ),
-    });
+    const confirmation = props.beforeSubmit?.();
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -340,27 +409,27 @@ export const ConversationComposer = memo(function ConversationComposer(
       if (!confirmed) return;
     }
     const text = draftRef.current.text.trim();
-    const submittedImages = imagesRef.current;
-    if (!text && !submittedImages.length) return;
+    const submittedFiles = filesRef.current;
+    if (!text && !submittedFiles.length) return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,
       text,
-      submittedImages.length ? submittedImages : undefined,
+      submittedFiles.length ? submittedFiles : undefined,
     );
     attemptRef.current = attempt;
     const send = () =>
       props.onSubmit(
         text,
         attempt.idempotencyKey,
-        submittedImages.length ? submittedImages : undefined,
+        submittedFiles.length ? submittedFiles : undefined,
       );
     const clear = () => {
       const nextAttempt = emptyDraft();
       const clearedDraft: ConversationDraft = { ...nextAttempt, text: "" };
       replaceMessage(clearedDraft);
-      replaceImages([]);
-      setImageError(undefined);
+      replaceFiles([]);
+      setFileError(undefined);
       storeDraft(storageKey, clearedDraft);
       attemptRef.current = nextAttempt;
     };
@@ -373,18 +442,19 @@ export const ConversationComposer = memo(function ConversationComposer(
         ...draftRef.current,
         idempotencyKey: attempt.idempotencyKey,
         lastSubmittedText: attempt.lastSubmittedText,
-        hasImages: submittedImages.length > 0,
+        hasFiles: submittedFiles.length > 0,
       };
       draftRef.current = heldDraft;
       storeDraft(storageKey, heldDraft);
       setHoldPending(true);
       try {
         await send();
+        attachLinkedWork(text);
       } catch {
         // The parent shows the error. The draft stays for a retry, with
         // focus, so Enter sends it again.
         flushSync(() => setHoldPending(false));
-        textareaRef.current?.focus({ preventScroll: true });
+        focusField();
         return;
       } finally {
         submittingRef.current = false;
@@ -397,18 +467,20 @@ export const ConversationComposer = memo(function ConversationComposer(
     // Clear at once so the reader can compose the next message. The parent
     // keeps a failed send in the mailbox outbox for retry.
     clear();
-    textareaRef.current?.focus({ preventScroll: true });
+    focusField();
     queueMicrotask(() => {
       submittingRef.current = false;
     });
-    await send().catch(() => {});
+    await send().then(
+      () => attachLinkedWork(text),
+      () => {},
+    );
   };
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
-    const next = withPrependedText(draftRef.current, text);
-    replaceMessage(next);
-    storeDraft(storageKey, next);
+    replaceMessage(withPrependedText(draftRef.current, text));
+    storeDraft(storageKey, draftRef.current);
   };
 
   const stopTurn = async () => {
@@ -425,7 +497,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
     if (!restored) return;
     prependDraftText(restored);
-    textareaRef.current?.focus({ preventScroll: true });
+    focusField();
   };
 
   useImperativeHandle(props.ref, () => ({
@@ -436,57 +508,105 @@ export const ConversationComposer = memo(function ConversationComposer(
         ...draftRef.current,
         text: `${draft && `${draft}\n\n`}${text}\n\n`,
       };
-      replaceMessage(next);
-      storeDraft(storageKey, next);
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(next.text.length, next.text.length);
-      textarea.scrollTop = textarea.scrollHeight;
+      replaceMessage(next, true);
+      storeDraft(storageKey, draftRef.current);
     },
-    canRestoreImages: (images) =>
-      !images.length || composerImagesFit([...images, ...imagesRef.current]),
-    focus: () => textareaRef.current?.focus({ preventScroll: true }),
+    canRestoreFiles: (restored) =>
+      !restored.length || composerFilesFit([...restored, ...filesRef.current]),
+    focus: focusField,
     restoreMessage: (message) => {
-      // An image-only message has no text to put ahead of the draft.
+      // A file-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);
-      const restoredImages = message.images ?? [];
-      if (restoredImages.length) {
-        // The queued images already left the queue, so they win. A draft
-        // image added during the cancel stays only while it still fits.
-        const merged = [...restoredImages];
-        for (const image of imagesRef.current) {
-          if (composerImagesFit([...merged, image])) merged.push(image);
+      const restoredFiles = message.files ?? [];
+      if (restoredFiles.length) {
+        // The queued files already left the queue, so they win. A draft
+        // file added during the cancel stays only while it still fits.
+        const merged = [...restoredFiles];
+        for (const file of filesRef.current) {
+          if (composerFilesFit([...merged, file])) merged.push(file);
         }
-        if (merged.length < restoredImages.length + imagesRef.current.length) {
-          setImageError("Some draft images did not fit. Add them again.");
+        if (merged.length < restoredFiles.length + filesRef.current.length) {
+          setFileError("Some draft files did not fit. Add them again.");
         }
-        replaceImages(merged);
+        replaceFiles(merged);
       }
-      textareaRef.current?.focus({ preventScroll: true });
+      focusField();
     },
   }));
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (
-      enterSends &&
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
-      event.preventDefault();
-      void submit();
-    }
-  };
+  const placeholder =
+    props.placeholder ?? `Message ${getDashboardAgentName()}…`;
+  const fieldClass = cn(
+    "min-h-12 max-h-28 w-full overflow-y-auto border-0 bg-transparent outline-none",
+    props.compact
+      ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)]"
+      : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)]",
+    replyLayout ? "md:tall:min-h-14" : !props.compact && "md:min-h-14",
+  );
+  // Padding and type, which the editor's placeholder shares.
+  const textClass = cn(
+    "px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text",
+    props.compact ? "md:text-sm" : "md:px-4",
+    replyLayout && "md:py-2 md:tall:py-3",
+  );
+  // Chat is technical: ids, paths, code. Suppress browser IME assist that
+  // fights identifiers, unless the user turns autocorrect on in settings.
+  // Android Chrome maps `autocomplete="off"` to TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+  // which also turns off keyboard autocorrect, so leave it out when
+  // autocorrect is on.
+  const standIn = (
+    <BareTextarea
+      aria-label={props.label}
+      autoCapitalize={autocorrect ? "sentences" : "off"}
+      autoComplete={autocorrect ? undefined : "off"}
+      autoCorrect={autocorrect ? "on" : "off"}
+      className={cn(
+        fieldClass,
+        textClass,
+        "resize-none placeholder:text-dashboard-text-faint",
+      )}
+      defaultValue={draftRef.current.text}
+      disabled={holdPending}
+      enterKeyHint={enterSends ? "send" : "enter"}
+      inputMode="text"
+      maxLength={DRAFT_MAX_LENGTH}
+      onChange={(event) => {
+        fitToText(event.target);
+        setMessage(event.target.value);
+      }}
+      onFocus={props.onFocus}
+      onKeyDown={(event) => {
+        if (
+          enterSends &&
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          void submit();
+        }
+      }}
+      onPaste={(event) => {
+        const files = Array.from(event.clipboardData.files);
+        if (props.compact || !files.length) return;
+        event.preventDefault();
+        addFiles(files);
+      }}
+      placeholder={placeholder}
+      ref={standInRef}
+      rows={1}
+      spellCheck={autocorrect}
+    />
+  );
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error || imageError ? (
+      {props.error || fileError ? (
         <div
           aria-live="polite"
           className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
-          {imageError ?? props.error}
+          {fileError ?? props.error}
         </div>
       ) : null}
       <form
@@ -521,86 +641,85 @@ export const ConversationComposer = memo(function ConversationComposer(
           event.preventDefault();
           if (props.compact) return;
           setDragging(false);
-          void addImages(Array.from(event.dataTransfer.files));
-        }}
-        onPaste={(event) => {
-          const files = Array.from(event.clipboardData.files);
-          if (props.compact || !files.length) return;
-          event.preventDefault();
-          void addImages(files);
+          addFiles(Array.from(event.dataTransfer.files));
         }}
         onSubmit={submit}
       >
-        {images.length ? (
-          <ComposerImages
-            images={images}
-            disabled={readingImages || sendLocked}
+        {files.length ? (
+          <ComposerFiles
+            files={files}
+            disabled={sendLocked}
             onRemove={(index) => {
-              if (readingImagesRef.current || sendLocked) return;
-              replaceImages(imagesRef.current.filter((_, i) => i !== index));
-              setImageError(undefined);
+              if (sendLocked) return;
+              replaceFiles(filesRef.current.filter((_, i) => i !== index));
+              setFileError(undefined);
             }}
           />
         ) : null}
-        {dragging || readingImages ? (
+        {dragging ? (
           <div
             role="status"
             className="col-span-full px-3 pt-2 text-sm text-dashboard-text-muted"
           >
-            {readingImages ? "Reading images…" : "Drop images here"}
+            Drop files here
           </div>
         ) : null}
         <input
-          accept={INPUT_IMAGE_TYPES.join(",")}
-          aria-label="Choose images"
+          aria-label="Choose files"
           className="sr-only"
           multiple
           onChange={(event) => {
-            void addImages(Array.from(event.currentTarget.files ?? []));
+            addFiles(Array.from(event.currentTarget.files ?? []));
             event.currentTarget.value = "";
           }}
           ref={fileInputRef}
           tabIndex={-1}
           type="file"
         />
-        <label className="sr-only" htmlFor={id}>
-          {props.label}
-        </label>
-        <BareTextarea
-          // Chat is technical: ids, paths, code. Suppress browser IME assist
-          // that fights identifiers, unless the user turns autocorrect on in
-          // settings. Android Chrome maps `autocomplete="off"` to
-          // TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also turns off keyboard
-          // autocorrect, so leave it out when autocorrect is on.
-          autoCapitalize={autocorrect ? "sentences" : "off"}
-          autoComplete={autocorrect ? undefined : "off"}
-          autoCorrect={autocorrect ? "on" : "off"}
-          className={cn(
-            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",
-            props.compact
-              ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)] md:text-sm"
-              : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
-            replyLayout
-              ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
-              : !props.compact && "md:min-h-14",
+        <ComposerConversationContext.Provider value={props.conversation}>
+          {Editor ? (
+            <Editor
+              autocorrect={autocorrect}
+              className={fieldClass}
+              editable={!holdPending}
+              elementRef={editorElementRef}
+              enterKeyHint={enterSends ? "send" : "enter"}
+              enterSends={enterSends}
+              label={props.label}
+              liveMarkdown={liveMarkdown}
+              lookup={{
+                origin: window.location.origin,
+                person: (slackUserId) => peopleRef.current.get(slackUserId),
+                reference: (text) => referencesRef.current.get(text),
+              }}
+              maxLength={DRAFT_MAX_LENGTH}
+              onChange={setMessage}
+              onEnter={() => void submit()}
+              onFocus={props.onFocus}
+              onChip={(chip) => {
+                if ("person" in chip) {
+                  peopleRef.current.set(chip.person.slackUserId, chip.person);
+                } else {
+                  referencesRef.current.set(
+                    referenceText(chip.reference),
+                    chip.reference,
+                  );
+                }
+              }}
+              onPasteFiles={props.compact ? undefined : addFiles}
+              placeholder={placeholder}
+              placeholderClassName={textClass}
+              readText={() => draftRef.current.text}
+              ref={editorRef}
+              standInFocused={() =>
+                standInRef.current !== null &&
+                document.activeElement === standInRef.current
+              }
+            />
+          ) : (
+            standIn
           )}
-          disabled={holdPending}
-          enterKeyHint={enterSends ? "send" : "enter"}
-          id={id}
-          inputMode="text"
-          maxLength={32_000}
-          defaultValue={initialDraft.text}
-          onChange={(event) => {
-            setMessage(event.target.value);
-            syncTextareaHeight();
-          }}
-          onFocus={props.onFocus}
-          onKeyDown={handleKeyDown}
-          placeholder={props.placeholder ?? "Message Junior…"}
-          ref={textareaRef}
-          rows={1}
-          spellCheck={autocorrect}
-        />
+        </ComposerConversationContext.Provider>
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5",
@@ -619,18 +738,18 @@ export const ConversationComposer = memo(function ConversationComposer(
                     <Button
                       variant="ghost"
                       focusableWhenDisabled
-                      aria-label="Attach images"
-                      disabled={sendLocked || readingImages}
+                      aria-label="Attach files"
+                      disabled={sendLocked}
                       onClick={() => fileInputRef.current?.click()}
                       size="icon"
                       type="button"
                     >
-                      <ImagePlus aria-hidden="true" size={16} />
+                      <Paperclip aria-hidden="true" size={16} />
                     </Button>
                   }
                 />
                 <TooltipContent size="compact">
-                  Attach images (up to 3 MB total)
+                  Attach files ({COMPOSER_FILE_LIMIT})
                 </TooltipContent>
               </Tooltip>
             )}
@@ -661,12 +780,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 "disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100",
                 props.compact && "w-9 px-0",
               )}
-              disabled={
-                (!canSend && !images.length && !props.sendsWithoutDraft) ||
-                !online ||
-                sendLocked ||
-                readingImages
-              }
+              disabled={(!canSend && !files.length) || !online || sendLocked}
               variant="default"
               type="submit"
             >
@@ -684,13 +798,30 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
 });
 
-/** Fit the textarea to its text. CSS `max-height` sets the scroll limit. */
-function syncComposerHeight(textarea: HTMLTextAreaElement): void {
-  // Measure from auto height so the box can also shrink after deletes.
-  const previous = textarea.style.height;
-  textarea.style.height = "auto";
-  const next = `${textarea.scrollHeight}px`;
-  textarea.style.height = previous === next ? previous : next;
+/** The known people and references in the text, once each. */
+function chipsIn(
+  text: string,
+  people: ReadonlyMap<string, MentionablePerson>,
+  references: ReadonlyMap<string, ComposerReference>,
+): Pick<ConversationDraft, "people" | "references"> {
+  const found = {
+    people: new Set<MentionablePerson>(),
+    references: new Set<ComposerReference>(),
+  };
+  for (const part of splitComposerText(text, window.location.origin)) {
+    const person =
+      "slackUserId" in part ? people.get(part.slackUserId) : undefined;
+    const reference =
+      "reference" in part
+        ? references.get(referenceText(part.reference))
+        : undefined;
+    if (person) found.people.add(person);
+    if (reference) found.references.add(reference);
+  }
+  return {
+    people: found.people.size ? [...found.people] : undefined,
+    references: found.references.size ? [...found.references] : undefined,
+  };
 }
 
 function emptyDraft(): ConversationDraft {
@@ -699,6 +830,13 @@ function emptyDraft(): ConversationDraft {
     lastSubmittedText: "",
     text: "",
   };
+}
+
+/** Fit the stand-in to its text. CSS `max-height` sets the scroll limit. */
+function fitToText(textarea: HTMLTextAreaElement): void {
+  // Measure from auto height so the box can also shrink after deletes.
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function readStoredDraft(storageKey: string): ConversationDraft {
@@ -715,7 +853,15 @@ function readStoredDraft(storageKey: string): ConversationDraft {
       "text" in draft &&
       typeof draft.text === "string"
     ) {
-      const text = draft.text.slice(0, 32_000);
+      const text = draft.text.slice(0, DRAFT_MAX_LENGTH);
+      const people =
+        "people" in draft
+          ? mentionablePersonSchema.array().safeParse(draft.people).data
+          : undefined;
+      const references =
+        "references" in draft
+          ? composerReferenceSchema.array().safeParse(draft.references).data
+          : undefined;
       const lastSubmittedText =
         "lastSubmittedText" in draft &&
         typeof draft.lastSubmittedText === "string"
@@ -724,11 +870,15 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             // a retry after reload still reuses it.
             text.trim();
       return {
+        // Drafts saved before web files were named `hasImages`.
         idempotencyKey:
-          "hasImages" in draft && draft.hasImages
+          ("hasFiles" in draft && draft.hasFiles) ||
+          ("hasImages" in draft && draft.hasImages)
             ? crypto.randomUUID()
             : draft.idempotencyKey,
         lastSubmittedText,
+        people,
+        references,
         text,
       };
     }

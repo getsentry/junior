@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 
 const { endAttributes, startAttributes } = vi.hoisted(() => ({
   endAttributes: { value: {} as Record<string, unknown> },
@@ -48,17 +48,11 @@ describe("createPiAgentTools telemetry", () => {
         }),
       },
     };
-    const [tool] = createPiAgentTools(
-      tools,
-      {} as never,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-    );
+    const [tool] = createPiAgentTools(tools, {} as never, {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      conversationPrivacy: "private",
+    });
 
     await tool!.execute!("call-1", {});
 

@@ -10,15 +10,15 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
+import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 const originalCwd = process.cwd();
-const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
+const originalPluginPackages = process.env["JUNIOR_PLUGIN_PACKAGES"];
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
@@ -65,10 +65,11 @@ afterEach(async () => {
   setConfigDefaults(undefined);
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
   if (originalPluginPackages === undefined) {
-    delete process.env.JUNIOR_PLUGIN_PACKAGES;
+    delete process.env["JUNIOR_PLUGIN_PACKAGES"];
   } else {
-    process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = originalPluginPackages;
   }
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -125,7 +126,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is malformed", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await expect(createApp()).rejects.toThrow(
       "JUNIOR_PLUGIN_PACKAGES must be valid JSON",
@@ -133,7 +134,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is not a package list", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify({
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify({
       packages: ["@acme/junior-plugin"],
     });
 
@@ -143,7 +144,7 @@ describe("createApp plugin config", () => {
   });
 
   it("does not read env plugin packages when plugins are explicit", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await createApp({
       plugins: defineJuniorPlugins([]),
@@ -618,6 +619,7 @@ describe("createApp plugin config", () => {
 
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp: undefined,
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
@@ -646,6 +648,7 @@ describe("createApp plugin config", () => {
       },
       pluginRuntimeRegistrations: ["hooked"],
     }));
+    mockBuiltSystemPrompts();
 
     await createApp({
       configDefaults: { "hooked.org": "sentry" },
@@ -728,7 +731,7 @@ describe("createApp plugin config", () => {
         hooks: {},
       }),
     ).toThrow(
-      'Junior plugin registration name "GitHub" must be a lowercase plugin identifier',
+      'Plugin registration name "GitHub" must be a lowercase plugin identifier',
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
@@ -761,7 +764,7 @@ describe("createApp plugin config", () => {
           events: { closed: { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -780,7 +783,7 @@ describe("createApp plugin config", () => {
           events: { "issue.closed": { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -800,12 +803,12 @@ describe("createApp plugin config", () => {
           events: { "issue.closed": { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
     const pluginRouteApp = {
-      fetch: () => new Response("memory"),
+      fetch: () => new Response("notes"),
     };
     const createDashboardApp = vi.fn(
       (options: {
@@ -824,6 +827,7 @@ describe("createApp plugin config", () => {
       }),
     );
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp,
       functionMaxDurationSeconds: undefined,
       dashboard: {
@@ -832,9 +836,9 @@ describe("createApp plugin config", () => {
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes plugin",
           },
           hooks: {
             apiRoutes() {
@@ -844,17 +848,18 @@ describe("createApp plugin config", () => {
         }),
       ]),
       plugins: undefined,
-      pluginRuntimeRegistrations: ["memory"],
+      pluginRuntimeRegistrations: ["notes"],
     }));
+    mockBuiltSystemPrompts();
 
     const app = await createApp();
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory"),
+      new Request("http://localhost/api/plugins/notes"),
     );
 
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("memory");
+    await expect(response.text()).resolves.toBe("notes");
 
     const peoplePage = await app.fetch(new Request("http://localhost/people"));
     expect(peoplePage.status).toBe(200);
@@ -958,41 +963,5 @@ describe("createApp plugin config", () => {
       expect(getPlugins()).toEqual([]);
       expect(pluginCatalogRuntime.getProviders()).toEqual([]);
     }
-  });
-
-  it("configures Slack footer links from core dashboard options", async () => {
-    vi.doMock("#junior/config", () => ({
-      createDashboardApp: vi.fn((_options: unknown) => ({
-        fetch: () => new Response("dashboard"),
-      })),
-      functionMaxDurationSeconds: undefined,
-      dashboard: undefined,
-      pluginSet: defineJuniorPlugins([]),
-      plugins: undefined,
-      pluginRuntimeRegistrations: [],
-    }));
-
-    await createApp({
-      dashboard: {
-        authRequired: false,
-        basePath: "/ops",
-        baseURL: "https://junior.example.com",
-      },
-      plugins: defineJuniorPlugins([]),
-    });
-
-    expect(
-      buildSlackReplyFooter({
-        conversationId: "slack:C123:1700000000.000100",
-      }),
-    ).toEqual({
-      items: [
-        {
-          label: "ID",
-          url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
-          value: "slack:C123:1700000000.000100",
-        },
-      ],
-    });
   });
 });

@@ -1,16 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readRepoFiles } from "./lib/repo-files.mjs";
 
-const TEST_ROOTS = [
-  "packages/junior/tests/integration",
-  "packages/junior-dashboard/e2e",
-];
+const DASHBOARD_E2E_DIR = "packages/junior-dashboard/e2e";
+const DASHBOARD_E2E_ROOT = `${DASHBOARD_E2E_DIR}/`;
+const TEST_ROOTS = ["packages/junior/tests/integration", DASHBOARD_E2E_DIR];
 const DATABASE_TEST_ROOTS = [
   "packages/junior/tests/component",
   "packages/junior/tests/integration",
 ];
-const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
 const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/conversation-storage-sql.test.ts",
   "packages/junior/tests/component/memory-plugin-storage.test.ts",
@@ -130,11 +128,90 @@ const AGENT_TEST_RULES = [
   },
 ];
 
+/**
+ * Rules for dashboard E2E tests. A spec acts and asserts as a user does.
+ * Shared helpers, such as `harness.ts`, are not specs and may do more, so a
+ * spec-only rule has a `pathSuffix`. A rule without one also covers the
+ * helpers, so moving code out of a spec does not pass it. Each rule has a
+ * baseline of the files that break it today.
+ */
+export const DASHBOARD_SPEC_RULES = [
+  {
+    id: "dashboard-spec-page-script",
+    message:
+      "dashboard E2E specs must not run script in the page; assert what the user sees, or move a needed read into a named helper outside the spec",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\b(?:evaluate|evaluateHandle)\s*\(/g,
+  },
+  {
+    id: "dashboard-spec-synthetic-event",
+    message:
+      "dashboard E2E specs must not dispatch synthetic events; use real input such as click, fill, press, or setInputFiles",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\bdispatchEvent\s*\(/g,
+  },
+  {
+    id: "dashboard-spec-selector",
+    message:
+      "dashboard E2E specs must not pass a CSS or attribute selector to locator(); use getByRole, getByLabel, or getByText",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\blocator\s*\(\s*["'`]/g,
+  },
+  {
+    id: "dashboard-spec-timing",
+    message:
+      "dashboard E2E specs must not override timeouts; control time with page.clock and wait for a visible state",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\btimeout\s*:/g,
+  },
+  {
+    // getsentry/junior#3589 and #3974 wrapped a hover in `toPass` to retry
+    // around a race in the page instead of waiting for it to settle.
+    id: "dashboard-e2e-retry-loop",
+    message:
+      "dashboard E2E tests must not retry steps with toPass; wait for the visible state that ends the race, or fix the page so it does not move under the step",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\.toPass\s*\(/g,
+  },
+  {
+    // The versions poll and other background reads keep the network busy,
+    // so network idle is a guess about timing, not a state.
+    id: "dashboard-e2e-network-idle",
+    message:
+      "dashboard E2E tests must not wait for network idle; wait for the visible state, URL, request, or response that the step needs",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /["'`]networkidle["'`]/g,
+  },
+  {
+    // A forwarded read runs in the page and in the mock server at once:
+    // getsentry/junior#3316 (a response disposed mid-handler) and
+    // getsentry/junior#4265 (ECONNRESET on a reused connection).
+    id: "dashboard-e2e-route-forward",
+    message:
+      "dashboard E2E tests must not forward a route to the mock server and edit its response; add the state to src/mock-reporting, or fulfill the whole response",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\broute\.fetch\s*\(/g,
+  },
+  {
+    // getsentry/junior#3316 ignored the error that a forwarded read threw
+    // when the test ended mid-handler, and so hid a test that ended early.
+    id: "dashboard-e2e-ignore-route-errors",
+    message:
+      "dashboard E2E tests must not ignore route handler errors; end the test after the read or write that the handler serves",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\bbehavior\s*:\s*["'`]ignoreErrors["'`]/g,
+  },
+];
+
 // A kind or person-Source branch outside `kind-behavior.ts`.
 const KIND_BRANCH_PATTERNS = [
   // Conversation kind compared to a value, in either order.
-  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation)["']/g,
-  /["'](?:root|thread|task|automation)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
+  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation|lead)["']/g,
+  /["'](?:root|thread|task|automation|lead)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
   // A person Source check. Narrowing a Source union to use the narrowed
   // Source, such as `source.kind === "slack" ? source.threadTs`, is not one.
   /\bsource(?:\.kind)?\s*(?:===|!==)\s*["'](?:slack|web)["'](?!\s*(?:\?|&&)\s*(?:\{\s*\.\.\.)?(?:[\w$]+\??\.)*source\b)/g,
@@ -145,7 +222,8 @@ const KIND_BRANCH_PATTERNS = [
   /\bisTopLevelKind\(/g,
 ];
 
-// A field of the parent edge or the Agent invocation read as a condition.
+// A field of the parent edge read as a condition. `agentInvocationId` is the
+// stored meta key that earlier releases wrote on a parent agent's input.
 const EDGE_FIELD_PATTERN =
   /\b(?:parentConversationId|parentToolCallId|agentInvocationId)\b/g;
 const EDGE_CONDITION_BEFORE =
@@ -157,9 +235,17 @@ function stripComments(contents) {
   return contents.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gm, "");
 }
 
+/** Rewrite `a["b"]` and `a?.["b"]` as `a.b` and `a?.b`, so both forms match. */
+function normalizeBracketAccess(contents) {
+  return contents.replace(
+    /(\?\.)?\[(["'])([A-Za-z_$][\w$]*)\2\]/g,
+    (_match, optional, _quote, name) => `${optional ? "?." : "."}${name}`,
+  );
+}
+
 /** Count kind, parent-edge, and person-Source branches in one file. */
 function countKindBranches(file) {
-  const code = stripComments(file.contents);
+  const code = normalizeBracketAccess(stripComments(file.contents));
   let count = 0;
   for (const pattern of KIND_BRANCH_PATTERNS) {
     count += countMatches(code, pattern);
@@ -186,7 +272,7 @@ export const SOURCE_RULES = [
   {
     id: "kind-behavior",
     message:
-      "branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+      "branch on Conversation kind, the parent edge, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
     pathPrefix: "packages/junior/src/",
     exclude: ["packages/junior/src/chat/conversations/kind-behavior.ts"],
     count: countKindBranches,
@@ -230,6 +316,7 @@ function agentRuleApplies(rule, filePath) {
   if (filePath.startsWith(AGENT_FIXTURE_ROOT)) return false;
   if (rule.exclude?.includes(filePath)) return false;
   if (rule.pathPrefix && !filePath.startsWith(rule.pathPrefix)) return false;
+  if (rule.pathSuffix && !filePath.endsWith(rule.pathSuffix)) return false;
   if (
     rule.pathPrefix === AGENT_EVALS_ROOT &&
     ISOLATED_EVAL_ROOTS.some((root) => filePath.startsWith(root))
@@ -350,80 +437,40 @@ export function checkDatabaseTestFixtures(files) {
   return errors;
 }
 
-function collectSourceFiles(root, roots) {
-  return roots.flatMap((testRoot) => {
-    const directory = path.join(root, testRoot);
-    return fs
-      .readdirSync(directory, { recursive: true, withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          /\.(?:ts|mts|mjs)$/.test(entry.name) &&
-          !entry.parentPath.split(path.sep).includes("node_modules"),
-      )
-      .map((entry) => {
-        const absolutePath = path.join(entry.parentPath, entry.name);
-        return {
-          path: path.relative(root, absolutePath).split(path.sep).join("/"),
-          contents: fs.readFileSync(absolutePath, "utf8"),
-        };
-      });
-  });
-}
-
-function collectTests(root, testRoots = TEST_ROOTS) {
-  return testRoots.flatMap((testRoot) => {
-    const directory = path.join(root, testRoot);
-    return fs
-      .readdirSync(directory, { recursive: true, withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          (entry.name.endsWith(".test.ts") || entry.name.endsWith(".spec.ts")),
-      )
-      .map((entry) => {
-        const absolutePath = path.join(entry.parentPath, entry.name);
-        return {
-          path: path.relative(root, absolutePath).split(path.sep).join("/"),
-          contents: fs.readFileSync(absolutePath, "utf8"),
-        };
-      });
-  });
-}
-
-function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
+/** Check test harness, database fixture, and agent test rules. */
+export async function run({ root, files }) {
+  const collect = (roots, pattern) =>
+    readRepoFiles(
+      root,
+      files.filter(
+        (file) =>
+          roots.some((testRoot) => file.startsWith(`${testRoot}/`)) &&
+          pattern.test(file),
+      ),
+    );
+  const tests = (roots) => collect(roots, /\.(?:test|spec)\.ts$/);
+  const sources = (roots) => collect(roots, /\.(?:ts|mts|mjs)$/);
   const baseline = JSON.parse(
     fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
   );
   const errors = [
-    ...checkIntegrationTestArchitecture(collectTests(root)),
-    ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
+    ...checkIntegrationTestArchitecture(await tests(TEST_ROOTS)),
+    ...checkDatabaseTestFixtures(await tests(DATABASE_TEST_ROOTS)),
+    ...checkAgentTestArchitecture(await sources(AGENT_TEST_ROOTS), baseline),
     ...checkAgentTestArchitecture(
-      collectSourceFiles(root, AGENT_TEST_ROOTS),
-      baseline,
-    ),
-    ...checkAgentTestArchitecture(
-      collectSourceFiles(root, SOURCE_ROOTS),
+      await sources(SOURCE_ROOTS),
       baseline,
       SOURCE_RULES,
     ),
+    ...checkAgentTestArchitecture(
+      await sources([DASHBOARD_E2E_DIR]),
+      baseline,
+      DASHBOARD_SPEC_RULES,
+    ),
   ];
-  if (errors.length === 0) {
-    console.log("Tests follow test architecture policy.");
-    return;
-  }
-  console.error(
-    [
-      "Test architecture check failed:",
-      ...errors,
-      `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
+  ];
 }

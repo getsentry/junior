@@ -157,9 +157,9 @@ export const pluginDispatchSourceSchema = z
   .object({ kind: z.literal("plugin_dispatch") })
   .strict();
 
-/** Runtime-owned Agent invocation input Source. */
-export const agentInvocationSourceSchema = z
-  .object({ kind: z.literal("agent_invocation") })
+/** Runtime-owned Source of a parent agent's task or message to a child agent. */
+export const parentMessageSourceSchema = z
+  .object({ kind: z.literal("parent_message") })
   .strict();
 
 const currentSourceSchema = z.discriminatedUnion("kind", [
@@ -170,7 +170,7 @@ const currentSourceSchema = z.discriminatedUnion("kind", [
   scheduledAutomationSourceSchema,
   eventAutomationSourceSchema,
   pluginDispatchSourceSchema,
-  agentInvocationSourceSchema,
+  parentMessageSourceSchema,
 ]);
 
 function normalizeStoredSource(value: unknown): unknown {
@@ -180,18 +180,21 @@ function normalizeStoredSource(value: unknown): unknown {
   const source = value as Record<string, unknown>;
   if ("kind" in source) {
     const legacyKinds: Record<string, string> = {
+      agent_invocation: "parent_message",
       event_task: "event_automation",
       resource_event: "event",
       scheduled_task: "scheduled_automation",
     };
     const kind =
-      typeof source.kind === "string" ? legacyKinds[source.kind] : undefined;
+      typeof source["kind"] === "string"
+        ? legacyKinds[source["kind"]]
+        : undefined;
     return kind ? { ...source, kind } : value;
   }
   if (
-    source.platform !== "slack" &&
-    source.platform !== "local" &&
-    source.platform !== "web"
+    source["platform"] !== "slack" &&
+    source["platform"] !== "local" &&
+    source["platform"] !== "web"
   ) {
     return value;
   }
@@ -363,6 +366,37 @@ export const replyAttributionSchema = z
       .optional(),
   })
   .strict();
+
+const identityDispatchFields = {
+  idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
+  input: nonBlankStringSchema.pipe(z.string().max(32_000)),
+};
+
+/**
+ * Plugin request to start work for one person. `input` becomes that person's
+ * first Message in a new public Conversation, so it must be what they asked
+ * for, not text that someone else wrote. Name the person by exactly one of:
+ *
+ * - `subjectId`: the provider account id that the OAuth account-linking flow
+ *   stored. Core binds the provider to the calling plugin.
+ * - `verifiedEmail`: an address that the plugin proved this person sent from,
+ *   such as the From address of an email that passed DMARC. Never an address
+ *   that only appears in content.
+ */
+export const identityDispatchOptionsSchema = z.union([
+  z
+    .object({
+      ...identityDispatchFields,
+      subjectId: exactNonBlankStringSchema.pipe(z.string().max(255)),
+    })
+    .strict(),
+  z
+    .object({
+      ...identityDispatchFields,
+      verifiedEmail: z.email().max(320),
+    })
+    .strict(),
+]);
 
 /** Plugin dispatch request accepted by Junior core. */
 export const dispatchOptionsSchema = z

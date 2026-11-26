@@ -1,38 +1,27 @@
-import { describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import type { Message } from "chat";
+import { describe, expect, it } from "vitest";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  createConversationWorkQueueTestAdapter,
+  createNoopSlackWebhookRuntime,
+  createSlackAdapterFixture,
+  handleSlackWebhookAndFlush,
+  slackWebhookRequest,
+} from "../../fixtures/conversation-work";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
-import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
-import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
-
-const SIGNING_SECRET = "test-signing-secret";
-const BOT_USER_ID = "U0BOT";
-const slackWebhookClient = createSlackWebhookTestClient({
-  signingSecret: SIGNING_SECRET,
-});
 
 describe("Slack behavior: message_changed webhook ingress", () => {
   it("ignores an edit that adds a Junior mention", async () => {
-    const bot = new JuniorChat({
-      userName: "junior",
-      adapters: {
-        slack: createJuniorSlackAdapter({
-          botToken: "xoxb-test",
-          botUserId: BOT_USER_ID,
-          signingSecret: SIGNING_SECRET,
-        }),
-      },
-      state: createMemoryState(),
-    });
-    const handledMessages: Array<Pick<Message, "id" | "text">> = [];
-    const waitUntil = slackWebhookClient.waitUntil();
-
-    bot.onDirectMessage(async (_thread, message) => {
-      handledMessages.push({ id: message.id, text: message.text });
-    });
-
+    const state = createMemoryState();
+    await state.connect();
+    const adapter = createSlackAdapterFixture();
+    const queue = createConversationWorkQueueTestAdapter();
+    const services = {
+      getSlackAdapter: () => adapter,
+      queue,
+      runtime: createNoopSlackWebhookRuntime(),
+      state,
+    };
     const original = slackEventsApiEnvelope({
       eventType: "message",
       channel: "D12345",
@@ -45,38 +34,44 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         type: "message",
         subtype: "message_changed",
         channel: "D12345",
+        channel_type: "im",
         hidden: true,
+        // Slack omits this field. Set it so membership passes and only the
+        // subtype filter can drop the edit.
+        user: original.event.user,
+        ts: "1700000200.000200",
+        event_ts: "1700000200.000200",
         message: {
           type: "message",
-          user: "U123",
-          text: `<@${BOT_USER_ID}> hello there`,
+          user: original.event.user,
+          text: `<@${adapter.botUserId}> hello there`,
           ts: "1700000100.000100",
         },
         previous_message: {
           type: "message",
-          user: "U123",
+          user: original.event.user,
           text: "hello there",
           ts: "1700000100.000100",
         },
       },
     };
 
-    await handleChatSdkPlatformWebhook(
-      slackWebhookClient.event(original),
-      "slack",
-      waitUntil.fn,
-      bot,
-    );
-    await handleChatSdkPlatformWebhook(
-      slackWebhookClient.event(edit),
-      "slack",
-      waitUntil.fn,
-      bot,
-    );
-    await waitUntil.flush();
+    for (const body of [original, edit]) {
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(body),
+        services,
+      });
+      expect(response.status).toBe(200);
+    }
 
-    expect(handledMessages).toEqual([
-      { id: "1700000100.000100", text: "hello there" },
+    expect(queue.queuedMessages()).toHaveLength(1);
+    const work = await getConversationWorkState({
+      conversationId: "slack:D12345:1700000100.000100",
+      state,
+    });
+    expect(work?.messages.map((message) => message.input.text)).toEqual([
+      "hello there",
     ]);
+    await state.disconnect();
   });
 });

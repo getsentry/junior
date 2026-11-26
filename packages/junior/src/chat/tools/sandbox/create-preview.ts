@@ -8,7 +8,11 @@ const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
 });
 
-/** Create a tool that gives a running sandbox server a public preview URL. */
+/**
+ * Create a tool that gives a running sandbox server a public preview URL.
+ *
+ * @runBuilt createPreview
+ */
 export function createCreatePreviewTool(
   createPreview: NonNullable<SandboxWorkspace["createPreview"]>,
 ) {
@@ -21,7 +25,7 @@ export function createCreatePreviewTool(
       openWorldHint: true,
       readOnlyHint: false,
     },
-    approvalMode: "approve",
+    approvalMode: "review",
     description:
       "Create a public HTTPS preview URL for a server running in the sandbox. Anyone with the URL can open it until the sandbox stops. The URL for a port stays the same while the sandbox runs. Use it after you build or change something that a person can open in a browser, such as a web page or app, so they can try it.",
     executionMode: "sequential",

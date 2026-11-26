@@ -14,10 +14,10 @@ if (!context) {
   throw new Error("Eval global setup did not provide invocation context");
 }
 const evalContext = context;
-process.env.JUNIOR_BASE_URL = evalContext.baseUrl;
-process.env.JUNIOR_STATE_ADAPTER = "redis";
-process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
-process.env.REDIS_URL = evalContext.redisUrl;
+process.env["JUNIOR_BASE_URL"] = evalContext.baseUrl;
+process.env["JUNIOR_STATE_ADAPTER"] = "redis";
+process.env["JUNIOR_STATE_KEY_PREFIX"] = evalContext.stateKeyPrefix;
+process.env["REDIS_URL"] = evalContext.redisUrl;
 
 beforeEach(async () => {
   // `stable-setup.ts` set the eval clock of this test. The main process uses
@@ -34,6 +34,28 @@ beforeEach(async () => {
     throw new Error(
       `Eval egress fixture reset failed with HTTP ${response.status}`,
     );
+  }
+});
+
+beforeEach(async () => {
+  // Redis outlives the Postgres reset of each test. A cached email would
+  // point the viewer at a User of an earlier test, which no longer exists,
+  // so delete every key of the user cache. Do not flush Redis: tests share
+  // the cached Sandbox snapshots in it.
+  const [{ getConnectedStateContext, redisStateKey }, cache, users] =
+    await Promise.all([
+      import("@/chat/state/adapter"),
+      import("@/chat/state/cache"),
+      import("@/chat/identities/user-cache"),
+    ]);
+  const { redisStateAdapter } = await getConnectedStateContext();
+  if (!redisStateAdapter) throw new Error("Evals need the Redis state adapter");
+  const redis = redisStateAdapter.getClient();
+  const prefix = redisStateKey(
+    cache.cacheKeyPrefix(users.USER_CACHE_NAMESPACE),
+  );
+  for await (const keys of redis.scanIterator({ MATCH: `${prefix}*` })) {
+    if (keys.length > 0) await redis.del(keys);
   }
 });
 

@@ -1,6 +1,9 @@
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { decodeInputImages } from "@/chat/attachments/images";
-import type { InputImage } from "@/chat/attachments/input";
+import {
+  AttachmentUploadError,
+  type AttachmentUploadScope,
+  verifyAttachmentUploads,
+} from "@/chat/attachments/uploads";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
@@ -8,86 +11,69 @@ import {
   webActorFromUser,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
+  createConversationId,
 } from "@/chat/conversations/web-input";
 import { webMessageId } from "@/chat/conversations/web-message-id";
-import { getConversationStore, getDb } from "@/chat/db";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import {
+  getConversationWorkState,
+  type InboundMessageDelivery,
+} from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { markConversationRead } from "./read-position";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
   CreateConversationBody,
   CreateConversationMessageBody,
-} from "../schema/conversation";
+} from "../schema/conversation-create";
 import {
   canAddConversationMessages,
   readConversationAccessFromSql,
 } from "./access";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { requireSpaceForWork } from "./space";
+import { inviteMentionedPeople } from "./subscription";
 
-/** Turn image validation failures into request errors before accepting work. */
-function parseImages(images: InputImage[] | undefined) {
+/** Check uploads before accepting work. A bad upload is a request error. */
+async function verifyUploads(
+  scope: AttachmentUploadScope,
+  uploadIds: string[] | undefined,
+  storage: AttachmentStorage,
+) {
   try {
-    return decodeInputImages(images ?? []);
+    return await verifyAttachmentUploads({
+      db: getSqlExecutor(),
+      scope,
+      storage,
+      uploadIds: uploadIds ?? [],
+    });
   } catch (error) {
-    throwApiError(
-      400,
-      error instanceof Error ? error.message : "Unable to read images.",
-    );
+    if (error instanceof AttachmentUploadError) {
+      throwApiError(400, error.message);
+    }
+    throw error;
   }
 }
 
-function actorFromViewer(viewer: User): WebActor {
-  const normalized = viewer.email.trim().toLowerCase();
-  return webActorFromUser(viewer, {
-    userName: normalized.split("@")[0] || normalized,
-  });
-}
-
-/** Services that accept web input into the conversation work queue. */
-export interface WebInputServices {
-  attachmentStorage: AttachmentStorage;
-  queue: ConversationWorkQueue;
-}
-
-/** Create a dashboard root conversation and enqueue its first message. */
-export async function createConversationForViewer(
+/**
+ * Return the Conversation that a viewer's web Message goes to.
+ *
+ * Without an id, it is the new root that the Message idempotency key names.
+ * An existing Conversation must accept web Messages from this viewer.
+ */
+export async function requireWebMessageConversation(
   viewer: User,
-  body: CreateConversationBody,
-  services: WebInputServices,
-): Promise<AcceptedConversationMessage> {
-  const images = parseImages(body.images);
-  try {
-    return await createAndEnqueueConversation(
-      {
-        actor: actorFromViewer(viewer),
-        idempotencyKey: body.idempotencyKey,
-        message: body.message,
-        images,
-        ...(body.title ? { title: body.title } : undefined),
-        ...(body.visibility ? { visibility: body.visibility } : undefined),
-      },
-      {
-        conversationStore: getConversationStore(),
-        attachmentStorage: services.attachmentStorage,
-        queue: services.queue,
-      },
-    );
-  } catch (error) {
-    throwApiError(500, "Unable to create conversation.", error);
+  conversationId: string | undefined,
+  idempotencyKey: string,
+): Promise<string> {
+  if (!conversationId) {
+    return createConversationId({ actorEmail: viewer.email, idempotencyKey });
   }
-}
-
-/** Append one dashboard message to an existing conversation. */
-export async function appendConversationMessageForViewer(
-  viewer: User,
-  conversationId: string,
-  body: CreateConversationMessageBody,
-  services: WebInputServices,
-): Promise<AcceptedConversationMessage> {
   const conversation = await getConversationStore().get({
     conversationId,
   });
@@ -109,17 +95,111 @@ export async function appendConversationMessageForViewer(
       "Only participants can add messages to a private conversation.",
     );
   }
+  // Only members post in a Space, as in a Slack channel that a person
+  // joins before they post.
+  if (conversation.spaceId) {
+    await requireSpaceForWork(viewer, conversation.spaceId);
+  }
+  return conversationId;
+}
 
-  const images = parseImages(body.images);
+function actorFromViewer(viewer: User): WebActor {
+  const normalized = viewer.email.trim().toLowerCase();
+  return webActorFromUser(viewer, {
+    userName: normalized.split("@")[0] || normalized,
+  });
+}
+
+/** Services that accept web input into the conversation work queue. */
+export interface WebInputServices {
+  attachmentStorage: AttachmentStorage;
+  queue: ConversationWorkQueue;
+}
+
+/** Create a dashboard root conversation and enqueue its first message. */
+export async function createConversationForViewer(
+  viewer: User,
+  body: CreateConversationBody,
+  services: WebInputServices,
+): Promise<AcceptedConversationMessage> {
+  // A Conversation in a Space has the Space's visibility.
+  const space = body.spaceId
+    ? await requireSpaceForWork(viewer, body.spaceId)
+    : undefined;
+  if (space && body.visibility && body.visibility !== space.visibility) {
+    throwApiError(400, `A conversation in this Space is ${space.visibility}.`);
+  }
+  const visibility = space?.visibility ?? body.visibility;
+  // Work in a Space starts as a child of its Lead.
+  const lead = space
+    ? await getSpaceLead({ member: viewer, space })
+    : undefined;
+  const uploads = await verifyUploads(
+    {
+      conversationId: await requireWebMessageConversation(
+        viewer,
+        undefined,
+        body.idempotencyKey,
+      ),
+      idempotencyKey: body.idempotencyKey,
+      userId: viewer.id,
+    },
+    body.uploadIds,
+    services.attachmentStorage,
+  );
+  let accepted: AcceptedConversationMessage;
+  try {
+    accepted = await createAndEnqueueConversation(
+      {
+        actor: actorFromViewer(viewer),
+        idempotencyKey: body.idempotencyKey,
+        message: body.message,
+        uploads,
+        ...(body.title ? { title: body.title } : undefined),
+        ...(visibility ? { visibility } : undefined),
+        ...(lead ? { leadConversationId: lead.conversationId } : undefined),
+      },
+      {
+        conversationStore: getConversationStore(),
+        attachmentStorage: services.attachmentStorage,
+        queue: services.queue,
+      },
+    );
+  } catch (error) {
+    throwApiError(500, "Unable to create conversation.", error);
+  }
+  await inviteMentionedPeople(viewer, accepted.conversationId, body.message);
+  return accepted;
+}
+
+/** Append one viewer message to an existing conversation. */
+export async function appendConversationMessageForViewer(
+  viewer: User,
+  conversationId: string,
+  body: CreateConversationMessageBody,
+  services: WebInputServices,
+  delivery: InboundMessageDelivery,
+): Promise<AcceptedConversationMessage> {
+  await requireWebMessageConversation(
+    viewer,
+    conversationId,
+    body.idempotencyKey,
+  );
+  const uploads = await verifyUploads(
+    { conversationId, idempotencyKey: body.idempotencyKey, userId: viewer.id },
+    body.uploadIds,
+    services.attachmentStorage,
+  );
   const actor = actorFromViewer(viewer);
   const append = () =>
     appendAndEnqueueWebMessage(
       {
         actor,
         conversationId,
+        delivery,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
-        images,
+        uploads,
       },
       {
         conversationStore: getConversationStore(),
@@ -128,17 +208,26 @@ export async function appendConversationMessageForViewer(
       },
     );
   // A dashboard message answers the open questions that the agent asked in
-  // this Conversation, like a typed Slack reply.
-  const closeAnswered = () =>
-    closeReviewItemsAnsweredByReply({
+  // this Conversation, like a typed Slack reply. The viewer also saw the
+  // transcript so far. The message can wait as pending with no event, so
+  // move the read position here: it closes the reply notice, and a reply
+  // task that runs later sees the read and adds no notice. The people it
+  // mentions join now too, not when its Turn starts.
+  const applyAccepted = async () => {
+    await inviteMentionedPeople(viewer, conversationId, body.message);
+    await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
         queue: services.queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
       resolveUser: async () => viewer,
       text: body.message,
     });
+    await markConversationRead(viewer, conversationId, {
+      lastReadSeq: Number.MAX_SAFE_INTEGER,
+    });
+  };
   try {
     let accepted: AcceptedConversationMessage;
     try {
@@ -153,11 +242,11 @@ export async function appendConversationMessageForViewer(
         getConversationWorkState({ conversationId, state }),
       ]);
       if (work?.execution.inboundMessageIds.includes(messageId)) {
-        await closeAnswered();
+        await applyAccepted();
       }
       throw error;
     }
-    await closeAnswered();
+    await applyAccepted();
     return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);

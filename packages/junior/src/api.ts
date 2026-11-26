@@ -1,6 +1,11 @@
+import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
+import {
+  REVALIDATED_READ_PATHS,
+  revalidateContent,
+} from "./api/content-version";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
@@ -8,16 +13,26 @@ import { createNotificationRoutes } from "./api/notifications/routes";
 import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
+import { createImageRoutes } from "./api/images/routes";
+import { createSpaceArchiveRoutes } from "./api/spaces/archive";
+import { createSpaceConfigurationRoutes } from "./api/spaces/configuration";
+import { createSpaceLeadRoutes } from "./api/spaces/lead";
+import { createSpaceMemberRoutes } from "./api/spaces/members";
+import { createSpaceRoutes } from "./api/spaces/space";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createSearchRoutes } from "./api/search/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
+import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
+import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
-import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxItemRoutes } from "./api/inbox-items/routes";
+import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
-import { apiErrorSchema } from "./api/schema/common";
+import { apiErrorSchema } from "./api/schema/response";
 import {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
@@ -27,8 +42,6 @@ import {
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
-import { readReplyTimeSegments } from "./api/reply-times";
-import { replyTimeSegmentsReportSchema } from "./api/schema/reply-times";
 import { readStatsReport } from "./api/stats";
 import { validateRequest } from "./api/validation";
 import { readVersions } from "./api/versions";
@@ -36,9 +49,10 @@ import { requireViewer } from "./api/viewer";
 import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
-import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
+import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
+import type { WaitUntilFn } from "./handlers/types";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -49,25 +63,27 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
-export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export { isAllowedDomain, parseEmail } from "./chat/identities/trust";
 export {
-  DEFAULT_AUTO_ARCHIVE_SETTINGS,
-  readUserAutoArchiveSettings,
-  updateUserAutoArchiveSettings,
-  type AutoArchiveSettings,
-} from "./api/conversations/auto-archive";
+  DEFAULT_USER_SETTINGS,
+  readUserSettings,
+  updateUserSettings,
+  type UserSettings,
+} from "./api/user-settings";
 export {
   readViewerAvatarUrl,
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
 export type { ConversationWorkQueue, JuniorApiVariables };
-export { jsonResponse };
+export { jsonResponse, REVALIDATED_READ_PATHS, revalidateContent };
 
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
+  /** Keeps background work alive after a response. Defaults to Vercel's. */
+  waitUntil?: WaitUntilFn | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
@@ -102,9 +118,6 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
-  app.get("/api/reply-times", async () =>
-    jsonResponse(replyTimeSegmentsReportSchema, await readReplyTimeSegments()),
-  );
   app.get(
     "/api/versions",
     requireViewer,
@@ -117,32 +130,48 @@ export function createJuniorApi(
       ),
   );
 
+  for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
+
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  const waitUntil: WaitUntilFn =
+    options.waitUntil ??
+    ((task) => vercelWaitUntil(typeof task === "function" ? task() : task));
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
       queue,
+      waitUntil,
     }),
   );
   app.route(
-    "/api/review-items",
-    createReviewItemRoutes({
+    "/api/inbox-items",
+    createInboxItemRoutes({
       delivery: {
         queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
     }),
   );
+  app.route("/api/inbox/snoozes", createInboxSnoozeRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
+  app.route("/api/cache-warming", createCacheWarmingRoutes());
+  app.route("/api/gateway-providers", createGatewayProviderRoutes());
+  app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
-  app.route("/api/people", createPeopleRoutes());
+  app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
+  app.route("/api/search", createSearchRoutes());
+  app.route("/api/spaces", createSpaceRoutes());
+  app.route("/api/spaces", createSpaceArchiveRoutes({ queue }));
+  app.route("/api/spaces", createSpaceMemberRoutes());
+  app.route("/api/spaces", createSpaceConfigurationRoutes());
+  app.route("/api/spaces", createSpaceLeadRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

@@ -14,11 +14,11 @@ function requiredEnvironment(name: string): string {
 
 const url = requiredEnvironment("JUNIOR_ACP_URL");
 const prompt =
-  process.env.JUNIOR_ACP_PROMPT?.trim() ||
+  process.env["JUNIOR_ACP_PROMPT"]?.trim() ||
   "Reply with a short confirmation that remote ACP works.";
-const savedSessionId = process.env.JUNIOR_ACP_SESSION_ID?.trim();
-const followUp = process.env.JUNIOR_ACP_FOLLOW_UP?.trim();
-const autoAuthorize = process.env.JUNIOR_ACP_AUTO_AUTHORIZE === "true";
+const savedSessionId = process.env["JUNIOR_ACP_SESSION_ID"]?.trim();
+const followUp = process.env["JUNIOR_ACP_FOLLOW_UP"]?.trim();
+const autoAuthorize = process.env["JUNIOR_ACP_AUTO_AUTHORIZE"] === "true";
 const cookieStore = new MemoryAcpCookieStore();
 
 async function authorize(

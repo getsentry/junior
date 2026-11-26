@@ -25,7 +25,7 @@ import {
 import type { ScriptCallStatus } from "@/chat/guardian/proposal";
 import * as Sentry from "@/chat/sentry";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type {
   ScriptToolCallOutcome,
   ToolPipeline,
@@ -82,7 +82,17 @@ export interface CodeModeScriptRun {
   /** Charge one call to the Turn's durable tool-call total; return the total. */
   countToolCall(): number;
   /** The Run's abort signal. It stops the VM and every pending nested call. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
+}
+
+/** Services of one Run that the `codemode` tool needs. */
+export interface CodeModeToolOptions {
+  /** Tools a script may call: `scriptTools` from `planToolExposure`. */
+  scriptTools: Record<string, AnyToolDefinition>;
+  modelOnlyTools: CodeModeScriptRun["modelOnlyTools"];
+  pipeline: CodeModeScriptRun["pipeline"];
+  /** Charge one nested call to the Turn's durable tool-call total. */
+  countToolCall(): number;
 }
 
 function deferred<T>() {
@@ -103,9 +113,11 @@ async function settleCalls(pending: Set<Promise<void>>): Promise<void> {
     timer = setTimeout(done, CALL_SETTLE_GRACE_MS);
   });
   const settled = (async () => {
+    /* oxlint-disable no-await-in-loop -- New calls can start while earlier ones settle. */
     while (pending.size > 0) {
       await Promise.allSettled(pending);
     }
+    /* oxlint-enable no-await-in-loop */
   })();
   try {
     await Promise.race([settled, grace]);
@@ -431,14 +443,12 @@ export async function runCodeModeScript(
       return;
     }
 
-    const rawActions = accepted.map(
-      ({ call, tool }): ToolAction => ({
-        toolCallId: call.id,
-        toolName: call.toolName,
-        tool,
-        input: (call.input ?? {}) as Record<string, unknown>,
-      }),
-    );
+    const rawActions = accepted.map(({ call, tool }): ToolAction => ({
+      toolCallId: call.id,
+      toolName: call.toolName,
+      tool,
+      input: (call.input ?? {}) as Record<string, unknown>,
+    }));
     if (accepted.length > MAX_TOOL_ACTION_BATCH) {
       // The gate fails an oversized batch before any review. Refuse the
       // whole drain before hooks run, with the gate's error.
@@ -490,7 +500,7 @@ export async function runCodeModeScript(
     // Each waiting call gets this failure through its own review.
     void reviews.catch(() => undefined);
 
-    accepted.forEach(({ call, host, tool }, index) => {
+    for (const [index, { call, host, tool }] of accepted.entries()) {
       const submission = submissions[index]!;
       track(
         runCall(host, call, tool, async (action) => {
@@ -498,7 +508,7 @@ export async function runCodeModeScript(
           return (await reviews).get(action.toolCallId)!;
         }).finally(() => submission.resolve(undefined)),
       );
-    });
+    }
   };
 
   const sandbox = new CodemodeSandbox();

@@ -1,21 +1,21 @@
-import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import * as z from "zod";
+import type { CodeChange, PluginCodeChanges } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
+  type GitHubPullRequestAction,
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
-const githubPullRequestOutcomeInputSchema = z
+/** One pull request lifecycle outcome, as the webhook and reconcile read it. */
+export const githubPullRequestOutcomeInputSchema = z
   .object({
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
-    /** When omitted, the stored draft state does not change. */
-    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -32,60 +32,19 @@ export type GitHubPullRequestOutcomeInput = z.output<
   typeof githubPullRequestOutcomeInputSchema
 >;
 
-const githubPullRequestConversationsInputSchema = z
-  .object({
-    conversationIds: z.array(z.string().min(1)).min(1),
-    pullRequestId: z.string().min(1),
-  })
-  .strict();
-
-export type GitHubPullRequestConversationsInput = z.output<
-  typeof githubPullRequestConversationsInputSchema
->;
-
-const githubPullRequestLinkedIssuesInputSchema = z
-  .object({
-    linkedIssues: z
-      .array(
-        z
-          .object({
-            number: z.number().int().positive(),
-            repositoryFullName: z.string().min(1),
-          })
-          .strict(),
-      )
-      .min(1),
-    pullRequestId: z.string().min(1),
-  })
-  .strict();
-
-export type GitHubPullRequestLinkedIssuesInput = z.output<
-  typeof githubPullRequestLinkedIssuesInputSchema
->;
-
-/** Select mutable lifecycle fields while excluding transient ownership inputs. */
-function projectionValues(input: GitHubPullRequestOutcomeInput) {
-  return {
-    closedAt: input.closedAt ?? null,
-    ...(input.commitComposition
-      ? { commitComposition: input.commitComposition }
-      : undefined),
-    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
-    mergedAt: input.mergedAt ?? null,
-    number: input.number,
-    openedAt: input.openedAt,
-    repositoryFullName: input.repositoryFullName,
-    repositoryId: input.repositoryId,
-    state: input.state,
-    updatedAt: input.updatedAt,
-  };
+/** Conversations that a pull request body links to its pull request. */
+export interface GitHubPullRequestConversationsInput {
+  conversationIds: string[];
+  pullRequestId: string;
 }
 
 /**
- * Record the newest lifecycle projection for one Junior-owned pull request.
- * An ownership-qualified opening or terminal recovery inserts; later events
+ * Record one Junior-owned pull request. The lifecycle goes to Junior's code
+ * index, and this row keeps what Junior records for the pull request. An
+ * ownership-qualified opening or terminal recovery inserts; later events
  * update existing rows, and older provider timestamps cannot regress it.
- * Returns the written row state so follow-up enrichment can remain idempotent.
+ * Returns whether the row changed, so follow-up enrichment can remain
+ * idempotent.
  */
 export async function recordGitHubPullRequestOutcome(
   db: GitHubDb,
@@ -93,273 +52,76 @@ export async function recordGitHubPullRequestOutcome(
 ): Promise<{
   applied: boolean;
   commitComposition: GitHubPullRequestCommitComposition | undefined;
-  conversationIds: string[];
 }> {
   const outcome = githubPullRequestOutcomeInputSchema.parse(input);
-  const values = projectionValues(outcome);
-  if (!outcome.candidateOwned) {
-    const updated = await db
-      .update(juniorGitHubPullRequests)
-      .set(values)
-      .where(
-        and(
-          eq(juniorGitHubPullRequests.pullRequestId, outcome.pullRequestId),
-          lte(juniorGitHubPullRequests.updatedAt, outcome.updatedAt),
-        ),
-      )
-      .returning({
-        commitComposition: juniorGitHubPullRequests.commitComposition,
-        conversationIds: juniorGitHubPullRequests.conversationIds,
-      });
-    return {
-      applied: updated.length > 0,
-      commitComposition: updated[0]?.commitComposition ?? undefined,
-      conversationIds: updated[0]?.conversationIds ?? [],
-    };
-  }
-
-  const inserted = await db
-    .insert(juniorGitHubPullRequests)
-    .values({ pullRequestId: outcome.pullRequestId, ...values })
-    .onConflictDoUpdate({
-      target: juniorGitHubPullRequests.pullRequestId,
-      set: values,
-      where: lte(juniorGitHubPullRequests.updatedAt, outcome.updatedAt),
-    })
-    .returning({
-      commitComposition: juniorGitHubPullRequests.commitComposition,
-      conversationIds: juniorGitHubPullRequests.conversationIds,
-    });
+  const t = juniorGitHubPullRequests;
+  const values = {
+    ...(outcome.commitComposition
+      ? { commitComposition: outcome.commitComposition }
+      : undefined),
+    updatedAt: outcome.updatedAt,
+  };
+  const written = outcome.candidateOwned
+    ? await db
+        .insert(t)
+        .values({ pullRequestId: outcome.pullRequestId, ...values })
+        .onConflictDoUpdate({
+          target: t.pullRequestId,
+          set: values,
+          where: lte(t.updatedAt, outcome.updatedAt),
+        })
+        .returning({ commitComposition: t.commitComposition })
+    : await db
+        .update(t)
+        .set(values)
+        .where(
+          and(
+            eq(t.pullRequestId, outcome.pullRequestId),
+            lte(t.updatedAt, outcome.updatedAt),
+          ),
+        )
+        .returning({ commitComposition: t.commitComposition });
   return {
-    applied: inserted.length > 0,
-    commitComposition: inserted[0]?.commitComposition ?? undefined,
-    conversationIds: inserted[0]?.conversationIds ?? [],
+    applied: written.length > 0,
+    commitComposition: written[0]?.commitComposition ?? undefined,
   };
 }
 
-function conversationIdsForPullRequests(
-  rows: Array<{ conversationIds: string[] }>,
-  conversationIds: string[],
-): string[] {
-  const candidates = new Set(conversationIds);
-  return [
-    ...new Set(
-      rows.flatMap((row) =>
-        row.conversationIds.filter((conversationId) =>
-          candidates.has(conversationId),
-        ),
-      ),
-    ),
-  ];
-}
-
-/** Return candidate conversations that have an associated open pull request. */
-export async function listGitHubUnfinishedWork(
-  db: GitHubDb,
-  conversationIds: string[],
-): Promise<string[]> {
-  if (conversationIds.length === 0) return [];
-  const values = sql.join(
-    conversationIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
-  const rows = await db
-    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
-    .from(juniorGitHubPullRequests)
-    .where(
-      and(
-        eq(juniorGitHubPullRequests.state, "open"),
-        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
-      ),
-    );
-  return conversationIdsForPullRequests(rows, conversationIds);
-}
-
 /**
- * Return the latest merge or close time for each candidate conversation.
- * A closed pull request is finished even when it did not merge. A
- * conversation with an open pull request is still unfinished; the caller
- * combines this with `listGitHubUnfinishedWork`.
+ * Read one Junior pull request from Junior's code index, by repository name,
+ * in any case, and number.
  */
-export async function listGitHubFinishedWork(
-  db: GitHubDb,
-  conversationIds: string[],
-): Promise<Record<string, string>> {
-  if (conversationIds.length === 0) return {};
-  const values = sql.join(
-    conversationIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
-  const rows = await db
-    .select({
-      closedAt: juniorGitHubPullRequests.closedAt,
-      conversationIds: juniorGitHubPullRequests.conversationIds,
-      mergedAt: juniorGitHubPullRequests.mergedAt,
-    })
-    .from(juniorGitHubPullRequests)
-    .where(
-      and(
-        ne(juniorGitHubPullRequests.state, "open"),
-        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
-      ),
-    );
-  const candidates = new Set(conversationIds);
-  const finishedAtById = new Map<string, Date>();
-  for (const row of rows) {
-    const finishedAt = row.mergedAt ?? row.closedAt;
-    if (!finishedAt) continue;
-    for (const conversationId of row.conversationIds) {
-      if (!candidates.has(conversationId)) continue;
-      const current = finishedAtById.get(conversationId);
-      if (!current || finishedAt > current) {
-        finishedAtById.set(conversationId, finishedAt);
-      }
-    }
-  }
-  return Object.fromEntries(
-    conversationIds.flatMap((conversationId) => {
-      const finishedAt = finishedAtById.get(conversationId);
-      return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
-    }),
-  );
+export async function findGitHubPullRequest(
+  codeChanges: Pick<PluginCodeChanges, "list">,
+  ref: { number: number; repositoryFullName: string },
+): Promise<CodeChange | undefined> {
+  const [change] = await codeChanges.list({
+    repository: { name: ref.repositoryFullName, numbers: [ref.number] },
+  });
+  return change;
 }
 
 /**
- * Return the open Junior pull requests whose last lifecycle change is
- * before `before`, oldest first. The daily reconcile checks these against
- * GitHub.
- */
-export async function listGitHubStaleOpenPullRequests(
-  db: GitHubDb,
-  before: Date,
-): Promise<
-  Array<{
-    draft: boolean;
-    number: number;
-    repositoryFullName: string;
-    repositoryId: string;
-  }>
-> {
-  const t = juniorGitHubPullRequests;
-  return await db
-    .select({
-      draft: t.draft,
-      number: t.number,
-      repositoryFullName: t.repositoryFullName,
-      repositoryId: t.repositoryId,
-    })
-    .from(t)
-    .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
-    .orderBy(t.updatedAt);
-}
-
-/** Return candidate conversations linked to any Junior-owned pull request. */
-export async function listGitHubAssignedWork(
-  db: GitHubDb,
-  conversationIds: string[],
-): Promise<string[]> {
-  if (conversationIds.length === 0) return [];
-  const values = sql.join(
-    conversationIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
-  const rows = await db
-    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
-    .from(juniorGitHubPullRequests)
-    .where(
-      sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
-    );
-  return conversationIdsForPullRequests(rows, conversationIds);
-}
-
-/** Append native conversation ids to an existing Junior-owned PR projection. */
-export async function recordGitHubPullRequestConversations(
-  db: GitHubDb,
-  input: GitHubPullRequestConversationsInput,
-): Promise<boolean> {
-  const association = githubPullRequestConversationsInputSchema.parse(input);
-  const conversationIds = sql.join(
-    association.conversationIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
-  const updated = await db
-    .update(juniorGitHubPullRequests)
-    .set({
-      conversationIds: sql`ARRAY(
-        SELECT DISTINCT value
-        FROM unnest(
-          ${juniorGitHubPullRequests.conversationIds}
-          || ARRAY[${conversationIds}]::text[]
-        ) AS value
-        ORDER BY value
-      )`,
-    })
-    .where(
-      eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
-    )
-    .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
-  return updated.length > 0;
-}
-
-/** Link an existing Junior-owned PR to tracked issues across repositories. */
-export async function recordGitHubPullRequestLinkedIssues(
-  db: GitHubDb,
-  input: GitHubPullRequestLinkedIssuesInput,
-): Promise<boolean> {
-  const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const inserted = await Promise.all(
-    association.linkedIssues.map((issue) =>
-      db
-        .insert(juniorGitHubPullRequestIssues)
-        .select(
-          db
-            .select({
-              pullRequestId: juniorGitHubPullRequests.pullRequestId,
-              issueRepositoryFullName:
-                sql<string>`lower(${issue.repositoryFullName})`.as(
-                  "issue_repository_full_name",
-                ),
-              issueNumber: sql<number>`${issue.number}`.as("issue_number"),
-            })
-            .from(juniorGitHubPullRequests)
-            .where(
-              eq(
-                juniorGitHubPullRequests.pullRequestId,
-                association.pullRequestId,
-              ),
-            ),
-        )
-        .onConflictDoNothing()
-        .returning({
-          issueNumber: juniorGitHubPullRequestIssues.issueNumber,
-        }),
-    ),
-  );
-  return inserted.some((rows) => rows.length > 0);
-}
-
-function pullRequestRow(target: {
-  number: number;
-  repositoryFullName: string;
-}) {
-  return and(
-    sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${target.repositoryFullName.toLowerCase()}`,
-    eq(juniorGitHubPullRequests.number, target.number),
-  );
-}
-
-/**
- * Ask to check whether a Junior pull request is ready to merge, and claim the
- * check when no other webhook runs one. A claim older than `staleMs` is free.
- * Return the claim, or undefined when another webhook runs the check or
- * Junior does not own the pull request. The webhook that runs the check sees
- * the new request in `releaseGitHubPullRequestReadySync`.
+ * Ask to check the next action of a Junior pull request, and claim the check
+ * when no other webhook runs one. A claim older than `staleMs` is free.
+ * Return the claim and the saved action, `held` when another webhook runs
+ * the check, or undefined when Junior does not own the pull request. The
+ * webhook that runs the check sees the new request in
+ * `releaseGitHubPullRequestReadySync`.
  */
 export async function claimGitHubPullRequestReadySync(
   db: GitHubDb,
-  target: { number: number; repositoryFullName: string },
+  pullRequestId: string,
   options: { now: Date; staleMs: number },
-): Promise<{ id: number; ready: boolean; requests: number } | undefined> {
+): Promise<
+  | {
+      action: GitHubPullRequestAction | undefined;
+      id: number;
+      requests: number;
+    }
+  | "held"
+  | undefined
+> {
   const t = juniorGitHubPullRequests;
   const staleBefore = new Date(options.now.getTime() - options.staleMs);
   const free = sql`(${t.readySyncId} is null or ${t.readySyncAt} < ${staleBefore.toISOString()}::timestamptz)`;
@@ -371,29 +133,31 @@ export async function claimGitHubPullRequestReadySync(
       readySyncId: sql`case when ${free} then ${t.readySyncRequests} + 1 else ${t.readySyncId} end`,
       readySyncAt: sql`case when ${free} then ${options.now.toISOString()}::timestamptz else ${t.readySyncAt} end`,
     })
-    .where(pullRequestRow(target))
+    .where(eq(t.pullRequestId, pullRequestId))
     .returning({
+      action: t.nextAction,
       id: t.readySyncId,
-      readyToMergeAt: t.readyToMergeAt,
       requests: t.readySyncRequests,
     });
-  if (!row || row.id !== row.requests) return undefined;
+  if (!row) return undefined;
+  if (row.id !== row.requests) return "held";
   return {
+    action: row.action ?? undefined,
     id: row.id,
-    ready: row.readyToMergeAt !== null,
     requests: row.requests,
   };
 }
 
-/** Save whether a Junior pull request is ready to merge. */
-export async function setGitHubPullRequestReadyToMerge(
+/** Save the next action of a Junior pull request. */
+export async function setGitHubPullRequestNextAction(
   db: GitHubDb,
-  target: { number: number; ready: boolean; repositoryFullName: string },
+  pullRequestId: string,
+  action: GitHubPullRequestAction | undefined,
 ): Promise<void> {
   await db
     .update(juniorGitHubPullRequests)
-    .set({ readyToMergeAt: target.ready ? new Date() : null })
-    .where(pullRequestRow(target));
+    .set({ nextAction: action ?? null })
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId));
 }
 
 /**
@@ -403,16 +167,19 @@ export async function setGitHubPullRequestReadyToMerge(
  */
 export async function releaseGitHubPullRequestReadySync(
   db: GitHubDb,
-  target: { number: number; repositoryFullName: string },
+  pullRequestId: string,
   claim: { id: number; requests: number },
 ): Promise<number | undefined> {
   const t = juniorGitHubPullRequests;
-  const claimed = and(pullRequestRow(target), eq(t.readySyncId, claim.id));
+  const claimed = and(
+    eq(t.pullRequestId, pullRequestId),
+    eq(t.readySyncId, claim.id),
+  );
   const released = await db
     .update(t)
     .set({ readySyncAt: null, readySyncId: null })
     .where(and(claimed, eq(t.readySyncRequests, claim.requests)))
-    .returning({ number: t.number });
+    .returning({ pullRequestId: t.pullRequestId });
   if (released.length > 0) return undefined;
   const [row] = await db
     .select({ requests: t.readySyncRequests })

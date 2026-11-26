@@ -66,12 +66,11 @@ describe("turn answer", () => {
     const earlier = answered("reply", { text: "Yesterday's digest." });
     const draft = assistantStop("Here is the weekly digest.");
 
-    expect(remindMissingAnswer([earlier, draft], 1)?.at(-1)).toMatchObject({
-      role: "user",
-    });
     expect(
-      remindMissingAnswer([answered("noReply", {}), assistantStop("Done.")], 0),
-    ).toBeUndefined();
+      remindMissingAnswer([earlier, draft], [draft])?.at(-1),
+    ).toMatchObject({ role: "user" });
+    const answeredTurn = [answered("noReply", {}), assistantStop("Done.")];
+    expect(remindMissingAnswer(answeredTurn, answeredTurn)).toBeUndefined();
   });
 
   it("keeps an answer when a later slice errs", () => {
@@ -99,8 +98,8 @@ describe("turn answer", () => {
 
 describe("reply", () => {
   function call(text: string) {
-    const tool = createReplyTool("automation");
-    return tool.execute!(tool.prepareArguments!({ text }), {});
+    const tool = createReplyTool();
+    return tool.execute!(tool.prepareArguments({ text }), {});
   }
 
   it("rejects an empty reply and the legacy no-reply marker", async () => {

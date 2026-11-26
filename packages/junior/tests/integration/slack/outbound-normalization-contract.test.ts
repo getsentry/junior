@@ -7,7 +7,7 @@ import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   addReactionToMessage,
   postSlackEphemeralMessage,
@@ -59,8 +59,8 @@ describe("Slack contract: outbound normalization", () => {
   beforeEach(() => {
     spans.length = 0;
     events.length = 0;
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     setPlugins([]);
     resetSlackApiMockState();
   });

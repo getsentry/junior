@@ -1,0 +1,9 @@
+import * as z from "zod";
+
+/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
+export const conversationKindSchema = z.enum([
+  "thread",
+  "automation",
+  "lead",
+  "task",
+]);

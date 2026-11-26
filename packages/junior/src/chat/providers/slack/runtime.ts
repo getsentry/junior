@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   getSubscribedReplyPreflightDecision,
@@ -67,11 +68,12 @@ import {
   getTurnLifecycle,
   type FailConversationTurnInput,
 } from "@/chat/conversations/turn-lifecycle";
+import { mapBounded } from "@/chat/fan-out";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
   context?: {
-    channelId?: string;
+    channelId?: string | undefined;
   };
   threadId: string;
   threadTs: string;
@@ -97,7 +99,7 @@ export interface ReplyHooks {
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
   checkIn?: () => Promise<boolean>;
-  stopSignal?: AbortSignal;
+  stopSignal?: AbortSignal | undefined;
 }
 
 interface SteeringDrainContext {
@@ -105,7 +107,7 @@ interface SteeringDrainContext {
 }
 
 export interface SlackTurnOptions extends ReplyHooks {
-  conversationId?: string;
+  conversationId: string;
   destination: Destination;
   telemetry?: TurnInputTelemetry;
 }
@@ -126,13 +128,13 @@ function shouldRethrowTurnControlError(error: unknown): boolean {
 
 type RuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
-  conversationId?: string;
-  destinationName?: string;
-  messageConversationId?: string;
+  conversationId?: string | undefined;
+  destinationName?: string | undefined;
+  messageConversationId?: string | undefined;
   modelId: string;
-  runId?: string;
-  userId?: string;
-  userName?: string;
+  runId?: string | undefined;
+  userId?: string | undefined;
+  userName?: string | undefined;
 };
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
@@ -144,13 +146,13 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
-    sourceChannelId?: string;
+    sourceChannelId?: string | undefined;
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
   refreshAssistantThreadContext: (event: {
     channelId: string;
-    sourceChannelId?: string;
+    sourceChannelId?: string | undefined;
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
@@ -185,23 +187,25 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     thread: Thread,
     message: Message,
     options: {
-      beforeFirstResponsePost?: () => Promise<void>;
-      conversationId?: string;
+      beforeFirstResponsePost?: (() => Promise<void>) | undefined;
+      conversationId: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
-      onTurnStatePersisted?: () => Promise<void>;
+      onTurnStatePersisted?: (() => Promise<void>) | undefined;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
-      drainSteeringMessages?: (
-        accept: (messages: QueuedTurnMessage[]) => Promise<void>,
-        context?: SteeringDrainContext,
-      ) => Promise<QueuedTurnMessage[]>;
-      shouldYield?: () => boolean;
-      checkIn?: () => Promise<boolean>;
-      stopSignal?: AbortSignal;
+      drainSteeringMessages?:
+        | ((
+            accept: (messages: QueuedTurnMessage[]) => Promise<void>,
+            context?: SteeringDrainContext,
+          ) => Promise<QueuedTurnMessage[]>)
+        | undefined;
+      shouldYield?: (() => boolean) | undefined;
+      checkIn?: (() => Promise<boolean>) | undefined;
+      stopSignal?: AbortSignal | undefined;
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
@@ -214,7 +218,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
 function getQueuedMessages(
   context: MessageContext | undefined,
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
   },
 ): QueuedTurnMessage[] {
@@ -240,7 +244,7 @@ function getQueuedMessages(
 function getQueuedMessagesFromSlackMessages(
   messages: Message[],
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
   },
 ): QueuedTurnMessage[] {
@@ -270,7 +274,7 @@ interface SteeringMessageSelection {
 function createAcceptedSteeringDrain(
   hooks: ReplyHooks,
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
     onAcceptedForProcessing?: (messages: Message[]) => Promise<void>;
     onSkipped?: (messages: SteeringMessageDecision[]) => Promise<void>;
@@ -337,15 +341,16 @@ function buildLogContext(
     "assistantUserName" | "modelId"
   >,
   args: {
-    channelId?: string;
-    actorId?: string;
-    actorUserName?: string;
-    threadId?: string;
-    runId?: string;
+    channelId?: string | undefined;
+    actorId?: string | undefined;
+    actorUserName?: string | undefined;
+    conversationId?: string | undefined;
+    threadId?: string | undefined;
+    runId?: string | undefined;
   },
 ): RuntimeLogContext {
   return {
-    conversationId: args.threadId ?? args.runId,
+    conversationId: args.conversationId,
     messageConversationId: args.threadId,
     userId: args.actorId,
     userName: args.actorUserName,
@@ -369,16 +374,18 @@ export function createSlackTurnRuntime<
 ): SlackTurnRuntime<TPreparedState, TAssistantEvent> {
   const turnLifecycle = getTurnLifecycle();
   const logContext = (args: {
-    channelId?: string;
-    actorId?: string;
-    actorUserName?: string;
-    threadId?: string;
-    runId?: string;
+    channelId?: string | undefined;
+    actorId?: string | undefined;
+    actorUserName?: string | undefined;
+    conversationId?: string | undefined;
+    threadId?: string | undefined;
+    runId?: string | undefined;
   }): RuntimeLogContext => buildLogContext(deps, args);
 
   /** Unsubscribe the thread and cancel resource watches for a stop decision. */
   const maybeHandleThreadOptOutDecision = async (args: {
-    beforeFirstResponsePost?: () => Promise<void>;
+    beforeFirstResponsePost?: (() => Promise<void>) | undefined;
+    conversationId: string;
     decision?: { shouldUnsubscribe?: boolean };
     thread: Thread;
   }): Promise<boolean> => {
@@ -386,7 +393,7 @@ export function createSlackTurnRuntime<
       return false;
     }
 
-    await deps.cancelWatches({ conversationId: args.thread.id });
+    await deps.cancelWatches({ conversationId: args.conversationId });
     await args.thread.unsubscribe();
     await args.beforeFirstResponsePost?.();
     await args.thread.post(THREAD_OPTOUT_ACK);
@@ -423,15 +430,13 @@ export function createSlackTurnRuntime<
   const stopProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(processingReactions.map((reaction) => reaction.stop()));
+    await mapBounded(processingReactions, (reaction) => reaction.stop());
   };
 
   const completeProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(
-      processingReactions.map((reaction) => reaction.complete()),
-    );
+    await mapBounded(processingReactions, (reaction) => reaction.complete());
   };
 
   const createProcessingReactionTracker = (thread: Thread) => {
@@ -475,16 +480,16 @@ export function createSlackTurnRuntime<
     message: Message;
     eventId: string;
     error?: unknown;
-    postFailureEventName: string;
+    postFailureEventName:
+      | "mention.handler.failure_reply_post.failed"
+      | "subscribed_message.handler.failure_reply_post.failed";
   }): Promise<void> => {
     try {
-      // Ingress Turns run in the inbound Slack thread, so Thread.id is a Slack
-      // thread id here, not a Conversation id.
       const channelId = getChannelId(args.thread, args.message);
       if (!channelId) {
         throw new Error("Slack fallback error reply requires a channel id");
       }
-      const threadTs = getThreadTs(getThreadId(args.thread, args.message));
+      const threadTs = getThreadTs(args.message);
       await sendSlackReply({
         channelId,
         conversationId: args.conversationId,
@@ -505,6 +510,7 @@ export function createSlackTurnRuntime<
     thread: Thread,
     candidate: SteeringCandidateMessage,
     conversationContext: string | undefined,
+    conversationId: string,
   ): Promise<{
     context: TurnContext;
     decision: SubscribedReplyDecision;
@@ -512,6 +518,7 @@ export function createSlackTurnRuntime<
   }> => {
     const { message } = candidate;
     const context: TurnContext = {
+      conversationId,
       threadId: getThreadId(thread, message),
       actorId: message.author.userId,
       channelId: getChannelId(thread, message),
@@ -551,6 +558,7 @@ export function createSlackTurnRuntime<
   }): void => {
     withLogContext(
       logContext({
+        conversationId: args.context.conversationId,
         threadId: args.context.threadId,
         actorId: args.context.actorId,
         actorUserName: actorUserName(args.message),
@@ -571,7 +579,7 @@ export function createSlackTurnRuntime<
     message: Message;
     decision: SubscribedReplyDecision;
     context: TurnContext;
-    ack?: () => Promise<void>;
+    ack?: (() => Promise<void>) | undefined;
     preparedState?: TPreparedState;
     text: TurnMessageText;
   }): Promise<void> => {
@@ -602,24 +610,28 @@ export function createSlackTurnRuntime<
 
   const selectAcceptedSteeringMessages = async (args: {
     conversationContext: string | undefined;
+    conversationId: string;
     messages: SteeringCandidateMessage[];
     thread: Thread;
   }): Promise<SteeringMessageSelection> => {
-    const selected: SteeringMessageDecision[] = [];
-    for (const candidate of args.messages) {
-      const decision = await decideSteeringMessage(
-        args.thread,
-        candidate,
-        args.conversationContext,
-      );
-      selected.push({
-        context: decision.context,
-        decision: decision.decision,
-        inboundMessageId: candidate.inboundMessageId,
-        message: candidate.message,
-        text: decision.text,
-      });
-    }
+    const selected: SteeringMessageDecision[] = await mapBounded(
+      args.messages,
+      async (candidate) => {
+        const decision = await decideSteeringMessage(
+          args.thread,
+          candidate,
+          args.conversationContext,
+          args.conversationId,
+        );
+        return {
+          context: decision.context,
+          decision: decision.decision,
+          inboundMessageId: candidate.inboundMessageId,
+          message: candidate.message,
+          text: decision.text,
+        };
+      },
+    );
     if (selected.some((message) => message.decision.shouldUnsubscribe)) {
       return {
         accepted: [],
@@ -649,19 +661,22 @@ export function createSlackTurnRuntime<
 
   /** Persist skipped steering before mailbox commit, without reactions or injection. */
   const handleSkippedSteeringMessages = async (args: {
-    beforeFirstResponsePost?: () => Promise<void>;
+    beforeFirstResponsePost?: (() => Promise<void>) | undefined;
     conversationId: string;
     pending: SteeringMessageDecision[];
     skipped: SteeringMessageDecision[];
     thread: Thread;
   }): Promise<void> => {
     for (const skipped of args.skipped) {
+      // oxlint-disable-next-line no-await-in-loop -- Handle skipped messages in arrival order.
       await maybeHandleThreadOptOutDecision({
+        conversationId: args.conversationId,
         thread: args.thread,
         decision: skipped.decision,
         beforeFirstResponsePost: args.beforeFirstResponsePost,
       });
       logSkippedSubscribedDecision(skipped);
+      // oxlint-disable-next-line no-await-in-loop -- Handle skipped messages in arrival order.
       await deps.recordSkippedSteeringMessage({
         conversationId: args.conversationId,
         message: skipped.message,
@@ -681,6 +696,7 @@ export function createSlackTurnRuntime<
     try {
       while (args.pending.length > 0) {
         const skipped = args.pending.shift()!;
+        // oxlint-disable-next-line no-await-in-loop -- Record skipped messages in arrival order.
         await deps.recordSkippedSteeringMessage({
           conversationId: args.conversationId,
           message: skipped.message,
@@ -701,18 +717,21 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks: SlackTurnOptions,
     ): Promise<void> {
-      const conversationId = hooks.conversationId ?? thread.id;
+      const { conversationId } = hooks;
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReaction | undefined;
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;
+      // A failure that ends the Turn; a retried attempt does not end it.
+      let failedTurnEnded = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
         await flushSkippedSteeringMessagesBestEffort({
           conversationId,
           pending: skippedSteeringMessages,
           context: logContext({
+            conversationId,
             threadId: getThreadId(thread, message),
             actorId: message.author.userId,
             actorUserName: actorUserName(message),
@@ -726,6 +745,7 @@ export function createSlackTurnRuntime<
         const channelId = getChannelId(thread, message);
         const runId = getRunId(thread, message);
         const context = logContext({
+          conversationId,
           threadId,
           channelId,
           actorId: message.author.userId,
@@ -754,10 +774,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(context, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(context, queued.message),
             );
           };
           const ack = async (): Promise<void> => {
@@ -769,10 +787,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: true,
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(context, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(context, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -786,6 +802,7 @@ export function createSlackTurnRuntime<
             selectMessages: (messages, drainContext) =>
               selectAcceptedSteeringMessages({
                 conversationContext: drainContext?.conversationContext,
+                conversationId,
                 messages,
                 thread,
               }),
@@ -808,6 +825,7 @@ export function createSlackTurnRuntime<
         });
       } catch (error) {
         const failureLogContext = logContext({
+          conversationId,
           threadId: getThreadId(thread, message),
           actorId: message.author.userId,
           actorUserName: actorUserName(message),
@@ -819,6 +837,7 @@ export function createSlackTurnRuntime<
         if (shouldRethrowTurnControlError(failureCause)) {
           throw failureCause;
         }
+        failedTurnEnded = true;
         if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
@@ -843,11 +862,13 @@ export function createSlackTurnRuntime<
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
+          failedTurnEnded = false;
           return;
         }
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for mention.handler.failed",
+            { cause: error },
           );
         }
         let lifecycleError: unknown;
@@ -879,6 +900,7 @@ export function createSlackTurnRuntime<
             conversationId,
             pending: skippedSteeringMessages,
             context: logContext({
+              conversationId,
               threadId: getThreadId(thread, message),
               actorId: message.author.userId,
               actorUserName: actorUserName(message),
@@ -888,6 +910,13 @@ export function createSlackTurnRuntime<
           });
           await processingReactions.stopAll();
         }
+        // Index after the fallback reply, even when posting it throws.
+        if (failedTurnEnded) {
+          await indexEndedTurnEvents({
+            conversationId,
+            turnId: buildDeterministicTurnId(message.id),
+          });
+        }
       }
     },
 
@@ -896,18 +925,21 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks: SlackTurnOptions,
     ): Promise<void> {
-      const conversationId = hooks.conversationId ?? thread.id;
+      const { conversationId } = hooks;
       const processingReactions = createProcessingReactionTracker(thread);
       let processingReaction: ProcessingReaction | undefined;
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;
+      // A failure that ends the Turn; a retried attempt does not end it.
+      let failedTurnEnded = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
         await flushSkippedSteeringMessagesBestEffort({
           conversationId,
           pending: skippedSteeringMessages,
           context: logContext({
+            conversationId,
             threadId: getThreadId(thread, message),
             actorId: message.author.userId,
             actorUserName: actorUserName(message),
@@ -922,6 +954,7 @@ export function createSlackTurnRuntime<
         const runId = getRunId(thread, message);
         const actorId = message.author.userId;
         const turnContext = logContext({
+          conversationId,
           threadId,
           actorId,
           actorUserName: actorUserName(message),
@@ -985,6 +1018,7 @@ export function createSlackTurnRuntime<
                 : stopDecision.reason,
             };
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
@@ -1039,6 +1073,7 @@ export function createSlackTurnRuntime<
               context: threadContext,
             });
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
@@ -1086,6 +1121,7 @@ export function createSlackTurnRuntime<
 
           if (
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
@@ -1122,10 +1158,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: Boolean(message.isMention),
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(turnContext, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(turnContext, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -1140,6 +1174,7 @@ export function createSlackTurnRuntime<
               selectAcceptedSteeringMessages({
                 conversationContext:
                   drainContext?.conversationContext ?? conversationContext,
+                conversationId,
                 messages,
                 thread,
               }),
@@ -1154,10 +1189,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(turnContext, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(turnContext, queued.message),
             );
           };
           const ack = async (): Promise<void> => {
@@ -1189,6 +1222,7 @@ export function createSlackTurnRuntime<
         });
       } catch (error) {
         const failureLogContext = logContext({
+          conversationId,
           threadId: getThreadId(thread, message),
           actorId: message.author.userId,
           actorUserName: actorUserName(message),
@@ -1200,6 +1234,7 @@ export function createSlackTurnRuntime<
         if (shouldRethrowTurnControlError(failureCause)) {
           throw failureCause;
         }
+        failedTurnEnded = true;
         if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
@@ -1224,11 +1259,13 @@ export function createSlackTurnRuntime<
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
+          failedTurnEnded = false;
           return;
         }
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for subscribed_message.handler.failed",
+            { cause: error },
           );
         }
         let lifecycleError: unknown;
@@ -1261,6 +1298,7 @@ export function createSlackTurnRuntime<
             conversationId,
             pending: skippedSteeringMessages,
             context: logContext({
+              conversationId,
               threadId: getThreadId(thread, message),
               actorId: message.author.userId,
               actorUserName: actorUserName(message),
@@ -1269,6 +1307,13 @@ export function createSlackTurnRuntime<
             }),
           });
           await processingReactions.stopAll();
+        }
+        // Index after the fallback reply, even when posting it throws.
+        if (failedTurnEnded) {
+          await indexEndedTurnEvents({
+            conversationId,
+            turnId: buildDeterministicTurnId(message.id),
+          });
         }
       }
     },

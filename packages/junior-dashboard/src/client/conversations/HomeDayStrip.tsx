@@ -15,6 +15,7 @@ import {
 import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 import { HomeMergeDelta } from "./HomeMergeDelta";
+import { formatTime } from "../time";
 
 // Section order in the tooltip. Icons match the PR states in Conversations.
 // `count` names the day field that holds the full count for the kind.
@@ -224,14 +225,14 @@ function repositoryName(repository: string): string {
 }
 
 function formatWeekday(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+  return formatTime(`${date}T00:00:00Z`, {
     timeZone: "UTC",
     weekday: "short",
   });
 }
 
 function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+  return formatTime(`${date}T00:00:00Z`, {
     day: "numeric",
     month: "short",
     timeZone: "UTC",

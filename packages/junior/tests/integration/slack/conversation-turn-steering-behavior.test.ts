@@ -1,8 +1,12 @@
 // Ingress rules for Slack messages that reach a thread. Steering behavior
 // that needs the agent lives in the agent test fixture evals:
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/session-stop";
 import {
   SLACK_BOT_USER_ID,
   createConversationWorkQueueTestAdapter,
@@ -15,7 +19,7 @@ import {
 import {
   expectChildAgentStopped,
   startRunningChildAgent,
-} from "../../fixtures/agent-invocations";
+} from "../../fixtures/child-agents";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
@@ -56,7 +60,7 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /**
@@ -96,7 +100,7 @@ function failNextConversationRecord(state: StateAdapter) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -123,7 +127,7 @@ function failNextExecutionWrite(store: ConversationStore) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as ConversationStore,
+    }),
   };
 }
 
@@ -137,7 +141,10 @@ function ingress(
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
-    runtime: createSlackRuntime({ getSlackAdapter: () => adapter }),
+    runtime: createSlackRuntime({
+      getSlackAdapter: () => adapter,
+      sendPluginTask: sendVercelPluginTask,
+    }),
     state,
   };
   const send = (args: {
@@ -182,16 +189,16 @@ function statusClears() {
     .calls("assistant.threads.setStatus")
     .filter(
       (call) =>
-        call.params.channel_id === CHANNEL_ID &&
-        call.params.thread_ts === THREAD_TS &&
-        call.params.status === "",
+        call.params["channel_id"] === CHANNEL_ID &&
+        call.params["thread_ts"] === THREAD_TS &&
+        call.params["status"] === "",
     );
 }
 
 function stopAcks() {
   return slackApiOutbox
     .messages()
-    .filter((call) => call.params.text === SLACK_STOP_ACK);
+    .filter((call) => call.params["text"] === SLACK_STOP_ACK);
 }
 
 /** Start a queued mention Turn with a running child agent in the thread. */
@@ -291,6 +298,9 @@ describe("Slack ingress: thread messages", () => {
     ).resolves.toMatchObject({ status: 200 });
     expect(statusClears()).toHaveLength(1);
     expect(stopAcks()).toHaveLength(0);
+    // A person's later message ends the idle stop, so the next Turn can give
+    // work to a child agent.
+    await resumeConversationTree(CONVERSATION_ID, 1_712_345_001);
 
     const child = await startThreadWork(harness);
     await expect(

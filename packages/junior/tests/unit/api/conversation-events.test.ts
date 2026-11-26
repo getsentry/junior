@@ -60,20 +60,20 @@ describe("conversation report event projection", () => {
         };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory test plugin",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes test plugin",
         },
         conversationEvents: [captured],
       }),
     ]);
     const pluginEvent = event(1, {
       type: "structured_event",
-      namespace: "memory",
+      namespace: "notes",
       name: "memories_captured",
       version: 1,
       turnId: "turn-1",
@@ -91,7 +91,7 @@ describe("conversation report event projection", () => {
           createdAt: new Date(1_000).toISOString(),
           data: {
             type: "structured_event",
-            namespace: "memory",
+            namespace: "notes",
             name: "memories_captured",
             version: 1,
             turnId: "turn-1",
@@ -123,7 +123,7 @@ describe("conversation report event projection", () => {
         return value.count === 0 ? undefined : { title: "Background work" };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -187,7 +187,8 @@ describe("conversation report event projection", () => {
         },
       },
     });
-    // A parent agent wrote this child input, so it names the agent invocation.
+    // A parent agent wrote this child input. An earlier release stored the
+    // id of the work that wrote it.
     const agentInput = event(2, {
       type: "message",
       messageId: "agent-invocation:invocation-1:input",
@@ -195,13 +196,13 @@ describe("conversation report event projection", () => {
       text: "audit the repo",
       meta: { agentInvocationId: "invocation-1" },
     });
-    // Each Review item change keeps its own record, so the dashboard shows
+    // Each Inbox item change keeps its own record, so the dashboard shows
     // what the message did, not the item's current state.
     const answer = event(3, {
       type: "message",
       messageId: "answer-1",
       role: "user",
-      text: "Alice answered review item item-1.",
+      text: "Alice answered inbox item item-1.",
       meta: {
         reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
       },
@@ -235,7 +236,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           text: "audit the repo",
         },
       },
@@ -247,7 +248,7 @@ describe("conversation report event projection", () => {
           messageId: "answer-1",
           role: "user",
           reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
-          text: "Alice answered review item item-1.",
+          text: "Alice answered inbox item item-1.",
         },
       },
     ]);
@@ -275,7 +276,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           redacted: true,
         },
       },
@@ -757,6 +758,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventIdentifier: "getsentry/junior#42",
             eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
@@ -774,6 +776,7 @@ describe("conversation report event projection", () => {
       source: "web",
       eventType: "pull_request.merged",
       eventNamespace: "github",
+      eventIdentifier: "getsentry/junior#42",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });
@@ -1467,8 +1470,9 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-1",
-      kind: "root" as const,
-      status: "completed" as const,
+      kind: "thread" as const,
+      status: "done" as const,
+      turnActive: false,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
       lastProgressAt: "2026-07-15T12:00:00.000Z",
@@ -1512,8 +1516,9 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-privacy",
-      kind: "root" as const,
-      status: "completed" as const,
+      kind: "thread" as const,
+      status: "done" as const,
+      turnActive: false,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
       lastProgressAt: "2026-07-15T12:00:00.000Z",

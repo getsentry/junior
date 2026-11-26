@@ -23,8 +23,10 @@ describe("stopConversation MCP tool", () => {
     });
 
     expect(result.structuredContent).toEqual({
+      conversationId: "slack:C123:1700000000.000300",
       status: "no_work",
-      droppedMessages: 0,
+      stoppedInboundMessageIds: [],
+      stoppedMessages: [],
     });
   });
 

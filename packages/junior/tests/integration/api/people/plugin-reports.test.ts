@@ -32,7 +32,7 @@ describe("people plugin reports API", () => {
       expect(unauthenticated.status).toBe(401);
 
       await resolveViewerUser("alice@example.com");
-      const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+      const { setPlugins } = await import("@/chat/plugins/hooks/registry");
       const previous = setPlugins([
         defineJuniorPlugin({
           manifest: {

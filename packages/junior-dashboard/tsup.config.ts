@@ -109,9 +109,9 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           JSON.parse(readBuiltAsset(DASHBOARD_CLIENT_MANIFEST_FILE)),
         );
         for (const file of [
-          clientManifest.entry,
           clientManifest.stylesheet,
           ...clientManifest.fonts,
+          clientManifest.entry,
           ...clientManifest.imports,
         ]) {
           if (!Object.hasOwn(publicAssets, file)) {

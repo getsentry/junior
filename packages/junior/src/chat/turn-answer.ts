@@ -9,7 +9,7 @@ import * as z from "zod";
 import {
   REPORT_BLOCKED_TOOL_NAME,
   type BlockedReport,
-} from "@/chat/agent-invocations/blocked-report";
+} from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME, type NoReply } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -95,8 +95,9 @@ function parseAnswer(
           return { blocked: { missing: parsed.data.reason } };
       }
     }
+    default:
+      return undefined;
   }
-  return undefined;
 }
 
 /**
@@ -125,18 +126,18 @@ const MISSING_ANSWER_REMINDER = `This Turn has not ended. Your text was not deli
 
 /**
  * Return agent history plus a reminder when the model stopped without an
- * answer, or undefined when the Turn already has one. `turnStart` is the
- * index of the Turn's first message in `messages`.
+ * answer, or undefined when the Turn already has one. `turnMessages` are the
+ * messages of `messages` that belong to the Turn.
  */
 export function remindMissingAnswer(
   messages: readonly PiMessage[],
-  turnStart: number,
+  turnMessages: readonly PiMessage[],
 ): PiMessage[] | undefined {
   const last = messages.at(-1);
   if (
     !isAssistantMessage(last) ||
     last.stopReason !== "stop" ||
-    readTurnAnswer(messages.slice(turnStart))
+    readTurnAnswer(turnMessages)
   ) {
     return undefined;
   }
@@ -146,6 +147,6 @@ export function remindMissingAnswer(
       role: "user",
       content: [{ type: "text", text: MISSING_ANSWER_REMINDER }],
       timestamp: Date.now(),
-    } as PiMessage,
+    },
   ];
 }

@@ -1,0 +1,89 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "07b9625c-be3e-441c-8946-267bbf4340c1",
+  "prevIds": ["eb2670a5-fe4c-45e3-8842-1430323e49fc"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_search_idx",
+        "n|idx|public.junior_code_changes_search_idx",
+        "e|idx|public.junior_code_changes_search_idx",
+        "n|rel|public.junior_code_changes_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_repositories",
+        "junior_code_repositories_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_repositories_search_idx",
+        "n|idx|public.junior_code_repositories_search_idx",
+        "e|idx|public.junior_code_repositories_search_idx",
+        "n|rel|public.junior_code_repositories_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_code_repositories", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_repositories",
+        "name": "junior_code_repositories_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('simple', translate(\"name\", '/', ' '))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

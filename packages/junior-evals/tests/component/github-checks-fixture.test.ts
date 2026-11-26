@@ -58,9 +58,9 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
     { url: run.html_url },
     { experimental_context: undefined },
   );
-  expect(page.content).toContain("State: open, not merged");
-  expect(page.content).toContain(pr.head.sha);
-  expect(page.content).toContain(checks.check_runs[0].output.summary);
+  expect(page["content"]).toContain("State: open, not merged");
+  expect(page["content"]).toContain(pr.head.sha);
+  expect(page["content"]).toContain(checks.check_runs[0].output.summary);
   const logs = await fetch(`${api}/actions/jobs/1/logs`).then((response) =>
     response.text(),
   );
@@ -77,4 +77,57 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
       })
     ).status,
   ).toBe(501);
+});
+
+it("serves the merged Craft release blocker with open alerts that only a person can dismiss", async () => {
+  const api = "https://api.github.com/repos/getsentry/craft";
+  const serve = (path: string) =>
+    interceptTestHttp({
+      provider: "github",
+      request: new Request(`${api}${path}`),
+      upstreamUrl: new URL(`${api}${path}`),
+    }).then((response) => response.json());
+  expect(await serve("/pulls/983")).toMatchObject({
+    number: 983,
+    merged: true,
+  });
+  expect(await serve("/dependabot/alerts")).toMatchObject([
+    {
+      number: 1,
+      state: "open",
+      dependency: { package: { name: "picomatch" } },
+    },
+    { number: 2, state: "open" },
+  ]);
+  const dismiss = await interceptTestHttp({
+    provider: "github",
+    request: new Request(`${api}/dependabot/alerts/1`, {
+      body: JSON.stringify({ state: "dismissed" }),
+      method: "PATCH",
+    }),
+    upstreamUrl: new URL(`${api}/dependabot/alerts/1`),
+  });
+  expect(dismiss.status).toBe(403);
+});
+
+it("answers the pull request tool's GraphQL read of the Craft release blocker", async () => {
+  const graphql = "https://api.github.com/graphql";
+  const response = await interceptTestHttp({
+    provider: "github",
+    request: new Request(graphql, {
+      body: JSON.stringify({
+        query:
+          "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){mergeStateStatus}}}",
+        variables: { name: "craft", number: 983, owner: "getsentry" },
+      }),
+      method: "POST",
+    }),
+    upstreamUrl: new URL(graphql),
+  }).then((res) => res.json());
+  expect(response.data.repository.pullRequest).toMatchObject({
+    commits: { nodes: [expect.anything()] },
+    mergeStateStatus: expect.any(String),
+    reviewDecision: "APPROVED",
+    state: "MERGED",
+  });
 });

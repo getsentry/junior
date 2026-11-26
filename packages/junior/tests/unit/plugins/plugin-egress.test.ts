@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 function githubManifest() {
@@ -27,7 +27,7 @@ describe("plugin egress", () => {
     | undefined;
 
   beforeEach(() => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     restoreCatalog = {
       previous: pluginCatalogRuntime.setConfig({
         inlineManifests: [{ manifest: githubManifest() }],

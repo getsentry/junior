@@ -5,9 +5,23 @@
  * retries, and the bounded run projection.
  */
 import * as z from "zod";
-import type { PluginConversationEvents } from "./conversation-events";
+import type { PluginConversationAnnotations } from "./annotations";
+import type { PluginCodeChanges } from "./code";
+import type { PluginConversationChanges } from "./conversation-changes";
+import type {
+  PluginConversationEvents,
+  PluginTurnEventReader,
+} from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
-import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
+import type { EventPublisher } from "./events";
+import type { PluginConversationInboxItems } from "./inbox-items";
+import type { RouteRegistrationHookContext } from "./operations";
+import {
+  destinationSchema,
+  actorSchema,
+  nonBlankStringSchema,
+  sourceSchema,
+} from "./schemas";
 import type { PluginState } from "./state";
 
 /**
@@ -94,12 +108,87 @@ export interface PluginTaskContext extends PluginContext {
     load(): Promise<PluginRunContext>;
   };
   state: PluginState;
+  /** Events that this plugin emitted in the completed Turn, oldest first. */
+  turnEvents: PluginTurnEventReader;
 }
 
-/** Plugin task handler registered by name in a plugin manifest module. */
-export interface PluginTaskDefinition {
+/** Task that Junior runs after each completed session. */
+export interface PluginSessionTaskDefinition {
+  payload?: undefined;
   run(ctx: PluginTaskContext): Promise<void> | void;
 }
 
+/** Runtime context passed to one attempt of a task that `tasks.start` started. */
+export interface PluginStartedTaskContext<
+  Payload = unknown,
+> extends PluginContext {
+  annotations: PluginConversationAnnotations;
+  codeChanges: PluginCodeChanges;
+  conversationChanges: PluginConversationChanges;
+  /** Publishes the plugin's Events, as the heartbeat and routes do. */
+  events: EventPublisher;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
+  /**
+   * True on the last delivery that Junior makes. An attempt that throws
+   * now is not run again, so a task that waits for a provider can write
+   * its fallback instead.
+   */
+  lastDelivery: boolean;
+  name: string;
+  /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
+  payload: Payload;
+  state: PluginState;
+  /**
+   * Starts this plugin's tasks, as from a plugin route. A task that must
+   * wait longer than its retries cover can start itself again.
+   */
+  tasks: PluginTaskStarter;
+  /** Stored identities and their users, as from a plugin route. */
+  users: RouteRegistrationHookContext["users"];
+}
+
+/**
+ * Task that runs only when the plugin starts it with `tasks.start`. Junior
+ * sends the payload as JSON in the queue message and parses it with
+ * `payload` before each attempt. A failed attempt runs again later, a
+ * bounded number of times.
+ */
+export interface PluginStartedTaskDefinition<
+  Schema extends z.ZodType = z.ZodType,
+> {
+  payload: Schema;
+  run(ctx: PluginStartedTaskContext<z.output<Schema>>): Promise<void> | void;
+}
+
+/** Plugin task handler registered by name in a plugin manifest module. */
+export type PluginTaskDefinition =
+  | PluginSessionTaskDefinition
+  | PluginStartedTaskDefinition;
+
 /** Task handlers keyed by the plugin-owned task name. */
 export type PluginTasks = Record<string, PluginTaskDefinition>;
+
+/** Input of `tasks.start`. */
+export const pluginTaskStartInputSchema = z
+  .object({
+    /**
+     * One task per plugin and key while the queue keeps the message. A
+     * second start with the key in that time does nothing.
+     */
+    key: nonBlankStringSchema.max(500),
+    /** Name of a task with a `payload` schema in this plugin's `tasks`. */
+    name: nonBlankStringSchema,
+    /** Seconds before the first attempt. Without it, the task runs soon. */
+    delaySeconds: z.number().int().positive().optional(),
+    /** JSON value that the task's `payload` schema accepts. */
+    payload: z.unknown(),
+  })
+  .strict();
+
+export type PluginTaskStartInput = z.output<typeof pluginTaskStartInputSchema>;
+
+/** Starts this plugin's tasks on the plugin task queue. */
+export interface PluginTaskStarter {
+  start(input: PluginTaskStartInput): Promise<void>;
+}

@@ -8,16 +8,27 @@
  * `tool_choice`, thinking, or effort change, so the request keeps the tools
  * and the instruction forbids tool calls instead.
  */
-import type { Agent, StreamFn } from "@earendil-works/pi-agent-core";
-import type {
-  Api,
-  AssistantMessage,
-  Context,
-  Message,
-  Model,
-  SimpleStreamOptions,
+import { findTag, renderInlineTag } from "@sentry/junior-plugin-api";
+import {
+  type Agent,
+  DEFAULT_AGENT_IDENTITY,
+} from "@earendil-works/pi-agent-core";
+import {
+  type Api,
+  type AssistantMessage,
+  type Context,
+  type Message,
+  type Model,
+  type SimpleStreamOptions,
+  getInitialSystemMessage,
+  getSystemMessageText,
+  mergeClientIdentity,
 } from "@earendil-works/pi-ai";
 import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
+import {
+  type AgentRequestStreamFn,
+  foldLeadingSystemMessages,
+} from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import { agentTurnCostUsd } from "@/chat/usage";
@@ -29,9 +40,12 @@ export const CONTEXT_COMPACTION_PROMPT_NAME = "junior.context_compaction";
 // a stop at this limit means that the output is not a usable summary.
 const SUMMARY_MAX_TOKENS = 8_000;
 
+const SUMMARY_TAG = "summary";
+const SUMMARY_TAGS = renderInlineTag(SUMMARY_TAG, "");
+
 const SUMMARY_INSTRUCTION = `Stop work on the task now. Do not call tools. Write a summary of the conversation so far. The summary replaces the earlier history, and you will continue the work from the summary alone.
 
-Return only the summary inside <summary></summary> tags. Use these sections in this order. Write each item as one short line that starts with "- ". Write "- None" for an empty section.
+Return only the summary inside ${SUMMARY_TAGS} tags. Use these sections in this order. Write each item as one short line that starts with "- ". Write "- None" for an empty section.
 
 ## Goal
 ## Constraints & preferences
@@ -52,10 +66,9 @@ Rules:
 - Do not mention this request or the summary itself.
 - If the history contains an earlier summary, update it. Keep the items that are still true, move finished work to Done, and remove stale items. When the earlier summary and newer history disagree, use the newer history.`;
 
-const SUMMARY_NUDGE =
-  "Do not call tools. Keep the summary short. Return only the summary inside <summary></summary> tags.";
+const SUMMARY_NUDGE = `Do not call tools. Keep the summary short. Return only the summary inside ${SUMMARY_TAGS} tags.`;
 
-/** Arguments of one agent model request, in `StreamFn` order. */
+/** Arguments of one agent model request, in `AgentRequestStreamFn` order. */
 export interface AgentModelRequest {
   model: Model<Api>;
   context: Context;
@@ -110,15 +123,23 @@ export async function buildAgentModelRequest(
   messages: PiMessage[],
   signal?: AbortSignal,
 ): Promise<AgentModelRequest> {
-  const { model, systemPrompt, thinkingLevel, tools } = agent.state;
+  const { model, thinkingLevel, tools } = agent.state;
+  // Fold like `withAgentRequest`, so the summary request keeps the agent
+  // call's cached prefix. `agent.state.systemPrompt` folds every system
+  // message, so start from Junior's leading prompt.
+  const leading = getInitialSystemMessage(agent.state.messages);
   const transformed = agent.transformContext
     ? await agent.transformContext(messages, signal)
     : messages;
   return {
+    // pi-agent-core types `Agent.state.model` as `Model<any>`.
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
     model,
     context: {
-      systemPrompt,
-      messages: await agent.convertToLlm(transformed),
+      ...foldLeadingSystemMessages(
+        leading ? getSystemMessageText(leading) : "",
+        await agent.convertToLlm(transformed),
+      ),
       tools,
     },
     options: {
@@ -130,6 +151,7 @@ export async function buildAgentModelRequest(
       thinkingBudgets: agent.thinkingBudgets,
       maxRetryDelayMs: agent.maxRetryDelayMs,
       apiKey: (await agent.getApiKey?.(model.provider)) || undefined,
+      identity: mergeClientIdentity(DEFAULT_AGENT_IDENTITY, agent.identity),
       signal,
     },
   };
@@ -145,7 +167,7 @@ function userText(text: string): Message {
 
 async function complete(
   request: AgentModelRequest,
-  streamFn: StreamFn,
+  streamFn: AgentRequestStreamFn,
   appended: Message[],
 ): Promise<AssistantMessage> {
   const stream = await streamFn(
@@ -183,7 +205,7 @@ function readSummary(
   if (!text) {
     return { failure: "empty" };
   }
-  const summary = /<summary>([\s\S]*?)<\/summary>/.exec(text)?.[1]?.trim();
+  const summary = findTag(text, SUMMARY_TAG)?.body.trim();
   return summary ? { summary } : { failure: "missing_summary" };
 }
 
@@ -197,7 +219,7 @@ function readSummary(
  */
 export async function requestContextSummary(
   request: AgentModelRequest,
-  streamFn: StreamFn,
+  streamFn: AgentRequestStreamFn,
 ): Promise<ContextSummary> {
   const instruction = userText(SUMMARY_INSTRUCTION);
   const firstMessage = await complete(request, streamFn, [instruction]);

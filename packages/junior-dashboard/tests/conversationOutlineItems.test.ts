@@ -20,7 +20,10 @@ describe("conversation outline", () => {
   it("lists person messages with the last Junior reply to each", () => {
     const items = conversationOutlineItems([
       message(1, "assistant", "before any person message"),
-      message(2, "user", "**url** local para   verlo?"),
+      message(2, "user", "**url** local para   verlo?", {
+        actorIdentityId: "identity-asker",
+        timestamp: 20,
+      }),
       message(3, "assistant", "Checking."),
       message(4, "assistant", "Es la misma URL."),
       message(5, "user", "a Slack message", { context: true }),
@@ -30,37 +33,87 @@ describe("conversation outline", () => {
     ]);
 
     expect(items).toEqual([
-      { seq: 2, title: "url local para verlo?", reply: "Es la misma URL." },
-      { seq: 7, title: "second question" },
+      {
+        author: { actorIdentityId: "identity-asker" },
+        seq: 2,
+        timestamp: 20,
+        title: "url local para verlo?",
+        reply: "Es la misma URL.",
+      },
+      { author: {}, seq: 7, title: "second question" },
     ]);
   });
 
   it("joins the whole outline with the loaded items", () => {
     const outline = {
       items: [
-        { seq: 2, text: "**old** question" },
-        { seq: 7, text: "loaded question cut" },
+        {
+          createdAt: "2026-01-01T00:00:00.000Z",
+          actorIdentityId: "identity-asker",
+          fromParentAgent: true as const,
+          seq: 2,
+          text: "**old** question",
+          reply: "_old_ answer",
+        },
+        {
+          createdAt: "2026-01-01T00:01:00.000Z",
+          seq: 7,
+          text: "loaded question cut",
+        },
+        {
+          createdAt: "2026-01-01T00:02:00.000Z",
+          seq: 9,
+          text: "question at a page edge",
+          reply: "Reply on the next page.",
+        },
       ],
     };
 
     expect(
       mergeConversationOutlineItems(outline, [
-        { seq: 7, title: "loaded question in full", reply: "Done." },
+        {
+          author: {},
+          seq: 7,
+          title: "loaded question in full",
+          reply: "Done.",
+        },
+        // Its reply is on a page that is not loaded.
+        { author: {}, seq: 9, title: "question at a page edge" },
         // Newer than the outline, from a live poll.
-        { seq: 12, title: "new question" },
+        { author: {}, seq: 12, title: "new question" },
       ]),
     ).toEqual([
-      { seq: 2, title: "old question" },
-      { seq: 7, title: "loaded question in full", reply: "Done." },
-      { seq: 12, title: "new question" },
+      {
+        author: {
+          actorIdentityId: "identity-asker",
+          fromParentAgent: true as const,
+        },
+        seq: 2,
+        timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
+        title: "old question",
+        reply: "old answer",
+      },
+      {
+        author: {},
+        seq: 7,
+        title: "loaded question in full",
+        reply: "Done.",
+      },
+      {
+        author: {},
+        seq: 9,
+        title: "question at a page edge",
+        reply: "Reply on the next page.",
+      },
+      { author: {}, seq: 12, title: "new question" },
     ]);
     expect(mergeConversationOutlineItems(undefined, [])).toEqual([]);
   });
 
   it("finds the item whose section holds a row", () => {
     const items = [
-      { seq: 2, title: "a" },
-      { seq: 7, title: "b" },
+      { author: {}, seq: 2, title: "a" },
+      { author: {}, seq: 7, title: "b" },
     ];
 
     expect(outlineItemAtSeq(items, 1)).toBeUndefined();

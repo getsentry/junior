@@ -7,6 +7,7 @@ import { createApp } from "@/app";
 import type { AuthenticatedRoute } from "@/dashboard-routes";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { MCP_CLIENT_ID } from "../msw/handlers/mcp-client-metadata";
+import { mockBuiltSystemPrompts } from "./built-system-prompts";
 
 export const MCP_TEST_ORIGIN = "http://junior.test";
 export const MCP_TEST_URL = `${MCP_TEST_ORIGIN}/api/mcp`;
@@ -25,6 +26,7 @@ const TEST_VIEWER_COOKIE = "junior_test_viewer";
  */
 export function mockMcpDashboardConfig(): void {
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp: (options: {
       authenticatedRoutes?: readonly AuthenticatedRoute[];
     }) => {
@@ -48,6 +50,7 @@ export function mockMcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+  mockBuiltSystemPrompts();
 }
 
 /** Build the cookie header that signs one viewer in to the fake dashboard. */
@@ -112,7 +115,8 @@ export async function openMcpConsentPage(
   consentUrl: string,
   email: string,
 ): Promise<{
-  csrf?: string;
+  contentSecurityPolicy: string | null;
+  csrf?: string | undefined;
   html: string;
   referrerPolicy: string | null;
   status: number;
@@ -122,6 +126,7 @@ export async function openMcpConsentPage(
   });
   const html = await response.text();
   return {
+    contentSecurityPolicy: response.headers.get("content-security-policy"),
     csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
     html,
     referrerPolicy: response.headers.get("referrer-policy"),

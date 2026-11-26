@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 import {
   actorSchema,
+  destinationSchema,
   sourceSchema,
   type Actor,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
+  // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import type {
@@ -24,7 +25,7 @@ import type {
 } from "@/chat/oauth-authorization";
 import { buildSlackOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
 import type { KnownBlock } from "@slack/types";
-import { isRecord } from "@/chat/coerce";
+import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
@@ -33,83 +34,52 @@ export type OAuthStatePayload = {
   userId: string;
   provider: string;
   actor?: Actor;
-  channelId?: string;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
-  scope?: string;
+  threadTs?: string | undefined;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
+  scope?: string | undefined;
 };
 
 type OAuthFlowInput = {
   actorId: string;
   actor?: Actor;
-  channelId?: string;
-  destination?: Destination;
-  source?: Source;
-  threadTs?: string;
+  channelId?: string | undefined;
+  destination?: Destination | undefined;
+  source?: Source | undefined;
+  threadTs?: string | undefined;
   activeSkillName?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
   scope?: string;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+const optionalStateStringSchema = z.string().min(1).optional().catch(undefined);
+
+const oauthStatePayloadSchema = z.object({
+  userId: z.string(),
+  provider: z.string(),
+  actor: actorSchema.optional(),
+  channelId: optionalStateStringSchema,
+  destination: destinationSchema.optional(),
+  source: sourceSchema.optional(),
+  threadTs: optionalStateStringSchema,
+  resumeConversationId: optionalStateStringSchema,
+  resumeSessionId: optionalStateStringSchema,
+  scope: optionalStateStringSchema,
+});
 
 /** Parse OAuth callback state that was persisted before a provider redirect. */
 export function parseOAuthStatePayload(
   value: unknown,
 ): OAuthStatePayload | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  if (typeof value.userId !== "string" || typeof value.provider !== "string") {
-    return undefined;
-  }
-  const actor =
-    value.actor === undefined ? undefined : actorSchema.safeParse(value.actor);
-  if (value.actor !== undefined && (!actor || !actor.success)) {
-    return undefined;
-  }
-  const destination = parseDestination(value.destination);
-  if (value.destination !== undefined && !destination) {
-    return undefined;
-  }
-  const source =
-    value.source === undefined
-      ? undefined
-      : sourceSchema.safeParse(value.source);
-  if (value.source !== undefined && (!source || !source.success)) {
-    return undefined;
-  }
-  return {
-    userId: value.userId,
-    provider: value.provider,
-    ...(actor?.success ? { actor: actor.data } : undefined),
-    ...(optionalString(value.channelId)
-      ? { channelId: optionalString(value.channelId) }
-      : undefined),
-    ...(destination ? { destination } : undefined),
-    ...(source?.success ? { source: source.data } : undefined),
-    ...(optionalString(value.threadTs)
-      ? { threadTs: optionalString(value.threadTs) }
-      : undefined),
-    ...(optionalString(value.resumeConversationId)
-      ? { resumeConversationId: optionalString(value.resumeConversationId) }
-      : undefined),
-    ...(optionalString(value.resumeSessionId)
-      ? { resumeSessionId: optionalString(value.resumeSessionId) }
-      : undefined),
-    ...(optionalString(value.scope)
-      ? { scope: optionalString(value.scope) }
-      : undefined),
-  };
+  const parsed = oauthStatePayloadSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Return the manifest-owned display label for a provider. */
@@ -123,11 +93,11 @@ export function formatProviderLabel(provider: string): string {
 
 /** Resolve the public base URL from environment variables (JUNIOR_BASE_URL or Vercel). */
 export function resolveBaseUrl(): string | undefined {
-  const explicit = process.env.JUNIOR_BASE_URL?.trim();
+  const explicit = process.env["JUNIOR_BASE_URL"]?.trim();
   if (explicit) return explicit;
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
   if (vercelProd) return `https://${vercelProd}`;
-  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const vercelUrl = process.env["VERCEL_URL"]?.trim();
   if (vercelUrl) return `https://${vercelUrl}`;
   return undefined;
 }
@@ -137,8 +107,8 @@ export function resolveBaseUrl(): string | undefined {
  * Try in-context private delivery first, then fall back to a DM.
  */
 export async function deliverPrivateMessage(input: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   userId: string;
   text: string;
   blocks?: KnownBlock[];
@@ -156,6 +126,7 @@ export async function deliverPrivateMessage(input: {
   if (input.channelId) {
     try {
       if (isDmChannel(input.channelId)) {
+        // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
         await postSlackMessage({
           channelId: input.channelId,
           text: input.text,
@@ -197,6 +168,7 @@ export async function deliverPrivateMessage(input: {
       return false;
     }
 
+    // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
     await postSlackMessage({
       channelId: dmChannelId,
       text: input.text,
@@ -215,9 +187,9 @@ export async function deliverPrivateMessage(input: {
 export async function deliverOAuthAuthorization(
   request: OAuthAuthorizationRequest,
   input: {
-    authorization?: OAuthAuthorization;
-    channelId?: string;
-    threadTs?: string;
+    authorization?: OAuthAuthorization | undefined;
+    channelId?: string | undefined;
+    threadTs?: string | undefined;
     userId: string;
   },
 ): Promise<PrivateDeliveryResult> {

@@ -12,14 +12,17 @@ import {
 } from "@/chat/automations/edit-schema";
 import type { AutomationTask } from "@/chat/automations/task";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
   requireToolCaller,
-  requireToolDestination,
+  type AutomationToolCaller,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
+import {
+  automationDestinationParam,
+  resolveToolDestination,
+} from "@/chat/automations/tool-destination";
 import {
   automationSkillToolSchema,
   automationToolResult,
@@ -30,8 +33,7 @@ import {
   type AutomationTriggerChangesInput,
 } from "@/chat/automations/tool-support";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
-import { getConversationStore, getDb } from "@/chat/db";
-import type { AutomationDestination } from "@/chat/automations/creator";
+import { getDb } from "@/chat/db";
 import { sameDestination } from "@/chat/destination";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { changedEventMatch } from "@/chat/event-automations/tool-support";
@@ -43,20 +45,11 @@ import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import { scheduleIntentFromTool } from "@/chat/scheduled-automations/schedule-intent";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { scheduledAutomationAttributes } from "@/chat/scheduled-automations/telemetry";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import {
-  checkSlackChannelReadAccess,
-  joinPublicChannelForRead,
-} from "@/chat/slack/tool-support/channel-access";
-import {
-  resolveSlackChannelRef,
-  slackChannelRefParam,
-} from "@/chat/slack/tool-support/channel-target";
 import { getConversationAccess } from "@/chat/scheduled-automations/tool-support";
 import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
@@ -93,77 +86,24 @@ async function requireNoIncompleteRun(automationId: string): Promise<void> {
   }
 }
 
-/**
- * Resolve where a move goes. "current_conversation" is this Conversation. A
- * channel reference must name a public Slack channel in this workspace, and
- * Junior joins it so the Automation can post there.
- */
-async function requireMoveDestination(
-  context: AutomationToolContext,
-  value: string,
-): Promise<{
-  destination: AutomationDestination;
-  visibility: "public" | "private" | undefined;
-}> {
-  const here = requireToolDestination(context);
-  if (value === "current_conversation") {
-    return { destination: here, visibility: context.visibility };
-  }
-  const teamId = parseSlackTeamId(here.teamId);
-  if (!teamId) throw new ToolInputError("Slack workspace is unavailable.");
-  const { channelId, channelName } = await resolveSlackChannelRef({
-    field: "destination",
-    value,
-    teamId,
-  });
-  if (channelId === here.channelId) {
-    return { destination: here, visibility: context.visibility };
-  }
-  const access = await checkSlackChannelReadAccess({
-    currentChannelIds: [],
-    targetChannelId: channelId,
-    teamId,
-  });
-  if (!access.allowed) {
-    throw new ToolInputError(
-      access.reason === "private"
-        ? "Only a public channel can be named as a destination. To move an automation into a private channel or DM, ask from there."
-        : access.error,
-    );
-  }
-  if (access.isMember !== true) {
-    const joined = await joinPublicChannelForRead({
-      targetChannelId: channelId,
-      ...(channelName ? { channelName } : undefined),
-    });
-    if (!joined.ok) throw new ToolInputError(joined.error);
-  }
-  const destination: AutomationDestination = {
-    platform: "slack",
-    teamId,
-    channelId,
-  };
-  // Automation access reads visibility from the Destination directory.
-  const name = access.channelName ?? channelName;
-  await getConversationStore().recordDestinationVisibility({
-    destination,
-    ...(name ? { channelName: name } : undefined),
-    visibility: "public",
-  });
-  return { destination, visibility: "public" };
-}
-
 /** Edit and save a scheduled Automation, including a move to a new Destination. */
 async function updateScheduled(
   context: AutomationToolContext,
+  caller: AutomationToolCaller,
   current: Extract<TaskCandidate, { kind: "scheduled" }>,
   input: UpdateInput,
   editedTask: AutomationTask | undefined,
   editor: Editor,
 ): Promise<TaskCandidate> {
   const { task, ownedByViewer: isCreator } = current;
+  // Only a Conversation in Slack can move an Automation.
+  if (input.destination && !context.destination) {
+    throw new ToolInputError(
+      "Move an automation from a Slack channel or DM, not from a web conversation.",
+    );
+  }
   const target = input.destination
-    ? await requireMoveDestination(context, input.destination)
+    ? await resolveToolDestination(context, caller, input.destination)
     : undefined;
   const destination = target?.destination;
   const moving =
@@ -277,11 +217,19 @@ async function updateEvent(
     automationRevision(task),
     editor,
   );
-  if (!saved) throw new ToolInputError("Automation was not found.");
+  if (!saved) {
+    throw new ToolInputError(
+      "Automation was not found: it was deleted. No change to the call can fix this.",
+    );
+  }
   return { ...current, task: saved };
 }
 
-/** Create the tool that edits, pauses, resumes, or moves one Automation. */
+/**
+ * Create the tool that edits, pauses, resumes, or moves one Automation.
+ *
+ * @runBuilt updateAutomation
+ */
 export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
@@ -335,7 +283,7 @@ export function createUpdateAutomationTool(
         .enum(["system", "creator"])
         .nullable()
         .describe(
-          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or use null to leave unchanged.",
+          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or null leaves it unchanged.",
         )
         .optional(),
       status: z
@@ -345,10 +293,10 @@ export function createUpdateAutomationTool(
           "Set active to resume a paused or blocked automation, or paused to stop it. When it uses its creator's credentials, only the creator can resume it. Omit or use null to leave unchanged.",
         )
         .optional(),
-      destination: slackChannelRefParam
+      destination: automationDestinationParam
         .nullable()
         .describe(
-          'Where to move a scheduled automation. Set "current_conversation" for the channel or DM of this conversation, or name a public Slack channel by id, mention, or known name. Omit to keep its destination.',
+          `Where to move a scheduled automation. ${automationDestinationParam.description} Omit to keep its destination.`,
         )
         .optional(),
     })
@@ -365,7 +313,7 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator; only their creator can move them. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials.",
     inputSchema,
     prepareArguments(args) {
       // Null means omitted, except a null context, which removes it.
@@ -389,7 +337,9 @@ export function createUpdateAutomationTool(
         );
       }
       if (Object.keys(input).length === 0 && status === undefined) {
-        throw new ToolInputError("Automation update requires a change.");
+        throw new ToolInputError(
+          "Automation update requires a change. Set status or at least one field to change.",
+        );
       }
       if (current.kind === "scheduled" && current.task.status === "completed") {
         throw new ToolInputError(
@@ -415,19 +365,22 @@ export function createUpdateAutomationTool(
         );
       }
       const editor = automationEditor(caller.viewer, current);
-      const editedTask = editedAutomationTask(current.task.task, input);
-      if (editedTask) {
-        requireAutomationTaskText(editedTask, {
-          creator: current.task.createdBy,
-          requester: editor,
-          current: current.task.task,
-        });
-      }
+      const editedTask = editedAutomationTask(current.task.task, input, {
+        creator: current.task.createdBy,
+        requester: editor,
+      });
       let saved = current;
       if (Object.keys(input).length > 0) {
         saved =
           current.kind === "scheduled"
-            ? await updateScheduled(context, current, input, editedTask, editor)
+            ? await updateScheduled(
+                context,
+                caller,
+                current,
+                input,
+                editedTask,
+                editor,
+              )
             : await updateEvent(current, input, editedTask, editor, catalog);
       }
       // Setting the current status again changes nothing.

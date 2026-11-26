@@ -5,7 +5,6 @@ import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
-  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import {
@@ -13,11 +12,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-
-/** Deploy topic name. Keep stable for Vercel queue wiring. */
-export const CACHE_WARMUP_QUEUE_TOPIC = "junior_cache_warmups";
-
-const CACHE_WARMUP_DEV_CONSUMER_GROUP = "junior_cache_warmups_dev";
+import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
   z
@@ -30,12 +25,15 @@ const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
       cacheExpiresAtMs: z.number().int().positive(),
     })
     .strict(),
-  // Closes an idle period that got no reply within the idle horizon.
+  // Closes an idle period that got no reply within the idle horizon. A
+  // longer horizon sends one message per `IDLE_HORIZON_MS` step, so each
+  // arrives within the signature age. Unset means the first step.
   z
     .object({
       kind: z.literal("horizon"),
       conversationId: z.string().min(1),
       generation: z.string().min(1),
+      step: z.number().int().min(2).optional(),
     })
     .strict(),
 ]);
@@ -51,7 +49,11 @@ const cacheWarmupSign = {
     message.kind,
     message.conversationId,
     message.generation,
-    message.kind === "warmup" ? String(message.cycle) : "",
+    message.kind === "warmup"
+      ? String(message.cycle)
+      : message.step
+        ? String(message.step)
+        : "",
     message.kind === "warmup" ? String(message.cacheExpiresAtMs) : "",
   ],
 };
@@ -76,7 +78,9 @@ export async function sendCacheWarmup(
             )
           : QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
       idempotencyKey: `cache-warmup_${message.generation}_${
-        message.kind === "warmup" ? message.cycle : message.kind
+        message.kind === "warmup"
+          ? message.cycle
+          : `${message.kind}${message.step ? `_${message.step}` : ""}`
       }`,
     },
   );
@@ -101,7 +105,6 @@ function logCacheWarmupRejected(
 
 function cacheWarmupCallback() {
   return queueCallback<CacheWarmupMessage>({
-    consumerGroup: CACHE_WARMUP_DEV_CONSUMER_GROUP,
     // A retry reaches the cache too late to help.
     maxDeliveries: 1,
     onRejected: logCacheWarmupRejected,
@@ -111,7 +114,6 @@ function cacheWarmupCallback() {
     },
     // The kill switch also drops warmups that were already queued.
     skip: () => !getChatConfig().cacheWarmingEnabled,
-    topic: CACHE_WARMUP_QUEUE_TOPIC,
     verify: (value) => verifyQueueMessage(cacheWarmupSign, value),
   });
 }
@@ -121,16 +123,4 @@ export function createVercelCacheWarmupCallback(): (
   request: Request,
 ) => Promise<Response> {
   return cacheWarmupCallback().create();
-}
-
-/** Return the queue consumer for cache warmups, for a pulling queue worker. */
-export function cacheWarmupQueueConsumer(): QueueConsumer {
-  return cacheWarmupCallback().consumer;
-}
-
-/** Receive cache warmup messages during local development. */
-export function registerVercelCacheWarmupDevConsumer():
-  | (() => void)
-  | undefined {
-  return cacheWarmupCallback().registerDev();
 }

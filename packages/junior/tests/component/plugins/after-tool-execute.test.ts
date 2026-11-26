@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
-import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
@@ -53,26 +53,25 @@ function editTool(
     {
       editFile: {
         description: "Edit a file.",
-        inputSchema: {} as any,
+        inputSchema: {},
         execute,
       },
     },
     new SkillSandbox([], []),
-    {},
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    createPluginHookRunner({
-      toolRun: {
-        conversationId: CONVERSATION_ID,
-        turnId: TURN_ID,
-        sandbox: () => ({
-          workspace: sandboxWorkspace,
-          workspaceId,
-        }),
-      },
-    }),
+    {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      agentHooks: createPluginHookRunner({
+        toolRun: {
+          conversationId: CONVERSATION_ID,
+          turnId: TURN_ID,
+          sandbox: () => ({
+            workspace: sandboxWorkspace,
+            workspaceId,
+          }),
+        },
+      }),
+    },
   );
   return { execute, tool: tool! };
 }
@@ -160,7 +159,7 @@ describe("afterToolExecute plugin hooks", () => {
           hooks: {
             afterToolExecute(ctx) {
               expect(ctx.workspace).toBeUndefined();
-              if (ctx.tool.input.path === "evals/a.eval.ts") {
+              if (ctx.tool.input["path"] === "evals/a.eval.ts") {
                 ctx.decision.deny("Eval edits need a person.");
               }
             },
@@ -247,27 +246,23 @@ describe("afterToolExecute plugin hooks", () => {
           inputSchema: Type.Object({ path: Type.String() }),
           execute: async () => ({ ok: true, path: "evals/a.eval.ts" }),
         },
-      } as never,
+      },
       new SkillSandbox([], []),
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      createPluginHookRunner({
-        toolRun: {
-          conversationId: CONVERSATION_ID,
-          turnId: TURN_ID,
-          sandbox: () => ({
-            workspace: fakeSandbox(""),
-            workspaceId: () => undefined,
-          }),
-        },
-      }),
-      undefined,
-      undefined,
-      undefined,
-      { countToolCall: () => 1 },
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        agentHooks: createPluginHookRunner({
+          toolRun: {
+            conversationId: CONVERSATION_ID,
+            turnId: TURN_ID,
+            sandbox: () => ({
+              workspace: fakeSandbox(""),
+              workspaceId: () => undefined,
+            }),
+          },
+        }),
+        codeMode: { countToolCall: () => 1 },
+      },
     );
     const codemode = tools.find((tool) => tool.name === CODEMODE_TOOL_NAME)!;
 

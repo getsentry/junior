@@ -1,0 +1,14 @@
+id: no-turn-writes-outside-turn-state
+language: TypeScript
+severity: error
+message: "In the core Turn engine, only packages/junior/src/core/turn/state.ts may change a juniorTurns row. Add a function to state.ts that makes the state change, and call it."
+files:
+  - packages/junior/src/core/**/*.ts
+  - packages/junior/src/turn-steps/**/*.ts
+ignores:
+  - packages/junior/src/core/turn/state.ts
+rule:
+  any:
+    - pattern: $DB.insert(juniorTurns)
+    - pattern: $DB.update(juniorTurns)
+    - pattern: $DB.delete(juniorTurns)

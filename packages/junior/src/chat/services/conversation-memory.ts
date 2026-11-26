@@ -15,17 +15,20 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import { escapeXml } from "@/chat/xml";
+import {
+  escapeTagTextAndQuotes,
+  indentTagLines,
+  renderTag,
+} from "@sentry/junior-plugin-api";
+import { authorAttrs, renderThreadContext } from "@/chat/input-tags";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
 // Hard cap on the rendered thread context, newest Messages first.
 const THREAD_CONTEXT_MAX_CHARS = 60_000;
-const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
-const THREAD_CONTEXT_CLOSE = "</thread-context>";
 const THREAD_CONTEXT_OMITTED_NOTE =
-  "Older Messages of this thread are not shown. Find them with the searchConversationEvents and readConversationEvent tools.";
+  "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 /** Normalize message boundaries without changing transcript formatting. */
@@ -50,22 +53,24 @@ function buildImageContextSuffix(
     return "";
   }
 
-  return ` [image context: ${escapeXml(summaries.join(" | "))}]`;
+  return ` [image context: ${escapeTagTextAndQuotes(summaries.join(" | "))}]`;
 }
 
 function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
 ): string {
-  const displayName = escapeXml(conversationAuthorDisplayName(message));
-  const text = escapeXml(
+  const displayName = escapeTagTextAndQuotes(
+    conversationAuthorDisplayName(message),
+  );
+  const text = escapeTagTextAndQuotes(
     message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
   );
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
     markers.push(
-      escapeXml(
+      escapeTagTextAndQuotes(
         `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
       ),
     );
@@ -136,13 +141,12 @@ export function upsertConversationMessage(
 
 /** Record one assistant message after its destination accepts it. */
 export function recordDeliveredAssistantMessage(args: {
-  cards?: MessageCard[];
+  cards?: MessageCard[] | undefined;
   conversation: ThreadConversationState;
-  quiet?: true;
   sessionId: string;
-  source?: "slack" | "web";
+  source?: "slack" | "web" | undefined;
   text: string;
-  userMessageId?: string;
+  userMessageId?: string | undefined;
 }): string {
   const prefix = `${args.sessionId}:assistant:`;
   const ordinal =
@@ -166,7 +170,6 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       ...(objectCards?.length ? { objectCards } : undefined),
-      ...(args.quiet ? { quiet: args.quiet } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },
@@ -225,19 +228,23 @@ function renderThreadContextMessage(
   conversation: ThreadConversationState,
   index: number,
 ): string {
-  const author = escapeXml(conversationAuthorDisplayName(message));
-  const actorIdAttr = message.author?.userId
-    ? ` actor_id="${escapeXml(message.author.userId)}"`
-    : "";
-  const ts = new Date(message.createdAtMs).toISOString();
-  const slackTsAttr = message.meta?.slackTs
-    ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
-    : "";
-  return [
-    `  <message index="${index}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
-    renderConversationMessageLine(message, conversation),
-    "  </message>",
-  ].join("\n");
+  return indentTagLines(
+    renderTag(
+      "message",
+      {
+        index,
+        sent_at: new Date(message.createdAtMs).toISOString(),
+        role: message.role,
+        ...authorAttrs({
+          authorId: message.author?.userId,
+          authorName: conversationAuthorDisplayName(message),
+        }),
+        slack_ts: message.meta?.slackTs,
+      },
+      [renderConversationMessageLine(message, conversation)],
+    ),
+    "  ",
+  );
 }
 
 // A Message that the agent history does not hold: no mention, no Event, and
@@ -289,7 +296,7 @@ export function buildConversationContext(
      * Set when agent history exists. `afterSeq` is the cursor of the previous
      * Turn. A Conversation from before cursors has none.
      */
-    history?: { afterSeq?: number };
+    history?: { afterSeq?: number | undefined };
   } = {},
 ): ThreadContextBlock {
   const { history } = options;
@@ -329,7 +336,7 @@ export function buildConversationContext(
   if (shown.length === 0) {
     return counts;
   }
-  const lines = [THREAD_CONTEXT_OPEN, ...shown, THREAD_CONTEXT_CLOSE];
+  const lines = [renderThreadContext(shown)];
   // Trimming also drops older Messages from the working set.
   if (
     shown.length < candidates.length ||

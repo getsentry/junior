@@ -1,8 +1,5 @@
 import { Message } from "chat";
 
-export type ThreadMessageKind = "new_mention" | "subscribed_message";
-
-/** Derive canonical Slack thread IDs from the raw event payload. */
 /** Rebuild a Message onto a normalized Slack thread id. */
 export function withNormalizedThreadId(
   message: Message,
@@ -25,6 +22,7 @@ export function withNormalizedThreadId(
   });
 }
 
+/** Derive canonical Slack thread IDs from the raw event payload. */
 export function normalizeIncomingSlackThreadId(
   threadId: string,
   message: unknown,
@@ -42,8 +40,9 @@ export function normalizeIncomingSlackThreadId(
     return threadId;
   }
 
-  const channelId = nonEmptyString(raw.channel);
-  const threadTs = nonEmptyString(raw.thread_ts) ?? nonEmptyString(raw.ts);
+  const channelId = nonEmptyString(raw["channel"]);
+  const threadTs =
+    nonEmptyString(raw["thread_ts"]) ?? nonEmptyString(raw["ts"]);
   if (!channelId || !threadTs) {
     return threadId;
   }
@@ -55,25 +54,4 @@ function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
-}
-
-/** Classify an incoming message as a mention or subscribed message. */
-export function determineThreadMessageKind(args: {
-  isDirectMessage: boolean;
-  isMention: boolean;
-  isSubscribed: boolean;
-}): ThreadMessageKind | undefined {
-  if (args.isDirectMessage) {
-    return "new_mention";
-  }
-
-  if (args.isSubscribed) {
-    return "subscribed_message";
-  }
-
-  if (args.isMention) {
-    return "new_mention";
-  }
-
-  return undefined;
 }

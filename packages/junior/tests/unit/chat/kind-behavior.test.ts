@@ -1,21 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   isPersonInput,
+  promptModeTurnTools,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 
 const rootTurn = {
   delivery: "location",
   promptMode: "conversation",
+  idleNeedsPendingWork: false,
+  waitsForSignIn: true,
   gated: false,
-  failureNotice: "none",
   sessionTasks: true,
+  conversationMetadata: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
-    reviewDesk: true,
+    inbox: true,
     subscriptions: true,
     userCustomization: true,
-    reply: "none",
+    settings: true,
+    reply: false,
     reportBlocked: "none",
     noReply: true,
   },
@@ -24,69 +29,162 @@ const rootTurn = {
 // Memory is public, so a Thread never captures it.
 const personInThreadTurn = {
   ...rootTurn,
+  promptMode: "thread",
+  sender: "person",
   sessionTasks: false,
-  tools: { ...rootTurn.tools, agents: "none" },
+  relatedConversations: false,
+  tools: { ...rootTurn.tools, agents: "children_and_parent" },
 };
 
 const agentInThreadTurn = {
   delivery: "conversation",
-  promptMode: "child_agent",
-  gated: true,
-  failureNotice: "none",
+  promptMode: "thread",
+  sender: "agent",
+  idleNeedsPendingWork: false,
+  waitsForSignIn: false,
+  gated: false,
   sessionTasks: false,
+  conversationMetadata: true,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
-    reviewDesk: false,
+    inbox: false,
     subscriptions: false,
     userCustomization: false,
-    reply: "parent",
+    settings: false,
+    reply: false,
     reportBlocked: "parent",
-    noReply: true,
+    // An agent's Turn reports to its parent with its final text.
+    noReply: false,
   },
 };
 
-// A Task's parent learns that it failed or that no reply was sent.
+const { sender: _sender, ...childAgentTurn } = agentInThreadTurn;
 const agentInTaskTurn = {
-  ...agentInThreadTurn,
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
+  ...childAgentTurn,
+  promptMode: "child_agent",
+  conversationMetadata: false,
 };
 
+// An Automation run almost never gets an answer, so only pending work keeps
+// its cache warm.
 const automationTurn = {
   delivery: "conversation",
   promptMode: "automation",
+  sender: "automation",
+  idleNeedsPendingWork: true,
+  waitsForSignIn: true,
   gated: true,
-  failureNotice: "none",
   sessionTasks: true,
+  conversationMetadata: true,
+  relatedConversations: false,
   tools: {
     ...rootTurn.tools,
-    reply: "automation",
+    settings: false,
+    reply: true,
     reportBlocked: "automation",
   },
 };
 
 describe("turnBehavior", () => {
   it.each([
-    { kind: "root", personInput: true, expected: rootTurn },
-    { kind: "root", personInput: false, expected: rootTurn },
-    // A person's reply in the run's thread.
-    { kind: "automation", personInput: true, expected: rootTurn },
+    { kind: "thread", hasParent: false, personInput: true, expected: rootTurn },
+    {
+      kind: "thread",
+      hasParent: false,
+      personInput: false,
+      expected: {
+        ...rootTurn,
+        relatedConversations: false,
+        tools: { ...rootTurn.tools, settings: false },
+      },
+    },
+    // A person's reply in the run's thread runs like a root Turn.
+    {
+      kind: "automation",
+      hasParent: false,
+      personInput: true,
+      expected: {
+        ...rootTurn,
+        promptMode: "automation",
+        sender: "person",
+        relatedConversations: false,
+      },
+    },
     // The dispatch Turn and every Watch Event Turn.
-    { kind: "automation", personInput: false, expected: automationTurn },
-    { kind: "thread", personInput: true, expected: personInThreadTurn },
-    { kind: "thread", personInput: false, expected: agentInThreadTurn },
-    { kind: "task", personInput: false, expected: agentInTaskTurn },
+    {
+      kind: "automation",
+      hasParent: false,
+      personInput: false,
+      expected: automationTurn,
+    },
+    // A `thread` with a parent is a child Thread.
+    {
+      kind: "thread",
+      hasParent: true,
+      personInput: true,
+      expected: personInThreadTurn,
+    },
+    {
+      kind: "thread",
+      hasParent: true,
+      personInput: false,
+      expected: agentInThreadTurn,
+    },
+    {
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+      expected: agentInTaskTurn,
+    },
   ] as const)(
-    "gives a $kind Turn with person input $personInput its behavior",
-    ({ kind, personInput, expected }) => {
-      expect(turnBehavior({ kind, personInput })).toEqual(expected);
+    "gives a $kind Turn with a parent $hasParent and person input $personInput its behavior",
+    ({ kind, hasParent, personInput, expected }) => {
+      expect(turnBehavior({ kind, hasParent, personInput })).toEqual(expected);
     },
   );
 
+  // A Thread lists the tools of both senders on every Turn, so its tool list
+  // stays the same.
+  it("lists the tools of both senders on every Turn of a Thread", () => {
+    expect(promptModeTurnTools("thread")).toEqual({
+      ...agentInThreadTurn.tools,
+      inbox: true,
+      subscriptions: true,
+      userCustomization: true,
+      settings: true,
+      noReply: true,
+    });
+  });
+
+  // A person's reply lists the run's tools, so the Automation Conversation's
+  // tool list stays the same.
+  it("lists the run's tools on every Turn of an Automation Conversation", () => {
+    expect(promptModeTurnTools("automation")).toEqual(automationTurn.tools);
+  });
+
   it("rejects a person's input on a task", () => {
-    expect(() => turnBehavior({ kind: "task", personInput: true })).toThrow(
-      "A task Conversation cannot have a person's input",
-    );
+    expect(() =>
+      turnBehavior({ kind: "task", hasParent: true, personInput: true }),
+    ).toThrow("A task Conversation cannot have a person's input");
+  });
+
+  // A Lead keeps one system prompt and one tool list on every Turn, but only
+  // a person's Turn changes settings, such as the Space of a Conversation.
+  it("gives every Turn of a Lead the same tools, and settings only to a person's", () => {
+    const personTurn = turnBehavior({
+      kind: "lead",
+      hasParent: false,
+      personInput: true,
+    });
+    expect(
+      turnBehavior({ kind: "lead", hasParent: false, personInput: false }),
+    ).toEqual({
+      ...personTurn,
+      tools: { ...personTurn.tools, settings: false },
+    });
+    expect(personTurn.promptMode).toBe("lead");
+    expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
   });
 
   it("counts only Slack and web input as a person's", () => {

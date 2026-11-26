@@ -1,11 +1,13 @@
 import { ChevronRight } from "lucide-react";
 
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 
 /**
  * Render a conversation section label that collapses its rows. The chevron
- * takes the same 0.875rem glyph column and gap as sidebar rows, so the label
- * starts on the row title edge.
+ * takes the same glyph column and gap as sidebar rows, so the label starts on
+ * the row title edge (`sidebarGrid`).
+ * A `heading` is a step larger than the card titles under it, for a list
+ * of cards such as the Inbox's.
  */
 export function ConversationSectionHeading(props: {
   className?: string;
@@ -14,18 +16,22 @@ export function ConversationSectionHeading(props: {
   id?: string;
   label: string;
   onToggle(): void;
+  size?: "heading" | "label";
 }) {
   return (
     <h3
       className={cn(
-        "m-0 font-sans text-xs font-medium text-dashboard-text-muted",
+        "m-0",
+        props.size === "heading"
+          ? "font-display text-lg font-semibold text-dashboard-text"
+          : "font-sans text-xs font-medium text-dashboard-text-muted",
         props.className,
       )}
       id={props.id}
     >
       <button
         aria-expanded={!props.collapsed}
-        className="grid cursor-pointer grid-cols-[0.875rem_auto] items-center gap-x-2 rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+        className="grid cursor-pointer grid-cols-[1rem_auto] items-center gap-x-3 rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
         onClick={props.onToggle}
         type="button"
       >
@@ -39,9 +45,7 @@ export function ConversationSectionHeading(props: {
         <span className="flex items-center gap-1">
           {props.label}
           {props.collapsed ? (
-            <span className="tabular-nums text-dashboard-text-faint">
-              {props.count}
-            </span>
+            <span className={dashboardCountClass}>{props.count}</span>
           ) : null}
         </span>
       </button>

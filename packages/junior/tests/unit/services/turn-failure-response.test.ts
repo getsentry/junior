@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { ToolActionReviewUnavailableError } from "@/chat/guardian/gate";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
+  captureTurnFailure,
   finalizeFailedTurnReply,
-  finalizeFailedTurnReplyWithEvent,
   getTurnFailureReason,
 } from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -11,6 +12,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 function providerErrorReply(args: {
   assistantMessageCount: number;
   errorMessage?: string;
+  eventId?: string;
   providerError?: unknown;
   text: string;
 }): AgentRunResult {
@@ -25,6 +27,7 @@ function providerErrorReply(args: {
       toolErrorCount: 0,
       usedPrimaryText: false,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : undefined),
+      ...(args.eventId ? { eventId: args.eventId } : undefined),
       ...(args.providerError
         ? { providerError: args.providerError }
         : undefined),
@@ -34,17 +37,16 @@ function providerErrorReply(args: {
 
 describe("finalizeFailedTurnReply", () => {
   it("never delivers synthesized error text without assistant messages", () => {
-    const logException = vi.fn().mockReturnValue("evt_123");
     const internalError = new Error("ECONNRESET at redis.js:42");
 
     const finalized = finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: internalError.message,
+        eventId: "evt_123",
         providerError: internalError,
         text: "Error: ECONNRESET at redis.js:42",
       }),
-      logException,
     });
 
     expect(finalized.text).not.toContain("ECONNRESET");
@@ -58,17 +60,17 @@ describe("finalizeFailedTurnReply", () => {
       { modelId: "xai/grok-4.5" },
     );
 
-    const finalized = finalizeFailedTurnReplyWithEvent({
-      reply: providerErrorReply({
+    const reported = captureTurnFailure(
+      providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: providerError.message,
         providerError,
         text: "",
       }),
       logException,
-    });
+    );
 
-    expect(finalized.failureReason).toBe("server");
+    expect(reported.diagnostics.eventId).toBe("evt_503");
     const attributes = logException.mock.calls[0]?.[2];
     expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
@@ -111,14 +113,14 @@ describe("finalizeFailedTurnReply", () => {
       cause: providerError,
     });
 
-    finalizeFailedTurnReply({
-      reply: providerErrorReply({
+    captureTurnFailure(
+      providerErrorReply({
         assistantMessageCount: 0,
         providerError: reviewError,
         text: "",
       }),
       logException,
-    });
+    );
 
     expect(logException.mock.calls[0]?.[2]).toMatchObject({
       "app.ai.provider_error.kind": "invalid_response",
@@ -152,10 +154,10 @@ describe("finalizeFailedTurnReply", () => {
         reply: providerErrorReply({
           assistantMessageCount: 0,
           errorMessage: error.message,
+          eventId: "evt_terminal",
           providerError: error,
           text: "",
         }),
-        logException: vi.fn().mockReturnValue("evt_terminal"),
       });
 
       expect(finalized.text).toContain(explanation);
@@ -164,15 +166,78 @@ describe("finalizeFailedTurnReply", () => {
     },
   );
 
-  it("delivers genuine model-authored partial text with the interruption marker", () => {
-    const logException = vi.fn().mockReturnValue("evt_456");
+  // Each way an upstream model failure reaches a failed run.
+  it.each([
+    {
+      name: "agent model outage",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: createProviderError("503 Service Unavailable", {
+          modelId: "anthropic/claude-opus-5.5",
+        }),
+        text: "",
+      }),
+      text: "Anthropic (claude-opus-5.5) is returning errors right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+    {
+      name: "agent model outage after partial text",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: createProviderError("socket hang up", {
+          modelId: "anthropic/claude-opus-5.5",
+        }),
+        text: "Here is what I found so far",
+      }),
+      text: `Here is what I found so far${getInterruptionMarker()}\n\nAnthropic (claude-opus-5.5) cannot be reached right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: \`event_id=evt_1\`.`,
+    },
+    {
+      name: "action review model outage",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: new ToolActionReviewUnavailableError({
+          cause: createProviderError(
+            "Service temporarily unavailable. Please try again shortly.",
+            { modelId: "openai/gpt-6-luna" },
+          ),
+        }),
+        text: "",
+      }),
+      text: "OpenAI (gpt-6-luna, used for action review) is returning errors right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+    {
+      name: "empty model response",
+      reply: {
+        text: "",
+        diagnostics: {
+          outcome: "execution_failure",
+          modelId: "anthropic/claude-opus-5.5",
+          assistantMessageCount: 1,
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedPrimaryText: false,
+        },
+      } satisfies AgentRunResult,
+      text: "Anthropic (claude-opus-5.5) returned an invalid response. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+  ])("names the upstream provider for an $name", ({ reply, text }) => {
+    const finalized = finalizeFailedTurnReply({
+      reply: {
+        ...reply,
+        diagnostics: { ...reply.diagnostics, eventId: "evt_1" },
+      },
+    });
 
+    expect(finalized.text).toBe(text);
+  });
+
+  it("delivers genuine model-authored partial text with the interruption marker", () => {
     const finalized = finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 1,
+        eventId: "evt_456",
         text: "Here is what I found so far",
       }),
-      logException,
     });
 
     expect(finalized.text).toBe(

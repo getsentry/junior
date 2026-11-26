@@ -25,7 +25,7 @@ function imageAssetPlugin(): Rolldown.Plugin {
   return {
     name: "junior-dashboard-image-assets",
     load(id) {
-      if (!id.endsWith(".webp")) return null;
+      if (!/\.(?:png|webp)$/.test(id)) return null;
       const referenceId = this.emitFile({
         type: "asset",
         name: path.basename(id),
@@ -39,9 +39,46 @@ function imageAssetPlugin(): Rolldown.Plugin {
   };
 }
 
+// Stands in for the editor chunk URL until the chunk has its file name.
+const EDITOR_CHUNK_URL = "__junior_composer_editor_chunk_url__";
+
 /**
- * Write the client manifest: the entry, every file it imports statically,
- * the stylesheet, and the first-paint fonts. The page shell preloads those
+ * Give the composer the URL of the editor's lazy chunk. A failed chunk load
+ * names no URL in Safari, so the composer cannot learn it from the error,
+ * and a retry needs the URL to make the import new. An emitted chunk would
+ * count as a first-load entry and pull Lexical into the first load, so the
+ * URL is written into the code once the chunk has its name.
+ */
+function editorChunkUrlPlugin(): Rolldown.Plugin {
+  const urlModule = path.resolve(
+    "src/client/conversations/composer-editor/editorChunkUrl.ts",
+  );
+  const editorModule = path.resolve(
+    "src/client/conversations/composer-editor/ComposerEditor.tsx",
+  );
+  return {
+    name: "junior-dashboard-editor-chunk-url",
+    load(id) {
+      if (id !== urlModule) return null;
+      return `export default ${JSON.stringify(EDITOR_CHUNK_URL)};`;
+    },
+    renderChunk(code, _chunk, _options, meta) {
+      if (!code.includes(EDITOR_CHUNK_URL)) return null;
+      const editor = Object.values(meta.chunks).find(
+        (chunk) => chunk.facadeModuleId === editorModule,
+      );
+      if (!editor) throw new Error("The build has no composer editor chunk.");
+      return code.replaceAll(
+        EDITOR_CHUNK_URL,
+        `${DASHBOARD_ASSETS_PATH}/${editor.fileName}`,
+      );
+    },
+  };
+}
+
+/**
+ * Write the client manifest: the entry and every file it imports statically,
+ * the stylesheet, and the first-paint fonts. The page shell preloads these
  * files, so the browser fetches them beside the entry instead of after it.
  */
 function clientManifestPlugin(): Rolldown.Plugin {
@@ -49,17 +86,9 @@ function clientManifestPlugin(): Rolldown.Plugin {
     name: "junior-dashboard-client-manifest",
     writeBundle(_options, bundle) {
       const entry = Object.values(bundle).find(
-        (output) =>
-          output.type === "chunk" && output.isEntry && output.name === "client",
+        (output) => output.type === "chunk" && output.isEntry,
       )?.fileName;
-      // tsup.styles.config.ts writes the stylesheet and fonts first.
-      const files = readdirSync(publicDir);
-      const stylesheet = files.find((file) =>
-        DASHBOARD_STYLESHEET_NAME.test(file),
-      );
-      if (!entry || !stylesheet) {
-        throw new Error("Dashboard client entry or stylesheet was not built");
-      }
+      if (!entry) throw new Error("Dashboard entry was not built");
       const imports = new Set<string>();
       const pending = [entry];
       for (let file = pending.pop(); file; file = pending.pop()) {
@@ -69,6 +98,14 @@ function clientManifestPlugin(): Rolldown.Plugin {
           imports.add(item);
           pending.push(item);
         }
+      }
+      // tsup.styles.config.ts writes the stylesheet and fonts first.
+      const files = readdirSync(publicDir);
+      const stylesheet = files.find((file) =>
+        DASHBOARD_STYLESHEET_NAME.test(file),
+      );
+      if (!stylesheet) {
+        throw new Error("Dashboard stylesheet was not built");
       }
       const manifest: DashboardClientManifest = {
         entry,
@@ -97,7 +134,7 @@ const WORKSPACE_PACKAGE = /[\\/]@sentry[\\/]junior[\\/]/;
 // Rolldown keeps code that the entry already loads in the entry.
 export default defineConfig({
   entry: {
-    client: "src/client.tsx",
+    dashboard: "src/dashboard.ts",
   },
   format: "esm",
   platform: "browser",
@@ -190,5 +227,5 @@ export default defineConfig({
     assetFileNames: "[name]-[hash:8][extname]",
     hashCharacters: "base36",
   },
-  plugins: [imageAssetPlugin(), clientManifestPlugin()],
+  plugins: [imageAssetPlugin(), editorChunkUrlPlugin(), clientManifestPlugin()],
 });

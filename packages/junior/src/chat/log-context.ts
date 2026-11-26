@@ -6,17 +6,19 @@ export type LogAttributes = Record<string, LogAttributeValue>;
 
 /** Provider-neutral correlation data inherited by logs and spans in an operation. */
 export interface LogContext {
-  conversationId?: string;
-  platform?: string;
-  requestId?: string;
-  messageConversationId?: string;
-  destinationName?: string;
+  conversationId?: string | undefined;
+  /** The root of the Conversation tree. Equals `conversationId` on a root. */
+  rootConversationId?: string | undefined;
+  platform?: string | undefined;
+  requestId?: string | undefined;
+  messageConversationId?: string | undefined;
+  destinationName?: string | undefined;
   /** The accountable person: the user Actor, or the delegated credential owner. */
-  userId?: string;
-  userName?: string;
-  userEmail?: string;
-  userFullName?: string;
-  runId?: string;
+  userId?: string | undefined;
+  userName?: string | undefined;
+  userEmail?: string | undefined;
+  userFullName?: string | undefined;
+  runId?: string | undefined;
   /** Who acted: `user` or `system`. */
   actorType?: string;
   actorId?: string;
@@ -24,12 +26,12 @@ export interface LogContext {
   taskId?: string;
   credentialAllowedWhen?: string;
   assistantUserName?: string;
-  modelId?: string;
+  modelId?: string | undefined;
   skillName?: string;
   httpMethod?: string;
   httpPath?: string;
   urlFull?: string;
-  userAgent?: string;
+  userAgent?: string | undefined;
 }
 
 /** Async attribute domain consumed directly by LogTape. */
@@ -58,6 +60,7 @@ function definedAttributes(
 export function logContextToAttributes(context: LogContext): LogAttributes {
   return definedAttributes({
     "gen_ai.conversation.id": context.conversationId,
+    "app.conversation.root_id": context.rootConversationId,
     "app.platform": context.platform,
     "app.request.id": context.requestId,
     "messaging.system":

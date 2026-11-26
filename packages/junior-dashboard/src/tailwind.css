@@ -28,9 +28,20 @@
   /*
    * Dashboard type scale.
    * Prefer these named steps over arbitrary text-[Nrem] values.
+   * text-3xs is only for a Space tile's two-letter glyph. Do not use it
+   * anywhere else.
    * text-2xs is reserved for compact badges and chart annotations.
    * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
+  /*
+   * Header row height (`h-header`) for every column: the pane's logo row, page
+   * links, the conversation title and summary, and side panels. Each column
+   * draws a 1px rule under the row, so the rules meet on one line.
+   */
+  --spacing-header: 3.5rem;
+
+  --text-3xs: 0.5625rem; /* 9px — Space tile glyphs only */
+  --text-3xs--line-height: 1;
   --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
   --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
@@ -292,11 +303,17 @@
 
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Comfortable density: roomier rows, bundles, and transcript spacing. The
+   root carries `data-density` from the viewer's profile menu choice. */
+@custom-variant comfortable (&:where([data-density="comfortable"] *));
 
 /* Desktop windows tall enough for roomier conversation chrome. Shorter
    windows, such as most laptops, keep it compact so the transcript gets the
    height. */
 @custom-variant tall (@media (min-height: 62.5rem));
+
+/* The nav pane footer: room for the spend meter on two rows. */
+@custom-variant pane-tall (@media (min-height: 45rem));
 
 /* Desktop and mobile layouts. Width alone treats landscape phones as
    desktop, so short windows below 64rem stay mobile. Keep in sync with
@@ -317,6 +334,26 @@
     -webkit-tap-highlight-color: transparent;
     /* No font inflation in landscape on phones. */
     -webkit-text-size-adjust: 100%;
+  }
+
+  /*
+   * Reduced motion stops every CSS transition, animation, and smooth
+   * scroll, so a component cannot forget `motion-reduce:`. Transitions go
+   * away: a short duration on every element would turn each style change
+   * into a transition, and code that measures right after a change would
+   * read the old size. Animations only get short, so `animationend` still
+   * fires for UI that waits for it. Important declarations in this base
+   * layer win over utilities and inline styles.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-property: none !important;
+    }
   }
 
   /* Controls never double-tap zoom, so taps fire without the zoom wait. */
@@ -417,6 +454,14 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
   }
+}
+
+/*
+ * Skill references in the composer draft, in the color of a sent
+ * `SkillLink`. A highlight cannot set the font.
+ */
+::highlight(skill-reference) {
+  color: var(--color-dashboard-accent-text);
 }
 
 /* The Quick question selection. Utilities cannot style a highlight. */

@@ -14,14 +14,16 @@ import {
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
-  requireToolDestination,
   type AutomationToolCaller,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
+import {
+  automationDestinationParam,
+  resolveToolDestination,
+} from "@/chat/automations/tool-destination";
 import {
   automationIdForToolCall,
   automationSkillToolSchema,
@@ -68,13 +70,31 @@ import {
 } from "@/chat/services/short-title";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
+
+// An outcome's `current_conversation` is the Automation's destination. When
+// the Automation delivers somewhere other than this Conversation, say so in
+// code, so action review reads the real target of its messages.
+function describeDelivery(input: {
+  destination?: string | null;
+  outcomes?: TaskOutcomeInput[];
+}): string {
+  const postsToDestination = input.outcomes?.some(
+    (outcome) => outcome.destination === "current_conversation",
+  );
+  const elsewhere =
+    input.destination && input.destination !== "current_conversation";
+  if (!elsewhere || !postsToDestination) return "";
+  return `Its send_message outcomes with destination current_conversation post to ${input.destination}, the automation's destination, not to this conversation.`;
+}
 
 type NewAutomation = {
   creator: ReturnType<typeof requireToolCreator>;
   credentialMode: "creator" | "system";
   destination: AutomationDestination;
+  /** Visibility of the Destination, not of this Conversation. */
+  visibility: "public" | "private" | undefined;
   id: string;
   nowMs: number;
   task: AutomationTask;
@@ -129,7 +149,7 @@ async function createScheduled(
     updatedAtMs: nowMs,
     createdBy: next.creator.createdBy,
     creatorIdentityId: next.creator.identity.id,
-    conversationAccess: getConversationAccess(destination, context.visibility),
+    conversationAccess: getConversationAccess(destination, next.visibility),
     credentialMode: next.credentialMode,
     destination,
     executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -149,7 +169,6 @@ async function createScheduled(
 }
 
 async function createEvent(
-  context: AutomationToolContext,
   next: NewAutomation,
   trigger: EventAutomation["trigger"],
 ): Promise<TaskCandidate> {
@@ -158,7 +177,7 @@ async function createEvent(
     requireSlackChannelMessageScope({
       id: next.id,
       destinationVisibility:
-        context.visibility === "public" ? "public" : "private",
+        next.visibility === "public" ? "public" : "private",
       createdAtMs: next.nowMs,
       createdBy: next.creator.createdBy,
       creatorIdentityId: next.creator.identity.id,
@@ -190,7 +209,11 @@ async function readReplayedAutomation(
     : undefined;
 }
 
-/** Create the tool that stores a scheduled or event Automation. */
+/**
+ * Create the tool that stores a scheduled or event Automation.
+ *
+ * @runBuilt createAutomation
+ */
 export function createAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
@@ -202,6 +225,7 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
+    describeProposal: describeDelivery,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -210,7 +234,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event. Set instruction for written work, or skill to run an installed skill, with context only when the skill needs more. When an installed skill does the work, set skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
+      "Create a durable automation. It delivers to a Slack channel or DM, never a thread or a web conversation. A skill that automations run leaves schedules, destinations, and run endings to the automation. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
@@ -226,12 +250,14 @@ export function createAutomationTool(
             "Optional short display title. Omit or use null to generate one from the instruction or skill.",
           )
           .optional(),
-        trigger,
+        trigger: trigger.describe(
+          'Use type "schedule" for one-time or recurring work. Use type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event.',
+        ),
         outcomes: z
           .array(taskOutcomeInputSchema)
           .max(5)
           .describe(
-            "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
+            "Successful work is silent by default: omit this or use an empty list when the Automation acts through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
           )
           .optional(),
         credential_mode: z
@@ -239,6 +265,17 @@ export function createAutomationTool(
           .nullable()
           .describe(
             "Omit or use null for the system default: runs use your own credentials. Use creator only when the creator asks for their connected credentials to be available to the runs.",
+          )
+          .optional(),
+        destination: automationDestinationParam
+          .nullable()
+          .describe(
+            // A web Conversation has no Slack channel or DM to default to.
+            `${automationDestinationParam.description} ${
+              context.destination
+                ? "Omit or use null for current_conversation."
+                : "Required: current_conversation is unavailable here."
+            }`,
           )
           .optional(),
       })
@@ -252,6 +289,7 @@ export function createAutomationTool(
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
         credential_mode?: "creator" | "system" | null;
+        destination?: string | null;
       };
       const prepared = { ...input };
       if (prepared.title == null) {
@@ -269,25 +307,32 @@ export function createAutomationTool(
       if (prepared.credential_mode === null) {
         delete prepared.credential_mode;
       }
+      if (prepared.destination == null) {
+        delete prepared.destination;
+      }
       return prepared;
     },
     outputSchema: automationToolResultSchema,
     async execute(input, options) {
       const kind = triggerKind(input.trigger);
-      const destination = requireToolDestination(context);
       const caller = await requireToolCaller(context);
+      const { destination, visibility } = await resolveToolDestination(
+        context,
+        caller,
+        input.destination ?? "current_conversation",
+      );
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
       // prepareArguments removed the nulls.
-      const task = newAutomationTask({
-        instruction: input.instruction ?? undefined,
-        skill: input.skill ?? undefined,
-        context: input.context ?? undefined,
-      });
+      const task = newAutomationTask(
+        {
+          instruction: input.instruction ?? undefined,
+          skill: input.skill ?? undefined,
+          context: input.context ?? undefined,
+        },
+        { creator: createdBy },
+      );
       await requireAutomationSkill(task, undefined);
-      requireAutomationTaskText(task, {
-        creator: createdBy,
-      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
@@ -318,7 +363,9 @@ export function createAutomationTool(
           !sameDestination(candidate.task.destination, destination) ||
           candidate.task.createdBy.slackUserId !== createdBy.slackUserId
         ) {
-          throw new ToolInputError("Automation operation identity is invalid.");
+          throw new ToolInputError(
+            "Automation operation identity is invalid. No change to the call can fix this in this Turn.",
+          );
         }
         return automationToolResult(context.conversationId, candidate, catalog);
       };
@@ -339,6 +386,7 @@ export function createAutomationTool(
       const next: NewAutomation = {
         creator,
         destination,
+        visibility,
         id,
         nowMs,
         task,
@@ -359,7 +407,7 @@ export function createAutomationTool(
       return requireOwnAutomation(
         compiled
           ? await createScheduled(context, next, compiled)
-          : await createEvent(context, next, eventTrigger!),
+          : await createEvent(next, eventTrigger!),
       );
     },
   });

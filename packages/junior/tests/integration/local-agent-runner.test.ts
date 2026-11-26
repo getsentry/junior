@@ -22,11 +22,11 @@ import {
 } from "@/chat/runtime/thread-state";
 import {
   commitMessages,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -210,8 +210,8 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const previousBaseUrl = process.env["JUNIOR_BASE_URL"];
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
     let oauthCallback:
       | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
@@ -232,6 +232,7 @@ describe("local agent runner", () => {
             arguments: {
               provider: EVAL_MCP_AUTH_PROVIDER,
               query: "budget echo",
+              intent: "look up the budget",
             },
           },
           { type: "text", text: "Eval Auth is connected." },
@@ -334,9 +335,9 @@ describe("local agent runner", () => {
       await oauthCallback?.close();
       await pluginApp.cleanup();
       if (previousBaseUrl === undefined) {
-        delete process.env.JUNIOR_BASE_URL;
+        delete process.env["JUNIOR_BASE_URL"];
       } else {
-        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+        process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
       }
     }
   });
@@ -386,8 +387,10 @@ describe("local agent runner", () => {
       alias: "model-failure",
       cwd: "/tmp/local-agent-runner-model-failure",
     });
+    // Pi retries most transient failures with real backoff. Pi does not retry
+    // this text, and Junior still gives it transient-failure copy.
     const rawError =
-      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
+      "bad gateway: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
@@ -403,7 +406,7 @@ describe("local agent runner", () => {
     );
 
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]?.text).toContain("temporary connection problem");
+    expect(delivered[0]?.text).toContain("is returning errors right now");
     expect(delivered[0]?.text).not.toContain("raw-error-sentinel");
     const lifecycle = await loadLifecycleEvents(conversationId!);
     expect(lifecycle.at(-1)?.data).toMatchObject({
@@ -531,7 +534,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -650,14 +653,14 @@ describe("local agent runner", () => {
     );
 
     // Agent history carries the first exchange, so thread context omits it.
-    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    const secondHistory = JSON.stringify(agentRuns[1]?.history?.messages ?? []);
     expect(secondHistory).toContain("first question");
     expect(secondHistory).toContain("reply to first question");
     expect(agentRuns[1]?.instruction.context).toBeUndefined();
 
     const state = await getPersistedThreadState(conversationId!);
-    expect(state.conversation).not.toHaveProperty("stats");
-    expect(state.conversation).not.toHaveProperty("backfill");
+    expect(state["conversation"]).not.toHaveProperty("stats");
+    expect(state["conversation"]).not.toHaveProperty("backfill");
     const conversation = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation,
@@ -708,9 +711,11 @@ describe("local agent runner", () => {
       },
     );
 
-    const generatedMessages = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const generatedMessages = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(generatedMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -745,7 +750,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(generatedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(generatedMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {
@@ -836,7 +841,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(projectedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(projectedMessages);
   });
 
   it("does not commit generated Pi output when local delivery fails", async () => {
@@ -875,9 +880,11 @@ describe("local agent runner", () => {
       ),
     ).rejects.toThrow(rawDeliveryError);
 
-    const projection = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const projection = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(projection).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

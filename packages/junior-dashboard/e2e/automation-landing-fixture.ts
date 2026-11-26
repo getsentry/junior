@@ -5,6 +5,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { mockSearchRows } from "./search-fixture";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -25,7 +26,7 @@ const STATUS = { b: "blocked", c: "completed", f: "failed" } as const;
 
 function executions(id: string, title: string, plan: RunPlan) {
   const count = plan.results.length;
-  return [...plan.results].map((letter, index): AutomationExecution => {
+  return Array.from(plan.results).map((letter, index): AutomationExecution => {
     const status = STATUS[letter as keyof typeof STATUS];
     const executedAt = new Date(
       NOW_MS - (plan.lastAgo + (count - 1 - index) * plan.every) * HOUR,
@@ -54,8 +55,13 @@ function executions(id: string, title: string, plan: RunPlan) {
   });
 }
 
+/** `Omit` for each member of a union, so each kind keeps its own fields. */
+type OmitEach<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
 function automation(
-  base: Omit<
+  base: OmitEach<
     AutomationSummary,
     | "costUsd"
     | "createdAt"
@@ -63,6 +69,7 @@ function automation(
     | "destination"
     | "runs"
     | "outcomes"
+    | "totalCostUsd"
     | "totalRuns"
     | "recentRuns"
     | "lastRunAt"
@@ -369,6 +376,7 @@ export async function mockLandingAutomationApis(page: Page) {
       ),
     }),
   );
+  await mockSearchRows(page, { automations: () => report.automations });
   const find = (id: string) =>
     landingAutomations.find((entry) => entry.summary.id === id);
   await page.route(/\/api\/automations\/[^/?]+$/, (route) => {
@@ -402,7 +410,6 @@ export async function mockLandingAutomationApis(page: Page) {
     });
     return route.fulfill({
       json: {
-        automation: entry.summary,
         executionDays: days,
         executions: [...entry.runs].reverse(),
         truncated: false,

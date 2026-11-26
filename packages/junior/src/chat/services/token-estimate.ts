@@ -1,4 +1,9 @@
-import type { ImageContent, TextContent, Tool } from "@earendil-works/pi-ai";
+import {
+  renderSystemMessageUpdate,
+  type ImageContent,
+  type TextContent,
+  type Tool,
+} from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readImageDimensions } from "@/chat/services/image-dimensions";
 
@@ -64,10 +69,12 @@ function tokensForChars(chars: number, profile: TokenEstimateProfile): number {
   return Math.ceil(chars / profile.charsPerToken);
 }
 
-// Junior stores only user, assistant, and tool result messages. Images are
-// counted by `estimateImageTokens`.
+// Images are counted by `estimateImageTokens`. A saved system message is
+// sent as Pi renders it after the leading one.
 function messageChars(message: PiMessage): number {
   switch (message.role) {
+    case "system":
+      return renderSystemMessageUpdate(message).length;
     case "user":
     case "toolResult":
       return contentChars(message.content);
@@ -157,6 +164,17 @@ function claudeResizedImageSize(
 }
 
 /**
+ * The largest size that any Claude model reads an image at. Claude scales a
+ * larger image down to this size, so an image at this size loses no detail.
+ */
+export function claudeMaxImageSize(
+  width: number,
+  height: number,
+): [number, number] {
+  return claudeResizedImageSize(width, height, CLAUDE_HIGH_RES_IMAGE);
+}
+
+/**
  * Estimate one image for a model with the rule that `estimateMessagesTokens`
  * uses. `sized` is false when the image used the flat per-image value.
  */
@@ -187,6 +205,11 @@ export function estimateImageTokens(
 /** Estimate text tokens for local budgets that have no model. */
 export function estimateTextTokens(text: string): number {
   return tokensForChars(text.length, DEFAULT_TOKEN_ESTIMATE);
+}
+
+/** Estimate the tokens of request text, such as a prompt section, for one model. */
+export function estimateModelTextTokens(text: string, modelId: string): number {
+  return tokensForChars(text.length, getTokenEstimateProfile(modelId));
 }
 
 /** Convert a local text token budget to the characters it allows. */

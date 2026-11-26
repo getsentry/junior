@@ -1,3 +1,4 @@
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { describe, expect, it } from "vitest";
 import type {
   ConversationEvent,
@@ -104,6 +105,25 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history.filter((event) => event.data.type === type);
   }
 
+  async loadLatestEventOfTypes(
+    _conversationId: string,
+    types: readonly string[],
+  ): Promise<ConversationEvent | undefined> {
+    return [...this.history]
+      .reverse()
+      .find((event) => types.includes(event.data.type));
+  }
+
+  async loadCurrentEventsOfType(
+    conversationId: string,
+    type: string,
+  ): Promise<ConversationEvent[]> {
+    const version = await this.loadCurrentHistoryVersion();
+    return (await this.loadEventsOfType(conversationId, type)).filter(
+      (event) => event.historyVersion === version,
+    );
+  }
+
   async query(
     _conversationId: string,
     query: ConversationEventQuery,
@@ -145,7 +165,9 @@ class MemoryConversationEventStore implements ConversationEventStore {
 describe("conversation turn lifecycle", () => {
   it("records start retries once with stable correlation", async () => {
     const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const input = {
       conversationId: "local:test:turn",
       createdAtMs: 100,
@@ -172,7 +194,9 @@ describe("conversation turn lifecycle", () => {
 
   it("keeps the first terminal fact across retries and conflicts", async () => {
     const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
 
     await lifecycle.complete({
       conversationId: "local:test:turn",
@@ -212,7 +236,9 @@ describe("conversation turn lifecycle", () => {
       attempts += 1;
       throw appendError;
     };
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
 
     await expect(
       lifecycle.start({

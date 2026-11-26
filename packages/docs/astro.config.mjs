@@ -8,6 +8,7 @@ import { sentryAgentMarkdown } from "@sentry/starlight-theme/agent-markdown";
 export default defineConfig({
   site: "https://junior.sentry.dev",
   redirects: {
+    "/extend/memory-plugin": "/operate/memory",
     "/get-started": "/start-here/quickstart",
     "/get-started/index": "/start-here/quickstart",
     "/get-started/quickstart": "/start-here/quickstart",
@@ -123,6 +124,10 @@ export default defineConfig({
             { label: "Plugins", link: "/extend/" },
             { label: "Build a Plugin", link: "/extend/build-a-plugin/" },
             {
+              label: "Workload Identity Credentials",
+              link: "/extend/workload-identity/",
+            },
+            {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
             },
@@ -144,7 +149,6 @@ export default defineConfig({
               label: "Maintenance Plugin",
               link: "/extend/maintenance-plugin/",
             },
-            { label: "Memory Plugin", link: "/extend/memory-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             {
               label: "PagerDuty Plugin",
@@ -153,6 +157,7 @@ export default defineConfig({
             { label: "Restream Plugin", link: "/extend/restream-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
+            { label: "Vimeo Plugin", link: "/extend/vimeo-plugin/" },
             { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },
@@ -169,6 +174,7 @@ export default defineConfig({
               link: "/operate/security-hardening/",
             },
             { label: "Dashboard", link: "/operate/dashboard/" },
+            { label: "Memory", link: "/operate/memory/" },
             { label: "MCP Server", link: "/operate/mcp-server/" },
             {
               label: "Sandbox Snapshots",
@@ -182,7 +188,6 @@ export default defineConfig({
             { label: "junior init", link: "/cli/init/" },
             { label: "junior admin", link: "/cli/admin/" },
             { label: "junior chat", link: "/cli/chat/" },
-            { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",

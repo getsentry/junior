@@ -1,12 +1,13 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
+import { isInheritedForkHistory } from "@/chat/child-agents/fork-history";
+import { isParentMessageAuthor } from "@/chat/child-agents/parent-message";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
 import {
@@ -143,7 +144,7 @@ function reportMessageActorIdentity(
   data: Extract<ConversationEvent["data"], { type: "message" }>,
 ): Extract<ConversationReportEventData, { type: "message" }>["actorIdentity"] {
   if (data.role !== "user") return undefined;
-  const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
+  const author = reportingMessageAuthorSchema.safeParse(data.meta?.["author"]);
   if (!author.success) return undefined;
   const actorIdentity = {
     ...(author.data.fullName ? { fullName: author.data.fullName } : undefined),
@@ -153,6 +154,22 @@ function reportMessageActorIdentity(
       : undefined),
   };
   return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
+}
+
+/**
+ * Mark a child's input that its parent agent wrote, so the dashboard does not
+ * show the person who started the root as its author. Rows from earlier
+ * releases store the id of the work that wrote them at the
+ * `agentInvocationId` meta key. A parent message names its author.
+ */
+export function reportParentAgentInput(message: {
+  agentInvocationId: unknown;
+  authorUserId: unknown;
+}): { fromParentAgent: true } | undefined {
+  return typeof message.agentInvocationId === "string" ||
+    isParentMessageAuthor({ userId: message.authorUserId })
+    ? { fromParentAgent: true }
+    : undefined;
 }
 
 /** Project native assistant tool calls through the existing reporting shape. */
@@ -310,22 +327,22 @@ const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
 function reportMessageEvents(
   meta: Record<string, unknown> | undefined,
 ): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
-  const parsed = storedMessageEventsSchema.safeParse(meta?.events);
+  const parsed = storedMessageEventsSchema.safeParse(meta?.["events"]);
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-const storedReviewItemChangesSchema = z
-  .array(reviewItemChangeRecordSchema)
+const storedInboxItemChangesSchema = z
+  .array(inboxItemChangeRecordSchema)
   .min(1);
 
-/** Read the Review item changes that a message records. */
-function reportReviewItemChanges(
+/** Read the Inbox item changes that a message records. */
+function reportInboxItemChanges(
   meta: Record<string, unknown> | undefined,
 ):
-  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | { reviewItemChanges: z.output<typeof storedInboxItemChangesSchema> }
   | undefined {
-  const parsed = storedReviewItemChangesSchema.safeParse(
-    meta?.reviewItemChanges,
+  const parsed = storedInboxItemChangesSchema.safeParse(
+    meta?.["reviewItemChanges"],
   );
   return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
 }
@@ -371,8 +388,8 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
-        ...(data.meta?.source === "web" || data.meta?.source === "slack"
-          ? { source: data.meta.source }
+        ...(data.meta?.["source"] === "web" || data.meta?.["source"] === "slack"
+          ? { source: data.meta["source"] }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
         ...(args.canExposePayload &&
@@ -381,38 +398,58 @@ function reportEventData(args: {
         data.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...(typeof data.meta?.agentInvocationId === "string"
-          ? { agentInvocationId: data.meta.agentInvocationId }
-          : undefined),
+        ...reportParentAgentInput({
+          agentInvocationId: data.meta?.["agentInvocationId"],
+          authorUserId: reportingMessageAuthorSchema.safeParse(
+            data.meta?.["author"],
+          ).data?.userId,
+        }),
         ...(args.canExposePayload
-          ? reportReviewItemChanges(data.meta)
+          ? reportInboxItemChanges(data.meta)
           : undefined),
-        eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
-          .data,
-        ...(typeof data.meta?.eventType === "string"
-          ? { eventType: data.meta.eventType }
+        eventObjectType: objectTypeSchema.safeParse(
+          data.meta?.["eventObjectType"],
+        ).data,
+        ...(typeof data.meta?.["eventType"] === "string"
+          ? { eventType: data.meta["eventType"] }
           : undefined),
-        ...(typeof data.meta?.eventNamespace === "string"
-          ? { eventNamespace: data.meta.eventNamespace }
+        ...(typeof data.meta?.["eventNamespace"] === "string"
+          ? { eventNamespace: data.meta["eventNamespace"] }
           : undefined),
-        ...(typeof data.meta?.explicitMention === "boolean"
-          ? { explicitMention: data.meta.explicitMention }
+        ...(typeof data.meta?.["eventStatus"] === "string"
+          ? { eventStatus: data.meta["eventStatus"] }
           : undefined),
-        ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
+        ...(typeof data.meta?.["eventWatchId"] === "string"
+          ? { eventWatchId: data.meta["eventWatchId"] }
+          : undefined),
         ...(args.canExposePayload &&
-        typeof data.meta?.trustedSummary === "string"
-          ? { trustedSummary: data.meta.trustedSummary }
+        typeof data.meta?.["eventIdentifier"] === "string"
+          ? { eventIdentifier: data.meta["eventIdentifier"] }
+          : undefined),
+        ...(typeof data.meta?.["explicitMention"] === "boolean"
+          ? { explicitMention: data.meta["explicitMention"] }
+          : undefined),
+        ...(data.meta?.["quiet"] === true
+          ? { quiet: true as const }
+          : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.["trustedSummary"] === "string"
+          ? { trustedSummary: data.meta["trustedSummary"] }
           : undefined),
         ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
-        (data.meta?.cards || data.meta?.objectCards)
+        (data.meta?.["cards"] || data.meta?.["objectCards"])
           ? { cards: readMessageCardRefs(data.meta) }
           : undefined),
         ...(args.canExposePayload
           ? {
               text: data.text,
-              ...(data.meta?.attachments
-                ? { attachments: readMessageAttachments(data.meta.attachments) }
+              ...(data.meta?.["attachments"]
+                ? {
+                    attachments: readMessageAttachments(
+                      data.meta["attachments"],
+                    ),
+                  }
                 : undefined),
             }
           : { redacted: true as const }),
@@ -544,8 +581,8 @@ export function projectConversationReportEventPage(args: {
   /** Child Conversations that subagent events name and that are Threads. */
   threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
-  /** `turn_started` of the Conversation's first Turn. */
-  firstTurnStart?: ConversationEvent;
+  /** The Conversation's first event. */
+  firstEvent?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -583,7 +620,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -593,7 +630,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);
@@ -692,6 +729,7 @@ export function projectConversationReportEventPage(args: {
     if (!data) continue;
 
     projected.push(
+      // oxlint-disable-next-line junior/no-response-schema-parse -- Stored read: each stored event payload is checked here, and MCP readers use the result with no other parse.
       conversationReportEventSchema.parse({
         seq: event.seq,
         createdAt: new Date(event.createdAtMs).toISOString(),

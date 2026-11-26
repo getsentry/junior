@@ -4,6 +4,7 @@ import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
   PluginServiceAccountConfig,
+  PluginWorkloadIdentityCredentials,
 } from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
@@ -45,11 +46,16 @@ export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   domains: string[];
   apiHeaders?: Record<string, string>;
-  authTokenEnv: string;
+  /** Env var of a host token, and the Sandbox placeholder's name. Optional with `oauth`. */
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
 }
 
-export type PluginCredentials = OAuthBearerCredentials;
+export type WorkloadIdentityCredentials = PluginWorkloadIdentityCredentials;
+
+export type PluginCredentials =
+  | OAuthBearerCredentials
+  | WorkloadIdentityCredentials;
 
 export interface PluginEnvVarDeclaration {
   default?: string;
@@ -60,6 +66,8 @@ export interface PluginManifest {
   name: string;
   displayName: string;
   description: string;
+  /** Destination facts for action review. Only Guardian reads them. */
+  reviewContext?: string;
   configKeys: string[];
   domains?: string[];
   apiHeaders?: Record<string, string>;
@@ -76,6 +84,8 @@ export interface PluginManifest {
     configKey: string;
     commandFlags?: string[];
   };
+  /** See `toolsSendNoCredential` in the plugin API manifest. */
+  toolsSendNoCredential?: boolean;
 }
 
 type PluginRuntimeDependencyConfig =
@@ -117,6 +127,7 @@ type PluginCredentialConfig = PluginCredentialConfigBase & {
 export interface PluginManifestConfig {
   displayName?: string;
   description?: string;
+  reviewContext?: string | null;
   configKeys?: string[];
   domains?: string[] | null;
   apiHeaders?: Record<string, string | null> | null;
@@ -144,11 +155,12 @@ export interface PluginManifestConfig {
     configKey?: string;
     commandFlags?: string[] | null;
   } | null;
+  toolsSendNoCredential?: boolean | null;
 }
 
 /** Install-level plugin package list and manifest override catalog. */
 export interface PluginCatalogConfig {
-  inlineManifests?: InlinePluginManifestDefinition[];
+  inlineManifests?: InlinePluginManifestDefinition[] | undefined;
   packages?: string[];
   manifests?: Record<string, PluginManifestConfig>;
 }

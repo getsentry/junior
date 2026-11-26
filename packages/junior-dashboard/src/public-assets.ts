@@ -13,24 +13,25 @@ export const DASHBOARD_ASSETS_PATH = "/_junior/dashboard/assets";
 
 /** Path under the assets prefix of a content-hashed browser file. */
 export const DASHBOARD_PUBLIC_ASSET_NAME =
-  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|webp|woff2)$/;
+  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|png|webp|woff2)$/;
 
 /** File name of the content-hashed dashboard stylesheet. */
 export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
 
-/** File name of the content-hashed dashboard browser entry. */
-export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
+/** File name of the content-hashed client entry. */
+export const DASHBOARD_CLIENT_ENTRY_NAME = /^dashboard-[A-Za-z0-9]{8}\.js$/;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".png": "image/png",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
 };
 
 /** Return true when a public asset is binary, so builds embed it as base64. */
 export function isBinaryPublicAsset(file: string): boolean {
-  return file.endsWith(".webp") || file.endsWith(".woff2");
+  return /\.(?:png|webp|woff2)$/.test(file);
 }
 
 // Builds embed these files. Without them (tests and local development from
@@ -52,14 +53,18 @@ function publicDir(): string | undefined {
 /** File under `dist` where the client build names its entry and imports. */
 export const DASHBOARD_CLIENT_MANIFEST_FILE = "client-manifest.json";
 
+const publicAssetFilesSchema = z.array(
+  z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME),
+);
+
 /**
- * The client entry, every file it imports statically, the stylesheet, and
- * the fonts the first paint uses.
+ * The client entry and every file that it imports statically, the
+ * stylesheet, and the first-paint fonts.
  */
 export const dashboardClientManifestSchema = z.object({
   entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
-  fonts: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
-  imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
+  fonts: publicAssetFilesSchema,
+  imports: publicAssetFilesSchema,
   stylesheet: z.string().regex(DASHBOARD_STYLESHEET_NAME),
 });
 
@@ -78,7 +83,7 @@ export function readDashboardClientManifest(): DashboardClientManifest {
   const manifestPath =
     dir && path.join(dir, "..", DASHBOARD_CLIENT_MANIFEST_FILE);
   if (!manifestPath || !existsSync(manifestPath)) {
-    throw new Error("Junior dashboard client bundle was not found");
+    throw new Error("Dashboard client bundle was not found");
   }
   return dashboardClientManifestSchema.parse(
     JSON.parse(readFileSync(manifestPath, "utf8")),

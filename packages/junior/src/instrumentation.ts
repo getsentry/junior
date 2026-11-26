@@ -16,14 +16,16 @@ export {
 } from "@/chat/sentry-route-name";
 
 // Junior records its own gen_ai spans with usage and cost. These SDK spans
-// would duplicate them, and Pi reads provider streams itself, so they have no
-// usage. Remove this filter after getsentry/sentry-javascript#25869.
+// would duplicate them, and the provider ones have no usage because Pi reads
+// provider streams itself. Remove this filter after
+// getsentry/sentry-javascript#25869.
 const MANUAL_GEN_AI_INTEGRATIONS = new Set([
   "Anthropic_AI",
   "Google_GenAI",
   "Groq",
   "Mistral",
   "OpenAI",
+  "PiAi",
   "TogetherAI",
   "VercelAI",
 ]);
@@ -44,23 +46,23 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
 
 function getEnvironment(): string | undefined {
   return (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV
+    process.env["SENTRY_ENVIRONMENT"] ??
+    process.env["VERCEL_ENV"] ??
+    process.env["NODE_ENV"]
   );
 }
 
 function getTracesSampleRate(): number {
-  return getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1);
+  return getSampleRate(process.env["SENTRY_TRACES_SAMPLE_RATE"], 1);
 }
 
 /** Browser SDK settings and the current request's trace, for an HTML page. */
 export interface BrowserSentryConfig {
-  baggage?: string;
+  baggage?: string | undefined;
   dsn: string;
-  environment?: string;
-  release?: string;
-  sentryTrace?: string;
+  environment?: string | undefined;
+  release?: string | undefined;
+  sentryTrace?: string | undefined;
   tracesSampleRate: number;
 }
 
@@ -69,7 +71,7 @@ export interface BrowserSentryConfig {
  * project, continuing the trace of the request that rendered it.
  */
 export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
-  const dsn = process.env.SENTRY_DSN?.trim();
+  const dsn = process.env["SENTRY_DSN"]?.trim();
   if (!dsn) return undefined;
   const trace = Sentry.getTraceData();
   return {
@@ -88,8 +90,13 @@ export function initSentry(): void {
     return;
   }
 
-  const dsn = process.env.SENTRY_DSN;
-  const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
+  const dsn = process.env["SENTRY_DSN"];
+  // `SENTRY_SPOTLIGHT` sends events to a local server, such as the Sentry
+  // Local server that `pnpm dev` starts. Logs go there too.
+  const enableLogs = getBoolean(
+    process.env["SENTRY_ENABLE_LOGS"],
+    Boolean(dsn || process.env["SENTRY_SPOTLIGHT"]?.trim()),
+  );
   const serviceVersion = getDeploymentServiceVersion();
   const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
 
@@ -138,11 +145,22 @@ export function initSentry(): void {
     beforeSendSpan: scrubPrivateSentrySpan,
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
-        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+        (integration) =>
+          !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name) &&
+          // Dedupe drops an error event that matches the previous one, after
+          // `captureException` has returned its id. A failed Turn shows that
+          // id to the person as its reference, so each capture must send its
+          // event. Sentry still groups the events into one issue.
+          integration.name !== "Dedupe",
       ),
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.
   Sentry.getGlobalScope().setAttributes(deploymentSpanAttributes);
+  // `beforeSend` sees only error events. User feedback from `submitFeedback`
+  // carries the same request and breadcrumb data, so scrub it the same way.
+  Sentry.getGlobalScope().addEventProcessor((event) =>
+    event.type === "feedback" ? scrubPrivateSentryEvent(event) : event,
+  );
   subscribeGatewayRequestTiming();
 }

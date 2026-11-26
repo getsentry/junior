@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
+import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 afterEach(() => {
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
+  vi.doUnmock("#junior/system-prompts");
   vi.unstubAllEnvs();
 });
 
@@ -14,6 +17,7 @@ describe("createApp allowed domains", () => {
       fetch: () => new Response("dashboard"),
     }));
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp,
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
@@ -21,6 +25,7 @@ describe("createApp allowed domains", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts();
 
     const app = await createApp({
       allowedDomains: [" Sentry.io "],
@@ -36,6 +41,7 @@ describe("createApp allowed domains", () => {
 
   it("rejects the removed dashboard.allowedGoogleDomains option", async () => {
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp: vi.fn(),
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
@@ -43,6 +49,7 @@ describe("createApp allowed domains", () => {
       plugins: undefined,
       pluginRuntimeRegistrations: [],
     }));
+    mockBuiltSystemPrompts();
 
     await expect(
       createApp({
@@ -61,5 +68,45 @@ describe("createApp allowed domains", () => {
     await expect(
       createApp({ plugins: defineJuniorPlugins([]) }),
     ).rejects.toThrow("JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed");
+  });
+});
+
+describe("createApp dashboard links", () => {
+  it("configures Slack footer links from core dashboard options", async () => {
+    vi.doMock("#junior/config", () => ({
+      botName: "junior",
+      createDashboardApp: vi.fn((_options: unknown) => ({
+        fetch: () => new Response("dashboard"),
+      })),
+      functionMaxDurationSeconds: undefined,
+      dashboard: undefined,
+      pluginSet: defineJuniorPlugins([]),
+      plugins: undefined,
+      pluginRuntimeRegistrations: [],
+    }));
+    mockBuiltSystemPrompts();
+
+    await createApp({
+      dashboard: {
+        authRequired: false,
+        basePath: "/ops",
+        baseURL: "https://junior.example.com",
+      },
+      plugins: defineJuniorPlugins([]),
+    });
+
+    expect(
+      buildSlackReplyFooter({
+        conversationId: "slack:C123:1700000000.000100",
+      }),
+    ).toEqual({
+      items: [
+        {
+          label: "ID",
+          url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
+          value: "slack:C123:1700000000.000100",
+        },
+      ],
+    });
   });
 });

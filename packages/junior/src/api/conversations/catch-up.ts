@@ -1,7 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import type { ConversationReportEvent } from "@/api/schema/conversation";
-import { briefEntriesFromReportEvents } from "@/chat/briefs/event-entries";
-import { readConversationBriefThrough } from "@/chat/briefs/store";
+import { transcriptEntriesFromReportEvents } from "@/chat/conversations/transcript-entries";
 import { generateCatchUp } from "@/chat/catch-up/generate";
 import { botConfig } from "@/chat/config";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -27,6 +26,7 @@ async function readUnreadEvents(
   let count = 0;
   let beforeSeq: number | undefined = range.throughSeq + 1;
   while (beforeSeq !== undefined && beforeSeq > range.afterSeq + 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Each page reads back from the oldest row of the page before.
     const page = await readConversationEventPage(getSqlExecutor(), {
       beforeSeq,
       canExposePayload: true,
@@ -66,17 +66,16 @@ export async function catchUpOnConversation(
     throwApiError(403, "You do not have access to this conversation.");
   }
 
-  const [{ events, omittedEarlierRows }, brief] = await Promise.all([
-    readUnreadEvents(conversationId, range),
-    readConversationBriefThrough(getDb(), conversationId, range.afterSeq),
-  ]);
-  const entries = briefEntriesFromReportEvents(events);
+  const { events, omittedEarlierRows } = await readUnreadEvents(
+    conversationId,
+    range,
+  );
+  const entries = transcriptEntriesFromReportEvents(events);
   if (entries.length === 0) {
     throwApiError(404, "No unread messages to summarize.");
   }
 
   return await generateCatchUp({
-    ...(brief ? { brief: brief.content } : undefined),
     completeText,
     conversationId,
     // The Conversation pays for its catch-up.

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  logWarn,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -11,7 +12,6 @@ import {
   isAlreadyExistsError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
-import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
@@ -29,8 +29,6 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   stopSession,
   type CreateSandboxSessionInput,
-  type SandboxCommandResult,
-  type SandboxFileSystem,
   type SandboxNetworkPolicy,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
@@ -39,23 +37,19 @@ import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
-  SANDBOX_COMMAND_PATH,
-  SANDBOX_WORKSPACE_ROOT,
-} from "@/chat/sandbox/paths";
-/**
- * Size limit on the stdout and stderr that one command keeps, each. It keeps
- * a runaway command from filling the result and the Conversation history.
- * The tool pipeline cuts what the model sees to a much smaller size. The
- * providers still read all output before this limit applies.
- */
-const MAX_CAPTURED_OUTPUT_CHARS = 1_000_000;
-const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+  createToolExecutors,
+  type SandboxToolExecutors,
+} from "@/chat/sandbox/tool-executors";
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
+// Vercel stops a session 24 hours after it starts. A Turn replaces an older
+// session before work starts, so the cap does not stop a command mid-Turn.
+const SESSION_ROTATE_AFTER_MS = 20 * 60 * 60 * 1000;
 
 interface AcquiredSandbox {
   session: SandboxSession;
@@ -70,29 +64,13 @@ interface SandboxAcquisition {
   waiters: number;
 }
 
-interface SandboxToolExecutors {
-  sessionId: string;
-  bash: (input: {
-    command: string;
-    cwd?: string;
-    env?: Record<string, string>;
-    signal?: AbortSignal;
-    timeoutMs?: number;
-  }) => Promise<{
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    stdoutTruncated: boolean;
-    stderrTruncated: boolean;
-    aborted?: boolean;
-    timedOut?: boolean;
-  }>;
-  fs: SandboxFileSystem;
-  runCommand: SandboxSession["runCommand"];
-}
-
 interface SandboxRuntime {
   sandboxRef(): SandboxRef | undefined;
+  /**
+   * Record the session of a sandbox tool call. True when it replaced the
+   * session of the last tool call and that session's files are gone.
+   */
+  recordToolSession(tools: SandboxToolExecutors): Promise<boolean>;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   acquire(signal?: AbortSignal): Promise<SandboxSession>;
   tools(signal?: AbortSignal): Promise<SandboxToolExecutors>;
@@ -102,61 +80,53 @@ interface SandboxRuntime {
 
 interface ActiveSandbox {
   session: SandboxSession;
-  networkPolicyKey?: string;
+  networkPolicyKey?: string | undefined;
 }
 interface SandboxCandidate extends ActiveSandbox {
-  profileHash?: string;
+  profileHash?: string | undefined;
   ref: SandboxRef;
-  workspace?: Workspace;
+  workspace?: Workspace | undefined;
 }
 interface SandboxRuntimeOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  /**
+   * Replace a session near the provider's session cap before any work.
+   * Only safe when no unsaved work depends on the current session.
+   */
+  rotateOldSession?: boolean | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (
-    egressId: string,
-    traceHeaders?: TracePropagationHeaders,
-  ) => SandboxNetworkPolicy | undefined;
-  onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
-  onWorkspacePrepare?: (
-    sandbox: SandboxSession,
-    workspace: Workspace,
-    signal?: AbortSignal,
-  ) => Promise<WorkspaceFinalize | void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
-}
-
-function captureOutput(output: string): { value: string; truncated: boolean } {
-  if (output.length <= MAX_CAPTURED_OUTPUT_CHARS) {
-    return { value: output, truncated: false };
-  }
-  return {
-    value: `${output.slice(0, MAX_CAPTURED_OUTPUT_CHARS)}\n\n[output over the ${MAX_CAPTURED_OUTPUT_CHARS} char size limit: ${output.length - MAX_CAPTURED_OUTPUT_CHARS} chars not kept]`,
-    truncated: true,
-  };
+  timeoutMs?: number | undefined;
+  traceContext?: LogContext | undefined;
+  commandEnv?: (() => Promise<Record<string, string>>) | undefined;
+  createNetworkPolicy?:
+    | ((
+        egressId: string,
+        traceHeaders?: TracePropagationHeaders,
+      ) => SandboxNetworkPolicy | undefined)
+    | undefined;
+  onSandboxPrepare?:
+    | ((sandbox: SandboxSession) => void | Promise<void>)
+    | undefined;
+  onWorkspacePrepare?:
+    | ((
+        sandbox: SandboxSession,
+        workspace: Workspace,
+        signal?: AbortSignal,
+      ) => Promise<WorkspaceFinalize | void>)
+    | undefined;
+  onSandboxRefChanged?:
+    | ((sandboxRef: SandboxRef) => void | Promise<void>)
+    | undefined;
 }
 
 function parseKeepAliveMs(): number {
   const parsed = Number.parseInt(
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] ?? "0",
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function getCommandAbortedResult() {
-  return {
-    stdout: "",
-    stderr: "Command aborted because the agent turn was cancelled.",
-    exitCode: 130,
-    stdoutTruncated: false,
-    stderrTruncated: false,
-    aborted: true as const,
-  };
 }
 
 /** Own sandbox acquisition, preparation, and session-scoped tool caching. */
@@ -166,6 +136,7 @@ export function createSandboxRuntime(
   let activeSandbox: ActiveSandbox | null = null;
   let sandboxRef = options.sandboxRef;
   let reportedSandboxRef = options.sandboxRef;
+  let toolSession = options.sandboxRef?.toolSession;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: SandboxAcquisition | undefined;
@@ -179,8 +150,7 @@ export function createSandboxRuntime(
   let dependencyProfileHash =
     options.sandboxRef?.profileHash ??
     profileHash(SANDBOX_RUNTIME, activeWorkspace);
-  const resolveCommandEnv =
-    options.commandEnv ?? (async () => ({}) as Record<string, string>);
+  const resolveCommandEnv = options.commandEnv ?? (async () => ({}));
 
   const withSandboxSpan = <T>(
     name: string,
@@ -218,18 +188,33 @@ export function createSandboxRuntime(
   ): SandboxNetworkPolicy | undefined =>
     options.createNetworkPolicy?.(sandboxName);
 
-  const persistSandboxRef = async (nextRef: SandboxRef): Promise<void> => {
+  const persistSandboxRef = async (
+    ref: SandboxRef,
+    // Null clears it.
+    nextToolSession: SandboxRef["toolSession"] | null = toolSession,
+  ): Promise<void> => {
+    const { id, profileHash: hash, workspaceId } = ref;
+    const nextRef: SandboxRef = {
+      id,
+      ...(hash ? { profileHash: hash } : undefined),
+      ...(workspaceId ? { workspaceId } : undefined),
+      ...(nextToolSession ? { toolSession: nextToolSession } : undefined),
+    };
     if (
       reportedSandboxRef?.id === nextRef.id &&
       reportedSandboxRef.profileHash === nextRef.profileHash &&
-      reportedSandboxRef.workspaceId === nextRef.workspaceId
+      reportedSandboxRef.workspaceId === nextRef.workspaceId &&
+      reportedSandboxRef.toolSession?.sessionId ===
+        nextRef.toolSession?.sessionId
     ) {
       sandboxRef = nextRef;
+      toolSession = nextToolSession ?? undefined;
       return;
     }
     await options.onSandboxRefChanged?.(nextRef);
     sandboxRef = nextRef;
     reportedSandboxRef = nextRef;
+    toolSession = nextToolSession ?? undefined;
   };
 
   const sandboxReference = (
@@ -335,6 +320,19 @@ export function createSandboxRuntime(
     );
   };
 
+  /** Tell a command killed by a session stop from one that exited by signal. */
+  const throwIfSessionStopped = async (
+    targetSandbox: SandboxSession,
+  ): Promise<void> => {
+    try {
+      await probeSession(targetSandbox);
+    } catch (error) {
+      // Only a stopped session changes the result. Any other probe failure
+      // proves nothing about the command, so its own exit stands.
+      if (getSandboxProvider().errors.isUnavailable(error)) throw error;
+    }
+  };
+
   const createSandboxFromSnapshot = async (
     snapshotId: string,
     initialSandboxName: string,
@@ -348,6 +346,7 @@ export function createSandboxRuntime(
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Boot again only after the try before fails.
         return await createSession({
           timeoutMs,
           ...(networkPolicy
@@ -364,6 +363,7 @@ export function createSandboxRuntime(
         ) {
           throw error;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Wait before the next boot try.
         await sleep(SNAPSHOT_BOOT_RETRY_DELAY_MS, signal);
       }
     }
@@ -389,9 +389,9 @@ export function createSandboxRuntime(
     runtime: string;
     snapshot: Snapshot;
     sandboxName: string;
-    signal?: AbortSignal;
-    workspace?: Workspace;
-    prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
+    signal?: AbortSignal | undefined;
+    workspace?: Workspace | undefined;
+    prepareWorkspace?: ((sandbox: SandboxSession) => Promise<void>) | undefined;
   }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
     const { runtime, snapshot, sandboxName, signal } = params;
     signal?.throwIfAborted();
@@ -576,9 +576,8 @@ export function createSandboxRuntime(
       return null;
     }
 
-    let hintedSandbox: SandboxSession | null = null;
-    try {
-      hintedSandbox = await withSandboxSpan(
+    const getHintedSandbox = () =>
+      withSandboxSpan(
         "sandbox.get",
         "sandbox.get",
         {
@@ -592,6 +591,25 @@ export function createSandboxRuntime(
             scopeSignal: signal,
           }),
       );
+    let hintedSandbox: SandboxSession | null = null;
+    try {
+      hintedSandbox = await getHintedSandbox();
+      if (
+        options.rotateOldSession &&
+        Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS
+      ) {
+        const oldSessionId = hintedSandbox.sessionId;
+        await stopSession(hintedSandbox);
+        hintedSandbox = await getHintedSandbox();
+        // The same session id means the stop did not take. Keep the session:
+        // the replaced-sandbox notice still covers a later kill by the cap.
+        if (hintedSandbox.sessionId === oldSessionId) {
+          logWarn("sandbox.session.rotation.failed", {
+            "app.sandbox.session.age_ms":
+              Date.now() - hintedSandbox.startedAtMs,
+          });
+        }
+      }
     } catch (error) {
       if (getSandboxProvider().errors.isMissing(error)) {
         sandboxRef = undefined;
@@ -652,7 +670,7 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async (setSpanAttributes) => {
-        const cachedSandbox = await tryReuseCachedSandbox();
+        const cachedSandbox = tryReuseCachedSandbox();
         if (cachedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return { session: cachedSandbox, fresh: false };
@@ -702,6 +720,7 @@ export function createSandboxRuntime(
       let removeAbortListener: (() => void) | undefined;
       try {
         if (!signal) {
+          // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
           return await acquisition.promise;
         }
         const aborted = new Promise<never>((_resolve, reject) => {
@@ -710,6 +729,7 @@ export function createSandboxRuntime(
           removeAbortListener = () =>
             signal.removeEventListener("abort", onAbort);
         });
+        // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
         return await Promise.race([acquisition.promise, aborted]);
       } catch (error) {
         signal?.throwIfAborted();
@@ -727,26 +747,6 @@ export function createSandboxRuntime(
         }
       }
     }
-  };
-
-  const readCommandOutput = async (
-    commandResult: SandboxCommandResult,
-  ): Promise<{
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    stdoutTruncated: boolean;
-    stderrTruncated: boolean;
-  }> => {
-    const stdout = captureOutput(commandResult.stdout);
-    const stderr = captureOutput(commandResult.stderr);
-    return {
-      stdout: stdout.value,
-      stderr: stderr.value,
-      exitCode: commandResult.exitCode,
-      stdoutTruncated: stdout.truncated,
-      stderrTruncated: stderr.truncated,
-    };
   };
 
   const extendKeepAlive = async (session: SandboxSession): Promise<void> => {
@@ -775,7 +775,7 @@ export function createSandboxRuntime(
       Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
     );
     const schedule = (): void => {
-      keepAliveTimer = setTimeout(async () => {
+      const tick = async (): Promise<void> => {
         keepAliveTimer = undefined;
         if (closed || activeSandbox?.session !== session) return;
         try {
@@ -786,92 +786,11 @@ export function createSandboxRuntime(
         }
         if (closed || activeSandbox?.session !== session) return;
         schedule();
-      }, intervalMs);
+      };
+      keepAliveTimer = setTimeout(() => void tick(), intervalMs);
       keepAliveTimer.unref?.();
     };
     schedule();
-  };
-
-  const createToolExecutors = (
-    sandboxInstance: SandboxSession,
-  ): SandboxToolExecutors => {
-    return {
-      sessionId: sandboxInstance.sessionId,
-      bash: async (input) => {
-        let timedOut = false;
-        let aborted = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let onAbort: (() => void) | undefined;
-        try {
-          if (input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          const sandboxCommandEnv = await resolveCommandEnv();
-          if (input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          const script = buildNonInteractiveShellScript(input.command, {
-            env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
-            path: SANDBOX_COMMAND_PATH,
-          });
-          const controller = new AbortController();
-          const timeoutMs =
-            input.timeoutMs && input.timeoutMs > 0
-              ? input.timeoutMs
-              : DEFAULT_BASH_COMMAND_TIMEOUT_MS;
-          onAbort = () => {
-            aborted = true;
-            controller.abort(input.signal?.reason);
-          };
-          if (input.signal) {
-            input.signal.addEventListener("abort", onAbort, { once: true });
-            if (input.signal.aborted) {
-              onAbort();
-            }
-          }
-          timeoutId = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-          }, timeoutMs);
-          timeoutId.unref?.();
-          const commandResult = await sandboxInstance.runCommand({
-            cmd: "bash",
-            args: ["-c", script],
-            cwd: input.cwd ?? SANDBOX_WORKSPACE_ROOT,
-            signal: controller.signal,
-          });
-          return await readCommandOutput(commandResult);
-        } catch (error) {
-          if (timedOut) {
-            return {
-              stdout: "",
-              stderr: `Command timed out after ${
-                input.timeoutMs && input.timeoutMs > 0
-                  ? input.timeoutMs
-                  : DEFAULT_BASH_COMMAND_TIMEOUT_MS
-              }ms`,
-              exitCode: 124,
-              stdoutTruncated: false,
-              stderrTruncated: false,
-              timedOut: true,
-            };
-          }
-          if (aborted || input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          throw error;
-        } finally {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          if (input.signal && onAbort) {
-            input.signal.removeEventListener("abort", onAbort);
-          }
-        }
-      },
-      fs: sandboxInstance.fs as SandboxFileSystem,
-      runCommand: async (input) => await sandboxInstance.runCommand(input),
-    };
   };
 
   const ensureReadySandbox = async (
@@ -894,6 +813,24 @@ export function createSandboxRuntime(
   return {
     sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
+    },
+    async recordToolSession(tools) {
+      const previous = toolSession;
+      if (!sandboxRef || previous?.sessionId === tools.sessionId) return false;
+      // Set it before the write, so a parallel call on the same session
+      // does not report the replacement again.
+      toolSession = { sandboxId: tools.sandboxId, sessionId: tools.sessionId };
+      try {
+        await persistSandboxRef(sandboxRef);
+      } catch (error) {
+        toolSession = previous;
+        throw error;
+      }
+      if (!previous) return false;
+      return (
+        previous.sandboxId !== tools.sandboxId ||
+        !tools.keepsFilesAcrossSessions
+      );
     },
     async switchWorkspace(workspace, signal) {
       signal?.throwIfAborted();
@@ -929,7 +866,8 @@ export function createSandboxRuntime(
         signal?.throwIfAborted();
         await extendKeepAlive(candidate.session);
         signal?.throwIfAborted();
-        await persistSandboxRef(candidate.ref);
+        // The switch result already says that files do not carry over.
+        await persistSandboxRef(candidate.ref, null);
       } catch (error) {
         await stopSession(candidate?.session);
         throw error;
@@ -958,7 +896,10 @@ export function createSandboxRuntime(
       return (await getOrAcquireSandbox(signal)).session;
     },
     async tools(signal) {
-      return createToolExecutors(await ensureReadySandbox(signal));
+      return createToolExecutors(await ensureReadySandbox(signal), {
+        commandEnv: resolveCommandEnv,
+        throwIfSessionStopped,
+      });
     },
     async refreshNetworkPolicy(traceHeaders) {
       const active = activeSandbox;

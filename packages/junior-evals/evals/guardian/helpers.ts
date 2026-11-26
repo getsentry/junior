@@ -68,6 +68,19 @@ export function localContext(
   };
 }
 
+/** A private dashboard Conversation with no Slack channel, like a private Space's Lead. */
+export function privateWebContext(
+  userIntent: string,
+): ToolActionProposal["context"] {
+  return localContext(userIntent, {
+    source: {
+      kind: "web",
+      visibility: "private",
+      conversationId: LOCAL_CONVERSATION_ID,
+    },
+  });
+}
+
 /** Core-owned Slack actor/context defaults for one proposal snapshot. */
 export function slackContext(
   userIntent: string,
@@ -138,12 +151,12 @@ export async function proposal(input: {
   context: ToolActionProposal["context"];
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
-  priorRejectedActions?: PriorRejectionSnapshot[];
+  priorRejectedActions?: PriorRejectionSnapshot[] | undefined;
   /**
    * Author-labeled root Conversation, as core reads it at review time. For a
    * person's root Run, it is built from the evidence when not given.
    */
-  root?: RootConversationMessage[];
+  root?: RootConversationMessage[] | undefined;
   /** The Code Mode script that made the call, as core bounds it. */
   script?: ToolActionScript;
   tool: SnapshotTool;
@@ -164,11 +177,13 @@ export async function proposal(input: {
   );
   return {
     context: input.context,
-    ...(input.evidence ? { evidence: input.evidence } : {}),
+    ...(input.evidence ? { evidence: input.evidence } : undefined),
     input: input.input,
-    ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
-    ...(root ? { rootConversation: { messages: root, truncated: false } } : {}),
-    ...(input.script ? { script: input.script } : {}),
+    ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : undefined),
+    ...(root
+      ? { rootConversation: { messages: root, truncated: false } }
+      : undefined),
+    ...(input.script ? { script: input.script } : undefined),
     tool: await resolveTool(input.tool, input.input),
   };
 }
@@ -198,9 +213,9 @@ export function priorRejection(input: {
     input: input.input,
     reason: input.reason,
     tool: input.tool,
-    ...(input.riskLevel ? { riskLevel: input.riskLevel } : {}),
+    ...(input.riskLevel ? { riskLevel: input.riskLevel } : undefined),
     ...(input.userAuthorization
       ? { userAuthorization: input.userAuthorization }
-      : {}),
+      : undefined),
   };
 }

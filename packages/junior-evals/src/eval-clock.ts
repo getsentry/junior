@@ -1,5 +1,6 @@
 /**
- * The eval clock: `Date` that starts each test at the same instant.
+ * The eval clock: `Date` that starts each test at the same instant
+ * (`@sentry/junior-testing/clock`).
  *
  * Recordings keep the times that the model calculates from "now", such as
  * the end of a search window three days later. If "now" changed between the
@@ -8,7 +9,11 @@
  *
  * The clock replaces only `Date`. It moves forward in real time from the
  * start of each test, so waits and deadlines still work. Timers and
- * `performance.now()` stay real.
+ * `performance.now()` stay real, because time budgets use it. So Pi's
+ * `durationMs` on saved messages changes on each run, and so does the
+ * `payload_json_bytes` of a saved message that event search leaves out.
+ * The `pi-duration-ms` and `payload-json-bytes` values of the model rule
+ * in `roach.json` replace them in requests.
  *
  * The eval worker and the main process both install the clock. The worker
  * makes leases, tokens, and fixture credentials with its clock, and the main
@@ -24,42 +29,3 @@
  * such as `VERCEL_OIDC_TOKEN`, are then not expired by the eval clock.
  */
 export const EVAL_START_MS = Date.parse("2026-10-12T16:00:00Z");
-
-/** Control of the eval clock in one process. */
-export interface EvalClock {
-  /** Set the eval time. The clock moves forward in real time from it. */
-  set(nowMs: number): void;
-  /** The real time, for checks of real external tokens. */
-  realNow(): number;
-}
-
-// Setup files run again for each test file in a worker, so the clock lives
-// on `globalThis`. A second install would wrap the first one.
-const EVAL_CLOCK = Symbol.for("junior-evals.clock");
-
-/** Replace `Date` with the eval clock one time in this process. */
-export function installEvalClock(): EvalClock {
-  const globals = globalThis as { [EVAL_CLOCK]?: EvalClock };
-  return (globals[EVAL_CLOCK] ??= replaceDate());
-}
-
-function replaceDate(): EvalClock {
-  const RealDate = Date;
-  let offsetMs = 0;
-  const now = () => RealDate.now() + offsetMs;
-  // A proxy keeps `instanceof Date`, `Date.prototype`, and subclasses of
-  // `Date` working. Only `Date.now()`, `new Date()`, and `Date()` change.
-  globalThis.Date = new Proxy(RealDate, {
-    apply: () => new RealDate(now()).toString(),
-    construct: (target, args, newTarget) =>
-      Reflect.construct(target, args.length === 0 ? [now()] : args, newTarget),
-    get: (target, key, receiver) =>
-      key === "now" ? now : Reflect.get(target, key, receiver),
-  });
-  return {
-    set: (nowMs) => {
-      offsetMs = nowMs - RealDate.now();
-    },
-    realNow: () => RealDate.now(),
-  };
-}

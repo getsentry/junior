@@ -2,6 +2,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { DeliverMessage } from "@/chat/task-execution/assistant-message";
 import { RetryableDeliveryError } from "@/chat/agent/types";
+import { getLocationConfigurationService } from "@/chat/runtime/thread-state";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
@@ -14,12 +15,12 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
  */
 export function createSlackSystemTurnDelivery(args: {
   getSlackAdapter: () => SlackAdapter;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): DeliverMessage {
   return async ({ conversationId, location, text, cards }) => {
     if (location.provider !== "slack") {
       throw new Error(
-        `Slack system Turn cannot deliver to ${location.provider} Location`,
+        `Slack system Turn cannot deliver to ${String(location.provider)} Location`,
       );
     }
     let messageIds: string[];
@@ -33,6 +34,15 @@ export function createSlackSystemTurnDelivery(args: {
             ...resolveSlackReplyTarget({ destination: location, location }),
             cards,
             conversationId,
+            // Plugin formatting reads the Location defaults, as Slack Turns do.
+            formatting: {
+              configuration: await getLocationConfigurationService({
+                platform: "slack",
+                teamId: location.teamId,
+                channelId: location.channelId,
+              }).resolveValues(),
+              teamId: location.teamId,
+            },
             text,
           }),
       });

@@ -31,7 +31,7 @@ function decode(key: string, envelope: string): EncryptedStateRead | undefined {
     decrypted = decryptSecret(envelope, key);
   } catch (error) {
     if (!(error instanceof UnreadableSecretError)) throw error;
-    logWarn("encryption.secret_unreadable", { "error.type": error.reason });
+    logWarn("encryption.secret.unreadable", { "error.type": error.reason });
     return undefined;
   }
   return { stale: decrypted.stale, value: JSON.parse(decrypted.text) };

@@ -10,12 +10,13 @@ import {
 } from "../components/ui/collapsible";
 import { Link } from "react-router";
 import { ObjectIcon } from "../components/ObjectIcon";
-import { automationPath, formatRelativeTime } from "../format";
+import { automationPath } from "../format";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
-import { cn } from "../styles";
+import { cn, dashboardMessageCardClass } from "../styles";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
+import { formatRelativeTime } from "../time";
 
 type SourceTask = NonNullable<ConversationDetailReport["sourceTask"]>;
 
@@ -59,7 +60,7 @@ export function TranscriptAutomationTriggerView(props: {
   const details = [
     props.sourceTask.triggerLabel,
     props.message.timestamp
-      ? formatRelativeTime(new Date(props.message.timestamp).toISOString())
+      ? formatRelativeTime(props.message.timestamp)
       : undefined,
     runsAsLabel(props.sourceTask),
   ].filter(Boolean);
@@ -67,7 +68,10 @@ export function TranscriptAutomationTriggerView(props: {
   return (
     <section
       aria-label={name}
-      className="grid w-full min-w-0 max-w-[37.5rem] gap-2 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-4 py-3"
+      className={cn(
+        "grid w-full min-w-0 max-w-[37.5rem] gap-2 px-4 py-3",
+        dashboardMessageCardClass,
+      )}
     >
       <div className="flex min-w-0 items-center gap-3">
         <ObjectIcon objectType="automation" size={16} decorative />

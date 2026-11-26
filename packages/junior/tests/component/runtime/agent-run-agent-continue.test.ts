@@ -10,11 +10,7 @@ const { continueCalls, promptAborted, promptCalls, promptMode, promptSettled } =
     promptAborted: { value: false },
     promptCalls: { value: 0 },
     promptMode: {
-      value: "settlesAfterAbort" as
-        | "settlesAfterAbort"
-        | "hangsAfterAbort"
-        | "continueSettlesAfterAbort"
-        | "providerRetryThenHangs",
+      value: "settlesAfterAbort",
     },
     promptSettled: { value: false },
   }));
@@ -100,7 +96,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -232,7 +235,9 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: () => "System prompt",
+    buildCoreSystemPromptSections: () => [
+      { name: "core", text: "System prompt" },
+    ],
   };
 });
 
@@ -274,7 +279,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";
@@ -310,7 +315,7 @@ describe("paused turn composition", () => {
     promptCalls.value = 0;
     promptMode.value = "settlesAfterAbort";
     promptSettled.value = false;
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
   });
@@ -318,7 +323,7 @@ describe("paused turn composition", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
   });
 
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
@@ -352,6 +357,7 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),
@@ -512,6 +518,7 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),
@@ -569,6 +576,7 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),

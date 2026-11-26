@@ -1,0 +1,8 @@
+id: e2e-no-reduced-motion-override
+valid:
+  - 'await page.emulateMedia({ colorScheme: "light" });'
+  - "test.use({ hasTouch: true });"
+invalid:
+  - 'await page.emulateMedia({ reducedMotion: "no-preference" });'
+  - 'test.use({ contextOptions: { reducedMotion: "no-preference" } });'
+  - 'await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });'

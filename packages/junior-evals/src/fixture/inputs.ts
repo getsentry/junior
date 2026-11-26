@@ -3,6 +3,8 @@
  * route that production uses. History items use the same builders.
  */
 
+import type { JsonValue } from "@earendil-works/pi-ai";
+
 /** A Slack person. The Slack mock answers `users.info` with these fields. */
 export interface SlackAuthor {
   fullName?: string;
@@ -78,28 +80,28 @@ export interface AppHomeUnlinkInput {
 /** A dashboard message through `POST /api/conversations`. */
 export interface WebMessageInput {
   kind: "web_message";
-  /** Images that the person added to the message. */
-  images?: FileInput[];
-  /** After the post, the person steers the queued message into the running turn. */
-  steer?: boolean;
+  /** Files that the person added to the message. */
+  files?: FileInput[];
+  /** Send it to the Lead of a new Space that the person creates. */
+  lead?: boolean;
   text: string;
 }
 
 /**
- * A person's answer or dismiss on the review desk, through
- * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
- * web Conversation and assigns it to the person, as `addReviewItem` would.
+ * A person's answer or dismiss in the Inbox, through
+ * `POST /api/inbox-items/:id/actions`. The fixture first links `item` to the
+ * web Conversation and assigns it to the person, as `addInboxItem` would.
  */
-export interface ReviewItemActionInput {
-  kind: "review_item_action";
+export interface InboxItemActionInput {
+  kind: "inbox_item_action";
   action: "submit" | "dismiss";
-  item: ReviewDeskItem;
+  item: InboxItem;
   /** The answer, by field id. */
   values?: Record<string, string[]>;
 }
 
-/** An open item that a `ReviewItemActionInput` acts on. */
-export interface ReviewDeskItem {
+/** An open item that a `InboxItemActionInput` acts on. */
+export interface InboxItem {
   body: string;
   /** Without a request, the item is a notice. */
   request?: {
@@ -151,7 +153,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
 export type Input =
   | MessageInput
-  | ReviewItemActionInput
+  | InboxItemActionInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -159,9 +161,9 @@ export type Input =
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: Record<string, JsonValue>;
   /** The tool output that the model saw. */
-  result: unknown;
+  result: JsonValue;
 }
 
 /** An earlier Junior reply in loaded history. */
@@ -169,7 +171,7 @@ export interface HistoryReply {
   kind: "reply";
   text: string;
   /** Completed tool calls before this reply. People did not see them. */
-  toolHistory?: HistoryToolCall[];
+  toolHistory?: HistoryToolCall[] | undefined;
 }
 
 /**
@@ -229,25 +231,25 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { images?: FileInput[]; steer?: boolean } = {},
+  options: { files?: FileInput[]; lead?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }
 
-/** Answer a review desk item from the dashboard, by field id. */
-export function reviewItemAnswer(
-  item: ReviewDeskItem,
+/** Answer an Inbox item from the dashboard, by field id. */
+export function inboxItemAnswer(
+  item: InboxItem,
   values: Record<string, string[]>,
-): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "submit", item, values };
+): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "submit", item, values };
 }
 
-/** Dismiss a review desk item from the dashboard. */
-export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "dismiss", item };
+/** Dismiss an Inbox item from the dashboard. */
+export function inboxItemDismiss(item: InboxItem): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "dismiss", item };
 }
 
-/** A file for `files` or `images`. A string is the text of the file. */
+/** A file for `files`. A string is the text of the file. */
 export function file(
   name: string,
   mimeType: string,

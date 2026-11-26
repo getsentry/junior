@@ -25,13 +25,13 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`
-- `@sentry/junior-memory`
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
 - `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-vimeo`
 - `@sentry/junior-xdotcom`
 
 ## Package release

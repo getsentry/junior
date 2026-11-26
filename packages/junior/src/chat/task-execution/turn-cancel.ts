@@ -4,8 +4,8 @@
  */
 import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+
 import {
   getPersistedThreadState,
   persistThreadStateById,
@@ -27,7 +27,7 @@ export async function completeCancelledConversationTurn(args: {
   acknowledge(): Promise<void>;
   conversation: ThreadConversationState;
   conversationId: string;
-  sandboxRef?: SandboxRef;
+  sandboxRef?: SandboxRef | undefined;
   turnId: string;
   userMessageId: string | undefined;
 }): Promise<void> {
@@ -60,9 +60,7 @@ export async function completeCancelledConversationTurn(args: {
     conversation: args.conversation,
     sandboxRef: args.sandboxRef,
   });
-  await new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  ).complete({
+  await getTurnLifecycle().complete({
     conversationId: args.conversationId,
     createdAtMs: Date.now(),
     outcome: "cancelled",

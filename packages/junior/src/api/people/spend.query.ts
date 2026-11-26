@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { microUsdToUsd } from "@/db/micro-usd";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationMetrics,
@@ -11,14 +12,10 @@ import {
   normalizeEmail,
   turnMetricColumns,
   verifiedActorWhere,
-} from "./shared";
+} from "./person-report";
 
 const SEVEN_DAY_OFFSET = 6;
 const THIRTY_DAY_OFFSET = 29;
-
-function addUsd(current: number, next: number): number {
-  return Math.round((current + next) * 1e12) / 1e12;
-}
 
 function spendWindow(nowMs: number) {
   const end = new Date(nowMs);
@@ -28,7 +25,7 @@ function spendWindow(nowMs: number) {
   sevenDayStart.setUTCDate(sevenDayStart.getUTCDate() - SEVEN_DAY_OFFSET);
   const thirtyDayStart = new Date(currentDay);
   thirtyDayStart.setUTCDate(thirtyDayStart.getUTCDate() - THIRTY_DAY_OFFSET);
-  return { end, sevenDayStart, thirtyDayStart };
+  return { currentDay, end, sevenDayStart, thirtyDayStart };
 }
 
 /** Match the viewer's own Turn cost rows in the spend window. */
@@ -38,7 +35,7 @@ function viewerWindowWhere(email: string, nowMs: number) {
   return normalizedEmail
     ? and(
         verifiedActorWhere(normalizedEmail),
-        eq(juniorConversationMetrics.metric, "cost_usd"),
+        eq(juniorConversationMetrics.metric, "cost_micro_usd"),
         gte(juniorConversationMetrics.occurredAt, thirtyDayStart),
         lte(juniorConversationMetrics.occurredAt, end),
       )
@@ -52,7 +49,7 @@ function personalSpendDaysQuery(email: string, nowMs: number) {
     'YYYY-MM-DD'
   )`;
   return getDb()
-    .select({ costUsd: turnMetricColumns.costUsd, date })
+    .select({ costMicroUsd: turnMetricColumns.costMicroUsd, date })
     .from(juniorConversationMetrics)
     .innerJoin(
       juniorIdentities,
@@ -77,15 +74,15 @@ export function personalSpendVersionQuery(
   nowMs: number,
 ) {
   const { sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
-  // Rounding drops float noise from the order in which rows are summed.
+  // Micro-USD sums are exact, so row order does not change the marker.
   return db
     .select({
       version: sql<string>`concat_ws(':',
         ${thirtyDayStart.toISOString().slice(0, 10)}::text,
-        round(sum(${juniorConversationMetrics.value})::numeric, 9),
-        round((sum(${juniorConversationMetrics.value}) filter (
+        sum(${juniorConversationMetrics.value})::bigint,
+        (sum(${juniorConversationMetrics.value}) filter (
           where ${juniorConversationMetrics.occurredAt} >= ${sevenDayStart}
-        ))::numeric, 9)
+        ))::bigint
       )`,
     })
     .from(juniorConversationMetrics)
@@ -102,26 +99,28 @@ export async function readPersonalSpendFromSql(
   email: string,
   nowMs = Date.now(),
 ): Promise<PersonalSpendReport> {
-  const { end, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
+  const { currentDay, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
   const rows = await personalSpendDaysQuery(email, nowMs);
 
   const sevenDayStartDate = sevenDayStart.toISOString().slice(0, 10);
-  let sevenDaysUsd = 0;
-  let thirtyDaysUsd = 0;
+  let sevenDaysMicroUsd = 0;
+  let thirtyDaysMicroUsd = 0;
   for (const row of rows) {
-    if (row.costUsd === null) continue;
-    thirtyDaysUsd = addUsd(thirtyDaysUsd, row.costUsd);
+    if (row.costMicroUsd === null) continue;
+    thirtyDaysMicroUsd += row.costMicroUsd;
     if (row.date >= sevenDayStartDate) {
-      sevenDaysUsd = addUsd(sevenDaysUsd, row.costUsd);
+      sevenDaysMicroUsd += row.costMicroUsd;
     }
   }
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
-    sevenDaysUsd,
+    sevenDaysUsd: microUsdToUsd(sevenDaysMicroUsd),
     source: "conversation_index",
-    thirtyDaysUsd,
-    windowEnd: end.toISOString(),
+    thirtyDaysUsd: microUsdToUsd(thirtyDaysMicroUsd),
+    // The window's last UTC day, as other day windows report it. The read
+    // time would change the body, and its revalidation token, on each read.
+    windowEnd: currentDay.toISOString(),
     windowStart: thirtyDayStart.toISOString(),
   };
 }

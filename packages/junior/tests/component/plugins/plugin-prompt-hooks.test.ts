@@ -7,10 +7,11 @@ import {
   it,
   vi,
 } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -32,7 +33,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -47,7 +51,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }) {
       captured.systemPrompt = input.initialState.systemPrompt;
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -56,7 +67,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -75,6 +87,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       captured.promptContextMessages.push([...this.state.messages]);
       captured.promptMessages.push(message);
       this.state.messages.push(message);
+      // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+      // the next model call.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });
@@ -114,14 +131,16 @@ vi.mock("@/chat/pi/client", () => ({
 import {
   defineJuniorPlugin,
   definePromptContext,
+  type PromptContextContribution,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -141,7 +160,7 @@ describe("plugin prompt hook composition", () => {
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -169,9 +188,9 @@ describe("plugin prompt hook composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 
@@ -206,10 +225,21 @@ describe("plugin prompt hook composition", () => {
       }),
       renderPrompt: ({ memories }) => memories[0]!.content,
     });
+    // A plain method that reads `this`, not a definePromptContext closure.
+    const note: PromptContextContribution = {
+      context: {
+        kind: "note",
+        version: 1,
+        content: { note: "Run the tests." },
+      },
+      renderPrompt() {
+        return String(this.context.content["note"]);
+      },
+    };
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -219,6 +249,7 @@ describe("plugin prompt hook composition", () => {
               recall({
                 memories: [{ id: "memory-1", content: "Use pnpm." }],
               }),
+              note,
             ];
           },
         },
@@ -237,19 +268,35 @@ describe("plugin prompt hook composition", () => {
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "Use pnpm.",
     );
-    const stored = await getConversationEventStore().loadByIdempotencyKey(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
+      "Run the tests.",
+    );
+    const eventStore = getConversationEventStore();
+    const stored = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "recall",
       version: 1,
       content: {
         memories: [{ id: "memory-1", content: "Use pnpm." }],
       },
+    });
+    const storedMethod = await eventStore.loadByIdempotencyKey(
+      LOCAL_DESTINATION.conversationId,
+      `turn:${turnId}:context:notes:1`,
+    );
+    expect(storedMethod?.data).toEqual({
+      type: "turn_context",
+      turnId,
+      pluginName: "notes",
+      kind: "note",
+      version: 1,
+      content: { note: "Run the tests." },
     });
   });
 
@@ -266,7 +313,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -296,6 +343,7 @@ describe("plugin prompt hook composition", () => {
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     };
+    await recordTurnStart(request.conversationId, turnId);
     await expect(
       executeAgentRun({
         ...request,
@@ -318,7 +366,7 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toMatchObject({
       type: "turn_context",
@@ -348,14 +396,14 @@ describe("plugin prompt hook composition", () => {
       instruction: {
         text: "again",
       },
-      history: [
+      history: committedHistory([
         firstPromptMessage,
         {
           role: "assistant",
           content: [{ type: "text", text: "Done." }],
           stopReason: "stop",
         },
-      ] as never,
+      ] as never),
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     });
@@ -422,6 +470,10 @@ describe("plugin prompt hook composition", () => {
   });
 
   it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
+    await recordTurnStart(
+      LOCAL_DESTINATION.conversationId,
+      "turn-plugin-prompt-resume-after-prompt",
+    );
     await upsertTurnRecord({
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-resume-after-prompt",
@@ -434,7 +486,7 @@ describe("plugin prompt hook composition", () => {
           timestamp: Date.now(),
         },
       ] as never,
-      turnStartMessageIndex: 0,
+      promptSaved: true,
       resumeReason: "timeout",
       errorMessage: "timed out",
     });

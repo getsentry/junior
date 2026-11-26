@@ -1,4 +1,8 @@
-import type { AnyToolDefinition, ToolExposure } from "@/chat/tools/definition";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
+import type {
+  AnyToolDefinition,
+  ToolExposure,
+} from "@/chat/tool-support/definition";
 
 export interface PlannedToolExposure {
   /** Tools that `searchTools` finds and `executeTool` runs. */
@@ -16,35 +20,46 @@ export function effectiveToolExposure(
   return definition.exposure ?? "direct";
 }
 
+/**
+ * Return the tool as a Turn lists it. A deferred tool that the Turn's tool
+ * config names in `direct` is in the model tool list. Other exposures do not
+ * change, so `direct` cannot reveal a Code Mode-only or hidden tool.
+ */
+export function listedToolExposure<T extends AnyToolDefinition>(
+  listedTools: Pick<TurnBehavior["tools"], "direct">,
+  name: string,
+  tool: T,
+): T {
+  return listedTools.direct?.includes(name) &&
+    effectiveToolExposure(tool) === "deferred"
+    ? { ...tool, exposure: "direct" }
+    : tool;
+}
+
+// The table in the `ToolExposure` JSDoc, as data.
+const EXPOSURE_TABLES = {
+  direct: ["directTools", "catalogTools", "scriptTools"],
+  deferred: ["catalogTools", "scriptTools"],
+  modelOnly: ["directTools"],
+  codemode: ["scriptTools"],
+  hidden: [],
+} satisfies Record<ToolExposure, (keyof PlannedToolExposure)[]>;
+
 /** Plan which callers may call each tool. `ToolExposure` owns the rules. */
 export function planToolExposure(
   tools: Record<string, AnyToolDefinition>,
 ): PlannedToolExposure {
-  const directTools: Record<string, AnyToolDefinition> = {};
-  const catalogTools: Record<string, AnyToolDefinition> = {};
-  const scriptTools: Record<string, AnyToolDefinition> = {};
+  const planned: PlannedToolExposure = {
+    catalogTools: {},
+    directTools: {},
+    scriptTools: {},
+  };
 
   for (const [name, definition] of Object.entries(tools)) {
-    switch (effectiveToolExposure(definition)) {
-      case "direct":
-        directTools[name] = definition;
-        catalogTools[name] = definition;
-        scriptTools[name] = definition;
-        break;
-      case "deferred":
-        catalogTools[name] = definition;
-        scriptTools[name] = definition;
-        break;
-      case "modelOnly":
-        directTools[name] = definition;
-        break;
-      case "codemode":
-        scriptTools[name] = definition;
-        break;
-      case "hidden":
-        break;
+    for (const table of EXPOSURE_TABLES[effectiveToolExposure(definition)]) {
+      planned[table][name] = definition;
     }
   }
 
-  return { catalogTools, directTools, scriptTools };
+  return planned;
 }

@@ -6,8 +6,15 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page, Route } from "@playwright/test";
+import { setTimeout as delay } from "node:timers/promises";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+import { mockSearchRows } from "./search-fixture";
+import type * as DashboardApp from "../src/app";
+
+// The built dashboard. A plain string keeps the type check from needing a
+// build; `DashboardApp` gives it the source's types.
+const BUILT_APP = "../dist/app.js";
 
 /**
  * Add the mailbox that a first detail read asks for, so a mocked detail report
@@ -28,10 +35,19 @@ export function withRequestedMailbox<T extends { conversationId: string }>(
     : report;
 }
 
+/** The Conversation ids that a versions poll asks tokens for. */
+export function requestedConversationIds(route: Route): string[] {
+  const ids = new URL(route.request().url()).searchParams.get(
+    "conversationIds",
+  );
+  return ids ? ids.split(",") : [];
+}
+
 /**
- * Answer the versions poll with a tree token for the open Conversation, so
- * a mocked detail that sends the same token refreshes when it moves, as on
- * the server. The other tokens stay fixed.
+ * Answer the versions poll with one tree token for each requested
+ * Conversation, so a mocked detail that sends the same token refreshes when
+ * it moves, as on the server. Mock details send no token, so the others do
+ * not refresh. The other tokens stay fixed.
  */
 export async function routeConversationVersion(
   page: Page,
@@ -40,13 +56,240 @@ export async function routeConversationVersion(
   await page.route("**/api/versions*", (route) =>
     route.fulfill({
       json: {
-        conversation: conversationVersion(),
+        conversationDetails: Object.fromEntries(
+          requestedConversationIds(route).map((id) => [
+            id,
+            conversationVersion(),
+          ]),
+        ),
         conversations: "mock",
-        reviewItems: "mock",
+        inboxItems: "mock",
         spend: "mock",
       },
     }),
   );
+}
+
+/**
+ * Wait for the next outline read of a Conversation. Each visit to its page
+ * reads the outline once, so a test that ends on the page waits for it.
+ */
+export function waitForOutlineRead(page: Page, conversationId: string) {
+  const path = `/api/conversations/${encodeURIComponent(conversationId)}/outline`;
+  return page.waitForResponse(
+    (response) => new URL(response.url()).pathname === path,
+  );
+}
+
+/**
+ * Wait for the page to save a read position past `afterSeq`. The page saves
+ * one shortly after the reader sees new rows, such as a message they sent, so
+ * a test that ends right after that waits for it.
+ */
+export function waitForReadPosition(page: Page, afterSeq: number) {
+  return page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      request.method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position") &&
+      request.postDataJSON().lastReadSeq > afterSeq
+    );
+  });
+}
+
+/**
+ * Wait for the reads that the Settings page makes when it opens. Call it
+ * before the navigation to Settings, and await it before the test ends or
+ * skips there.
+ */
+export function waitForSettingsReads(page: Page) {
+  return Promise.all(
+    [
+      "/api/notifications",
+      "/api/user-customization",
+      "/api/personal-tokens",
+      "/api/connections",
+    ].map((path) =>
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === path,
+      ),
+    ),
+  );
+}
+
+/**
+ * Scroll the window to the top over a few frames with no input event, as a
+ * scrollbar drag does.
+ */
+export async function dragScrollbarToTop(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+}
+
+/** The requests that each page holds unanswered on purpose. */
+const heldRoutes = new WeakMap<Page, { released: boolean; routes: Route[] }>();
+
+/**
+ * Leave each request to `url` unanswered, such as a page that never loads.
+ * Teardown fails the held requests before the open-request check, so the
+ * check still sees every other request that the test caused.
+ */
+export async function holdRequests(
+  page: Page,
+  url: string | RegExp,
+): Promise<void> {
+  const held = heldRoutes.get(page) ?? { released: false, routes: [] };
+  heldRoutes.set(page, held);
+  await page.route(url, async (route) => {
+    if (held.released) await route.abort();
+    else held.routes.push(route);
+  });
+}
+
+/** Fail each request that a page holds, and each one that it starts after. */
+export async function releaseHeldRequests(page: Page): Promise<void> {
+  const held = heldRoutes.get(page);
+  if (!held) return;
+  held.released = true;
+  await Promise.all(held.routes.splice(0).map((route) => route.abort()));
+}
+
+// How long teardown waits for open requests to end. The requests that raced
+// teardown on CI ended 25 to 200 ms after it, so this leaves a wide margin
+// for a slow runner. A request still open after this is hung, or held by a
+// route that the test never released.
+const DRAIN_MS = 3_000;
+
+/**
+ * The open requests of each tracked page, of every kind, and a way to wait
+ * for one to end.
+ */
+const trackedPages = new WeakMap<
+  Page,
+  { loading: ReadonlySet<PageRequest>; nextEnd: () => Promise<void> }
+>();
+
+/**
+ * Track the API requests of a page so a test cannot end while one that it
+ * caused is open. Closing the page drops a write that the server has not
+ * seen, and fails a route handler that is still running.
+ */
+export function trackOpenRequests(page: Page): {
+  /**
+   * Wait for each open request to end, and fail with each one still open
+   * after `DRAIN_MS`.
+   */
+  expectNoneOpen: () => Promise<void>;
+} {
+  const open = new Set<PageRequest>();
+  const loading = new Set<PageRequest>();
+  const waiters = new Set<() => void>();
+  const nextEnd = () => new Promise<void>((resolve) => waiters.add(resolve));
+  const end = (request: PageRequest) => {
+    open.delete(request);
+    loading.delete(request);
+    for (const wake of waiters) wake();
+    waiters.clear();
+  };
+  page.on("request", (request) => {
+    loading.add(request);
+    // The app reads and writes with fetches. A page asset, such as an
+    // image, can still load when the test ends with no harm.
+    if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
+  });
+  page.on("requestfinished", end);
+  page.on("requestfailed", end);
+  trackedPages.set(page, { loading, nextEnd });
+  return {
+    expectNoneOpen: async () => {
+      // Wait until none is open, not only for those open now: a request can
+      // start another as it ends, such as a read that a write refreshes.
+      const drained = async () => {
+        while (open.size > 0) await nextEnd();
+      };
+      await Promise.race([
+        drained(),
+        delay(DRAIN_MS, undefined, { ref: false }),
+      ]);
+      if (open.size === 0) return;
+      throw new Error(
+        [
+          "The test ended while requests that it caused were open:",
+          ...requestLines(open),
+          "Wait for the response or the visible result of each request.",
+        ].join("\n"),
+      );
+    },
+  };
+}
+
+function requestLines(requests: Iterable<PageRequest>): string[] {
+  return [...requests].map((request) => {
+    const { pathname, search } = new URL(request.url());
+    return `  ${request.method()} ${pathname}${search}`;
+  });
+}
+
+/**
+ * Let the page run the work that a change queued, such as a render and its
+ * effects. It posts messages, not timers: a test that controls timers stops
+ * those, and React schedules its work with messages.
+ */
+export async function waitForRender(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let task = 0; task < 3; task++) {
+      await new Promise<void>((resolve) => {
+        // A window message, not a MessageChannel: the page can collect a
+        // channel that nothing holds before its message arrives.
+        const id = `junior-e2e-render-${task}-${Math.random()}`;
+        const onMessage = (event: MessageEvent) => {
+          if (event.data !== id) return;
+          window.removeEventListener("message", onMessage);
+          resolve();
+        };
+        window.addEventListener("message", onMessage);
+        window.postMessage(id, "*");
+      });
+    }
+  });
+}
+
+/**
+ * Wait until the page has no request open, such as a fetch or a lazy code
+ * chunk, and starts none as it renders the responses. Use it to assert that
+ * the page sent no more requests, or to count all of them. Fail with each
+ * one still open after `timeoutMs`.
+ */
+export async function waitForRequestsToEnd(
+  page: Page,
+  timeoutMs = DRAIN_MS,
+): Promise<void> {
+  const tracked = trackedPages.get(page);
+  if (!tracked) throw new Error("The page fixture does not track this page.");
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    while (tracked.loading.size > 0) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(
+          [
+            `Requests were still open after ${timeoutMs}ms:`,
+            ...requestLines(tracked.loading),
+          ].join("\n"),
+        );
+      }
+      await Promise.race([
+        tracked.nextEnd(),
+        delay(remaining, undefined, { ref: false }),
+      ]);
+    }
+    await waitForRender(page);
+    if (tracked.loading.size === 0) return;
+  }
 }
 
 export type DashboardE2eServer = {
@@ -64,10 +307,12 @@ export type DashboardE2eServer = {
  * `startDashboardE2eServer` sets `DATABASE_URL`.
  */
 export async function resetDashboardMockState(): Promise<void> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
     "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
-  const { resetMockDashboardState } = await import("../dist/app.js");
+  const { resetMockDashboardState }: typeof DashboardApp = await import(
+    BUILT_APP
+  );
   resetMockDashboardState();
 }
 
@@ -85,7 +330,8 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   }
 
   const method = req.method ?? "GET";
-  return new Request(url, {
+  // Node needs `duplex` to stream a request body; the DOM types lack it.
+  const init: RequestInit & { duplex?: "half" } = {
     body:
       method === "GET" || method === "HEAD"
         ? undefined
@@ -93,14 +339,15 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
     duplex: method === "GET" || method === "HEAD" ? undefined : "half",
     headers,
     method,
-  });
+  };
+  return new Request(url, init);
 }
 
 async function writeResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     res.setHeader(name, value);
-  });
+  }
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
@@ -108,11 +355,12 @@ async function writeResponse(res: ServerResponse, response: Response) {
 export async function startDashboardE2eServer(
   options: { authRequired?: boolean; basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
     "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
-  const { createDashboardApp } = await import("../dist/app.js");
+  const { createDashboardApp }: typeof DashboardApp = await import(BUILT_APP);
   const app = createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["example.com"],
     auth: {
       async getSession() {
@@ -138,14 +386,18 @@ export async function startDashboardE2eServer(
 
   let baseURL = "http://127.0.0.1";
   const server = createServer((req, res) => {
-    void app
-      .fetch(requestFromNode(req, baseURL))
+    void Promise.resolve(app.fetch(requestFromNode(req, baseURL)))
       .then((response) => writeResponse(res, response))
       .catch((error) => {
         res.statusCode = 500;
         res.end(error instanceof Error ? error.stack : String(error));
       });
   });
+  // Keep idle connections open. page.request shares this worker's event loop
+  // and reuses a keep-alive connection. When it sends on one just as the
+  // idle timeout fires, the server closes it before it reads the request, and
+  // the request fails with ECONNRESET (getsentry/junior#4265).
+  server.keepAliveTimeout = 0;
 
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -166,6 +418,51 @@ export async function startDashboardE2eServer(
       }),
   };
 }
+
+/** The memories of the mocked Memories page. */
+const MEMORY_RECORDS = [
+  {
+    actions: [
+      {
+        confirmation: "Forget this memory?",
+        href: "/api/memory/memories/memory-1",
+        label: "Forget",
+        method: "DELETE",
+        tone: "danger",
+      },
+    ],
+    id: "memory-1",
+    title: "I prefer concise summaries.",
+    metadata: [
+      { label: "Type", value: "Preference" },
+      { label: "Learned", value: "Automatic" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
+    ],
+  },
+  {
+    actions: [],
+    id: "memory-2",
+    title: "Release notes should include migration risks.",
+    metadata: [
+      { label: "Type", value: "Knowledge" },
+      { label: "Learned", value: "Explicit" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
+    ],
+  },
+  {
+    actions: [],
+    id: "memory-3",
+    title: "Start incident reviews with the customer impact.",
+    metadata: [
+      { label: "Type", value: "Procedure" },
+      { label: "Learned", value: "Automatic" },
+      { label: "Source", value: "Slack" },
+      { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
+    ],
+  },
+];
 
 /** Stub shared APIs and pin browser current time for dashboard page specs. */
 export async function mockDashboardApis(
@@ -192,48 +489,45 @@ export async function mockDashboardApis(
       ],
     });
   });
-  await page.route(
-    "**/api/plugins/memory/conversations/*/memories",
-    async (route) => {
-      await route.fulfill({
-        json: {
-          events: [
-            {
-              memoryIds: ["memory-checkout-runbook"],
-              seq: 2,
-              source: "recalled",
-              turnId: "active-turn",
-            },
-            {
-              memoryIds: ["captured-memory-1", "captured-memory-2"],
-              seq: 13,
-              source: "captured",
-              turnId: "qa-turn",
-            },
-          ],
-          memories: [
-            {
-              content:
-                "Checkout latency investigations start with the deployment comparison dashboard.",
-              id: "memory-checkout-runbook",
-              visibility: "public",
-            },
-            {
-              content: "Use pnpm for repository commands.",
-              id: "captured-memory-1",
-              visibility: "private",
-            },
-            {
-              content: "Dashboard transcript events should remain expandable.",
-              id: "captured-memory-2",
-              visibility: "public",
-            },
-          ],
-        },
-      });
-    },
-  );
-  await page.route("**/api/plugins/memory/memories/*", async (route) => {
+  await page.route("**/api/memory/conversations/*/memories", async (route) => {
+    await route.fulfill({
+      json: {
+        events: [
+          {
+            memoryIds: ["memory-checkout-runbook"],
+            seq: 2,
+            source: "recalled",
+            turnId: "active-turn",
+          },
+          {
+            memoryIds: ["captured-memory-1", "captured-memory-2"],
+            seq: 13,
+            source: "captured",
+            turnId: "qa-turn",
+          },
+        ],
+        memories: [
+          {
+            content:
+              "Checkout latency investigations start with the deployment comparison dashboard.",
+            id: "memory-checkout-runbook",
+            visibility: "public",
+          },
+          {
+            content: "Use pnpm for repository commands.",
+            id: "captured-memory-1",
+            visibility: "private",
+          },
+          {
+            content: "Dashboard transcript events should remain expandable.",
+            id: "captured-memory-2",
+            visibility: "public",
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/memory/memories/*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -293,57 +587,18 @@ export async function mockDashboardApis(
     await route.fulfill({ json: memory });
   });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
-    const records = [
-      {
-        actions: [
-          {
-            confirmation: "Forget this memory?",
-            href: "/api/plugins/memory/memories/memory-1",
-            label: "Forget",
-            method: "DELETE",
-            tone: "danger",
-          },
-        ],
-        id: "memory-1",
-        title: "I prefer concise summaries.",
-        metadata: [
-          { label: "Type", value: "Preference" },
-          { label: "Learned", value: "Automatic" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
-        ],
-      },
-      {
-        actions: [],
-        id: "memory-2",
-        title: "Release notes should include migration risks.",
-        metadata: [
-          { label: "Type", value: "Knowledge" },
-          { label: "Learned", value: "Explicit" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
-        ],
-      },
-      {
-        actions: [],
-        id: "memory-3",
-        title: "Start incident reviews with the customer impact.",
-        metadata: [
-          { label: "Type", value: "Procedure" },
-          { label: "Learned", value: "Automatic" },
-          { label: "Source", value: "Slack" },
-          { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
-        ],
-      },
-    ];
     await route.fulfill({
       json: {
         type: "list",
         emptyText: "No memories yet.",
         searchPlaceholder: "Search memories",
-        records,
+        records: MEMORY_RECORDS,
       },
     });
+  });
+  // Typed text finds the same memories through `/api/search`.
+  await mockSearchRows(page, {
+    memories: () => MEMORY_RECORDS.map(({ id, title }) => ({ id, title })),
   });
   await mockAutomationApis(page);
   await page.route("**/api/automations/*/executions", async (route) => {
@@ -361,73 +616,6 @@ export async function mockDashboardApis(
       });
       return;
     }
-    const automation = {
-      createdAt: "2026-07-28T16:00:00.000Z",
-      createdBy: "Morgan",
-      createdByEmail: "dev@example.com",
-      destination: {
-        channelId: "C123",
-        label: "#project-updates",
-        teamId: "T123",
-        visibility: "public" as const,
-      },
-      id,
-      task: {
-        kind: "instruction" as const,
-        instruction:
-          kind === "scheduled"
-            ? "Send the weekly project summary"
-            : "Summarize the closed issue",
-      },
-      kind,
-      credentialMode: "creator",
-      ownedByViewer: true,
-      costUsd:
-        kind === "scheduled"
-          ? { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 }
-          : { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
-      runs:
-        kind === "scheduled"
-          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
-          : { 1: 0, 7: 1, 30: 4, 90: 7 },
-      outcomes:
-        kind === "scheduled"
-          ? [
-              {
-                action: "send_message" as const,
-                destination: {
-                  channelId: "C123",
-                  platform: "slack" as const,
-                  teamId: "T123",
-                },
-              },
-            ]
-          : [],
-      title:
-        kind === "scheduled"
-          ? "Weekly project summary"
-          : "Closed issue summary",
-      recentRuns: [],
-      totalCostUsd: kind === "scheduled" ? 18.62 : 0.84,
-      totalRuns: kind === "scheduled" ? 48 : 7,
-      ...(kind === "scheduled"
-        ? {
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            schedule: "Every Monday at 9:00 AM",
-            timezone: "America/Los_Angeles",
-            status: "active" as const,
-          }
-        : {
-            resource: "Issue · ACME-42",
-            source: "github",
-            trigger: {
-              events: ["issue closed"],
-              filters: [],
-              problems: [],
-            },
-            status: "active",
-          }),
-    };
     const executionDays = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
@@ -475,12 +663,11 @@ export async function mockDashboardApis(
             status: "blocked",
           },
         ],
-        automation,
         truncated: false,
       },
     });
   });
-  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+  await page.route("**/api/memory/dashboard", async (route) => {
     const start = Date.parse("2026-05-02T00:00:00.000Z");
     const days = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);
@@ -653,11 +840,6 @@ export async function mockDashboardApis(
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
             firstSeenAt: "2026-03-15T00:00:00.000Z",
             lastSeenAt: "2026-06-12T00:00:00.000Z",
             actor: {

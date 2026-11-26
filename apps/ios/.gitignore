@@ -1,0 +1,10 @@
+.build.noindex/
+Junior.xcodeproj/
+Junior/Info.plist
+Packages/JuniorKit/.build/
+Packages/JuniorKit/.swiftpm/
+Local.xcconfig
+fastlane/report.xml
+fastlane/README.md
+*.ipa
+*.dSYM.zip

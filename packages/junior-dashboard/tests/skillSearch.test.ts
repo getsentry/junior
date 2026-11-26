@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { searchSkills } from "../src/client/pages/automations/skillSearch";
+import { searchSkills } from "../src/client/components/skillSearch";
 
 const skill = (name: string, description: string) => ({ name, description });
 

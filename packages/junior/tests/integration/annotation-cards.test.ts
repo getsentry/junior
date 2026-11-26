@@ -9,7 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, expect, it } from "vitest";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   createPluginAnnotations,
   listConversationAnnotations,
@@ -49,9 +49,16 @@ const annotation: ObjectAnnotation = {
   },
 };
 
+// Built outside the tool definition, as a shared helper would be, so only
+// core's runtime check stops it.
+const readResult = () => ({
+  objectAnnotations: [{ ...annotation, key: "repo#2", label: "repo#2" }],
+});
+
 afterEach(closeConversationFixture);
 
-it("saves plugin object results once per reply, leaves background updates silent, and stores only Message card references", async () => {
+it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
+  const saveInputs: unknown[] = [];
   const previous = setPlugins([
     defineJuniorPlugin({
       manifest: {
@@ -68,7 +75,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               destructiveHint: false,
               idempotentHint: true,
               openWorldHint: false,
-              readOnlyHint: true,
+              readOnlyHint: false,
             },
             description: "Return a verified object for this test.",
             inputSchema: z.object({
@@ -77,7 +84,9 @@ it("saves plugin object results once per reply, leaves background updates silent
               status: z.string().optional(),
             }),
             outputSchema: pluginToolOutputSchema,
-            execute: ({ fail, timed_out, status }) => {
+            execute: (input) => {
+              saveInputs.push(input);
+              const { fail, timed_out, status } = input;
               if (fail) throw new Error("Object update failed");
               return {
                 timed_out,
@@ -86,6 +95,20 @@ it("saves plugin object results once per reply, leaves background updates silent
                 ],
               };
             },
+          }),
+          read: definePluginTool({
+            approvalMode: "approve",
+            exposure: "direct",
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: true,
+            },
+            description: "Read an object for this test.",
+            inputSchema: z.object({}),
+            outputSchema: pluginToolOutputSchema,
+            execute: readResult,
           }),
         }),
       },
@@ -101,8 +124,15 @@ it("saves plugin object results once per reply, leaves background updates silent
         {
           type: "toolCall",
           name: "executeTool",
-          arguments: { tool_name: "objects_save", arguments: {} },
+          // callMcpTool takes a top-level intent too, so models send it here.
+          arguments: {
+            tool_name: "objects_save",
+            arguments: { status: "open" },
+            intent: "show the object",
+          },
         },
+        // A read must not save an Annotation, so core rejects its result.
+        { type: "toolCall", name: "objects_read", arguments: {} },
         {
           type: "toolCall",
           // PR creation is a direct plugin tool, not a catalog call.
@@ -130,6 +160,7 @@ it("saves plugin object results once per reply, leaves background updates silent
       message: "Show the object.",
     });
     await harness.drain();
+    expect(saveInputs[0]).toEqual({ status: "open" });
     const history =
       await getConversationEventStore().loadHistory(conversationId);
     const message = history.find(
@@ -140,23 +171,26 @@ it("saves plugin object results once per reply, leaves background updates silent
     const refs = [{ kind: "object", plugin: "objects", key: annotation.key }];
     if (!message || message.data.type !== "message")
       throw new Error("Expected an assistant Message");
-    expect(message.data.meta?.objectCards).toEqual(refs);
+    expect(message.data.meta?.["objectCards"]).toEqual(refs);
     expect(message.data.meta).not.toHaveProperty("cards");
     const toolResults = history
       .map((event) => event.data)
       .filter((data) => data.type === "tool_result");
     for (const result of toolResults) {
-      expect(result.details).not.toHaveProperty("cards");
+      expect(result["details"]).not.toHaveProperty("cards");
     }
     const selectedResults = toolResults.filter(
       (result) =>
-        result.details &&
-        typeof result.details === "object" &&
-        "objectCards" in result.details,
+        result["details"] &&
+        typeof result["details"] === "object" &&
+        "objectCards" in result["details"],
     );
     expect(selectedResults).toHaveLength(2);
+    expect(JSON.stringify(toolResults)).toContain(
+      "Read-only objects tool returned objectAnnotations",
+    );
     for (const result of selectedResults) {
-      expect(result.details).not.toHaveProperty("objectAnnotations");
+      expect(result["details"]).not.toHaveProperty("objectAnnotations");
     }
 
     await expect(
@@ -170,15 +204,13 @@ it("saves plugin object results once per reply, leaves background updates silent
       cards,
     });
     expect(
-      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params["metadata"],
     ).toEqual({
       entities: [
         {
           entity_type: "slack#/entities/item",
           external_ref: {
-            id: Buffer.from(
-              JSON.stringify([conversationId, "objects", "repo#1"]),
-            ).toString("base64url"),
+            id: expect.stringMatching(/^[A-Za-z0-9_-]{1,128}$/),
             type: "annotation",
           },
           url: annotation.url,
@@ -276,7 +308,7 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
     const mixedPost =
       getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-    expect(mixedPost?.metadata).toMatchObject({
+    expect(mixedPost?.["metadata"]).toMatchObject({
       entities: [
         {
           entity_type: "slack#/entities/item",
@@ -366,7 +398,7 @@ it("saves plugin object results once per reply, leaves background updates silent
       "blocked",
       "Agenda",
     ])
-      expect(mixedPost?.text).not.toContain(hidden);
+      expect(mixedPost?.["text"]).not.toContain(hidden);
     for (const type of [
       "Code change",
       "Ticket",
@@ -374,7 +406,7 @@ it("saves plugin object results once per reply, leaves background updates silent
       "Calendar event",
       "Automation",
     ])
-      expect(mixedPost?.text).toContain(type);
+      expect(mixedPost?.["text"]).toContain(type);
     setDashboardConversationLinkOptions(undefined);
     await sendSlackReply({
       channelId: "C123",
@@ -384,13 +416,15 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
     const headless =
       getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-    expect(headless?.metadata).toMatchObject({
+    expect(headless?.["metadata"]).toMatchObject({
       entities: [
         { entity_payload: { attributes: { display_type: "Code change" } } },
       ],
     });
-    expect(JSON.stringify(headless?.metadata)).not.toContain("product_icon");
-    expect(headless?.text).toContain("Ticket");
+    expect(JSON.stringify(headless?.["metadata"])).not.toContain(
+      "product_icon",
+    );
+    expect(headless?.["text"]).toContain("Ticket");
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
       basePath: "/ops",

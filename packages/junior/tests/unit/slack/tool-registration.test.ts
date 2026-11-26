@@ -8,13 +8,15 @@ import {
   createSlackSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
+import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 const noopSandbox = {} as any;
@@ -106,7 +108,7 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists only plugins that can verify identity accounts", () => {
+  it("lists only plugins that can verify or search identity accounts", () => {
     setPlugins([
       eventPlugin(),
       defineJuniorPlugin({
@@ -119,12 +121,22 @@ describe("Slack tool registration", () => {
           resolveOAuthAccount: () => ({ id: "account-1" }),
         },
       }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "search-test",
+          displayName: "Search test",
+          description: "Searches test accounts",
+        },
+        hooks: {
+          searchUsers: () => [],
+        },
+      }),
     ]);
 
     const tools = createTools([], {}, ctx("D12345"));
-    expect(tools.userLookup?.inputSchema).toMatchObject({
+    expect(tools["userLookup"]?.inputSchema).toMatchObject({
       properties: {
-        provider: { enum: ["slack", "identity-test"] },
+        provider: { enum: ["slack", "identity-test", "search-test"] },
       },
     });
   });
@@ -133,7 +145,7 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
     expect(tools).toHaveProperty("sendFiles");
-    const sendFilesTool = tools.sendFiles;
+    const sendFilesTool = tools["sendFiles"];
     if (!sendFilesTool) {
       throw new Error("sendFiles tool missing");
     }
@@ -147,8 +159,8 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationEvents");
-    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
-    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
+    expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -161,21 +173,22 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("searchConversationBriefs");
     expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listWatches");
-    expect(tools.searchConversationMessages?.exposure).toBe("deferred");
-    expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
-    expect(tools.searchConversationBriefs?.exposure).toBe("deferred");
-    expect(tools.searchConversationBriefs?.source?.id).toBe("conversations");
-    expect(
-      tools.searchConversationBriefs?.inputSchema.properties,
-    ).toHaveProperty("channel_id");
-    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
-    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
-    expect(tools.stopWatchingResources?.exposure).toBe("deferred");
-    expect(tools.listWatches?.exposure).toBe("deferred");
+    expect(tools["searchConversationMessages"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationMessages"]?.source?.id).toBe(
+      "conversations",
+    );
+    expect(tools["listAgents"]?.exposure).toBe("deferred");
+    expect(tools["listAgents"]?.source?.id).toBe("agents");
+    expect(tools["listAgents"]?.inputSchema["properties"]).toHaveProperty(
+      "query",
+    );
+    expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
+    expect(tools["stopWatchingResources"]?.exposure).toBe("deferred");
+    expect(tools["listWatches"]?.exposure).toBe("deferred");
   });
 
   it("still registers public search without an action token", () => {
@@ -187,24 +200,21 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelJoin");
   });
 
-  it("does not register conversation search for a private Conversation", () => {
+  it("does not register message search for a private Conversation", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).not.toHaveProperty("searchConversationBriefs");
+    expect(tools).toHaveProperty("listAgents");
   });
 
-  it("registers Brief search for public non-Slack Conversations", () => {
+  it("registers Conversation search outside Slack", () => {
     const tools = createTools(
       [],
       {},
       { ...ctx(), conversationPrivacy: "public" },
     );
 
-    expect(tools).toHaveProperty("searchConversationBriefs");
-    expect(
-      tools.searchConversationBriefs?.inputSchema.properties,
-    ).not.toHaveProperty("channel_id");
+    expect(tools).toHaveProperty("listAgents");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 
@@ -273,22 +283,26 @@ describe("Slack tool registration", () => {
       },
       {
         actor: slackActor,
-        source: { kind: "agent_invocation" as const },
+        source: { kind: "parent_message" as const },
       },
     ];
 
     for (const turn of otherTurns) {
-      const tools = createTools([], {}, {
-        ...ctx("C12345"),
-        ...turn,
-        slackActionToken: undefined,
-      } as ToolRuntimeContext);
+      const tools = createTools(
+        [],
+        {},
+        {
+          ...ctx("C12345"),
+          ...turn,
+          slackActionToken: undefined,
+        },
+      );
       expect(modelView(tools)).toBe(modelView(messageTurn));
-      expect(tools.createAutomation?.disabledReason).toBeDefined();
-      expect(tools.addReaction?.disabledReason).toBeDefined();
-      expect(tools.addReviewItem?.disabledReason).toBeUndefined();
+      expect(tools["createAutomation"]?.disabledReason).toBeDefined();
+      expect(tools["addReaction"]?.disabledReason).toBeDefined();
+      expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
     }
-    expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
+    expect(messageTurn["createAutomation"]?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
@@ -335,19 +349,26 @@ describe("Slack tool registration", () => {
 
   it("loads the tool that asks a person in every root Turn", () => {
     const tools = createTools([], {}, ctx());
-    expect(tools.addReviewItem?.exposure).not.toBe("deferred");
-    expect(tools.addReviewItem?.disabledReason).toBeUndefined();
+    expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
+    expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
 
-    // An Agent invocation reports the need to its parent.
-    const childTools = createTools([], {}, {
-      ...ctx("C12345"),
-      parentConversationId: "slack:C12345:1700000000.000",
-      turnTools: turnBehavior({
-        kind: "task",
-        personInput: false,
-      }).tools,
-    } as ToolRuntimeContext);
-    expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
+    // A child agent reports the need to its parent.
+    const childTools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        parentConversationId: "slack:C12345:1700000000.000",
+        turnTools: turnBehavior({
+          kind: "task",
+          hasParent: true,
+          personInput: false,
+        }).tools,
+      },
+    );
+    expect(childTools["addInboxItem"]?.disabledReason).toContain(
+      "reportBlocked",
+    );
   });
 
   it("does not register Slack tools for local destinations", () => {
@@ -372,8 +393,8 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     // Automation tools are not Slack tools. This Turn has no person, so they
     // are disabled.
-    expect(tools.createAutomation?.disabledReason).toBeDefined();
-    expect(tools.runAutomationNow?.disabledReason).toBeDefined();
+    expect(tools["createAutomation"]?.disabledReason).toBeDefined();
+    expect(tools["runAutomationNow"]?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");
@@ -385,7 +406,7 @@ describe("Slack tool registration", () => {
     const tools = createTools(
       [],
       {
-        writeGeneratedArtifacts: async () => [],
+        writeGeneratedFiles: async () => [],
       },
       ctx(),
     );
@@ -395,8 +416,14 @@ describe("Slack tool registration", () => {
 });
 
 describe("agent tool binding", () => {
-  // Binding reads only the Run's environment and disabled features.
-  function agentRun(disabledFeatures: AgentRun["disabledFeatures"] = []) {
+  afterEach(async () => {
+    // Restore the default maxAgentDepth, 1.
+    await createApp();
+  });
+
+  // Binding reads only the Run's environment, the Turn's agent tools and
+  // maxAgentDepth, so a child gets the same tools on every path.
+  function agentRun() {
     const spawnAgent = vi.fn();
     const messageAgent = vi.fn();
     const environment = {
@@ -412,43 +439,46 @@ describe("agent tool binding", () => {
         instruction: { text: "hello" },
         source: createLocalSource("local:agent-tools"),
         destination: { platform: "local", conversationId: "local:agent-tools" },
-        disabledFeatures,
         environment,
       } satisfies AgentRun,
       spawnAgent,
     };
   }
 
-  it("binds no agent tools for a person's Turn in a Thread", () => {
-    const { environment, run } = agentRun();
-    const agents = turnBehavior({
-      kind: "thread",
-      personInput: true,
-    }).tools.agents;
-
-    expect(agents).toBe("none");
-    expect(bindAgentTools(run, agents)).toEqual({});
-    expect(environment.bindSpawnAgent).not.toHaveBeenCalled();
-    expect(environment.bindMessageAgent).not.toHaveBeenCalled();
-  });
-
-  // The binder gets the agent tools of the Turn. A root's messageAgent then
-  // rejects `parent` when it is called, as the root has no parent agent.
-  it.each(["children", "children_and_parent"] as const)(
-    "binds spawnAgent and messageAgent for %s",
-    (agents) => {
+  // A root always spawns. A Lead's child counts as a root. Any other child
+  // spawns only when maxAgentDepth is above 0, and it can always message its
+  // parent. A root's messageAgent rejects `parent` when it is called, as the
+  // root has no parent agent.
+  it.each([
+    { agents: "children", maxAgentDepth: 0, topLevelWork: true, spawns: true },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 0,
+      topLevelWork: false,
+      spawns: false,
+    },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 0,
+      topLevelWork: true,
+      spawns: true,
+    },
+    {
+      agents: "children_and_parent",
+      maxAgentDepth: 1,
+      topLevelWork: false,
+      spawns: true,
+    },
+  ] as const)(
+    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth, top-level $topLevelWork: $spawns",
+    async ({ agents, maxAgentDepth, topLevelWork, spawns }) => {
+      await createApp({ limits: { maxAgentDepth } });
       const { environment, messageAgent, run, spawnAgent } = agentRun();
 
-      expect(bindAgentTools(run, agents)).toEqual({ spawnAgent, messageAgent });
+      expect(bindAgentTools(run, agents, topLevelWork)).toEqual(
+        spawns ? { spawnAgent, messageAgent } : { messageAgent },
+      );
       expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);
     },
   );
-
-  it("keeps messageAgent for the parent when the Turn is too deep to spawn", () => {
-    const tooDeep = agentRun(["subagents"]);
-    expect(bindAgentTools(tooDeep.run, "children_and_parent")).toEqual({
-      messageAgent: tooDeep.messageAgent,
-    });
-    expect(bindAgentTools(agentRun(["subagents"]).run, "children")).toEqual({});
-  });
 });

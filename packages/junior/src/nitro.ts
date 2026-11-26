@@ -2,6 +2,7 @@ import path from "node:path";
 import { withSentryConfig as withSentryNitroConfig } from "@sentry/nitro";
 import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup";
 import type { Nitro } from "nitro/types";
+import { startDevQueue } from "@/build/dev-queue";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
   copyIncludedFiles,
@@ -12,23 +13,16 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
-import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
-import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
-import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
-import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { injectVirtualSystemPrompts } from "@/build/virtual-system-prompts";
+import { resolveBotName } from "@/chat/bot-name";
+import { queueCallbackRoutes } from "@/build/queue-routes";
 import {
-  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
-  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
-  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
-  JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
-  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -79,12 +73,16 @@ export type JuniorNitroPluginSource =
   | string;
 
 export interface JuniorNitroOptions {
+  /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME` at build, then `junior`. The build puts it in the
+   * system prompt, and the runtime reads the same value.
+   */
+  botName?: string;
   cwd?: string;
   /** Authenticated dashboard configuration injected for createApp(). */
   dashboard?: JuniorNitroDashboardOptions;
   maxDuration?: number;
-  /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
-  conversationWorkQueueTopic?: string;
   /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code. */
   plugins?: JuniorNitroPluginSource;
   /**
@@ -160,9 +158,6 @@ function configureVercelDeployment(
 ): number {
   const defaultMaxDuration =
     options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  const queueTopic = resolveConversationWorkQueueTopic({
-    topic: options.conversationWorkQueueTopic,
-  });
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
@@ -205,7 +200,7 @@ function configureVercelDeployment(
   const functionRules = nitro.options.vercel.functionRules;
   // Each queue topic pushes to one callback route. Keep the other triggers of
   // that route.
-  const addQueueTrigger = (route: string, topic: string) => {
+  for (const { route, topic } of queueCallbackRoutes()) {
     const existingRule = functionRules[route] ?? {};
     const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
       ? existingRule.experimentalTriggers
@@ -220,19 +215,7 @@ function configureVercelDeployment(
         { type: VERCEL_QUEUE_TRIGGER_TYPE, topic },
       ],
     };
-  };
-  addQueueTrigger(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, queueTopic);
-  addQueueTrigger(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, PLUGIN_TASK_QUEUE_TOPIC);
-  addQueueTrigger(
-    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
-    WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
-  );
-  addQueueTrigger(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, CACHE_WARMUP_QUEUE_TOPIC);
-
-  addQueueTrigger(
-    JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
-    BACKGROUND_COMPACTION_QUEUE_TOPIC,
-  );
+  }
 
   return defaultMaxDuration;
 }
@@ -255,9 +238,24 @@ function dropRoutedServerEntry(nitro: Nitro): void {
   }
 }
 
+// `nitro dev` does not resolve `#junior/config`, so the runtime reads
+// `JUNIOR_BOT_NAME`. Each app worker copies `process.env` when it starts.
+function shareDevBotName(nitro: Nitro, botName: string): void {
+  const previous = process.env["JUNIOR_BOT_NAME"];
+  process.env["JUNIOR_BOT_NAME"] = botName;
+  // A change to the Nitro config closes this instance and runs modules again.
+  nitro.hooks.hook("close", () => {
+    if (previous === undefined) {
+      delete process.env["JUNIOR_BOT_NAME"];
+    } else {
+      process.env["JUNIOR_BOT_NAME"] = previous;
+    }
+  });
+}
+
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
-  nitro: { setup(nitro: unknown): void };
+  nitro: { setup(nitro: unknown): void | Promise<void> };
 } {
   return {
     nitro: {
@@ -265,6 +263,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         const cwd = path.resolve(
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
+        const botName = resolveBotName(options.botName, process.env);
 
         const functionMaxDurationSeconds = configureVercelDeployment(
           nitro,
@@ -313,6 +312,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             (plugin) => plugin.manifest.name,
           );
         injectVirtualConfig(nitro, {
+          botName,
           functionMaxDurationSeconds,
           ...(pluginModule
             ? {
@@ -324,6 +324,13 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,
+        });
+        injectVirtualSystemPrompts(nitro, {
+          botName,
+          loadPlugins: async () =>
+            pluginRuntimeRegistrationsFromPluginSet(
+              await loadConfiguredPluginSet(),
+            ),
         });
 
         const copyBuildContent = async () => {
@@ -353,6 +360,12 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             },
           });
         });
+
+        if (!nitro.options.dev) {
+          return undefined;
+        }
+        shareDevBotName(nitro, botName);
+        return startDevQueue(nitro);
       },
     },
   };

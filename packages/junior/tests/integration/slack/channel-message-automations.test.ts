@@ -35,8 +35,8 @@ import {
 } from "../../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "channel-message-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "channel-message-automation-test-secret";
 });
 
 // Slack webhook fixtures post from workspace T123 in channel C123.
@@ -468,10 +468,10 @@ describe("Slack channel-message automations", () => {
     );
     expect(queue.sentRecords()).toHaveLength(3);
     expect(
-      getCapturedSlackApiCalls("bots.info").map((call) => call.params.bot),
+      getCapturedSlackApiCalls("bots.info").map((call) => call.params["bot"]),
     ).toEqual(["B703", "B704", "B706"]);
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["U704", "U706"]);
   });
 

@@ -13,13 +13,13 @@ import {
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { EventRegistrationInput } from "@/chat/events/catalog";
 import type { SlackBotId } from "@/chat/slack/ids";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
 export const SLACK_EVENT_NAMESPACE = "slack";
 
 /** The trigger identifier that names the channel of the automation. */
-export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
+const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";
@@ -92,13 +92,16 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
  */
 export function slackChannelMessageTrigger<
   T extends {
-    identifier?: string | null;
-    match?: EventAutomation["trigger"]["match"];
+    identifier?: string | null | undefined;
+    match?: EventAutomation["trigger"]["match"] | undefined;
     namespace: string;
   },
 >(trigger: T, channelId: string): T {
   if (trigger.namespace !== SLACK_EVENT_NAMESPACE) return trigger;
-  if (trigger.identifier != null || trigger.match?.channelId !== undefined) {
+  if (
+    trigger.identifier != null ||
+    trigger.match?.["channelId"] !== undefined
+  ) {
     return trigger;
   }
   return { ...trigger, match: { ...trigger.match, channelId } };
@@ -119,13 +122,13 @@ export function requireSlackChannelMessageScope(
   const channelId = automation.destination.channelId;
   if (!CHANNEL_ID_PATTERN.test(channelId)) {
     throw new ToolInputError(
-      "A Slack channel-message automation works only in a channel, not in a DM.",
+      "A Slack channel-message automation works only in a channel, not in a DM. Create it from the Slack channel to watch.",
     );
   }
   const { identifier, match } = automation.trigger;
   const named =
     identifier === undefined
-      ? match?.channelId
+      ? match?.["channelId"]
       : identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
         ? channelId
         : identifier;
@@ -161,11 +164,11 @@ export type SlackChannelMessageAuthor =
  */
 export function slackChannelMessageEvent(input: {
   author: SlackChannelMessageAuthor;
-  botId?: string;
+  botId?: string | undefined;
   channelId: string;
-  subtype?: string;
-  text?: string;
-  threadTs?: string;
+  subtype?: string | undefined;
+  text?: string | undefined;
+  threadTs?: string | undefined;
   ts: string;
 }): EventInput | undefined {
   const { author } = input;
@@ -211,15 +214,16 @@ export function slackChannelMessageRunsAutomation(
   automation: EventAutomation,
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
-  if (event.data?.channelId !== automation.destination.channelId) return false;
+  if (event.data?.["channelId"] !== automation.destination.channelId)
+    return false;
   if (
-    event.data?.location === THREAD_LOCATION &&
-    ![automation.trigger.match?.location].flat().includes(THREAD_LOCATION)
+    event.data?.["location"] === THREAD_LOCATION &&
+    ![automation.trigger.match?.["location"]].flat().includes(THREAD_LOCATION)
   ) {
     return false;
   }
-  if (event.data?.postedByBot !== true) return true;
-  return automation.trigger.match?.userId !== undefined;
+  if (event.data?.["postedByBot"] !== true) return true;
+  return automation.trigger.match?.["userId"] !== undefined;
 }
 
 /** Return the source message thread for a channel-message run. */
@@ -227,6 +231,6 @@ export function slackChannelMessageReplyThreadTs(
   event: Event,
 ): string | undefined {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return undefined;
-  const messageTs = event.data?.threadTs ?? event.data?.messageTs;
+  const messageTs = event.data?.["threadTs"] ?? event.data?.["messageTs"];
   return typeof messageTs === "string" ? messageTs : undefined;
 }

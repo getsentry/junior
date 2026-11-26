@@ -1,24 +1,26 @@
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { completeAgentInvocation } from "@/chat/agent-invocations/store";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
+import type { ConversationStore } from "@/chat/conversations/store";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 async function requestDetail(conversationId: string, etag?: string) {
   return await createJuniorApi().request(
@@ -35,58 +37,65 @@ async function requestChildAgents(conversationId: string) {
 
 describe("conversation child agents API", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
-  it("returns child agent state from agent invocation records", async () => {
-    await prepareSlackParentConversation();
-    const reviewer = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        agentName: "reviewer",
-        idempotencyKey: "child-agents-reviewer",
-        input: "Review the plan.",
-        title: "Plan review",
-      },
-      1_000,
-    );
-    const blocked = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        idempotencyKey: "child-agents-blocked",
-        input: "Read the private repo.",
-      },
-      2_000,
-    );
-    await completeAgentInvocation({
-      errorMessage: "GitHub access is missing.",
-      invocationId: blocked.invocationId,
-      nowMs: 3_000,
-      status: "blocked",
+  // A child's update time is the time of its task in its mailbox.
+  function spawn(
+    conversationStore: ConversationStore,
+    args: Omit<
+      Parameters<typeof startChildAgent>[0],
+      "actor" | "conversationStore" | "queue"
+    >,
+  ) {
+    vi.useFakeTimers({ now: args.nowMs, toFake: ["Date"] });
+    return startChildAgent({
+      actor: slackSpawnInput.actor,
+      conversationStore,
+      queue: createConversationWorkQueueTestAdapter(),
+      ...args,
+    });
+  }
+
+  it("returns child agent state from each child's Conversation", async () => {
+    const { conversationStore } = await prepareSlackParentConversation();
+    const reviewer = await spawn(conversationStore, {
+      agentName: "reviewer",
+      idempotencyKey: "child-agents-reviewer",
+      nowMs: 1_000,
+      parentConversationId: slackParentConversationId,
+      task: "Review the plan.",
+      title: "Plan review",
+    });
+    const stopped = await spawn(conversationStore, {
+      idempotencyKey: "child-agents-stopped",
+      nowMs: 2_000,
+      parentConversationId: slackParentConversationId,
+      task: "Read the private repo.",
+      title: "Private repo read",
     });
 
-    // Only spawnAgent creates children today, and always as Tasks. Archived
-    // Threads and Tasks stay in the report.
-    const thread = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        idempotencyKey: "child-agents-thread",
-        input: "Pair on the rollout with the team.",
-      },
-      500,
-    );
+    // Archived Threads and Tasks stay in the report.
+    const thread = await spawn(conversationStore, {
+      idempotencyKey: "child-agents-thread",
+      kind: "thread",
+      nowMs: 500,
+      parentConversationId: slackParentConversationId,
+      task: "Pair on the rollout with the team.",
+    });
     await getDb()
       .update(juniorConversations)
-      .set({ kind: "thread", archivedAt: new Date(4_000) })
-      .where(
-        eq(juniorConversations.conversationId, thread.childConversationId),
-      );
+      .set({ archivedAt: new Date(4_000) })
+      .where(eq(juniorConversations.conversationId, thread));
     await getDb()
       .update(juniorConversations)
-      .set({ archivedAt: new Date(3_500) })
-      .where(
-        eq(juniorConversations.conversationId, blocked.childConversationId),
-      );
+      .set({
+        archivedAt: new Date(3_500),
+        executionUpdatedAt: new Date(3_000),
+        stoppedAt: new Date(3_000),
+      })
+      .where(eq(juniorConversations.conversationId, stopped));
 
     await getDb()
       .update(juniorConversations)
@@ -94,32 +103,31 @@ describe("conversation child agents API", () => {
         durationMs: 42_000,
         usage: { cost: { total: 0.02 }, inputTokens: 900, outputTokens: 100 },
       })
-      .where(
-        eq(juniorConversations.conversationId, reviewer.childConversationId),
-      );
+      .where(eq(juniorConversations.conversationId, reviewer));
     // A nested child agent counts toward the reviewer, not only the root.
-    const helper = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        idempotencyKey: "child-agents-reviewer-helper",
-        input: "Check one claim.",
-        parentConversationId: reviewer.childConversationId,
-      },
-      1_500,
-    );
+    const helper = await spawn(conversationStore, {
+      idempotencyKey: "child-agents-reviewer-helper",
+      nowMs: 1_500,
+      parentConversationId: reviewer,
+      task: "Check one claim.",
+    });
     await getDb()
       .update(juniorConversations)
       .set({
         durationMs: 8_000,
         usage: { cost: { total: 0.01 }, inputTokens: 300, outputTokens: 50 },
       })
-      .where(
-        eq(juniorConversations.conversationId, helper.childConversationId),
-      );
+      .where(eq(juniorConversations.conversationId, helper));
 
-    const response = await requestChildAgents(slackParentConversationId);
+    const response = await expectSqlBudget(
+      () => requestChildAgents(slackParentConversationId),
+      // Each running child also checks, in one read, that its waiting task
+      // comes from its parent and was sent after any stop. The tree states
+      // of the children take one more read beside the metrics.
+      { statements: 9, serialRounds: 5 },
+    );
     const reviewerDetail = conversationDetailReportSchema.parse(
-      await (await requestDetail(reviewer.childConversationId)).json(),
+      await (await requestDetail(reviewer)).json(),
     );
 
     expect(response.status).toBe(200);
@@ -129,13 +137,15 @@ describe("conversation child agents API", () => {
       agents: [
         {
           archivedAt: new Date(3_500).toISOString(),
-          conversationId: blocked.childConversationId,
+          conversationId: stopped,
           cumulativeDurationMs: 0,
-          error: "GitHub access is missing.",
           kind: "task",
-          status: "blocked",
-          task: "Read the private repo.",
+          status: "stopped",
+          title: "Private repo read",
+          // The test stops it without clearing its queued Turn.
+          treeState: "working",
           updatedAt: new Date(3_000).toISOString(),
+          watching: false,
         },
         {
           childAgentTotals: {
@@ -148,7 +158,7 @@ describe("conversation child agents API", () => {
             },
           },
           archivedAt: null,
-          conversationId: reviewer.childConversationId,
+          conversationId: reviewer,
           cumulativeDurationMs: 50_000,
           cumulativeUsage: {
             cost: { total: 0.03 },
@@ -157,19 +167,23 @@ describe("conversation child agents API", () => {
           },
           kind: "task",
           name: "reviewer",
-          status: "pending",
-          task: "Review the plan.",
+          status: "running",
           title: "Plan review",
+          // The reviewer's Turn is queued.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
         {
-          conversationId: thread.childConversationId,
+          conversationId: thread,
           cumulativeDurationMs: 0,
           kind: "thread",
-          status: "pending",
-          task: "Pair on the rollout with the team.",
+          status: "running",
+          title: null,
           archivedAt: new Date(4_000).toISOString(),
+          treeState: "working",
           updatedAt: new Date(500).toISOString(),
+          watching: false,
         },
       ],
       conversationId: slackParentConversationId,
@@ -186,33 +200,27 @@ describe("conversation child agents API", () => {
   });
 
   it("returns the agent tree of a nested child Conversation", async () => {
-    await prepareSlackParentConversation();
-    const reviewer = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        agentName: "reviewer",
-        idempotencyKey: "agent-tree-reviewer",
-        title: "Plan review",
-      },
-      1_000,
-    );
-    const helper = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
-        agentType: "explore",
-        fork: true,
-        idempotencyKey: "agent-tree-helper",
-        input: "Check one claim.",
-        parentConversationId: reviewer.childConversationId,
-        title: "Claim check",
-      },
-      2_000,
-    );
+    const { conversationStore } = await prepareSlackParentConversation();
+    const reviewer = await spawn(conversationStore, {
+      agentName: "reviewer",
+      idempotencyKey: "agent-tree-reviewer",
+      nowMs: 1_000,
+      parentConversationId: slackParentConversationId,
+      title: "Plan review",
+    });
+    const helper = await spawn(conversationStore, {
+      agentConfig: { agentType: "explore", fork: true },
+      idempotencyKey: "agent-tree-helper",
+      nowMs: 2_000,
+      parentConversationId: reviewer,
+      task: "Check one claim.",
+      title: "Claim check",
+    });
 
     const root = conversationDetailReportSchema.parse(
       await (await requestDetail(slackParentConversationId)).json(),
     );
-    const response = await requestDetail(helper.childConversationId);
+    const response = await requestDetail(helper);
 
     expect(root.agentTree).toBeUndefined();
     expect(response.status).toBe(200);
@@ -221,17 +229,17 @@ describe("conversation child agents API", () => {
     ).toEqual([
       {
         conversationId: slackParentConversationId,
-        kind: "root",
+        kind: "thread",
         label: root.displayTitle,
       },
       {
-        conversationId: reviewer.childConversationId,
+        conversationId: reviewer,
         kind: "task",
         label: "Plan review",
       },
       {
         agentType: "explore",
-        conversationId: helper.childConversationId,
+        conversationId: helper,
         fork: true,
         kind: "task",
         label: "Claim check",
@@ -241,46 +249,45 @@ describe("conversation child agents API", () => {
     // An unchanged child answers 304. Renaming an ancestor changes the label
     // that the agent tree shows, so it changes the ETag.
     const etag = response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
-    expect((await requestDetail(helper.childConversationId, etag)).status).toBe(
-      304,
-    );
+    expect((await requestDetail(helper, etag)).status).toBe(304);
     await setConversationTitle(
       getSqlExecutor(),
       slackParentConversationId,
       "Renamed plan",
     );
-    const renamed = await requestDetail(helper.childConversationId, etag);
+    const renamed = await requestDetail(helper, etag);
     expect(renamed.status).toBe(200);
     expect(
       conversationDetailReportSchema.parse(await renamed.json()).agentTree?.[0],
     ).toEqual({
       conversationId: slackParentConversationId,
-      kind: "root",
+      kind: "thread",
       label: "Renamed plan",
     });
   });
 
   it("redacts child agent content from viewers without private access", async () => {
-    await prepareParentConversation();
-    const child = await createAgentInvocation(
-      {
-        ...invocationInput,
-        agentName: "private-reviewer",
-        agentType: "reviewer",
-        fork: true,
-        idempotencyKey: "child-agents-private",
-        title: "Private plan review",
-      },
-      1_000,
-    );
+    const { conversationStore } = await prepareParentConversation();
+    vi.useFakeTimers({ now: 1_000, toFake: ["Date"] });
+    const child = await startChildAgent({
+      actor: spawnInput.actor,
+      agentConfig: { agentType: "reviewer", fork: true },
+      agentName: "private-reviewer",
+      conversationStore,
+      idempotencyKey: "child-agents-private",
+      nowMs: 1_000,
+      parentConversationId,
+      queue: createConversationWorkQueueTestAdapter(),
+      title: "Private plan review",
+    });
 
     const response = await requestChildAgents(parentConversationId);
-    const detail = await requestDetail(child.childConversationId);
+    const detail = await requestDetail(child);
 
     expect(
       conversationDetailReportSchema.parse(await detail.json()).agentTree?.[1],
     ).toEqual({
-      conversationId: child.childConversationId,
+      conversationId: child,
       kind: "task",
       label: "Task",
     });
@@ -289,12 +296,15 @@ describe("conversation child agents API", () => {
       agents: [
         {
           archivedAt: null,
-          conversationId: child.childConversationId,
+          conversationId: child,
           cumulativeDurationMs: 0,
           kind: "task",
           redacted: true,
-          status: "pending",
+          status: "running",
+          // Status shows no content, so a redacted row keeps it.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
       ],
       conversationId: parentConversationId,

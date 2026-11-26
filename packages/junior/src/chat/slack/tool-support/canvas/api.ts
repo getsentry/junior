@@ -10,6 +10,7 @@ import {
 } from "@/chat/slack/client";
 import { extractCanvasId } from "@/chat/slack/canvas-references";
 import { canvasBodyToMarkdown } from "@/chat/slack/tool-support/canvas/html";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   normalizeCanvasMarkdown,
   type CanvasMarkdownNormalization,
@@ -25,10 +26,10 @@ export interface CanvasCreateInput {
 
 export interface CanvasReadResult {
   canvasId: string;
-  title?: string;
-  permalink?: string;
-  mimetype?: string;
-  filetype?: string;
+  title?: string | undefined;
+  permalink?: string | undefined;
+  mimetype?: string | undefined;
+  filetype?: string | undefined;
   content: string;
   byteLength: number;
 }
@@ -41,7 +42,7 @@ export interface CanvasReadResult {
  */
 export async function createCanvas(
   input: CanvasCreateInput,
-): Promise<{ canvasId: string; permalink?: string }> {
+): Promise<{ canvasId: string; permalink?: string | undefined }> {
   const client = getSlackClient();
   const normalizedChannelId = normalizeSlackConversationId(input.channelId);
   const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";
@@ -201,8 +202,8 @@ export async function readCanvas(
 ): Promise<CanvasReadResult> {
   const canvasId = extractCanvasId(canvasIdOrUrl);
   if (!canvasId) {
-    throw new Error(
-      "Could not parse a Slack canvas/file ID from the provided input.",
+    throw new ToolInputError(
+      "Could not parse a Slack canvas/file ID from the provided input. Provide an F-prefixed ID or a Slack canvas/docs URL.",
     );
   }
 
@@ -226,7 +227,9 @@ export async function readCanvas(
     throw new Error("Slack returned no file metadata for canvas.");
   }
   if (!isCanvasFile(file)) {
-    throw new Error("Slack file metadata did not describe a Canvas document.");
+    throw new ToolInputError(
+      "Slack file metadata did not describe a Canvas document. Provide the ID or URL of a Slack canvas.",
+    );
   }
 
   const downloadUrl = file.url_private_download ?? file.url_private;

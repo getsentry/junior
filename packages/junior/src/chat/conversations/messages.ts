@@ -2,7 +2,6 @@
  * Conversation-message persistence and hydration.
  */
 import { createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
 import { scheduleConversationTitle } from "@/chat/services/conversation-title";
 import { projectConversationMessages } from "./message-projection";
@@ -30,10 +29,10 @@ export function toStoredConversationMessage(
   message: ConversationMessage,
 ): NewConversationMessage {
   const meta: Record<string, unknown> = {};
-  if (message.author) meta.author = message.author;
+  if (message.author) meta["author"] = message.author;
   const { replied, ...restMeta } = message.meta ?? {};
   Object.assign(meta, restMeta);
-  if (replied === false) meta.replied = false;
+  if (replied === false) meta["replied"] = false;
   return {
     messageId: message.id,
     role: message.role,
@@ -57,9 +56,17 @@ function canonicalJson(value: unknown): unknown {
   );
 }
 
-function messageStateKey(message: NewConversationMessage): string {
+// The state that a `message_updated` row records. `message_handled` records
+// a reply, so a `replied` flip is not a change. Canonical JSON drops
+// undefined keys, which stored meta never has.
+function messageUpdateKey(message: NewConversationMessage): string {
+  const { replied: _replied, ...meta } = message.meta ?? {};
+  const state = {
+    ...message,
+    meta: Object.keys(meta).length > 0 ? meta : undefined,
+  };
   return createHash("sha256")
-    .update(JSON.stringify(canonicalJson(message)))
+    .update(JSON.stringify(canonicalJson(state)))
     .digest("hex")
     .slice(0, 32);
 }
@@ -141,14 +148,15 @@ export async function appendConversationMessages(
   const events = args.conversation.messages.flatMap((message) => {
     const stored = toStoredConversationMessage(message);
     const existing = existingMessages.get(stored.messageId);
+    const updateKey = messageUpdateKey(stored);
     const changed =
       existing !== undefined &&
-      !isDeepStrictEqual(toStoredConversationMessage(existing), stored);
+      messageUpdateKey(toStoredConversationMessage(existing)) !== updateKey;
     const messageEvent = existing
       ? changed
         ? [
             {
-              idempotencyKey: `message:${stored.messageId}:update:${messageStateKey(stored)}`,
+              idempotencyKey: `message:${stored.messageId}:update:${updateKey}`,
               createdAtMs: handledAtMs,
               data: {
                 type: "message_updated" as const,

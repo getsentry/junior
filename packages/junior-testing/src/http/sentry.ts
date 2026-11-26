@@ -1,22 +1,26 @@
 const SENTRY_HOSTS = new Set(["sentry.io", "us.sentry.io", "de.sentry.io"]);
 
+// Spreading HeadersInit drops entries from a Headers instance or an array.
+function headersWithContentType(
+  init: ResponseInit | undefined,
+  contentType: string,
+): Headers {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("content-type")) headers.set("content-type", contentType);
+  return headers;
+}
+
 function json(value: unknown, init?: ResponseInit): Response {
   return Response.json(value, {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "application/json; charset=utf-8"),
   });
 }
 
 function text(value: string, init?: ResponseInit): Response {
   return new Response(value, {
     ...init,
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "text/plain; charset=utf-8"),
   });
 }
 

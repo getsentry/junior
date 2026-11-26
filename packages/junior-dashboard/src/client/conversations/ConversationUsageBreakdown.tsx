@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
@@ -41,7 +42,7 @@ import {
 
 /** One token type of a model, shown as an indented row under the model. */
 type BreakdownPart = {
-  cost?: string;
+  cost?: string | undefined;
   count: string;
   label: string;
 };
@@ -51,7 +52,7 @@ type BreakdownRow = {
   count: string;
   key: string;
   label: ReactNode;
-  parts?: BreakdownPart[];
+  parts?: BreakdownPart[] | undefined;
 };
 
 const NOT_RECORDED = "—";
@@ -99,7 +100,7 @@ function BreakdownTable(props: {
   countLabel: string;
   label: string;
   rows: BreakdownRow[];
-  total?: { cost: string; count: string; label: string };
+  total?: { cost: string; count: string; label: string } | undefined;
 }) {
   return (
     <Table
@@ -230,7 +231,7 @@ function BreakdownTable(props: {
 /** True when the Conversation has model or auxiliary usage to break down. */
 export function hasConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
 }): boolean {
   if (!props.conversation) return false;
   const auxiliaryCosts =
@@ -246,7 +247,9 @@ export function hasConversationUsageBreakdown(props: {
  */
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
+  /** The page shows the totals in its glance, so the trigger leaves them out. */
+  glance?: boolean;
 }) {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
     return null;
@@ -277,7 +280,7 @@ export function ConversationUsageBreakdown(props: {
   const formatMaybeCost = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCost(value);
   const activeModelId = liveModelId(props.detail);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const aggregateTokenTypes = tokenTypeParts(
     modelTokens ? undefined : savedTokens,
     modelCost ? undefined : savedCost,
@@ -455,7 +458,7 @@ export function ConversationUsageBreakdown(props: {
             )}
           />
           Usage
-          {summary ? (
+          {summary && !props.glance ? (
             <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
               <ShimmerText active={live}>{summary}</ShimmerText>
             </span>

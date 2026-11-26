@@ -1,9 +1,9 @@
-import { isDeepStrictEqual } from "node:util";
 /** Run a mailbox Turn and store its assistant Messages. */
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
   isPersonInput,
-  isTopLevelKind,
+  isTopLevel,
+  ownsLocation,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -15,7 +15,15 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
+import {
+  childAgentTurnOptions,
+  commitParentMessageFork,
+  isParentMessageAuthor,
+} from "@/chat/child-agents/parent-message";
+import { parentResultActor } from "@/chat/child-agents/parent-result";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
+import { isChildAgentEvent } from "@/chat/child-agents/child-input";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -25,12 +33,17 @@ import {
   type DeliverMessage,
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import {
+  ConversationTurnLifecycleService,
+  getTurnLifecycle,
+  type TurnAnswerText,
+} from "@/chat/conversations/turn-lifecycle";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { logException, setTags } from "@/chat/logging";
+import { setTags } from "@/chat/logging";
 import {
   getTurnInputSpanAttributes,
   turnInputTelemetry,
@@ -48,7 +61,6 @@ import {
 import {
   getConversationTurnBoundaryError,
   isTurnInputCommitLostError,
-  markTurnFailed,
   startActiveTurn,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
@@ -58,12 +70,14 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
-  markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import {
+  recordFinishedTurnForAutomatedLimit,
+  resetAutomatedTurnLimit,
+} from "@/chat/services/automated-turn-limit";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
   coerceThreadConversationState,
@@ -71,7 +85,6 @@ import {
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
-  failTurnRecord,
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
@@ -79,98 +92,51 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
+import { runTurnEndTasks } from "@/chat/task-execution/turn-end-tasks";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import { completeCancelledConversationTurn } from "@/chat/task-execution/turn-cancel";
+import { failConversationTurn } from "@/chat/task-execution/turn-failure";
 import {
   getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
-  type MailboxTurnInput,
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
 import {
+  mailboxTurnInputs,
   savedTurnInputMessages,
-  webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
+import {
+  instructionActorFor,
+  instructionForInputs,
+  turnRequestText,
+} from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  eventBatchMessageMeta,
-  isEventMailboxMetadata,
-  renderEventBatchInputs,
+  type eventBatchMessageMeta,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { StateAdapter } from "chat";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { Actor } from "@sentry/junior-plugin-api";
-import type { Reply } from "@/chat/turn-answer";
-import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import {
+  sharedDelegatedSubject,
+  verifiedTimerWatchSubject,
+} from "@/chat/task-execution/turn-credentials";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
     .update(parts.join("\u0000"))
     .digest("hex")
     .slice(0, 24);
-}
-
-function captureConversationTurnFailure(args: {
-  conversationId: string;
-  error: unknown;
-  failureCode: ConversationTurnFailureCode;
-  runId?: string;
-  turnId: string;
-}): string | undefined {
-  const eventId = logException(
-    args.error,
-    `conversation.turn.${args.failureCode}`,
-    {
-      conversationId: args.conversationId,
-      ...(args.runId ? { runId: args.runId } : undefined),
-      turnId: args.turnId,
-    },
-  );
-  return typeof eventId === "string" ? eventId : undefined;
-}
-
-/** Return the saved timer creator subject when it is still valid here. */
-function resumedTimerWatchCredentialSubject(
-  conversationId: string,
-  subject: CredentialSubject | undefined,
-): CredentialSubject | undefined {
-  if (subject?.binding.type !== "timer-watch") return undefined;
-  return verifyTimerWatchCredentialSubject({
-    conversationId,
-    subject,
-    watchId: subject.binding.watchId,
-  })
-    ? subject
-    : undefined;
-}
-
-// The delegated subject that every input of a batch carries, if any.
-function sharedDelegatedSubject(
-  batch: readonly MailboxTurnInput[],
-): CredentialSubject | undefined {
-  const subjects = batch.map((entry) =>
-    entry.credentialContext && "subject" in entry.credentialContext
-      ? entry.credentialContext.subject
-      : undefined,
-  );
-  const first = subjects[0];
-  return first && subjects.every((subject) => isDeepStrictEqual(subject, first))
-    ? first
-    : undefined;
 }
 
 function hasLostTurnInputCommit(error: unknown): boolean {
@@ -191,35 +157,33 @@ function sharedAuthorIdentityId(
   return ids.size === 1 ? [...ids][0] : undefined;
 }
 
-/**
- * What one child agent Turn sends its parent agent: its `reply`, or a
- * blocked or failed result.
- */
-export type ParentResult =
-  | { kind: "reply"; reply: Reply }
-  | { kind: "blocked" | "failed"; text: string };
-
-/**
- * Send one child agent Turn's result to the parent agent. `actor` is the
- * Actor of the Turn. Repeat calls for one result are safe.
- */
-export type DeliverToParent = (args: {
-  actor: Actor;
-  result: ParentResult;
-  conversationId: string;
-  turnId: string;
-}) => Promise<void>;
+// What a Turn that posted no reply answered. A child's final text is its
+// reply: it stays in the transcript, and its update carries it.
+function turnAnswerText(reply: AgentRunResult): TurnAnswerText | undefined {
+  if (reply.reply) return undefined;
+  if (reply.blocked) return { kind: "note", text: reply.blocked.missing };
+  if (reply.noReply) return { kind: "note", text: reply.noReply.note ?? "" };
+  const text = reply.text.trim();
+  return text ? { kind: "final_text", text } : undefined;
+}
 
 /**
  * Create the shared mailbox worker for web and event Turns of every
- * Conversation kind. `deliverMessage` posts to a Location, and
- * `deliverToParent` sends a child agent's results to its parent.
+ * Conversation kind. `deliverMessage` posts to a Location. `updates` is
+ * where each Turn's agent update goes, to the starter of a child agent and
+ * to the Watches of any Conversation, by default the production queue.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
   deliverMessage?: DeliverMessage,
-  deliverToParent?: DeliverToParent,
+  updates?: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
 ) {
+  const lifecycle = updates
+    ? new ConversationTurnLifecycleService(getConversationEventStore(), {
+        state: updates.state,
+        watchQueue: () => updates.queue,
+      })
+    : getTurnLifecycle();
   return async (
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
@@ -233,10 +197,6 @@ export function createConversationTurnWorker(
       if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
-
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
     let inputs: AgentInstructionInput[] = [];
@@ -246,16 +206,23 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
+    // A parent agent's task or message. On resume, its saved author says so.
+    let fromParent =
+      resolved.kind === "mailbox" &&
+      resolved.batch.every((entry) => readParentMessage(entry.message));
+    let fromChildAgent = false;
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
-    const kind = storedConversation?.kind ?? "root";
+    const kind = storedConversation?.kind ?? "thread";
     // The parent's task can carry the root's private content, so a child
     // with missing visibility runs as private.
-    const visibility = isTopLevelKind(kind)
+    const visibility = isTopLevel({
+      parentConversationId: storedConversation?.parentConversationId,
+    })
       ? storedConversation?.visibility
       : (storedConversation?.visibility ?? "private");
     const mailboxDestination =
@@ -272,19 +239,11 @@ export function createConversationTurnWorker(
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       const messages = resolved.batch.map((entry) => entry.message);
-      const firstMetadata = first.message.input.metadata;
-      if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(
-          messages,
-          await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
-        eventMeta = eventBatchMessageMeta(messages);
-      } else {
-        inputs = await webTurnInputs(messages.map((message) => message.input));
-        webInputMessages = resolved.batch.map((entry) =>
-          webConversationMessage(entry.message, entry.author),
-        );
-      }
+      ({ eventMeta, inputs, webInputMessages } = await mailboxTurnInputs(
+        resolved.batch,
+        fromParent,
+      ));
+      fromChildAgent = isChildAgentEvent(eventMeta);
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -318,6 +277,8 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
+      fromParent = isParentMessageAuthor(userMessage.author);
+      fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -329,8 +290,8 @@ export function createConversationTurnWorker(
         visibility: storedConversation?.visibility,
       });
       // Rebuild the inputs from every saved input Message. A web batch saved
-      // each Message apart. An Event batch saved one Message with its inputs
-      // joined, so it resumes as one input; the prompt is rebuilt only when
+      // each Message apart. An Event or parent batch saved one Message with
+      // its inputs joined, so it resumes as one input; the prompt is rebuilt only when
       // the Turn paused before its first prompt.
       const turnInputs = savedTurnInputMessages(
         conversation,
@@ -338,14 +299,23 @@ export function createConversationTurnWorker(
         await lifecycle.loadInputMessageIds(context.conversationId, turnId),
       );
       userMessageId = userMessage.id;
-      inputs = savedMessageIsEvent
-        ? [{ kind: "runtime", text: userMessage.text }]
-        : await webTurnInputs(
-            turnInputs.map((message) => ({
-              reviewItemChange: message.meta?.reviewItemChanges?.[0],
-              text: message.text,
-            })),
-          );
+      inputs =
+        savedMessageIsEvent || fromParent
+          ? [
+              {
+                kind: "runtime",
+                text: userMessage.text,
+                ...(userMessage.meta?.requestText
+                  ? { requestText: userMessage.meta.requestText }
+                  : undefined),
+              },
+            ]
+          : await webTurnInputs(
+              turnInputs.map((message) => ({
+                reviewItemChange: message.meta?.reviewItemChanges?.[0],
+                text: message.text,
+              })),
+            );
       attachments = turnInputs.flatMap(
         (message) => message.meta?.attachments ?? [],
       );
@@ -371,13 +341,15 @@ export function createConversationTurnWorker(
               context.conversationId,
               resolved.batch.map((entry) => entry.message),
             ) ??
-            resumedTimerWatchCredentialSubject(
+            (await verifiedTimerWatchSubject(
               context.conversationId,
               sharedDelegatedSubject(resolved.batch),
-            ))
-          : resumedTimerWatchCredentialSubject(
+              fromParent,
+            )))
+          : await verifiedTimerWatchSubject(
               context.conversationId,
               savedTurn?.credentialSubject,
+              fromParent,
             );
     }
     const source = sourceFromTurnInput({
@@ -396,31 +368,24 @@ export function createConversationTurnWorker(
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const behavior = turnBehavior({
       kind,
+      hasParent: !isTopLevel({
+        parentConversationId: storedConversation?.parentConversationId,
+      }),
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A child agent's Turn cannot wait for a person to sign in, even when it
-    // runs as the web user who started it; missing auth blocks it instead.
-    const signInActor =
-      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const signInActor = behavior.waitsForSignIn ? webActor : undefined;
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
+    // A child whose Location is its own, such as a Slack Conversation in a
+    // Space, still delivers to it. A gated Turn posts only its `reply`.
     const deliverToProvider =
-      postsToProvider && behavior.delivery === "location";
-    const sendToParent = async (result: ParentResult): Promise<void> => {
-      if (!deliverToParent) {
-        throw new Error(
-          `Conversation ${context.conversationId} cannot reach its parent agent`,
-        );
-      }
-      await deliverToParent({
-        actor,
-        result,
-        conversationId: context.conversationId,
-        turnId,
-      });
-    };
+      postsToProvider &&
+      (behavior.delivery === "location" ||
+        (!behavior.gated &&
+          storedConversation !== undefined &&
+          ownsLocation(storedConversation)));
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = postsToProvider ? ("slack" as const) : ("api" as const);
@@ -493,6 +458,10 @@ export function createConversationTurnWorker(
               }
               throw error;
             }
+            await indexEndedTurnEvents({
+              conversationId: context.conversationId,
+              turnId,
+            });
             return { status: "completed" };
           };
 
@@ -503,16 +472,14 @@ export function createConversationTurnWorker(
         } else {
           // Save each web Message apart, so an answer in a batch stays an
           // answer in the transcript and on resume.
-          for (const [index, message] of webInputMessages.entries()) {
-            upsertConversationMessage(
-              conversation,
-              index === 0
-                ? { ...message, meta: { ...message.meta, replied: false } }
-                : message,
-            );
+          for (const message of webInputMessages) {
+            upsertConversationMessage(conversation, message);
           }
-          // An Event batch saves one Message with the rendered Events.
+          // An Event or parent batch saves one Message with its inputs.
           if (webInputMessages.length === 0) {
+            const requestText = turnRequestText({
+              instruction: instructionInputs,
+            });
             upsertConversationMessage(conversation, {
               id: userMessageId,
               role: "user",
@@ -524,6 +491,7 @@ export function createConversationTurnWorker(
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,
+                ...(requestText ? { requestText } : undefined),
                 ...eventMeta,
               },
             });
@@ -531,6 +499,10 @@ export function createConversationTurnWorker(
           await persistConversationMessages({
             conversation,
             conversationId: context.conversationId,
+          });
+          await commitParentMessageFork({
+            conversationId: context.conversationId,
+            inputs: resolved.batch.map((entry) => entry.message),
           });
           await lifecycle.start({
             conversationId: context.conversationId,
@@ -558,7 +530,7 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
-          options?: { quiet?: true; reply?: true },
+          options?: { reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
@@ -568,16 +540,11 @@ export function createConversationTurnWorker(
           }
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
-          // Only Event Turns may be quiet: a person who asked always gets the
-          // reply. A card means someone must look, so it always delivers.
-          const quiet =
-            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.
           if (
             (options?.reply ? postsToProvider : deliverToProvider) &&
-            !quiet &&
             !(await isConversationDeliveryPaused(context.conversationId))
           ) {
             if (!conversationLocation || !deliverMessage) {
@@ -598,7 +565,6 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
             ...(deliveryResult ? { deliveryResult } : undefined),
-            ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             ...(deliveryResult
               ? { source: "slack" as const }
@@ -635,7 +601,13 @@ export function createConversationTurnWorker(
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
-          const piMessages = await loadProjection({
+          const childTurn = await childAgentTurnOptions({
+            actor,
+            conversationId: context.conversationId,
+            fromChildAgent,
+            fromParent,
+          });
+          const history = await loadConversationProjection({
             conversationId: context.conversationId,
           });
           failureCode = "agent_run_failed";
@@ -657,16 +629,18 @@ export function createConversationTurnWorker(
               instruction: {
                 ...instructionInputs,
                 ...(instructionActor ? { actor: instructionActor } : undefined),
+                ...childTurn.instruction,
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,
                   conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
-                  hasHistory: piMessages.length > 0,
+                  hasHistory: history.messages.length > 0,
                   turnId,
                 }),
               },
-              history: piMessages,
+              history,
+              ...childTurn.run,
               actor,
               credentialContext: credentialContextForActor(
                 actor,
@@ -741,42 +715,24 @@ export function createConversationTurnWorker(
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: result,
-                logException,
               });
               const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;
               modelFailureEventId = finalized.eventId;
-              // An answer for the parent is sent before the Turn is saved, so a
-              // lost worker cannot save the Turn and drop the answer.
+              // The Turn's end, also a child's final text, `noReply` note, or
+              // blocked report, reaches its starter and Watches as one agent
+              // update when the lifecycle records it.
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
-                if (behavior.failureNotice === "parent") {
-                  await sendToParent({
-                    kind: "failed",
-                    text: reply.diagnostics.errorMessage ?? reply.text,
-                  });
-                }
-              } else if (reply.reply && behavior.tools.reply === "parent") {
-                await sendToParent({ kind: "reply", reply: reply.reply });
               } else if (reply.reply) {
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
                 });
               } else if (
                 reply.blocked &&
-                behavior.tools.reportBlocked === "parent"
+                behavior.tools.reportBlocked === "automation"
               ) {
-                await sendToParent({
-                  kind: "blocked",
-                  text: reply.blocked.missing,
-                });
-              } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
-              } else if (reply.noReply?.note && isEventTurn) {
-                // The note of a no-reply Event Turn is its Quiet message.
-                await deliverAssistantMessage(reply.noReply.note, {
-                  quiet: true,
-                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({
@@ -812,23 +768,36 @@ export function createConversationTurnWorker(
                   surface,
                 });
               }
-              const automatedTurnLimit =
-                await recordFinishedTurnForAutomatedLimit({
+              if (fromParent) {
+                // A parent agent's task resets the limit, as a person's
+                // Message does.
+                await resetAutomatedTurnLimit({
+                  conversationId: context.conversationId,
+                });
+              } else {
+                const automatedTurnLimit =
+                  await recordFinishedTurnForAutomatedLimit({
+                    conversationId: context.conversationId,
+                    maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                    source,
+                  });
+                await stopAtAutomatedTurnLimit({
                   conversationId: context.conversationId,
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
+                  update: automatedTurnLimit,
                 });
-              await maybePostAutomatedTurnLimitNotice({
-                conversationId: context.conversationId,
-                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                source,
-                update: automatedTurnLimit,
-              });
+              }
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
+              const delivered = assistantMessageDelivered
+                ? "success"
+                : "no_reply";
+              const answer = turnAnswerText(reply);
               return completedSuccessfully
                 ? {
-                    outcome: assistantMessageDelivered ? "success" : "no_reply",
+                    ...(answer ? { answer } : undefined),
+                    outcome: reply.blocked ? "blocked" : delivered,
                   }
                 : {
                     ...(modelFailureEventId
@@ -838,9 +807,11 @@ export function createConversationTurnWorker(
                     ...(modelFailureReason
                       ? { failureReason: modelFailureReason }
                       : undefined),
+                    failureText: reply.diagnostics.errorMessage ?? reply.text,
                     outcome: "failed",
                   };
             },
+            lifecycle,
           );
 
           if (outcome.status !== "completed" && stopSignal?.aborted) {
@@ -865,43 +836,12 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          if (completedSuccessfully && behavior.sessionTasks) {
-            try {
-              await scheduleSessionCompletedPluginTasks(
-                {
-                  conversationId: context.conversationId,
-                  sessionId: turnId,
-                },
-                {
-                  send: async (message) => {
-                    try {
-                      await processPluginTask(message);
-                    } catch (error) {
-                      logException(
-                        error,
-                        "conversation.plugin.session_completion_task.failed",
-                        {
-                          conversationId: context.conversationId,
-                          pluginName: message.plugin,
-                          taskName: message.name,
-                          turnId,
-                        },
-                      );
-                    }
-                  },
-                },
-              );
-            } catch (error) {
-              logException(
-                error,
-                "conversation.plugin.session_completion_task.failed",
-                {
-                  conversationId: context.conversationId,
-                  turnId,
-                },
-              );
-            }
-          }
+          await runTurnEndTasks({
+            behavior,
+            completed: completedSuccessfully,
+            conversationId: context.conversationId,
+            turnId,
+          });
 
           await acknowledge();
           return { status: "completed" };
@@ -917,74 +857,20 @@ export function createConversationTurnWorker(
             throw failure;
           }
 
-          const failureEventId =
-            modelFailureCaptureAttempted && failureCode === "agent_run_failed"
-              ? modelFailureEventId
-              : captureConversationTurnFailure({
-                  conversationId: context.conversationId,
-                  error: failure,
-                  failureCode,
-                  runId: currentRunId,
-                  turnId,
-                });
-          // Fail the Turn record too, or a later wake with no new input
-          // resumes this Turn as the open mailbox Turn (JUNIOR-9M). Its own
-          // try so a lock timeout here still fails the Conversation copy.
-          try {
-            const latest = await getTurnRecord(context.conversationId, turnId);
-            if (latest) {
-              await failTurnRecord({
-                conversationId: context.conversationId,
-                errorMessage:
-                  failure instanceof Error ? failure.message : String(failure),
-                expectedVersion: latest.version,
-                turnId,
-              });
-            }
-          } catch (turnRecordError) {
-            captureConversationTurnFailure({
-              conversationId: context.conversationId,
-              error: turnRecordError,
-              failureCode: "persistence_failed",
-              runId: currentRunId,
-              turnId,
-            });
-          }
-          try {
-            markTurnFailed({
-              conversation,
-              nowMs: Date.now(),
-              sessionId: turnId,
-              userMessageId,
-              markConversationMessage,
-            });
-            await persistThreadStateById(context.conversationId, {
-              conversation,
-              sandboxRef: initialSandboxRef ?? null,
-            });
-          } catch (persistenceError) {
-            captureConversationTurnFailure({
-              conversationId: context.conversationId,
-              error: persistenceError,
-              failureCode: "persistence_failed",
-              runId: currentRunId,
-              turnId,
-            });
-          }
-          await lifecycle.fail({
+          await failConversationTurn({
+            conversation,
             conversationId: context.conversationId,
-            createdAtMs: Date.now(),
-            ...(failureEventId ? { eventId: failureEventId } : undefined),
+            failure,
             failureCode,
+            lifecycle,
+            modelFailureCaptureAttempted,
+            modelFailureEventId,
+            reportAs: parentResultActor(actor, source.kind),
+            runId: currentRunId,
+            sandboxRef: initialSandboxRef,
             turnId,
+            userMessageId,
           });
-          if (behavior.failureNotice === "parent") {
-            await sendToParent({
-              kind: "failed",
-              text:
-                failure instanceof Error ? failure.message : String(failure),
-            });
-          }
           await acknowledge();
           return { status: "completed" };
         }

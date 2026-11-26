@@ -1,8 +1,11 @@
 import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-/** The most links that one object request may resolve. */
-export const MAX_OBJECT_LINKS = 20;
+/**
+ * The most links that one object request may resolve: a page of a list,
+ * which a plugin can read in one batch.
+ */
+export const MAX_OBJECT_LINKS = 100;
 
 const objectLinkUrlSchema = z.string().trim().min(1).max(2048);
 
@@ -33,3 +36,17 @@ export const objectLinksReportSchema = z
   .strict();
 
 export type ObjectLinksReport = z.output<typeof objectLinksReportSchema>;
+
+/** A participant asks to attach one linked object to a Conversation. */
+export const attachObjectLinkBodySchema = z
+  .object({ url: objectLinkUrlSchema })
+  .strict();
+
+/** `unchanged` when the Conversation already has the object. */
+export const attachObjectLinkResponseSchema = z
+  .object({ status: z.enum(["attached", "unchanged"]) })
+  .strict();
+
+export type AttachObjectLinkResponse = z.output<
+  typeof attachObjectLinkResponseSchema
+>;

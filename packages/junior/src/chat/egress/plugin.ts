@@ -16,8 +16,8 @@ interface PluginEgressAuth {
     grant: {
       access: "read" | "write";
       name: string;
-      reason?: string;
-      requirements?: string[];
+      reason?: string | undefined;
+      requirements?: string[] | undefined;
     };
     kind: "auth_required" | "unavailable";
     message: string;
@@ -27,9 +27,14 @@ interface PluginEgressAuth {
 
 interface PluginEgressDeps {
   credentialAuditSource?: CredentialAuditSource;
-  credentialContext?: CredentialContext;
+  credentialContext?: CredentialContext | undefined;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
+  /**
+   * Use only the credential subject's own stored OAuth token, never a
+   * plugin grant or an environment token.
+   */
+  userOAuthOnly?: boolean;
 }
 
 function credentialContextForPluginEgress(
@@ -80,29 +85,23 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         );
       }
 
-      return await executeCredentialedEgressRequest({
+      const result = await executeCredentialedEgressRequest({
         activeEgressId: credentialContext.egressId,
         credentialContext,
         deps: {
           ...(deps.fetch ? { fetch: deps.fetch } : undefined),
-          recordAuthRequired: async (signal) => {
-            await deps.pluginAuth.handleAuthRequired({
-              ...(signal.authorization
-                ? { authorization: signal.authorization }
-                : undefined),
-              grant: signal.grant,
-              kind: signal.kind ?? "auth_required",
-              message: signal.message,
-              provider: signal.provider,
-            });
-          },
           tracePropagation: {},
         },
         operation,
         provider: input.provider,
         request: input.request,
         upstreamUrl,
+        ...(deps.userOAuthOnly ? { userOAuthOnly: true } : undefined),
       });
+      if (result.authRequired) {
+        await deps.pluginAuth.handleAuthRequired(result.authRequired);
+      }
+      return result.response;
     },
   };
 }

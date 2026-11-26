@@ -24,11 +24,13 @@ import { executeAgentRun } from "@/chat/agent";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 
-export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
+export const CHAT_USAGE =
+  "usage: junior chat\n       junior chat -p <message>\n       junior chat --engine core -p <message>";
 
 export type ChatCommandOptions =
   | { mode: "interactive" }
-  | { message: string; mode: "prompt" };
+  | { message: string; mode: "prompt" }
+  | { message: string; mode: "core_prompt" };
 
 export interface ChatIo {
   error: (line: string) => Promise<void> | void;
@@ -123,10 +125,10 @@ function writeStream(
 
 /** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
 function defaultStateAdapterForLocalChat(): void {
-  if (process.env.JUNIOR_STATE_ADAPTER) {
+  if (process.env["JUNIOR_STATE_ADAPTER"]) {
     return;
   }
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 }
 
 /** Load the app plugin module so source-mode local chat matches server wiring. */
@@ -142,13 +144,13 @@ async function configureLocalChatPlugins(
 ): Promise<void> {
   const [
     pluginsModule,
-    agentHooksModule,
+    registryModule,
     catalogRuntimeModule,
     validationModule,
     databaseModule,
   ] = await Promise.all([
     import("@/plugins"),
-    import("@/chat/plugins/agent-hooks"),
+    import("@/chat/plugins/hooks/registry"),
     import("@/chat/plugins/catalog-runtime"),
     import("@/chat/plugins/validation"),
     import("@/chat/db"),
@@ -164,7 +166,7 @@ async function configureLocalChatPlugins(
     : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
     Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
-  agentHooksModule.validatePlugins(plugins);
+  registryModule.validatePlugins(plugins);
   const previousPluginCatalogConfig =
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(pluginConfig);
   try {
@@ -178,7 +180,7 @@ async function configureLocalChatPlugins(
       );
     }
     databaseModule.getDb();
-    agentHooksModule.setPlugins(plugins);
+    registryModule.setPlugins(plugins);
   } catch (error) {
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(
       previousPluginCatalogConfig,
@@ -192,16 +194,18 @@ function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
     return { mode: "interactive" };
   }
 
-  if (argv[0] !== "-p") {
+  const coreEngine = argv[0] === "--engine" && argv[1] === "core";
+  const promptArgs = coreEngine ? argv.slice(2) : argv;
+  if (promptArgs[0] !== "-p") {
     return undefined;
   }
 
-  const message = argv.slice(1).join(" ").trim();
+  const message = promptArgs.slice(1).join(" ").trim();
   if (!message) {
     return undefined;
   }
 
-  return { message, mode: "prompt" };
+  return { message, mode: coreEngine ? "core_prompt" : "prompt" };
 }
 
 function formatReply(reply: LocalAgentReply): string {
@@ -226,7 +230,7 @@ function newRunConversationId(): string {
 }
 
 function localDevServerUrl(): string {
-  return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+  return `http://127.0.0.1:${process.env["PORT"]?.trim() || "3000"}`;
 }
 
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
@@ -236,21 +240,22 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setBriefsConfig } = await import("@/chat/briefs/registration");
-  setBriefsConfig({ enabled: true });
+  const { setEventEmbeddingsConfig } =
+    await import("@/chat/conversations/event-embedding-config");
+  setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
   const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
-  const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
-  const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker, createDeliverToParent } =
-    await import("@/chat/agent-invocations/result");
+  const { bindSpawnAgent } = await import("@/chat/child-agents/spawn");
+  const { bindMessageAgent } = await import("@/chat/child-agents/message");
+  const { runConversation } =
+    await import("@/chat/task-execution/run-conversation");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
-  const { skipInputAfterConversationStop } =
+  const { resumeForPersonInput } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
@@ -261,22 +266,18 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const childWorker = createChildConversationWorker(agentRunner, {
+    const runTurn = createConversationTurnWorker(agentRunner, undefined, {
       queue: localConversationWork.queue,
-      runTurn: createConversationTurnWorker(
-        agentRunner,
-        undefined,
-        createDeliverToParent({ queue: localConversationWork.queue }),
-      ),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
       // The local queue carries only child Conversation work.
       run: async (context) => {
-        const stopped = await skipInputAfterConversationStop(context);
-        return "skipped" in stopped
-          ? stopped.skipped
-          : await childWorker(stopped.context);
+        await resumeForPersonInput(
+          context.conversationId,
+          context.attempt.messages,
+        );
+        return await runConversation(context, { runTurn });
       },
     });
   });
@@ -353,6 +354,26 @@ async function runPrompt(
   }
 }
 
+async function runCorePrompt(
+  options: Extract<ChatCommandOptions, { mode: "core_prompt" }>,
+  io: ChatIo,
+  pluginSet: JuniorPluginSet | null | undefined,
+): Promise<number> {
+  defaultStateAdapterForLocalChat();
+  await configureLocalChatPlugins(pluginSet);
+  const { runCoreEnginePrompt } = await import("./chat-core-engine");
+  const result = await runCoreEnginePrompt({
+    conversationId: newRunConversationId(),
+    message: options.message,
+  });
+  if (result.outcome !== "completed") {
+    await reportStatus(io, `Turn ${result.outcome}: ${result.reason}`);
+    return 1;
+  }
+  await deliverReply(io, { text: result.reply });
+  return 0;
+}
+
 async function runInteractive(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
@@ -365,6 +386,7 @@ async function runInteractive(
     terminal: true,
   });
   try {
+    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
     while (true) {
       const message = (await rl.question("junior> ")).trim();
       if (!message) {
@@ -388,6 +410,7 @@ async function runInteractive(
         await reportStatus(io, errorMessage(error));
       }
     }
+    /* oxlint-enable no-await-in-loop */
   } finally {
     rl.close();
     await close();
@@ -398,7 +421,7 @@ async function runInteractive(
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
-  deps: { pluginSet?: JuniorPluginSet | null } = {},
+  deps: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {
@@ -409,6 +432,9 @@ export async function runChat(
   try {
     if (options.mode === "prompt") {
       return await runPrompt(options, io, deps.pluginSet);
+    }
+    if (options.mode === "core_prompt") {
+      return await runCorePrompt(options, io, deps.pluginSet);
     }
     await runInteractive(io, deps.pluginSet);
     return 0;

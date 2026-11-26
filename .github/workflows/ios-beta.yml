@@ -1,0 +1,136 @@
+name: iOS Beta
+
+# Builds a signed Release of apps/ios and uploads it to TestFlight. It runs
+# when a change to apps/ios lands on main, so testers get each app fix
+# without a manual step. Run it by hand from the Actions tab or
+# `gh workflow run ios-beta.yml --ref <branch>`, or add the `trigger-ios-beta`
+# label to a pull request (ios-beta-label.yml). With the `pull_request`
+# input, the run keeps its status in that pull request's description.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to report the status on
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-beta
+  cancel-in-progress: false
+
+jobs:
+  start:
+    name: Report start
+    if: inputs.pull_request
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+    steps:
+      # The default branch's script: the write token must not run branch code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PULL_REQUEST: ${{ inputs.pull_request }}
+        with:
+          script: |
+            const { reportBeta } = await import(`${process.env.GITHUB_WORKSPACE}/apps/ios/scripts/ios-beta.mjs`);
+            await reportBeta({ github, context, pullRequest: process.env.PULL_REQUEST, state: "building" });
+
+  testflight:
+    name: Upload to TestFlight
+    runs-on: xcode-27
+    timeout-minutes: 60
+    outputs:
+      build: ${{ steps.upload.outputs.build }}
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The beta's version is the latest release tag, and its notes list
+          # the commits since the last beta.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          working-directory: apps/ios
+          bundler-cache: true
+
+      - name: Install the CI tools
+        run: brew bundle --file=Brewfile.ci
+
+      - name: Get codesigning repo token
+        id: codesign-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.IOS_CODESIGN_APP_ID }}
+          private-key: ${{ secrets.IOS_CODESIGN_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: apple-apps-codesigning
+          # The beta lane only reads the match repo.
+          permission-contents: read
+
+      - name: Build and upload to TestFlight
+        id: upload
+        run: scripts/testflight.sh
+        env:
+          CODESIGN_TOKEN: ${{ steps.codesign-token.outputs.token }}
+          MATCH_PASSWORD: ${{ secrets.IOS_MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.IOS_APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-beta-logs
+          path: |
+            ~/Library/Logs/gym
+            apps/ios/fastlane/report.xml
+
+  report:
+    name: Report result
+    # After start too, so a late "building" cannot replace the result.
+    needs: [start, testflight]
+    if: always() && inputs.pull_request
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+    steps:
+      # The default branch's script: the write token must not run branch code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PULL_REQUEST: ${{ inputs.pull_request }}
+          RESULT: ${{ needs.testflight.result }}
+          BUILD: ${{ needs.testflight.outputs.build }}
+        with:
+          script: |
+            const { reportBeta } = await import(`${process.env.GITHUB_WORKSPACE}/apps/ios/scripts/ios-beta.mjs`);
+            await reportBeta({
+              github,
+              context,
+              pullRequest: process.env.PULL_REQUEST,
+              state: process.env.RESULT,
+              build: process.env.BUILD,
+            });

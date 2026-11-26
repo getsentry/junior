@@ -4,9 +4,9 @@ import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
 import { slackLocationLabel } from "../format";
 import { cn } from "../styles";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { Conversation } from "../types";
-import { conversationLinks, linkStatusLabel } from "./ConversationLinkedWork";
-import { GitHubMark } from "./GitHubMark";
+import { linkStatusLabel } from "./ConversationLinkedWork";
 import { SlackMark } from "./SlackMark";
 import { OutboundLink } from "../components/OutboundLink";
 
@@ -24,7 +24,13 @@ function githubRepositoryFromUrl(href: string) {
   };
 }
 
-function singleGitHubRepository(annotations: Conversation["annotations"]) {
+/**
+ * Name the one GitHub repository that linked work points to. Undefined
+ * when there is none, or when the work spans more than one.
+ */
+export function singleGitHubRepository(
+  annotations: ConversationDetailReport["annotations"],
+) {
   let repository: ReturnType<typeof githubRepositoryFromUrl>;
   for (const annotation of annotations ?? []) {
     if (annotation.plugin !== "github" || !annotation.url) continue;
@@ -43,10 +49,10 @@ function singleGitHubRepository(annotations: Conversation["annotations"]) {
 
 /** A compact header tag: an icon and a label, optionally an outbound link. */
 export function ContextTag(props: {
-  className?: string;
+  className?: string | undefined;
   /** Text after the label that names the object, such as a pull request title. */
-  detail?: string;
-  href?: string;
+  detail?: string | undefined;
+  href?: string | undefined;
   icon: ReactNode;
   label: string;
   title?: string;
@@ -102,7 +108,8 @@ function SlackLocationTag(props: {
 /**
  * Show where a home card came from and the work it links to. Each linked
  * work tag already names its source, such as the repository, so the card
- * has no separate repository tag.
+ * has no separate repository tag. Feed rows carry only the compact sidebar
+ * annotations, so a tag shows the ones with a URL.
  */
 export function conversationCardTags(
   conversation: Conversation,
@@ -111,7 +118,17 @@ export function conversationCardTags(
   const location = slackLocationLabel(conversation, { includeId: false });
   // A direct message is often titled "Direct Message", like its location.
   const showLocation = Boolean(location) && location !== title;
-  const links = conversationLinks(conversation);
+  const links = (conversation.sidebarAnnotations ?? []).flatMap((link) =>
+    link.url
+      ? [
+          {
+            ...link,
+            description: link.title === link.label ? undefined : link.title,
+            url: link.url,
+          },
+        ]
+      : [],
+  );
   if (!showLocation && links.length === 0) return null;
 
   return (
@@ -131,15 +148,13 @@ export function conversationCardTags(
           icon={
             <ObjectIcon
               decorative
-              facts={link.facts}
-              objectType={link.objectType}
+              objectType={link.objectType ?? "item"}
               size={12}
               status={link.status}
             />
           }
           key={link.key}
-          // With a title, the compact label is enough to name the source.
-          label={(link.description && link.shortLabel) || link.label}
+          label={link.label}
           title={[link.label, linkStatusLabel(link.status), link.description]
             .filter(Boolean)
             .join(" · ")}
@@ -165,31 +180,5 @@ function HiddenLinkCount(props: { className: string; count: number }) {
     >
       +{props.count}
     </span>
-  );
-}
-
-/** Show source context and a repository tag when linked work points to one repository. */
-export function conversationContextTags(
-  conversation: Conversation | undefined,
-) {
-  const location =
-    conversation && slackLocationLabel(conversation, { includeId: false });
-  const repository = singleGitHubRepository(conversation?.annotations);
-  if (!location && !repository) return null;
-
-  return (
-    <div className="flex min-w-0 items-center gap-1.5">
-      {location && conversation ? (
-        <SlackLocationTag conversation={conversation} />
-      ) : null}
-      {repository ? (
-        <ContextTag
-          {...repository}
-          icon={
-            <GitHubMark className="size-3 shrink-0 transition-colors group-hover/context-tag:text-dashboard-text-solid group-focus-visible/context-tag:text-dashboard-text-solid" />
-          }
-        />
-      ) : null}
-    </div>
   );
 }

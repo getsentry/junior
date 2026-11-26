@@ -1,10 +1,9 @@
 import { ChevronRight } from "lucide-react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
-import { Badge } from "../components/ui/badge";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -14,23 +13,35 @@ import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 import { SourceMark } from "./SourceMark";
 import { eventMessageSource } from "./transcriptSource";
 
-function EventTypeChip(props: { eventType: string }) {
-  return (
-    <Badge
-      className="break-all py-0.5 font-mono leading-none"
-      variant="outline"
-    >
-      <HighlightText text={props.eventType} />
-    </Badge>
-  );
-}
-
 /** Heading for several Events that arrived in one message. */
-function batchSummary(events: readonly { label?: string }[]): string {
+function batchSummary(
+  events: readonly { label?: string | undefined }[],
+): string {
   // Name the resource only when every Event is about it.
   const label = events[0]?.label;
   const shared = label && events.every((event) => event.label === label);
   return `${events.length} events${shared ? ` · ${label}` : ""}`;
+}
+
+type BatchLine = { count: number; eventType: string; text: string };
+
+/**
+ * Merge Events with the same type and summary into one line with a count, in
+ * first-seen order. A provider can send one Event per check suite, so a batch
+ * can repeat one line dozens of times.
+ */
+function batchLines(
+  events: readonly { eventType: string; trustedSummary?: string | undefined }[],
+): BatchLine[] {
+  const lines = new Map<string, BatchLine>();
+  for (const event of events) {
+    const text = event.trustedSummary ?? event.eventType;
+    const key = `${event.eventType}\n${text}`;
+    const line = lines.get(key);
+    if (line) line.count += 1;
+    else lines.set(key, { count: 1, eventType: event.eventType, text });
+  }
+  return [...lines.values()];
 }
 
 /** Render an Event Message whose heading expands its full text. */
@@ -59,7 +70,12 @@ export function TranscriptEventView(props: {
   const heading = (
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
+        {/* The summary names the Event. Its raw type stays on hover for
+            whoever needs to match it to a webhook. */}
+        <span
+          className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text"
+          title={isBatch ? undefined : props.message.eventType}
+        >
           <DisplayText
             inline
             links={links}
@@ -68,27 +84,30 @@ export function TranscriptEventView(props: {
           />
         </span>
         {source ? <SourceMark provider={source} /> : null}
-        {!isBatch && props.message.eventType ? (
-          <EventTypeChip eventType={props.message.eventType} />
-        ) : null}
       </span>
       {isBatch ? (
         <span className="flex min-w-0 flex-col gap-1" role="list">
-          {events.map((event, index) => (
+          {batchLines(events).map((line, index) => (
             <span
               key={index}
               role="listitem"
               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
             >
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 break-words" title={line.eventType}>
                 <DisplayText
                   inline
                   links={links}
                   mentions={mentions}
-                  text={event.trustedSummary ?? event.eventType}
+                  text={line.text}
                 />
+                {/* Inside the text span, so a wrapped line keeps the count
+                    at its end. */}
+                {line.count > 1 ? (
+                  <span className="ml-1.5 whitespace-nowrap font-medium tabular-nums text-dashboard-text">
+                    ×{line.count}
+                  </span>
+                ) : null}
               </span>
-              <EventTypeChip eventType={event.eventType} />
             </span>
           ))}
         </span>
@@ -148,7 +167,7 @@ export function TranscriptEventView(props: {
       {changes.length ? (
         <div className={cn("grid min-w-0 gap-2", !onlyChanges && "mt-2")}>
           {changes.map((record, index) => (
-            <ReviewItemChangeRow
+            <InboxItemChangeRow
               conversationId={props.conversationId}
               fallback={onlyChanges && changes.length === 1 ? view : null}
               key={index}

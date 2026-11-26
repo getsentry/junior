@@ -101,6 +101,7 @@ describe("Slack turn input timing", () => {
       });
 
       await runtime[handler](thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
         telemetry: {
           count: 2,

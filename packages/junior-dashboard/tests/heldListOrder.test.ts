@@ -9,7 +9,7 @@ import type { Conversation } from "../src/client/types";
 
 function conversation(id: string, title = id): Conversation {
   return {
-    kind: "root",
+    kind: "thread",
     cumulativeDurationMs: 0,
     displayTitle: title,
     id,
@@ -17,7 +17,8 @@ function conversation(id: string, title = id): Conversation {
     lastProgressAt: "2026-08-03T12:00:00Z",
     lastSeenAt: "2026-08-03T12:00:00Z",
     startedAt: "2026-08-03T12:00:00Z",
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
 }

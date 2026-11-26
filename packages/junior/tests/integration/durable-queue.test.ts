@@ -1,18 +1,15 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import {
-  FUNCTION_TIMEOUT_BUFFER_SECONDS,
-  botConfig,
-  getChatConfig,
-} from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
 import {
   commitAcceptedReply,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
@@ -70,6 +67,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -100,7 +98,7 @@ function almostSpentStartedAtMs(remainingMs: number): number {
  * They may fake only model generation at the agent stream boundary and Slack
  * I/O at the adapter boundary.
  */
-async function slack(options: { modelStream?: StreamFn } = {}) {
+async function slack(options: { modelStream?: AgentRequestStreamFn } = {}) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
@@ -114,6 +112,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner },
     state,
   });
@@ -123,7 +122,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       // Use production worker shouldYield (lease + host request deadline).
@@ -460,7 +459,7 @@ describe("durable queue contract", () => {
         text: expect.stringContaining("I ran into an internal error"),
         thread_ts: "1712345.0042",
       });
-      expect(JSON.stringify(failurePosts[3]?.params.blocks)).toContain(
+      expect(JSON.stringify(failurePosts[3]?.params["blocks"])).toContain(
         watchConversationId,
       );
     }, 30_000);
@@ -854,11 +853,12 @@ describe("durable queue contract", () => {
       });
       await expectNextTurn(q, "1712345.0006");
       // The next turn was told that this one failed.
-      expect(
-        JSON.stringify(
-          await loadProjection({ conversationId: CONVERSATION_ID }),
-        ),
-      ).toContain("Your previous turn failed before it finished.");
+      const next = await loadConversationProjection({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(JSON.stringify(next.messages)).toContain(
+        "Your previous turn failed before it finished.",
+      );
     });
 
     it("fails once when the resumed turn stops before its first save", async () => {

@@ -1,3 +1,5 @@
+import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
@@ -8,19 +10,25 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  saveHeldInput,
+} from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
+  nudgeIdempotencyKey,
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
+import { requestLostLeaseRecovery } from "./lost-lease";
 import {
   ackMessages,
   beginConversationResume,
   checkInConversationWork,
+  claimConversationAttempt,
   clearConsumedConversationWake,
   completeConversationStop,
   completeConversationWork,
@@ -40,6 +48,7 @@ import {
   requestAnotherSlice,
   startConversationWork,
   type AttemptFailure,
+  type BeforeWorkStops,
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
@@ -52,7 +61,7 @@ export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -67,7 +76,7 @@ export interface ConversationWorkerContext {
 export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /**
    * Give pending mailbox messages to the active Turn. By default only
    * `interrupt` messages for this attempt are offered. With `deferred`, every
@@ -105,95 +114,20 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
-  checkInIntervalMs?: number;
-  conversationStore?: ConversationStore;
-  nowMs?: () => number;
+  beforeWorkStops?: BeforeWorkStops | undefined;
+  checkInIntervalMs?: number | undefined;
+  conversationStore?: ConversationStore | undefined;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
+  nowMs?: (() => number) | undefined;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }
 
 function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
-}
-
-function nudgeIdempotencyKey(
-  reason: string,
-  conversationId: string,
-  nowMs: number,
-): string {
-  return `${reason}:${conversationId}:${nowMs}`;
-}
-
-async function requestLostLeaseRecovery(args: {
-  conversationId: string;
-  destination?: Destination;
-  leaseToken: string;
-  nowMs: number;
-  options: ProcessConversationWorkOptions;
-}): Promise<void> {
-  const before = await getConversationWorkState({
-    conversationId: args.conversationId,
-    state: args.options.state,
-  });
-  const retry = await recordConversationRetry({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (retry === "lost_lease") {
-    return;
-  }
-  if (retry === "stopped") {
-    logException(
-      new Error("Conversation work stopped after repeated failed attempts"),
-      "conversation.work.retry.exhausted",
-      {
-        "app.run.id": before?.execution.runId ?? "unknown",
-        "app.worker.last_progress_at_ms":
-          before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
-        "app.worker.retry_count": (before?.execution.retryCount ?? 0) + 1,
-      },
-    );
-    return;
-  }
-  const sliceRequested = await requestAnotherSlice({
-    conversationId: args.conversationId,
-    destination: args.destination,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!sliceRequested) {
-    return;
-  }
-  const released = await releaseConversationWork({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!released) {
-    return;
-  }
-  await ensureConversationWake({
-    conversationId: args.conversationId,
-    conversationStore: args.options.conversationStore,
-    idempotencyKey: nudgeIdempotencyKey(
-      "lost_lease",
-      args.conversationId,
-      args.nowMs,
-    ),
-    nowMs: args.nowMs,
-    queue: args.options.queue,
-    replaceExistingWake: true,
-    state: args.options.state,
-  });
 }
 
 /**
@@ -417,13 +351,14 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit Destination. Read it from a root Conversation
-  // only. A child stores its root's Destination, but its work keeps none, so
-  // invocation and dispatch workers stay free of provider Destinations.
+  // Mailbox wakes may omit Destination. Read it only from a Conversation
+  // that has its own Location. Another child stores its root's Destination,
+  // but its work keeps none, so invocation and dispatch workers stay free of
+  // provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });
-    if (stored && !stored.parentConversationId) {
+    if (stored && ownsLocation(stored)) {
       destination = stored.destination;
     }
   }
@@ -571,6 +506,7 @@ async function processConversationWorkInContext(
   try {
     let hasRun = false;
     let resumeIfStopped = false;
+    /* oxlint-disable no-await-in-loop -- Each slice reads the work state that the slice before it left. */
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -636,6 +572,26 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
+      // A stop can take Event input between this read and the claim. Then
+      // select again, so the Turn never runs input that the stop held.
+      if (attemptMessageIds.length > 0) {
+        const claim = await claimConversationAttempt({
+          conversationId,
+          inboundMessageIds: attemptMessageIds,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (claim.status === "held") {
+          await saveHeldInput(conversationId, claim.messages);
+          if (claim.pendingCount === 0 && !resumePending) {
+            break;
+          }
+        }
+        if (claim.status !== "claimed") {
+          continue;
+        }
+      }
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -834,6 +790,7 @@ async function processConversationWorkInContext(
         break;
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     const completion = await completeConversationWork({
       conversationId,
@@ -842,6 +799,7 @@ async function processConversationWorkInContext(
       // A stop that raced an external pause must reach the paused Turn.
       resumeIfStopped,
       conversationStore: options.conversationStore,
+      getSlackAdapter: options.getSlackAdapter,
       nowMs: now(options),
       state: options.state,
     });
@@ -929,6 +887,7 @@ async function processConversationWorkInContext(
         const retry = failure
           ? failure.status
           : await recordConversationRetry({
+              beforeWorkStops: options.beforeWorkStops,
               conversationId,
               leaseToken: lease.leaseToken,
               conversationStore: options.conversationStore,

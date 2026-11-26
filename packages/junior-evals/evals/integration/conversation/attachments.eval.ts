@@ -41,7 +41,8 @@ describe("Conversation Attachments", () => {
   test("when a mention asks to change an attached image, the edit uses that image", async ({
     run,
   }) => {
-    // The agent can view the result to check the edit.
+    // The agent can view the result and edit again, so assert only that an
+    // edit of the attached image reaches the thread.
     mockGeneratedImage(editedTicketScreenshotPng());
     const conversation = await run(
       slackMention("Change the ticket number in this screenshot to 1234.", {
@@ -49,15 +50,31 @@ describe("Conversation Attachments", () => {
       }),
     );
 
-    const loads = completedToolCalls("loadAttachment", conversation);
-    expect(loads).toHaveLength(1);
-    const { path } = toolOutput(loads[0]!) as { path: string };
+    const [load] = completedToolCalls("loadAttachment", conversation);
+    expect(load).toBeDefined();
+    const { filename } = toolOutput(load!) as { filename: string };
     const edits = completedToolCalls("imageGenerate", conversation);
-    expect(edits).toHaveLength(1);
-    expect(edits[0]!.input).toMatchObject({
-      images: [expect.stringContaining(path)],
-    });
-    expect(conversation.files).toHaveLength(1);
+    // The agent may pass a copy of the attachment, so match its file name.
+    expect(edits.map((edit) => edit.input)).toContainEqual(
+      expect.objectContaining({
+        images: [expect.stringContaining(filename)],
+      }),
+    );
+    // Calls from a Code Mode script have no input or output.
+    const editPaths = edits.flatMap(
+      (edit) =>
+        (
+          toolOutput(edit) as { images?: { path: string }[] } | undefined
+        )?.images?.map((image) => image.path) ?? [],
+    );
+    const sentPaths = completedToolCalls("sendFiles", conversation).flatMap(
+      (call) =>
+        (call.input as { files?: { path: string }[] } | undefined)?.files?.map(
+          (file) => file.path,
+        ) ?? [],
+    );
+    expect(sentPaths.some((path) => editPaths.includes(path))).toBe(true);
+    expect(conversation.files).not.toHaveLength(0);
   });
 
   test("when a web message has an image, the reply uses the image", async ({
@@ -65,7 +82,7 @@ describe("Conversation Attachments", () => {
   }) => {
     const conversation = await run(
       webMessage("What is the ticket number in this screenshot?", {
-        images: [SCREENSHOT],
+        files: [SCREENSHOT],
       }),
     );
 

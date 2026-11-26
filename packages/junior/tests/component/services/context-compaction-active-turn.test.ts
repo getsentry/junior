@@ -140,13 +140,35 @@ describe("active-turn context compaction", () => {
   it("replaces oversized tool history with continuation state", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadConversationProjection, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-active-capacity";
     await commitMessages({
       conversationId,
       messages: [user("Make the requested edit.", 1)],
+    });
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { changeTodos } = await import("@/chat/todos/store");
+    const self = { conversationId };
+    const {
+      todos: [edit, test],
+    } = await changeTodos(getSqlExecutor(), {
+      conversationId,
+      nowMs: 1,
+      change: {
+        add: [
+          {
+            title: "Apply requested edit",
+            status: "in_progress",
+            assignee: self,
+          },
+          { title: "Run focused test", status: "open", assignee: self },
+          { title: "Read the file", status: "done", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
     });
     const activeMessages = [
       user(
@@ -162,12 +184,13 @@ describe("active-turn context compaction", () => {
         content: [
           {
             type: "toolCall",
-            id: "plan-active",
-            name: "updatePlan",
+            id: "todos-active",
+            name: "todos_updateTodos",
             arguments: {
-              plan: [
-                { step: "Apply requested edit", status: "in_progress" },
-                { step: "Run focused test", status: "pending" },
+              add: [
+                { title: "Apply requested edit" },
+                { title: "Run focused test" },
+                { title: "Read the file", status: "done" },
               ],
             },
           },
@@ -176,9 +199,9 @@ describe("active-turn context compaction", () => {
       } as PiMessage,
       {
         role: "toolResult",
-        toolCallId: "plan-active",
-        toolName: "updatePlan",
-        content: [{ type: "text", text: "Plan updated" }],
+        toolCallId: "todos-active",
+        toolName: "todos_updateTodos",
+        content: [{ type: "text", text: "To-dos updated" }],
         isError: false,
         timestamp: 5,
       } as PiMessage,
@@ -230,9 +253,19 @@ describe("active-turn context compaction", () => {
       "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
-    expect(textOf(result.piMessages![2]!)).toContain(
-      '<open-plan>\n[{"step":"Apply requested edit","status":"in_progress"},{"step":"Run focused test","status":"pending"}]\n</open-plan>',
+    // One snapshot of the open To-dos replaces them in summarized history.
+    const summary = textOf(result.piMessages![2]!);
+    expect(
+      summary.split('<plugin-contribution plugin="todos"').length - 1,
+    ).toBe(1);
+    expect(summary).toContain(
+      [
+        `- TODO-${edit!.id} (in_progress, assignee self): Apply requested edit`,
+        `- TODO-${test!.id} (open, assignee self): Run focused test`,
+        "  </plugin-contribution>",
+      ].join("\n"),
     );
+    expect(summary).not.toContain("Read the file");
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<runtime-turn-context>",
     );
@@ -245,7 +278,8 @@ describe("active-turn context compaction", () => {
         messages: result.piMessages!,
       }),
     ).resolves.toBeDefined();
-    const durable = await loadProjection({ conversationId });
+    const durable = (await loadConversationProjection({ conversationId }))
+      .messages;
     expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.provenance[0]).toEqual({ authority: "context" });

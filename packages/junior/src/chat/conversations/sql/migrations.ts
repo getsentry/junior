@@ -3,7 +3,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
-import { isPostgresErrorCode } from "@/db/postgres-error";
+import {
+  pendingMigrations,
+  readMigrationRecords,
+  type MigrationRecord,
+} from "@/db/migrate";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
 // A schema without the core Drizzle journal must upgrade through this release
@@ -24,8 +28,8 @@ function migrationFolder(): string {
 }
 
 interface CoreMigrationState {
-  appliedAt?: number;
   hasJuniorTables: boolean;
+  records?: MigrationRecord[];
 }
 
 interface CoreMigrationResult {
@@ -34,27 +38,16 @@ interface CoreMigrationResult {
   scanned: number;
 }
 
-/** Read core journal progress and detect existing pre-journal Junior tables. */
+/** Read core migration rows and detect existing pre-journal Junior tables. */
 async function loadCoreMigrationState(
   executor: JuniorSqlMigrationExecutor,
 ): Promise<CoreMigrationState> {
-  try {
-    const [migration] = await executor.query<{ appliedAt: string | null }>(`
-SELECT created_at::text AS "appliedAt"
-FROM drizzle.__drizzle_junior_core
-ORDER BY created_at DESC
-LIMIT 1
-`);
-    if (migration?.appliedAt !== null && migration?.appliedAt !== undefined) {
-      return {
-        appliedAt: Number(migration.appliedAt),
-        hasJuniorTables: true,
-      };
-    }
-  } catch (error) {
-    if (!isPostgresErrorCode(error, "42P01")) {
-      throw error;
-    }
+  const records = await readMigrationRecords(
+    executor,
+    `drizzle.${MIGRATIONS_TABLE}`,
+  );
+  if (records?.length) {
+    return { hasJuniorTables: true, records };
   }
 
   const [tables] = await executor.query<{ hasJuniorTables: boolean }>(`
@@ -70,37 +63,25 @@ SELECT EXISTS (
   };
 }
 
-function isCurrentMigrationState(
-  state: CoreMigrationState,
-  latestMigrationAt: number,
-): boolean {
-  return state.appliedAt !== undefined && state.appliedAt >= latestMigrationAt;
-}
-
 function migrationResult(
   migrations: readonly MigrationMeta[],
   state: CoreMigrationState,
 ): CoreMigrationResult {
-  const appliedAt = state.appliedAt;
-  const existing =
-    appliedAt === undefined
-      ? 0
-      : migrations.filter((migration) => migration.folderMillis <= appliedAt)
-          .length;
+  const migrated = pendingMigrations(migrations, state.records ?? []).length;
   return {
-    existing,
-    migrated: migrations.length - existing,
+    existing: migrations.length - migrated,
+    migrated,
     scanned: migrations.length,
   };
 }
 
 /** Reject legacy databases that must first run the bridge release upgrade. */
 function assertSupportedMigrationState(state: CoreMigrationState): void {
-  if (!state.hasJuniorTables || state.appliedAt !== undefined) {
+  if (!state.hasJuniorTables || state.records) {
     return;
   }
   throw new Error(
-    `Existing Junior SQL tables have no core Drizzle migration history. Stop old Junior workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this Junior version and rerun \`junior upgrade\` before restarting workers.`,
+    `Existing SQL tables have no core Drizzle migration history. Stop old workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this version and rerun \`junior upgrade\` before restarting workers.`,
   );
 }
 
@@ -112,27 +93,28 @@ export async function migrateSchema(
 ): Promise<CoreMigrationResult> {
   const migrationsFolder = migrationFolder();
   const migrations = readMigrationFiles({ migrationsFolder });
-  const latestMigration = migrations.at(-1);
-  if (!latestMigration) {
+  if (migrations.length === 0) {
     throw new Error("No core Drizzle migrations were packaged");
   }
 
   const initialState = await loadCoreMigrationState(executor);
-  if (isCurrentMigrationState(initialState, latestMigration.folderMillis)) {
-    return migrationResult(migrations, initialState);
+  const initialResult = migrationResult(migrations, initialState);
+  if (initialResult.migrated === 0) {
+    return initialResult;
   }
   assertSupportedMigrationState(initialState);
 
   return await executor.withMigrationLock(MIGRATIONS_TABLE, async () => {
     const lockedState = await loadCoreMigrationState(executor);
-    if (isCurrentMigrationState(lockedState, latestMigration.folderMillis)) {
-      return migrationResult(migrations, lockedState);
+    const lockedResult = migrationResult(migrations, lockedState);
+    if (lockedResult.migrated === 0) {
+      return lockedResult;
     }
     assertSupportedMigrationState(lockedState);
     await executor.migrate({
       migrationsFolder,
       migrationsTable: MIGRATIONS_TABLE,
     });
-    return migrationResult(migrations, lockedState);
+    return lockedResult;
   });
 }

@@ -3,7 +3,6 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
-  Bot,
   Brain,
   Calendar,
   Check,
@@ -26,12 +25,12 @@ import type { TranscriptViewStructuredEventPart } from "../types";
 import { transcriptColumnsClass } from "./TranscriptRows";
 
 type TranscriptRailEventKind =
+  | "agent_message"
   | "attachments_delivered"
   | "compaction"
   | "message_context"
   | "event"
   | "structured_event"
-  | "tasks"
   | "thread";
 
 /**
@@ -45,7 +44,7 @@ export const TranscriptActivityNesting = createContext(false);
 export function TranscriptRailEvent(props: {
   children: ReactNode;
   icon?: LucideIcon;
-  objectType?: ObjectType;
+  objectType?: ObjectType | undefined;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);
@@ -88,7 +87,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
   className: string;
   icon: LucideIcon;
 } {
-  if (kind === "message_context") {
+  if (kind === "message_context" || kind === "agent_message") {
     return {
       className: "text-dashboard-text-muted",
       icon: MessageSquareText,
@@ -110,12 +109,6 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     return {
       className: "text-violet-200",
       icon: Activity,
-    };
-  }
-  if (kind === "tasks") {
-    return {
-      className: "text-cyan-200",
-      icon: Bot,
     };
   }
   if (kind === "thread") {

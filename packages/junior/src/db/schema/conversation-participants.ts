@@ -14,7 +14,8 @@ import { timestamptz } from "./timestamps";
 /**
  * One Participant: a linked user on one root conversation. Rows come from
  * Turn Actors: the root Actor and the authors of Turn input messages, and
- * the root Actor again when their Identity gets its User later. Thread
+ * the root Actor again when their Identity gets its User later. Invites add
+ * rows too, also the people that a Message mentions in a public root. Thread
  * context authors do not get a row. Access and feeds read only these rows.
  * An unsubscribed row keeps access but leaves the active feed.
  */
@@ -28,9 +29,6 @@ export const juniorConversationParticipants = pgTable(
       .notNull()
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
-    // Archive moved to `junior_conversations.archived_at`. Runtime code must
-    // not read or write this column. A later migration drops it.
-    legacyArchivedAt: timestamptz("archived_at"),
     pinnedAt: timestamptz("pinned_at"),
     /**
      * The viewer's place for this pin in the Pinned section, from a drag

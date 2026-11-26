@@ -1,3 +1,4 @@
+import { renderEmptyTag } from "@sentry/junior-plugin-api";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   estimateTextTokens,
@@ -30,14 +31,15 @@ export type SubscribedReplyReason =
 export interface SubscribedDecisionInput {
   rawText: string;
   text: string;
-  conversationContext?: string;
+  conversationContext?: string | undefined;
   hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
-    threadId?: string;
-    actorId?: string;
-    channelId?: string;
-    runId?: string;
+    conversationId: string;
+    threadId?: string | undefined;
+    actorId?: string | undefined;
+    channelId?: string | undefined;
+    runId?: string | undefined;
   };
 }
 
@@ -61,7 +63,7 @@ interface RouterEvidence {
   currentMessageHasDirectedFollowUpCue: boolean;
   currentMessageIsTerseClarification: boolean;
   entries: TranscriptMessage[];
-  humanMessagesSinceLastAssistant?: number;
+  humanMessagesSinceLastAssistant?: number | undefined;
   latestPriorAssistantMessage: string;
   latestPriorMessageRole: string;
   omittedEntries: number;
@@ -159,7 +161,7 @@ export function getThreadStopDecision(args: {
   botUserName: string;
   rawText: string;
   text: string;
-  isExplicitMention?: boolean;
+  isExplicitMention?: boolean | undefined;
 }): SubscribedDecisionResult | undefined {
   if (getSubscribedReplyPreflightDecision(args)) {
     return undefined;
@@ -204,7 +206,9 @@ function truncateEvidenceText(text: string, maxTokens: number): string {
   }
   const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
-  const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
+  const marker = renderEmptyTag("truncated", {
+    omitted_approx_tokens: omittedTokens,
+  });
   if (maxChars <= marker.length) {
     return marker;
   }
@@ -396,7 +400,7 @@ export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
   rawText: string;
   text: string;
-  isExplicitMention?: boolean;
+  isExplicitMention?: boolean | undefined;
 }): SubscribedDecisionResult | undefined {
   const text = args.text.trim();
   const rawText = args.rawText.trim();
@@ -516,6 +520,7 @@ export async function decideSubscribedThreadReply(args: {
       questions: buildSubscribedReplyRouterQuestions(args.botUserName),
       metadata: {
         modelId: args.modelId,
+        conversationId: args.input.context.conversationId,
         threadId: args.input.context.threadId ?? "",
         channelId: args.input.context.channelId ?? "",
         actorId: args.input.context.actorId ?? "",

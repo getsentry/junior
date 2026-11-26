@@ -1,14 +1,16 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
+  type ConversationAnnotationInput,
   type PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversationAnnotations,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationAnnotations } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
 function annotationFromRow(row: {
@@ -28,36 +30,56 @@ function annotationFromRow(row: {
   };
 }
 
+/**
+ * Add or replace one annotation of a plugin, and mark the Conversation detail
+ * changed in the same statement. Pass a transaction to save it with other
+ * changes.
+ */
+export async function upsertPluginAnnotation(
+  db: JuniorDatabase,
+  args: {
+    annotation: ConversationAnnotationInput;
+    conversationId: string;
+    plugin: string;
+  },
+): Promise<void> {
+  const annotation = conversationAnnotationInputSchema.parse(args.annotation);
+  const now = new Date();
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
+    .insert(juniorConversationAnnotations)
+    .values({
+      annotation,
+      conversationId: args.conversationId,
+      createdAt: now,
+      key: annotation.key,
+      kind: annotation.kind,
+      plugin: args.plugin,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        juniorConversationAnnotations.conversationId,
+        juniorConversationAnnotations.plugin,
+        juniorConversationAnnotations.kind,
+        juniorConversationAnnotations.key,
+      ],
+      set: { annotation, updatedAt: now },
+    });
+}
+
 export function createPluginAnnotations(args: {
   conversationId: string;
   db: JuniorDatabase;
   plugin: string;
 }): PluginAnnotations {
   return {
-    async upsert(input) {
-      const annotation = conversationAnnotationInputSchema.parse(input);
-      const now = new Date();
-      await args.db
-        .with(conversationDetailTouch(args.db, [args.conversationId]))
-        .insert(juniorConversationAnnotations)
-        .values({
-          annotation,
-          conversationId: args.conversationId,
-          createdAt: now,
-          key: annotation.key,
-          kind: annotation.kind,
-          plugin: args.plugin,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            juniorConversationAnnotations.conversationId,
-            juniorConversationAnnotations.plugin,
-            juniorConversationAnnotations.kind,
-            juniorConversationAnnotations.key,
-          ],
-          set: { annotation, updatedAt: now },
-        });
+    async upsert(annotation) {
+      await upsertPluginAnnotation(args.db, {
+        annotation,
+        conversationId: args.conversationId,
+        plugin: args.plugin,
+      });
     },
     async remove(kind, key) {
       await args.db
@@ -111,8 +133,9 @@ export async function listConversationAnnotations(
 /**
  * Load stored annotations for a bounded set of conversations, newest update
  * first. Child agents save annotations in their own Conversation, but people
- * see the root Conversation. So a root also reads the annotations of every
- * Conversation in its tree. The newest annotation wins for each object.
+ * see the top-level Conversation. So each Conversation also reads the
+ * annotations of every Conversation below it. The newest annotation wins for
+ * each object.
  */
 export async function listConversationAnnotationsById(
   db: JuniorDatabase,
@@ -121,46 +144,33 @@ export async function listConversationAnnotationsById(
   const byConversation = new Map<string, ConversationAnnotation[]>();
   if (conversationIds.length === 0) return byConversation;
 
-  const requested = new Set(conversationIds);
   const rows = await db
     .select({
       annotation: juniorConversationAnnotations,
-      rootConversationId: juniorConversations.rootConversationId,
+      owner: conversationSubtreeColumns.scopeConversationId,
     })
     .from(juniorConversationAnnotations)
     .innerJoin(
-      juniorConversations,
+      conversationSubtree(conversationIds),
       eq(
-        juniorConversations.conversationId,
+        conversationSubtreeColumns.conversationId,
         juniorConversationAnnotations.conversationId,
-      ),
-    )
-    // Filter both ids on the joined Conversation row. An OR across the two
-    // tables cannot use an index and scans both tables.
-    .where(
-      or(
-        inArray(juniorConversations.conversationId, [...requested]),
-        inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )
     .orderBy(desc(juniorConversationAnnotations.updatedAt));
 
   const seen = new Set<string>();
-  for (const { annotation: row, rootConversationId } of rows) {
+  for (const { annotation: row, owner } of rows) {
     const annotation = annotationFromRow(row);
     if (!annotation) continue;
-    // A root's own row matches both ids; add it once.
-    for (const owner of new Set([row.conversationId, rootConversationId])) {
-      if (!owner || !requested.has(owner)) continue;
-      const objectKey = JSON.stringify([owner, row.plugin, row.kind, row.key]);
-      if (seen.has(objectKey)) continue;
-      seen.add(objectKey);
-      const current = byConversation.get(owner);
-      if (current) {
-        current.push(annotation);
-      } else {
-        byConversation.set(owner, [annotation]);
-      }
+    const objectKey = JSON.stringify([owner, row.plugin, row.kind, row.key]);
+    if (seen.has(objectKey)) continue;
+    seen.add(objectKey);
+    const current = byConversation.get(owner);
+    if (current) {
+      current.push(annotation);
+    } else {
+      byConversation.set(owner, [annotation]);
     }
   }
   return byConversation;

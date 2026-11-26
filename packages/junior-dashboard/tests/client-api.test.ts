@@ -7,6 +7,7 @@ import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import * as z from "zod";
 
 import { createDashboardApp } from "../src/app";
 import { auth, embeddedBootstrap } from "./dashboard-test-helpers";
@@ -15,7 +16,10 @@ import {
   resetMockConversationViewerState,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
-import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardVersionDrift,
+} from "../src/client/dashboard-version";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
@@ -24,11 +28,12 @@ import {
 } from "../src/client/conversations/queries";
 import { conversationSideReadQueryKey } from "../src/client/conversations/conversationSideReads";
 import {
-  REVIEW_ITEMS_QUERY_KEY,
-  reviewItemListQueryKey,
-  useConversationReviewItemData,
-} from "../src/client/review-desk/queries";
+  INBOX_ITEMS_QUERY_KEY,
+  inboxItemListQueryKey,
+  useConversationInboxItemData,
+} from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
+import { fetchDashboardJson } from "../src/client/http";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -62,6 +67,7 @@ describe("dashboard client API", () => {
 
   it("seeds core data from the page shell once, then reads the API", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: auth({ user: { email: "dev@example.com", emailVerified: true } }),
@@ -140,7 +146,7 @@ describe("dashboard client API", () => {
     const conversationId = "slack:C1:123";
     const detail = {
       conversationId,
-      kind: "root" as const,
+      kind: "thread" as const,
       cumulativeDurationMs: 1,
       displayTitle: "Active conversation",
       eventHistory: { status: "available" as const },
@@ -151,8 +157,9 @@ describe("dashboard client API", () => {
       lastSeenAt: generatedAt,
       mailbox: { conversationId, generatedAt, messages: [] },
       startedAt: generatedAt,
-      status: "active" as const,
+      status: "working" as const,
       surface: "slack" as const,
+      turnActive: true,
     };
     const fetchMock = vi.fn(async () =>
       Response.json({
@@ -200,17 +207,17 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
-  it("reads a transcript Review item from its Conversation's list", () => {
+  it("reads a transcript Inbox item from its Conversation's list", () => {
     const conversationId = "slack:C1:123";
     const client = new QueryClient();
-    client.setQueryData(reviewItemListQueryKey({ conversationId }), {
+    client.setQueryData(inboxItemListQueryKey({ conversationId }), {
       pageParams: [undefined],
       pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
     });
     const detail = (id: string) =>
       client.getQueryCache().find({
         exact: true,
-        queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+        queryKey: [...INBOX_ITEMS_QUERY_KEY, "detail", id],
       });
     const render = (id: string) =>
       renderToStaticMarkup(
@@ -218,7 +225,7 @@ describe("dashboard client API", () => {
           QueryClientProvider,
           { client },
           createElement(function Row() {
-            const { data } = useConversationReviewItemData(conversationId, id);
+            const { data } = useConversationInboxItemData(conversationId, id);
             return data?.title ?? "loading";
           }),
         ),
@@ -237,6 +244,7 @@ describe("dashboard client API", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {
@@ -256,24 +264,38 @@ describe("dashboard client API", () => {
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
     // The details panel reads these beside the detail report, and the
-    // transcript reads its open items from the list. The versions poll
-    // refreshes the other Review item reads.
+    // transcript reads its open items from the list. An Inbox list that
+    // shows an item of this Conversation shows its subject from this
+    // detail, so it refreshes with it. The versions poll refreshes the other
+    // Inbox item reads.
+    const inbox = inboxItemListQueryKey({ forViewer: true, sort: "waiting" });
+    const otherInbox = inboxItemListQueryKey({ forViewer: true });
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
-      reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
-      [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
-      reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
-      [...REVIEW_ITEMS_QUERY_KEY, "count"],
-      [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+      inboxItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
+      inbox,
+      [...INBOX_ITEMS_QUERY_KEY, "detail", "item-1"],
+      inboxItemListQueryKey({ conversationId: "slack:C1:other" }),
+      otherInbox,
+      [...INBOX_ITEMS_QUERY_KEY, "count"],
+      [...INBOX_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
+    const listOf = (ownerId: string) => ({
+      pageParams: [undefined],
+      pages: [{ items: [{ owner: { id: ownerId, kind: "conversation" } }] }],
+    });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
     try {
       const first = await client.fetchQuery(options);
       for (const key of sideReads) client.setQueryData(key, {});
+      client.setQueryData(inbox, listOf(ARCHIVED_CONVERSATION_ID));
+      client.setQueryData(otherInbox, listOf("slack:C1:other"));
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([
+        false,
+        false,
         false,
         false,
         false,
@@ -299,6 +321,8 @@ describe("dashboard client API", () => {
       expect(sideReadsInvalidated()).toEqual([
         true,
         true,
+        true,
+        false,
         false,
         false,
         false,
@@ -321,12 +345,14 @@ describe("dashboard client API", () => {
     }
   });
 
-  it("keeps polling active detail after a failed refresh", () => {
+  it("keeps polling a running Turn after a failed refresh, even when it needs input", () => {
     const options = conversationDetailQueryOptions("slack:C1:123");
     const interval = options.refetchInterval;
     if (typeof interval !== "function") {
       throw new Error("Expected a dynamic polling interval");
     }
+    // A partial TanStack Query object holds only the fields the interval reads.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     const query = {
       state: {
         data: {
@@ -340,8 +366,10 @@ describe("dashboard client API", () => {
           lastProgressAt: generatedAt,
           lastSeenAt: generatedAt,
           startedAt: generatedAt,
-          status: "active",
+          // An open action item outranks the running Turn in `status`.
+          status: "needs_input",
           surface: "slack",
+          turnActive: true,
         },
         error: new Error("temporary failure"),
       },
@@ -377,6 +405,33 @@ describe("dashboard client API", () => {
       detail: "999.0.0",
       type: "junior:dashboard-version",
     });
+  });
+
+  it("names version drift when a newer server sends unknown fields", async () => {
+    const schema = z.object({ label: z.string() }).strict();
+    const respond = (version: string) =>
+      Response.json(
+        { label: "PR", title: "New field" },
+        { headers: { [DASHBOARD_VERSION_HEADER]: version } },
+      );
+    vi.stubGlobal("window", { dispatchEvent: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond("999.0.0")),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      DASHBOARD_VERSION_DRIFT_MESSAGE,
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond(JUNIOR_VERSION)),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      "Unrecognized key",
+    );
   });
 
   it("does not redirect for non-auth product API failures", async () => {

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as Sentry from "@/chat/sentry";
 import { scrubPrivateSentrySpan } from "@/chat/sentry-payload-filter";
 import { resetDashboardEnv } from "./dashboard-test-helpers";
+import { mockBuiltSystemPrompts } from "../../junior/tests/fixtures/built-system-prompts";
 
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
@@ -45,6 +46,7 @@ describe("HTTP route names on request spans", () => {
     const { Hono } = await import("hono");
     const { createDashboardApp } = await import("../src/app");
     vi.doMock("#junior/config", () => ({
+      botName: "junior",
       createDashboardApp,
       functionMaxDurationSeconds: undefined,
       dashboard: undefined,
@@ -52,10 +54,11 @@ describe("HTTP route names on request spans", () => {
       pluginSet: undefined,
       plugins: undefined,
     }));
+    mockBuiltSystemPrompts();
     const { createApp, defineJuniorPlugins } = await import("@sentry/junior");
     const { defineJuniorPlugin } = await import("@sentry/junior-plugin-api");
-    const memory = new Hono();
-    memory.get("/memories", (c) => c.json({ ok: true }));
+    const notes = new Hono();
+    notes.get("/memories", (c) => c.json({ ok: true }));
     const app = await createApp({
       allowedDomains: ["sentry.io"],
       // Mock reports keep the conversation route off the database.
@@ -63,11 +66,11 @@ describe("HTTP route names on request spans", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes plugin",
           },
-          hooks: { apiRoutes: () => memory },
+          hooks: { apiRoutes: () => notes },
         }),
       ]),
     });
@@ -76,6 +79,7 @@ describe("HTTP route names on request spans", () => {
 
   afterAll(async () => {
     vi.doUnmock("#junior/config");
+    vi.doUnmock("#junior/system-prompts");
     await Sentry.getClient()?.close();
   });
 
@@ -105,7 +109,7 @@ describe("HTTP route names on request spans", () => {
       "/api/conversations/:conversationId/pending-messages",
       undefined,
     ],
-    ["/api/plugins/memory/memories", "/api/plugins/memory/*", undefined],
+    ["/api/plugins/notes/memories", "/api/plugins/notes/*", undefined],
     [
       "/api/internal/sandbox-egress/v1.token.sig/graphql",
       "/api/internal/sandbox-egress/<token>",

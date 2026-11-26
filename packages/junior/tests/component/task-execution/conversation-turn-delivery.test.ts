@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getNamedAgentConversationId } from "@/chat/agent-invocations/ids";
+import { getSpawnedChildConversationId } from "@/chat/child-agents/ids";
 import { getConversationEventStore } from "@/chat/db";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -34,7 +34,7 @@ describe("Event Turn delivery to a Location", () => {
       nowMs: 1,
       source: "slack",
     });
-    const conversationId = getNamedAgentConversationId(
+    const conversationId = getSpawnedChildConversationId(
       rootConversationId,
       "researcher",
     );

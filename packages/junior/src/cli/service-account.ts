@@ -105,7 +105,7 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
     });
     console.log(
       [
-        `Open this URL in a browser on this machine. Sign in as the account Junior should use for ${provider}, not as yourself:`,
+        `Open this URL in a browser on this machine. Sign in as the account the bot should use for ${provider}, not as yourself:`,
         "",
         authorizationUrl.toString(),
         "",
@@ -123,13 +123,16 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
   } finally {
     loopback.close();
   }
-  const tools = (plugin.manifest.accounts?.serviceAccount?.tools ?? []).join(
-    ", ",
-  );
+  const serviceAccount = plugin.manifest.accounts?.serviceAccount;
+  const allowed = (
+    serviceAccount?.tools ??
+    serviceAccount?.operations ??
+    []
+  ).join(", ");
   console.log(
     plugin.manifest.accounts?.userOAuth === false
-      ? `Connected the ${provider} service account. Everyone now uses it for: ${tools}.`
-      : `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${tools}.`,
+      ? `Connected the ${provider} service account. Everyone now uses it for: ${allowed}.`
+      : `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${allowed}.`,
   );
   return 0;
 }
@@ -148,7 +151,7 @@ async function runDisconnect(plugin: PluginDefinition): Promise<number> {
   const provider = plugin.manifest.name;
   await disconnectServiceAccount(plugin);
   console.log(
-    `Removed the ${provider} service account from Junior. To revoke the grant, remove Junior's connection in the ${provider} account settings.`,
+    `Removed the ${provider} service account. To revoke the grant, remove the app connection in the ${provider} account settings.`,
   );
   return 0;
 }

@@ -11,10 +11,15 @@ import {
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
+  "pull_request.checks.passed",
   "pull_request.checks.recovered",
   "pull_request.comment.created",
   "pull_request.opened",
+  "pull_request.reopened",
   "pull_request.ready_for_review",
+  "pull_request.converted_to_draft",
+  "pull_request.synchronized",
+  "pull_request.review_requested",
   "pull_request.review.approved",
   "pull_request.review.changes_requested",
   "pull_request.review.commented",
@@ -22,6 +27,7 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.merged",
   "pull_request.closed_unmerged",
   "pull_request.merge_conflict",
+  "pull_request.merge_conflict.resolved",
 ] as const;
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
@@ -34,15 +40,17 @@ export type GitHubPullRequestEvent =
 const STACK_CHECK =
   "Check if the pull request is in a stack: `gh api 'repos/OWNER/REPO/stacks?pull_request=NUMBER'`.";
 const STACK_CONFLICT_STEPS =
-  "run `gh stack rebase`, resolve each conflict so that both changes stay intact, stage the files, and run `gh stack rebase --continue`. Run the checks again, run `gh stack push`, and confirm that each open pull request in the stack can merge. Report the files that had conflicts.";
+  "run `gh stack rebase`, resolve each conflict so that both changes stay intact, stage the files, and run `gh stack rebase --continue`. Run the checks again, run `gh stack push`, and confirm that each open pull request in the stack can merge.";
 
 /**
  * Every comment on a pull request gets the same feedback status: a
  * conversation comment, an inline review comment, and a review body. A review
- * sets comment_id only when it has a body.
+ * sets comment_id only when it has a body. A reply that hands the decision
+ * back to the reviewer reaches their Inbox only through the mark
+ * (`pull-request-review-again.ts`).
  */
 const PULL_REQUEST_FEEDBACK =
-  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+  "When Verified details include comment_id, call github_updatePullRequestFeedback after you act on the comment or reply to it, with the exact repo, pull_request, comment_id, and comment_kind from Verified details. Also mark a comment that you push back on, defer, or answer with a question: a change request asks its reviewer to review again only when each of its comments is marked, so an unmarked comment drops the pull request from their Inbox.";
 
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
@@ -56,7 +64,7 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   "pull_request.review.commented": PULL_REQUEST_FEEDBACK,
   "pull_request.comment.created": PULL_REQUEST_FEEDBACK,
   "pull_request.review_comment.created": `${PULL_REQUEST_FEEDBACK} Then resolve the thread with github_resolvePullRequestReviewThread.`,
-  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.`,
+  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge.`,
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
@@ -93,18 +101,21 @@ export interface GitHubPullRequestSubscriptionConfig {
 /**
  * Junior maintains the pull requests it creates. The pull request is its own
  * work, so it answers and fixes review feedback without asking first.
+ * GitHub already tells people about reviews, approvals, merges, and closes,
+ * and the Inbox shows the next action. So the Watch gets approvals,
+ * merges, and closes only as Quiet Events, and posts in the thread only when
+ * a person must act.
  */
 const DEFAULT_PULL_REQUEST_SUBSCRIPTION: GitHubPullRequestSubscriptionConfig = {
   events: [
     "pull_request.checks.failed",
-    "pull_request.closed_unmerged",
     "pull_request.comment.created",
     "pull_request.review.changes_requested",
     "pull_request.review.commented",
     "pull_request.review_comment.created",
   ],
   intent:
-    "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Reply on GitHub to review comments and questions, in the thread where they were asked. Report completed work or blockers in the originating thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by mentioning them, with the reviewer, the review outcome, and the pull request link. Stay silent on other events that are not feedback.",
+    "Maintain pull requests that you create. For actionable review feedback, failed checks, or merge conflicts, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Do not merge it: a person merges it, even when a review says to ship it. Reply on GitHub to review comments and questions, in the thread where they were asked. Post in the originating thread only when a person must decide or act, such as a blocker that you cannot fix. Do not post status updates: GitHub already shows reviews, approvals, fixes, and replies.",
 };
 
 /** Resolve the Watch to create after Junior creates a pull request, if any. */
@@ -116,33 +127,41 @@ export function gitHubPullRequestSubscription(
 }
 
 /**
- * A reply about an approval tends to guess why GitHub blocks the merge, or
- * miss that a person already turned on auto-merge. The branch rules and the
- * pull request's merge state settle both, and read access is enough.
- */
-const MERGE_STATE_CHECK =
-  "Do not guess whether it can merge. Before you say anything about that, call github_getPullRequest and read its `checks`. If `checks.required` is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. If `checks.auto_merge` is true and only required checks remain, say only that it merges when they pass. If `checks.merge_state` shows that GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
-
-/**
- * Watch guidance for outcomes that the people involved need to hear about.
- * The Watch made after Junior creates a pull request always receives these
- * events. The webhook adds the people involved in the pull request to them.
- * A merge does not ask the agent to check for a stack: GitHub rebases the
- * next pull request in a stack itself, and most merges are not stacked.
- */
-const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
-  "pull_request.review.approved": `Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked. ${MERGE_STATE_CHECK}`,
-  "pull_request.merged":
-    "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
-} as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
-
-/**
  * Junior finishes its own drafts. Passing checks start no other step, so the
  * Watch of a draft also gets them. Marking the pull request ready sends the
- * review request.
+ * review request. GitHub also asks the code owners then, so a draft with code
+ * owners waits for the person who asked for it, unless they said otherwise.
+ * A repository's AGENTS.md can also ask that drafts wait for a person. A
+ * draft that waits asks only that person to review it on GitHub, and the
+ * Inbox item follows from that request, so the thread gets no message.
+ * Each passing suite wakes the Watch, so a suite that leaves the required
+ * checks unfinished must stay silent, or every suite posts.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. Otherwise stay silent.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open inbox item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft, because marking it ready would ask the code owners to review or break the AGENTS.md rule, and call github_updatePullRequest with request_review true, so GitHub asks the person who asked for it to review it. Their Inbox then asks them to review it and mark it ready, so stay silent in the thread. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
+
+/**
+ * The requester's approval is the review that a held draft waits for. Marking
+ * it ready then asks the code owners after the requester has looked. A draft
+ * that the requester asked to keep, or that AGENTS.md leaves for a person to
+ * mark ready, stays a draft, and its Inbox item asks the requester to mark it
+ * ready (`webhooks/pull-request-action.ts`). Whether Junior held the draft, or the requester
+ * asked to keep it, is in the Conversation, so the agent decides.
+ */
+const DRAFT_APPROVED_GUIDANCE =
+  "If the pull request is still a draft and `sender_login` in Verified details is `opener_username`, the person who asked for it approved it. Call github_getPullRequest and read its `agents_md`. Mark it ready with github_updatePullRequest and draft false, so GitHub asks its code owners now that this person has looked. Keep it a draft when this person asked to keep it a draft, or when `agents_md` says that a person marks drafts ready: their Inbox then asks them to mark it ready. Stay silent in the thread.";
+
+/**
+ * State changes that need no action but that a later Turn must know, so that
+ * it does not call an approved pull request unreviewed, or a merged or
+ * closed one open. An app config that lists one of them keeps it as a
+ * normal Event that starts a Turn.
+ */
+const QUIET_PULL_REQUEST_EVENTS = [
+  "pull_request.review.approved",
+  "pull_request.merged",
+  "pull_request.closed_unmerged",
+] as const satisfies readonly GitHubPullRequestEvent[];
 
 /**
  * Build the Watch created after Junior creates a pull request. Only a draft
@@ -154,12 +173,21 @@ export function gitHubPullRequestCreateWatch(
   pullRequest: { draft: boolean },
 ): {
   events: GitHubPullRequestEvent[];
-  guidance: Partial<Record<GitHubPullRequestEvent, string>>;
+  guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
   intent: string;
+  quietEvents?: GitHubPullRequestEvent[];
 } {
-  const outcomeEvents = Object.keys(
-    GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
-  ) as GitHubPullRequestEvent[];
+  const quietEvents = [
+    // The requester's approval of a draft can mark it ready, so it starts a
+    // Turn.
+    ...QUIET_PULL_REQUEST_EVENTS.filter(
+      (eventType) =>
+        !pullRequest.draft || eventType !== "pull_request.review.approved",
+    ),
+    // A draft can leave draft state without Junior, such as when a person
+    // marks it ready. A ready pull request has no such change to learn.
+    ...(pullRequest.draft ? ["pull_request.ready_for_review" as const] : []),
+  ].filter((eventType) => !config.events.includes(eventType));
   return {
     events: [
       ...new Set([
@@ -167,18 +195,24 @@ export function gitHubPullRequestCreateWatch(
         // GitHub sends no webhook for a new conflict, so keep the pull
         // request ready to merge even when the app config omits this event.
         "pull_request.merge_conflict" as const,
-        ...outcomeEvents,
         ...(pullRequest.draft
-          ? ["pull_request.checks.recovered" as const]
+          ? [
+              "pull_request.checks.recovered" as const,
+              "pull_request.review.approved" as const,
+            ]
           : []),
+        ...quietEvents,
       ]),
     ],
-    guidance: pullRequest.draft
+    ...(quietEvents.length > 0 ? { quietEvents } : undefined),
+    ...(pullRequest.draft
       ? {
-          ...GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
-          "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,
+          guidance: {
+            "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,
+            "pull_request.review.approved": DRAFT_APPROVED_GUIDANCE,
+          },
         }
-      : GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+      : undefined),
     intent: config.intent,
   };
 }
@@ -196,12 +230,17 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /**
- * Pull request events that a GitHub webhook payload describes. GitHub sends
- * no webhook when a pull request gets a conflict, so the webhook reads the
- * pull request for `pull_request.merge_conflict` instead.
+ * Merge conflict events. GitHub sends no webhook when a pull request gets a
+ * conflict or loses it, so the plugin reads the pull request for them.
  */
+const GITHUB_MERGE_CONFLICT_EVENTS = new Set<GitHubPullRequestEvent>([
+  "pull_request.merge_conflict",
+  "pull_request.merge_conflict.resolved",
+]);
+
+/** Pull request events that a GitHub webhook payload describes. */
 const GITHUB_PULL_REQUEST_PAYLOAD_EVENTS = GITHUB_PULL_REQUEST_EVENTS.filter(
-  (eventType) => eventType !== "pull_request.merge_conflict",
+  (eventType) => !GITHUB_MERGE_CONFLICT_EVENTS.has(eventType),
 );
 
 /** Pull request events that a comment or review starts. */
@@ -216,6 +255,7 @@ const GITHUB_PULL_REQUEST_COMMENT_EVENTS = [
 /** Pull request events that a check suite result starts. */
 const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
   "pull_request.checks.failed",
+  "pull_request.checks.passed",
   "pull_request.checks.recovered",
 ] as const satisfies readonly GitHubPullRequestEvent[];
 
@@ -226,7 +266,8 @@ const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
  * The pull request comment webhook has no head branch. A check suite result
  * that GitHub links to no pull request has no `pullRequest`. The webhook
  * checks for a Watch or event automation before it reads a pull request for
- * a conflict, so `pull_request.merge_conflict` matches only `repo` and
+ * a conflict, so `pull_request.merge_conflict` and
+ * `pull_request.merge_conflict.resolved` match only `repo` and
  * `pullRequest`.
  */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({

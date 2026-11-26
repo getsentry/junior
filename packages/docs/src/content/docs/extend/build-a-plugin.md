@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /concepts/skills-and-plugins/
   - /concepts/credentials-and-oauth/
+  - /extend/workload-identity/
   - /cli/check/
 ---
 
@@ -81,6 +82,28 @@ This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
 
+To reach a service behind Google Cloud or Azure identity, such as Identity-Aware
+Proxy, declare a `workload-identity` credential instead. Junior mints a
+short-lived token from its Vercel OIDC token. See
+[Workload Identity Credentials](/extend/workload-identity/).
+
+### Placeholders
+
+Junior adds a credential only to a Sandbox request that asks for one. A tool
+asks by sending the placeholder from its auth env var, such as
+`Authorization: Bearer host_managed_credential`. A placeholder contains
+`host_managed_credential`, or equals `auth-token-placeholder`.
+
+- A request without the placeholder goes upstream with no credential.
+- A request that carries its own credential, such as a test login or a
+  browser cookie, keeps it.
+- A request from a browser, such as Chromium driven by Playwright, gets no
+  credential. Junior detects it by its `Sec-Fetch-Site` header.
+
+When your tools send no credential, such as `curl` with no auth header, set
+`tools-send-no-credential: true`. Junior then adds the credential to requests
+that carry none, except browser requests.
+
 ### Pre-registered MCP OAuth clients
 
 Junior registers itself as an OAuth client when an MCP server asks a user to
@@ -141,19 +164,54 @@ accounts:
 - `accounts.user-oauth` is `true` by default. Set it to `false` when people
   must not use their own accounts. Then Junior uses only the service account,
   never asks a person to connect, and ignores connections that people already
-  made. Junior hides the tools that the service account does not list. Until
+  made. Junior hides the MCP tools that the service account does not list. Until
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
-  Plugins with only a top-level `oauth` block do not support a service
-  account yet.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
+A plugin with a top-level `oauth` block and `oauth-bearer` credentials, and
+no `mcp`, lists operations instead of tools. An operation is the `operation`
+name that the plugin's host code passes to `ctx.egress.fetch`:
+
+```yaml title="plugin.yaml"
+credentials:
+  type: oauth-bearer
+  domains:
+    - api.my-provider.example
+
+oauth:
+  client-id-env: MY_PROVIDER_CLIENT_ID
+  client-secret-env: MY_PROVIDER_CLIENT_SECRET
+  authorize-endpoint: https://my-provider.example/oauth/authorize
+  token-endpoint: https://my-provider.example/oauth/token
+  scope: read upload
+
+accounts:
+  user-oauth: false
+  service-account:
+    operations:
+      - my-provider.upload
+```
+
+- `auth-token-env` is optional when the plugin has `oauth`. Leave it out
+  when only host code calls the provider: then there is no env token
+  fallback and no Sandbox placeholder.
+- Junior adds the service account's token only to `ctx.egress.fetch` calls
+  that name a listed operation. Commands in the sandbox name no operation,
+  so they never get the service account.
+- Junior refreshes the token when the provider returns `expires_in` and a
+  refresh token. A token without `expires_in` does not expire. If the
+  provider rejects the refresh, Junior removes the account, and an admin
+  must connect it again.
 The declaration has no effect until a Junior admin connects the account. In
 the dashboard, open **Admin**, find the plugin under **Service accounts**, and
 click **Connect**. Sign in as the account that Junior uses, not as yourself.
 The same card shows who connected the account and lets an admin disconnect it.
+For a plugin with a top-level `oauth` block, add
+`<base URL>/api/service-accounts/<plugin>/callback` as a redirect URI in the
+provider's OAuth app first.
 
 If the dashboard is not available, an operator can use the CLI on a machine
 with a browser and the deployment `REDIS_URL`:
@@ -164,12 +222,32 @@ junior service-account status my-provider
 junior service-account disconnect my-provider
 ```
 
+The CLI uses a loopback redirect URI on a random port. Use it only with a
+provider that accepts that redirect URI.
+
 When the account is connected, Junior uses it only for an actor who has not
-connected their own account, and only for the tools that it lists.
+connected their own account, and only for the tools or operations that it
+lists.
 Other requests ask the actor to connect their own account, as before. An
 actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
 them may have.
+
+### Review context
+
+Use `review-context` to tell action review where the plugin's writes go. For
+example, say which content people outside the organization can read. Junior
+adds the review context of each plugin to the action review system prompt,
+sorted by plugin name, so the prompt stays the same between reviews. The agent
+does not see it, and it never grants authority.
+
+```yaml title="plugin.yaml"
+name: my-provider
+review-context: Pages in the Docs space are published on the public website.
+```
+
+An install can set or change it with
+`defineJuniorPlugins(..., { manifests: { "my-provider": { reviewContext } } })`.
 
 ### Audit events
 
@@ -286,10 +364,12 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
 | `afterToolExecute(ctx)`  | Check a finished tool call, such as the files it changed. Add guidance to its result or reject the result.                                                                                   |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
+| `tools()`                | Return the plugin's tool definitions. They take no Turn context. Tool names must be plugin-local camelCase names.                                                                            |
+| `disabledTools(ctx)`     | Return a reason for each tool that the current Turn cannot use, keyed by plugin-local tool name.                                                                                             |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
-| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+| `searchUsers(ctx)`       | Return the provider accounts that match `ctx.query`, such as an exact login. `userLookup` links each account to a known person. A search that fails is logged and left out of the result. |
+| `tasks`                  | Register plugin-owned background tasks. A task without `payload` runs after each completed session and loads bounded run context with `ctx.run.load()`. A task with `payload` runs only when `ctx.tasks.start(...)` starts it. |
 
 When a hook, tool, or task belongs to a Conversation, Junior records the cost
 of each `ctx.model`, `ctx.decider`, `ctx.embedder`, and `ctx.reranker` call.
@@ -324,11 +404,21 @@ checkout paths. To run a check in some Workspaces only, return early when
 
 A hook that throws is logged, and the tool result stays unchanged.
 
-`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
-`ctx.users.resolveActor()` only when a tool needs the active actor's linked
+`tools()` takes no arguments and returns the same definitions in every Turn.
+Junior reads them for the static tool registry with no Turn. Each tool gets the active
+Turn context as the third argument of `execute(input, options, ctx)`, with
+`ctx.state` and `ctx.log`. Call `ctx.users.resolveActor()` only when a tool needs the active actor's linked
 identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
 active actor's IANA timezone. It returns the install default when Junior does
-not know the person's timezone. Return tool definitions keyed by the plugin-local tool
+not know the person's timezone. A tool that sends model text to your provider
+must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
+reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
+rewrites every string in `input`, outside Markdown code. A Slack user becomes
+`@handle` of their linked account at `provider`, or their name. When a tool
+input names a person by email, Slack mention, or name, call
+`ctx.users.findLinkedHandle(query, provider)`. It returns `found` with the
+`handle` of the linked account at `provider`, or `unlinked`, `ambiguous`, or
+`not_found`. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -353,7 +443,7 @@ export function myProviderPlugin() {
       description: "My provider integration",
     },
     hooks: {
-      tools(ctx) {
+      tools() {
         return {
           ping: zodTool({
             approvalMode: "auto",
@@ -367,7 +457,7 @@ export function myProviderPlugin() {
             privateTraceResult: (result) => ({
               latency_ms: result.latency_ms,
             }),
-            execute: async () => {
+            execute: async (_input, _options, ctx) => {
               ctx.log.info("Running my-provider ping");
               return {
                 latency_ms: 12,
@@ -388,8 +478,10 @@ onto the agent runtime's separate result channels.
 
 `approvalMode` sets whether Guardian reviews a call before the tool runs:
 
-- `auto` is the default. Junior sets it when you omit the field. Guardian
-  reviews each call of a plugin tool in this mode.
+- `auto` is the default. Junior sets it when you omit the field. A tool with
+  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+  Guardian reviews each call of every other tool in this mode. Set
+  `readOnlyHint: true` only when the tool never writes.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
@@ -413,18 +505,34 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
-Return the same tools from `tools(ctx)` in every Turn of a Conversation. A
-change to the tool list invalidates the model provider's prompt cache. When one
-Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
+`tools()` cannot read the Turn, so the tool list stays the same in every Turn.
+A change to the tool list invalidates the model provider's prompt cache. When
+one Turn cannot use a tool, return a reason for it from `disabledTools(ctx)`.
 Junior keeps the tool in the tool list, lists it as disabled in the Turn
 context, and rejects its calls before review or execution.
+
+```ts
+disabledTools(ctx) {
+  return ctx.source.kind === "parent_message"
+    ? { ping: "Child agents cannot ping my-provider." }
+    : {};
+},
+```
 
 Every hook context has `ctx.cache`. Use it to keep short-lived copies of
 provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
 `ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
 as an incomplete response. A load that throws is not cached, and concurrent
-callers for one key share one load.
+callers for one key share one load. Set `staleIfError: true` to keep the value
+for a day after its TTL: when a later load throws, such as during a provider
+outage, the cache returns that value. Do not set it on an answer about access,
+because access must expire with its TTL. When a provider webhook carries a
+changed object, write it with `ctx.cache.update(key, next)`. `next` gets the
+cached value and returns the new entry, so the next read needs no provider
+call. When the webhook says only that the cached value is wrong, such as when
+an object moved, drop it with `ctx.cache.delete(key)`, so the next read loads
+it.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
@@ -437,7 +545,27 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, and `ctx.codeChanges` as from a plugin route.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
+`ctx.conversationChanges` as from a plugin route.
+
+A plugin that records code changes with `ctx.codeChanges` also sets
+`codeLinks` in its registration. Junior does not store links. It calls
+`codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
+link each code change and repository.
+
+Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
+Inbox item changes together, such as a chip that shows a merged pull request
+and the close of its ask. Junior saves the batch in one write. When one entry
+fails, Junior saves no entry. A batch has at most 100 entries.
+
+```ts
+await ctx.conversationChanges.apply({
+  annotations: [{ conversationId, upsert: annotation }],
+  inboxItems: [
+    { conversationId, close: { dedupeKey, reason, status: "done" } },
+  ],
+});
+```
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -473,22 +601,114 @@ and receive projection records, not raw runtime state. Pass `title` to name
 the dispatch Conversation. When you omit it, Junior generates one from
 `input`.
 
+### Retry a failed write with a task
+
+A provider can send a webhook only once. When a write in your route fails,
+start a task with `ctx.tasks.start(...)` and return success. Junior sends the
+task on its plugin task queue, then runs it in the background. When the send
+fails, `ctx.tasks.start` throws. Heartbeats can also start tasks.
+
+Register the task in `tasks` with a Zod `payload` schema. Junior sends the
+payload as JSON in the queue message and parses it with the schema before
+each run. When a run throws, the queue runs the task again after 30, 60, 120,
+and then 240 seconds. After the fifth run fails, Junior logs
+`plugin.task.failed` and stops.
+
+Junior turns the plugin, task name, and `key` into a hash and uses it as the
+queue idempotency key, so a key can be longer than the queue allows. A second
+start with the same key does nothing while the queue keeps the first
+message. Use a key that names one change, such as the pull request id and its
+update time. A run can happen more than once, so make the write safe to
+repeat.
+
+```ts title="index.ts"
+const statusPayload = z.object({ id: z.string(), status: z.string() });
+
+defineJuniorPlugin({
+  manifest,
+  tasks: {
+    applyStatus: {
+      payload: statusPayload,
+      async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+        await saveStatus(ctx.db, ctx.payload);
+      },
+    },
+  },
+  hooks: {
+    routes(ctx) {
+      return [
+        {
+          method: "POST",
+          path: "/api/webhooks/my-provider",
+          async handler(request) {
+            const change = statusPayload.parse(await request.json());
+            try {
+              await saveStatus(ctx.db, change);
+            } catch {
+              await ctx.tasks.start({
+                key: `status:${change.id}:${change.status}`,
+                name: "applyStatus",
+                payload: change,
+              });
+            }
+            return new Response("Accepted", { status: 202 });
+          },
+        },
+      ];
+    },
+  },
+});
+```
+
+The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
+`ctx.codeChanges`, `ctx.conversationChanges`, and `ctx.events`, as in a
+plugin route. Use `ctx.events.publish(...)` to publish an Event that the task
+finds.
+
+### Wait for a provider with a task
+
+Some providers compute a value a short time after their webhook. To read it
+later, start the task with `delaySeconds`. The queue holds the first run for
+that many seconds. While the value is not ready, throw, and the queue runs the
+task again with the backoff above.
+
+`ctx.lastDelivery` is true on the last run. When that run throws, the queue
+does not run the task again. On that run, write a fallback instead of
+throwing, such as a short cache entry that makes the next read ask the
+provider.
+
+```ts title="index.ts"
+async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+  const status = await readComputedStatus(ctx.payload.id);
+  if (status) return await saveStatus(ctx.db, status);
+  if (!ctx.lastDelivery) throw new StatusNotReadyError(ctx.payload.id);
+  await markStatusUnknown(ctx.db, ctx.payload.id);
+}
+```
+
+A key that names the event's time window makes events in one window share a
+run, while later events start their own run, with their own retries.
+
 ## Add a link type
 
-A link type turns a URL in a reply into an object card in the dashboard. It
-works like an Android `<intent-filter>`. You declare static filters, and
-Junior matches each URL against them without your code. Then Junior calls
-`resolve` of the most specific match.
+A link type turns a URL in a reply or message into an object card in the
+dashboard. It works like an Android `<intent-filter>`. You declare static
+filters, and Junior matches each URL against them without your code. Then
+Junior calls `canView` of the most specific match, and calls its `resolve`
+only when `canView` returns true.
 
 ```ts title="index.ts"
 defineJuniorPlugin({
   manifest: { name: "my-provider", description: "My provider integration" },
   objectLinks: [
     {
-      objectType: "task",
+      objectTypes: ["task"],
       filters: [{ host: "tracker.example.com", pathPattern: "/issues/*" }],
+      async canView(ctx, url) {
+        return await viewerCanOpenIssue(ctx.viewer, url);
+      },
       async resolve(ctx, url) {
-        const issue = await readIssueAsViewer(ctx.viewer, url);
+        const issue = await readIssue(ctx, url);
         if (!issue) return undefined;
         return {
           kind: "object",
@@ -511,17 +731,92 @@ defineJuniorPlugin({
   segment matches one segment), or `pathPrefix`. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
-  startup.
-- **Resolver.** Read the object with the access of `ctx.viewer` only.
-  Return `undefined` when the viewer cannot read the object. Do not show
-  that it exists. Junior caches the card for one minute for each viewer and
-  URL, and does not save it on a Conversation.
-- **Facts and icon.** Return the facts of `objectType`. Each object type has
+  startup. An `https` URL that no link type claims gets a `web_page` card from core,
+  from its oEmbed provider or its Open Graph tags. Your filter always wins
+  over it.
+- **Access.** `canView` is required. Return true only when `ctx.viewer` can
+  open the object, and false when you cannot tell. For a public object,
+  return true. `ctx.egress` calls your provider as a system Actor. It gets
+  only credentials that your plugin owns, never the viewer's, so `canView`
+  must check the viewer, not only that the call works.
+  `ctx.viewerEgress` uses only the viewer's own stored OAuth token for your
+  provider. It never asks the viewer to connect. A viewer without a token
+  gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
+  can open the object. Junior calls `canView` before each card read and
+  again on each Attach.
+- **Resolver.** Return the card, or `undefined` for a missing object. To
+  share one provider read with `canView`, read through `ctx.cache` with a
+  short TTL. Junior caches the card for one minute for each viewer and URL,
+  and does not save it on a Conversation. When your webhooks keep the object
+  entry current, set `cacheCards: false`. Junior then reads your entry on
+  each card read, after `canView`, so a change shows at once.
+- **Prefetch.** To load a page of links in one provider call, add
+  `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
+  that the link type claims, before `canView` and `resolve` run for each
+  URL. Write the objects to `ctx.cache`, and never return object data. To
+  tell one URL's card read what happened, return a `Map` from `url.href` to
+  an outcome. `out_of_time` means the page's time ran out before the object
+  loaded. That URL's `canView` and `resolve` on the same page get it as
+  `ctx.prefetchOutcome`, so they can show only what the cache holds. Other
+  reads, such as an Attach, get no outcome, so they ask the provider as
+  usual.
+- **People.** For a profile link of a provider account, return
+  `await ctx.findPerson({ provider, handle })` when it finds a card. That is
+  the Junior person card of the one known person who linked that account.
+- **Object types.** `objectTypes` lists each type that `resolve` can
+  return. Most link types return one. List more when one URL can open
+  different objects, such as a GitHub issue URL that opens a pull request.
+  Junior rejects a card of a type that is not in the list.
+- **Facts and icon.** Return the facts of the card's `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
   icon to `scripts/generate-object-icons.mjs`.
-- **Test.** Test the resolver for a viewer that can read the object, and for
-  a viewer that cannot.
+- **Test.** Test `canView` and the resolver for a viewer that can read the
+  object, and for a viewer that cannot.
+
+To start work for one person, such as the author of a webhook event or the
+sender of an email, use `ctx.agent.dispatchForIdentity(...)` from a heartbeat
+or a webhook route. Name the person with one of these:
+
+- `subjectId`: the provider account id that the OAuth account-linking flow
+  stored.
+- `verifiedEmail`: an address that your plugin proved the person sent from.
+  Never use an address that only appears in content.
+
+Junior starts work only when the person is a current member of the Slack
+workspace, with a Slack email on the allowed domains. When their Slack account
+is deactivated, they lose this trust. `input` becomes their first message in a new
+public conversation in the dashboard, as if they sent it there. The conversation
+is not in Slack. For any other person, Junior returns
+`{ status: "not_linked" }` and calls no model.
+
+```ts
+const result = await ctx.agent.dispatchForIdentity({
+  idempotencyKey: `event:${event.id}`,
+  input: "Look at the issue that this person opened.",
+  subjectId: event.sender.id,
+});
+```
+
+When a person or bot wrote an Event, such as a comment, set `author` on it.
+Your plugin reports facts, and Junior decides trust:
+
+- `handle`: the provider login, for labels only.
+- `subjectId`: the provider account id, only when the provider authenticated
+  that account as the author.
+- `bot`: the author is a bot account.
+- `trusted`: your plugin config lists the author, such as a review bot.
+- `text`: the author's own words, without quoted text. Leave these words out
+  of `untrustedText`, which keeps only the rest, such as the quotes. Junior
+  shows each part once.
+
+Junior trusts the author with the same check as `dispatchForIdentity`, or when
+`trusted` is set. A trusted person is the author of the Event's message in a
+watch. The author's `text` is never an instruction: the watch or event
+automation gives the job, and the text is context for it, shown with the same
+author name and ID as that author's messages. For any other author, Junior
+says that it could not verify the account. Leave `author` out when no person
+wrote the Event, such as a check result.
 
 ## Validate
 

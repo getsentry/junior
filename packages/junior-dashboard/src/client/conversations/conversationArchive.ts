@@ -16,19 +16,22 @@ import { useLocation, useNavigate } from "react-router";
 
 import { buildConversations } from "../format";
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
+import { invalidateMemberSpaces } from "../spaces/queries";
 import type { Conversation } from "../types";
 import {
   conversationFeedCacheRows,
   mapConversationFeedCache,
   type ConversationFeedCache,
+  invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "./queries";
 
-/** Apply archive marks to one feed row, at any depth of nested Threads. */
-function markFeedConversation(
+/** Apply a patch to one feed row, at any depth of nested Threads. */
+export function patchFeedConversation(
   items: ConversationFeedItem[],
   conversationId: string,
   marks: Partial<ConversationFeedItem>,
@@ -39,7 +42,7 @@ function markFeedConversation(
       : item.threads
         ? {
             ...item,
-            threads: markFeedConversation(item.threads, conversationId, marks),
+            threads: patchFeedConversation(item.threads, conversationId, marks),
           }
         : item,
   );
@@ -50,7 +53,9 @@ function findFeedRow(
   items: ConversationFeedItem[],
   conversationId: string,
   parentConversationId?: string,
-): { parentConversationId?: string; row: ConversationFeedItem } | undefined {
+):
+  | { parentConversationId?: string | undefined; row: ConversationFeedItem }
+  | undefined {
   for (const item of items) {
     if (item.conversationId === conversationId) {
       return { parentConversationId, row: item };
@@ -117,7 +122,7 @@ type ArchivedConversationSnapshot = {
   conversation: ConversationFeedItem;
   feedQueryHashes: string[];
   /** Set for a nested Thread: the feed row whose `threads` held it. */
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 };
 
 const archiveConversationMutationKey = [
@@ -141,7 +146,7 @@ type ArchiveConversationMutationContext = {
 
 export type PendingArchiveConversationUpdate = {
   archived: boolean;
-  conversation?: ConversationSummaryReport;
+  conversation?: ConversationSummaryReport | undefined;
   conversationId: string;
 };
 
@@ -212,7 +217,7 @@ export function useConversationPageArchiveResult(
     if (status === "success") onArchived(conversation);
     else onArchiveError(conversation, true);
     // Clear the state so a reload or a later restore does not report again.
-    navigate(
+    void navigate(
       { hash: location.hash, search: location.search },
       { replace: true, state: null },
     );
@@ -287,8 +292,8 @@ export function archiveConversationMutationOptions(
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
 
-      previousFeeds.forEach(([queryKey, feed]) => {
-        if (!feed) return;
+      for (const [queryKey, feed] of previousFeeds) {
+        if (!feed) continue;
         const conversationExists = Boolean(
           findFeedRow(conversationFeedCacheRows(feed), conversationId),
         );
@@ -303,10 +308,10 @@ export function archiveConversationMutationOptions(
           queryKey,
           mapConversationFeedCache(feed, (pageRows, first) => {
             const conversations = !shouldRestore
-              ? markFeedConversation(pageRows, conversationId, viewerMarks)
+              ? patchFeedConversation(pageRows, conversationId, viewerMarks)
               : restoreParentId
                 ? withRestoredThread(pageRows, restoreParentId, {
-                    ...archivedSnapshot!.conversation,
+                    ...archivedSnapshot.conversation,
                     archivedAt: null,
                   })
                 : first
@@ -325,13 +330,11 @@ export function archiveConversationMutationOptions(
               : conversations;
           }),
         );
-      });
-      queryClient.setQueryData<ConversationSnapshot>(
-        detailQueryKey,
-        (detail) =>
-          detail
-            ? { ...detail, ...viewerMarks, detailEtag: undefined }
-            : detail,
+      }
+      queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
+        detail
+          ? withoutVersion({ ...detail, ...viewerMarks }, "detailEtag")
+          : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -346,9 +349,9 @@ export function archiveConversationMutationOptions(
       } satisfies ArchiveConversationMutationContext;
     },
     onError: (_error, _args, context) => {
-      context?.previousFeeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of context?.previousFeeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       if (context) {
         queryClient.setQueryData(
           context.detailQueryKey,
@@ -373,11 +376,10 @@ export function archiveConversationMutationOptions(
         conversationDetailQueryKey(conversationId),
         (detail) =>
           detail
-            ? {
-                ...detail,
-                archivedAt: result.archivedAt,
-                detailEtag: undefined,
-              }
+            ? withoutVersion(
+                { ...detail, archivedAt: result.archivedAt },
+                "detailEtag",
+              )
             : detail,
       );
       if (!args.archived) {
@@ -390,12 +392,13 @@ export function archiveConversationMutationOptions(
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // An archived Conversation leaves its Space's roll-up.
+        invalidateMemberSpaces(queryClient),
+        // Location and Person pages count and list archived Conversations.
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which Location lists it.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which People list it.
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         queryClient.invalidateQueries({ predicate: isTreeArchiveRead }),
       ]);
@@ -447,7 +450,7 @@ export function applyPendingArchiveUpdate(
 }
 
 /** Drop matching Threads from the nested `threads` of rows, at any depth. */
-export function withoutThreads<T extends { threads?: T[] }>(
+export function withoutThreads<T extends { threads?: T[] | undefined }>(
   rows: T[],
   isDropped: (thread: T) => boolean,
 ): T[] {

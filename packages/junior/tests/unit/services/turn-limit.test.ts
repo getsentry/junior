@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ContextSummaryError } from "@/chat/agent/context-summary";
+import { ToolActionReviewUnavailableError } from "@/chat/guardian/gate";
+import { createProviderError } from "@/chat/services/provider-error";
 import {
   TurnBudgetExceededError,
   TurnSliceLimitExceededError,
@@ -83,5 +86,34 @@ describe("turn execution limit", () => {
     expect(buildTurnErrorResponse(new Error("boom"), "abc123")).toContain(
       "internal error",
     );
+  });
+
+  // A thrown Turn error keeps the provider failure in its cause chain.
+  it.each([
+    {
+      name: "action review",
+      error: new ToolActionReviewUnavailableError({
+        cause: createProviderError(
+          "Service temporarily unavailable. Please try again shortly.",
+          { modelId: "openai/gpt-6-luna" },
+        ),
+      }),
+      reply:
+        "OpenAI (gpt-6-luna, used for action review) is returning errors right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=abc123`.",
+    },
+    {
+      name: "context compaction",
+      error: new Error("boundary", {
+        cause: new ContextSummaryError("request_failed", undefined, {
+          cause: createProviderError("Overloaded", {
+            modelId: "anthropic/claude-opus-5.5",
+          }),
+        }),
+      }),
+      reply:
+        "Anthropic (claude-opus-5.5) is at capacity right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=abc123`.",
+    },
+  ])("names the upstream provider for a $name failure", ({ error, reply }) => {
+    expect(buildTurnErrorResponse(error, "abc123")).toBe(reply);
   });
 });

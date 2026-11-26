@@ -6,9 +6,9 @@ import {
 } from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const resultDataSchema = z
   .object({
@@ -19,6 +19,32 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
+export const stopWatchingResourcesToolDefinition = zodToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Stop one watch by id. When a person asked for the stop, confirm it in a short reply after this call. Infer terse stop requests from context, and inspect active watches when the target is unclear. The watch can belong to the current conversation or to a child agent below it.",
+  exposure: "deferred",
+  source: RESOURCE_WATCH_TOOL_SOURCE,
+  inputSchema: z
+    .object({
+      id: z
+        .string()
+        .min(1)
+        .nullable()
+        .optional()
+        .describe(
+          "Watch id. Omit it, or pass null, only when the person explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents.",
+        ),
+    })
+    .strict(),
+  outputSchema,
+});
+
 /**
  * Create the tool that stops watches this conversation owns. The conversation
  * owns its own watches and those of every child agent below it, so a stop of
@@ -27,20 +53,7 @@ const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
  */
 export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    description:
-      "Stop one watch by id. The watch can belong to the current conversation or to a child agent below it. Omit id only when the user explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
-    exposure: "deferred",
-    source: RESOURCE_WATCH_TOOL_SOURCE,
-    inputSchema: z
-      .object({ id: z.string().min(1).nullable().optional() })
-      .strict(),
-    outputSchema,
+    ...stopWatchingResourcesToolDefinition,
     async execute({ id }) {
       let stoppedIds: string[];
       if (id) {
@@ -56,7 +69,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
           : undefined;
         if (!stopped) {
           throw new ToolInputError(
-            "Watch was not found in the current conversation or its child agents.",
+            "Watch was not found in the current conversation or its child agents. Use listWatches to find its id.",
           );
         }
         if (stopped.status === "completed") {
@@ -70,6 +83,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         for (const { watch } of await listOwnedWatches(
           context.conversationId,
         )) {
+          // oxlint-disable-next-line no-await-in-loop -- Each stop takes the shared timer index lock, so stop one watch at a time.
           const stopped = await stopOwnedWatch({
             conversationId: context.conversationId,
             watch,

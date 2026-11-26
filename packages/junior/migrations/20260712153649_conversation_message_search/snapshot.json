@@ -1,0 +1,50 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "df0fd278-b0ca-43c5-8d4c-f3881004516b",
+  "prevIds": ["787c677c-20a2-48b4-8222-8bbb6aa5f45c"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_messages",
+        "junior_conversation_messages_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_messages_search_idx",
+        "n|idx|public.junior_conversation_messages_search_idx",
+        "e|idx|public.junior_conversation_messages_search_idx",
+        "n|rel|public.junior_conversation_messages_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_messages", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_messages",
+        "name": "junior_conversation_messages_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('english', \"text\")",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

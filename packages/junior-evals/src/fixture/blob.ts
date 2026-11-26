@@ -6,12 +6,16 @@
  * memory. The eval configs set a fake `BLOB_READ_WRITE_TOKEN`.
  *
  * The Blob SDK sends every request with its own `undici` fetch, which MSW
- * does not see. So a local server answers the SDK. The mock points uploads
- * and deletes at it with `VERCEL_BLOB_API_URL`. Reads go to the URL of the
- * store, which no setting changes, so an `undici` interceptor sends them to
- * the local server.
+ * does not see. So a local server answers the SDK. The mock points uploads,
+ * deletes, signed tokens, and presigned uploads at it with
+ * `VERCEL_BLOB_API_URL`. Reads go to the URL of the store, which no setting
+ * changes, so an `undici` interceptor sends them to the local server.
  */
-import { createServer, type IncomingMessage } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
@@ -45,7 +49,10 @@ function isBlobStore(origin: string | URL | undefined): boolean {
 export async function installBlobMock(): Promise<BlobMock> {
   const objects = new Map<string, { body: Buffer; contentType: string }>();
 
-  const server = createServer(async (request, response) => {
+  const handleRequest = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> => {
     const url = new URL(request.url ?? "/", "http://blob.test");
     const body = await readBody(request);
     if (request.method === "GET") {
@@ -64,6 +71,18 @@ export async function installBlobMock(): Promise<BlobMock> {
     }
     response.setHeader("content-type", "application/json");
     if (request.method === "PUT" && url.pathname === "/") {
+      // A presigned upload carries its options in the signed URL. Reject one
+      // that would add a suffix or overwrite, or that has no store id.
+      if (
+        url.searchParams.has("vercel-blob-delegation") &&
+        (url.searchParams.get("vercel-blob-add-random-suffix") !== "false" ||
+          url.searchParams.get("vercel-blob-allow-overwrite") !== "false" ||
+          !request.headers["x-vercel-blob-store-id"])
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "bad_request" } }));
+        return;
+      }
       const pathname = url.searchParams.get("pathname") ?? "";
       const contentType =
         (request.headers["x-content-type"] as string | undefined) ??
@@ -82,6 +101,21 @@ export async function installBlobMock(): Promise<BlobMock> {
       );
       return;
     }
+    if (request.method === "POST" && url.pathname === "/signed-token") {
+      // The SDK reads the scope from the token payload and signs presigned
+      // URLs with `clientSigningToken`. The mock does not check signatures.
+      const scope = JSON.parse(body.toString() || "{}") as object;
+      const payload = Buffer.from(
+        JSON.stringify({ ...scope, storeId: "store_evalstore" }),
+      ).toString("base64url");
+      response.end(
+        JSON.stringify({
+          clientSigningToken: "eval-signing-token",
+          delegationToken: `${payload}.eval`,
+        }),
+      );
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/delete") {
       const { urls } = JSON.parse(body.toString() || "{}") as {
         urls?: string[];
@@ -92,12 +126,15 @@ export async function installBlobMock(): Promise<BlobMock> {
     }
     response.statusCode = 404;
     response.end(JSON.stringify({ error: { code: "not_found" } }));
-  });
+  };
+  const server = createServer(
+    (request, response) => void handleRequest(request, response),
+  );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const localOrigin = `http://127.0.0.1:${port}`;
-  const previousApiUrl = process.env.VERCEL_BLOB_API_URL;
-  process.env.VERCEL_BLOB_API_URL = localOrigin;
+  const previousApiUrl = process.env["VERCEL_BLOB_API_URL"];
+  process.env["VERCEL_BLOB_API_URL"] = localOrigin;
   const previousDispatcher = getGlobalDispatcher();
   setGlobalDispatcher(
     previousDispatcher.compose(
@@ -115,9 +152,9 @@ export async function installBlobMock(): Promise<BlobMock> {
     async close() {
       setGlobalDispatcher(previousDispatcher);
       if (previousApiUrl === undefined) {
-        delete process.env.VERCEL_BLOB_API_URL;
+        delete process.env["VERCEL_BLOB_API_URL"];
       } else {
-        process.env.VERCEL_BLOB_API_URL = previousApiUrl;
+        process.env["VERCEL_BLOB_API_URL"] = previousApiUrl;
       }
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },

@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "d080cfda-09a6-453f-a19a-b6dc6c766a54",
+  "prevIds": ["fe5fe73a-8243-4d7d-874f-87f40fc30f7f"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_event_tasks",
+        "status_reason"
+      ],
+      "writes": [
+        "s|col|public.junior_event_tasks.status_reason",
+        "n|col|public.junior_event_tasks.status_reason",
+        "e|col|public.junior_event_tasks.status_reason"
+      ],
+      "reads": ["n|tbl|public.junior_event_tasks", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "status_reason",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

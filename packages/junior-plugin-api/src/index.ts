@@ -2,9 +2,11 @@ export * from "./object-annotations";
 export * from "./object-presentation";
 export * from "./object-icons";
 export * from "./object-facts";
+export * from "./images";
 export * from "./object-links";
 export * from "./annotations";
 export * from "./code";
+export * from "./conversation-changes";
 export * from "./conversation-events";
 export * from "./schemas";
 export * from "./cache";
@@ -16,11 +18,15 @@ export {
   promptMessageSchema,
   type PromptContext,
   type PromptContextContribution,
+  type PromptHistory,
+  type PromptHistoryContext,
+  type PromptHistoryMessage,
   type PromptMessage,
-  type SystemPromptContext,
+  type SystemPromptBuildContext,
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
+export * from "./prompt-tags";
 export * from "./dispatch";
 export * from "./events";
 export * from "./event-triggers";
@@ -34,5 +40,6 @@ export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
-export * from "./review-items";
+export * from "./inbox-items";
+export * from "./markdown";
 export * from "./user-pages";

@@ -1,0 +1,76 @@
+/**
+ * Vimeo plugin runtime boundary.
+ *
+ * The tools list the Vimeo folders the account can reach, upload sandbox
+ * videos into the folder that each call names as private videos, replace
+ * their files and thumbnails, and read their state. They run on the
+ * host and send files with tus in chunks, so sandbox request limits do not
+ * apply. Junior uses only the plugin's service account: an admin connects
+ * one shared Vimeo account, and people never connect their own. Junior adds
+ * its token to the plugin's API calls on the host.
+ *
+ * Every upload is private when Vimeo creates it: hidden from vimeo.com or
+ * unlisted, embeddable only on allowed domains, and not downloadable. No
+ * tool can make a video public.
+ */
+import {
+  defineJuniorPlugin,
+  type PluginRegistration,
+} from "@sentry/junior-plugin-api";
+import { vimeoSettings, type VimeoPluginOptions } from "./settings.js";
+import { VIMEO_OPERATIONS } from "./tool-support/vimeo-api.js";
+import { vimeoListFolderTool } from "./tools/list-folder.js";
+import { vimeoListFoldersTool } from "./tools/list-folders.js";
+import { vimeoReplaceFileTool } from "./tools/replace-file.js";
+import { vimeoSetThumbnailTool } from "./tools/set-thumbnail.js";
+import { vimeoStatusTool } from "./tools/status.js";
+import { vimeoUploadTool } from "./tools/upload.js";
+
+export type { VimeoPluginOptions };
+
+/** Register the Vimeo upload, file, thumbnail, status, and folder tools. */
+export function vimeoPlugin(
+  options: VimeoPluginOptions = {},
+): PluginRegistration {
+  const settings = vimeoSettings(options);
+  return defineJuniorPlugin({
+    manifest: {
+      name: "vimeo",
+      displayName: "Vimeo",
+      description:
+        "Upload private videos to Vimeo folders, replace their files and thumbnails, and check their processing",
+      credentials: {
+        type: "oauth-bearer",
+        domains: ["api.vimeo.com"],
+      },
+      oauth: {
+        clientIdEnv: "VIMEO_CLIENT_ID",
+        clientSecretEnv: "VIMEO_CLIENT_SECRET",
+        authorizeEndpoint: "https://api.vimeo.com/oauth/authorize",
+        tokenEndpoint: "https://api.vimeo.com/oauth/access_token",
+        scope: "public private upload edit",
+        tokenAuthMethod: "basic",
+      },
+      accounts: {
+        userOAuth: false,
+        serviceAccount: { operations: Object.values(VIMEO_OPERATIONS) },
+      },
+      envVars: {
+        VIMEO_CLIENT_ID: {},
+        VIMEO_CLIENT_SECRET: {},
+      },
+    },
+    hooks: {
+      tools() {
+        return {
+          upload: vimeoUploadTool(settings),
+          replaceFile: vimeoReplaceFileTool,
+          setThumbnail: vimeoSetThumbnailTool,
+          status: vimeoStatusTool,
+          listFolder: vimeoListFolderTool,
+          listFolders: vimeoListFoldersTool,
+        };
+      },
+    },
+  });
+}

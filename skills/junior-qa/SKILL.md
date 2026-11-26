@@ -43,6 +43,22 @@ Healthy startup usually logs `SOUL.md`, `WORLD.md`, loaded plugins, and
 discovered skills. Treat those logs as useful evidence that the example app path
 was exercised.
 
+### Telemetry
+
+To see the errors, spans, and logs of a CLI run, run it inside
+`sentry local run`:
+
+```sh
+pnpm exec sentry local run --format json --attributes -- pnpm cli -- chat -p "<targeted prompt>" > /tmp/chat.out
+grep '^{"schema_version"' /tmp/chat.out > /tmp/telemetry.ndjson
+```
+
+Each NDJSON line is one error, span, or log, such as a `gen_ai.chat` or
+`gen_ai.execute_tool` span or an `agent.tool_call.failed` log. The other lines
+are the CLI output. `pnpm dev` already runs inside `sentry local run`, and
+`dev.log` gets the same events in text. Use telemetry to explain a result, not
+to prove it.
+
 ## Dashboard UI QA
 
 For dashboard UI changes that depend on reporting payload shape, use the typed
@@ -179,8 +195,8 @@ pnpm build
 ```
 
 Start `pnpm dev` with the Docker settings. When the dev server is ready, run
-`snapshot create` with the same state settings as the dev server. With the
-BullMQ queue, the dev server keeps the snapshot pointer in the Compose Redis.
+`snapshot create` with the same state settings as the dev server. The dev
+server keeps the snapshot pointer in the Compose Redis.
 `pnpm cli` uses memory state by default, so it cannot find that pointer:
 
 ```sh
@@ -279,11 +295,11 @@ pnpm --filter @sentry/junior-evals evals:integration evals/integration/auth
 For SQL conversation storage changes, verify the resumed turn rebuilds context
 from SQL, not `thread-state` mirrors: conversation context must hydrate from
 `junior_conversation_messages` (`hydrateConversationMessages`) and pi history
-from `junior_conversation_events` through the Pi adapter (`loadProjection`). In
-those tests, transcripts seeded only into `thread-state` must also be persisted
-to SQL (`persistConversationMessages`) before the callback runs, and the
-resumed agent-run input `conversationContext` must contain the SQL-seeded
-messages.
+from `junior_conversation_events` through the Pi adapter
+(`loadConversationProjection`). In those tests, transcripts seeded only into
+`thread-state` must also be persisted to SQL (`persistConversationMessages`)
+before the callback runs, and the resumed agent-run input
+`conversationContext` must contain the SQL-seeded messages.
 
 ## Failure Handling
 

@@ -1,11 +1,14 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
+import { loadConversationSlackTenantId } from "./event-actor";
+import { resolveRootVisibility } from "./privacy";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -96,6 +99,93 @@ export async function recordConversationParticipant(
       },
     });
   return true;
+}
+
+/**
+ * Read the Users of mentioned Slack people. With `slackTeamId`, only people
+ * of that Slack workspace match, so a mention names someone there.
+ */
+export async function readMentionedUserIds(
+  executor: JuniorSqlDatabase,
+  slackUserIds: readonly string[],
+  slackTeamId: string | undefined,
+): Promise<string[]> {
+  if (slackUserIds.length === 0) return [];
+  const rows = await executor
+    .db()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.kind, "user"),
+        inArray(juniorIdentities.providerSubjectId, [...slackUserIds]),
+        isNotNull(juniorIdentities.userId),
+        slackTeamId
+          ? eq(juniorIdentities.providerTenantId, slackTeamId)
+          : undefined,
+      ),
+    );
+  return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
+}
+
+/** Return whether a Conversation is a Space's Lead, whose Participants are its members. */
+export async function isLeadConversation(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const [lead] = await db
+    .select({ id: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.conversationId, conversationId),
+        eq(juniorConversations.kind, "lead"),
+      ),
+    );
+  return Boolean(lead);
+}
+
+/**
+ * Subscribe the people that a person's Turn input Message mentions, when the
+ * root is public and not a Lead. It is an Invite by mention (contract:
+ * `api/conversations/subscription.ts`), so an existing Participant keeps
+ * their row and their unsubscribe.
+ */
+export async function recordMentionedParticipants(
+  executor: JuniorSqlDatabase,
+  args: { atMs: number; conversationId: string; text: string },
+): Promise<void> {
+  const slackUserIds = slackMentionedUserIds(args.text);
+  if (slackUserIds.length === 0) return;
+  const { rootConversationId, visibility } = await resolveRootVisibility(
+    executor,
+    args.conversationId,
+  );
+  if (visibility !== "public") return;
+  // A person joins a Space on purpose, so a mention adds no member.
+  if (await isLeadConversation(executor.db(), rootConversationId)) return;
+  const userIds = await readMentionedUserIds(
+    executor,
+    slackUserIds,
+    await loadConversationSlackTenantId(executor, rootConversationId),
+  );
+  if (userIds.length === 0) return;
+  const at = new Date(args.atMs);
+  // The caller bumps the Conversation in the same transaction, as for
+  // `recordConversationParticipant`.
+  // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
+  await executor
+    .db()
+    .insert(juniorConversationParticipants)
+    .values(
+      userIds.map((userId) => ({
+        lastMessageAt: at,
+        rootConversationId,
+        userId,
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 /**

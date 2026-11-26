@@ -1,6 +1,13 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import {
+  conversationStatusSql,
+  conversationWaitsOnUserSql,
+} from "@/chat/conversations/sql/status";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
   juniorConversationReadPositions,
@@ -63,7 +70,8 @@ function latestViewerMessageSeq(viewer: User, conversationId: string) {
 }
 
 /**
- * Move the viewer's read position forward.
+ * Move the viewer's read position forward. A read that reaches the latest
+ * reply closes the viewer's reply notice of the Conversation.
  *
  * The stored value never goes back, so devices can report in any order. A
  * value past the last event is cut to the last event, so a bad client cannot
@@ -89,26 +97,54 @@ export async function markConversationRead(
     .groupBy(juniorConversations.conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
 
-  await db
-    .insert(juniorConversationReadPositions)
-    .values({
+  await db.transaction(async (tx) => {
+    const before = await readViewerStatus(tx, conversationId, viewer.id);
+    await tx
+      .insert(juniorConversationReadPositions)
+      .values({
+        conversationId,
+        lastReadSeq: Math.min(body.lastReadSeq, conversation.lastSeq ?? 0),
+        updatedAt: new Date(),
+        userId: viewer.id,
+      })
+      .onConflictDoUpdate({
+        target: [
+          juniorConversationReadPositions.userId,
+          juniorConversationReadPositions.conversationId,
+        ],
+        set: {
+          lastReadSeq: sql`greatest(${juniorConversationReadPositions.lastReadSeq}, excluded.last_read_seq)`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      });
+    await closeReadReplyNotice(tx, {
       conversationId,
-      lastReadSeq: Math.min(body.lastReadSeq, conversation.lastSeq ?? 0),
-      updatedAt: new Date(),
+      nowMs: Date.now(),
       userId: viewer.id,
-    })
-    .onConflictDoUpdate({
-      target: [
-        juniorConversationReadPositions.userId,
-        juniorConversationReadPositions.conversationId,
-      ],
-      set: {
-        lastReadSeq: sql`greatest(${juniorConversationReadPositions.lastReadSeq}, excluded.last_read_seq)`,
-        updatedAt: sql`excluded.updated_at`,
-      },
     });
+    // The detail version does not cover read positions, but a starter's
+    // read can end a wait on them, also while another person's item keeps
+    // the status at `needs_input`. Then polls must reload the status.
+    if ((await readViewerStatus(tx, conversationId, viewer.id)) !== before) {
+      await touchConversationDetail(tx, [conversationId]);
+    }
+  });
   // Return what detail reads, so the cached detail opens at the same place.
   return (await readConversationReadPosition(viewer, conversationId))!;
+}
+
+function readViewerStatus(
+  db: JuniorDatabase,
+  conversationId: string,
+  userId: string,
+) {
+  return db
+    .select({
+      status: sql<string>`concat_ws(':', ${conversationStatusSql(juniorConversations)}, ${conversationWaitsOnUserSql(juniorConversations, userId)})`,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .then(([row]) => row?.status);
 }
 
 /**

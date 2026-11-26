@@ -71,13 +71,42 @@ export function definePromptContext<
 /** One request-scoped plugin contribution to the model-visible user prompt. */
 export type UserPromptContribution = PromptMessage | PromptContextContribution;
 
-/** Stable platform context for plugin system prompt guidance. */
-export type SystemPromptContext = Pick<
-  PluginContext,
-  "db" | "log" | "plugin"
-> & {
+/**
+ * What a plugin `systemPrompt` hook gets: the platform of the system prompts
+ * that it adds to. It has no database or cache. A plugin that needs data does
+ * its own I/O.
+ */
+export type SystemPromptBuildContext = Pick<PluginContext, "log" | "plugin"> & {
   platform: Platform;
 };
+
+/** One prompt context that this plugin gave an earlier Turn. */
+export type PromptHistoryContext = PromptContext & {
+  /** When the plugin made it. */
+  loadedAtMs: number;
+};
+
+/** What the model history that a new prompt replays holds. */
+export interface PromptHistory {
+  /**
+   * When this history started: the time of the last History replacement.
+   * Undefined when it holds the whole Conversation.
+   */
+  startedAtMs?: number;
+  /** This plugin's prompt contexts in this history, oldest first. */
+  contexts: PromptHistoryContext[];
+}
+
+/**
+ * One message of the model history that a new prompt replays, oldest first,
+ * without its content. `context` is a Turn context and `summary` is a
+ * compaction summary; `contributions` holds the text of this plugin's
+ * contributions in it, as the plugin wrote it.
+ */
+export type PromptHistoryMessage =
+  | { type: "input" }
+  | { type: "context" | "summary"; contributions: string[] }
+  | { type: "tool_result"; tool_name: string; is_error: boolean };
 
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
@@ -96,10 +125,27 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
    */
   setSpanAttributes(attributes: Record<string, number>): void;
   /** Location associated with this Conversation. */
-  locationId?: string;
-  actor?: Actor;
+  locationId?: string | undefined;
+  /**
+   * Read the model history that this prompt replays, such as to skip context
+   * that the model still has. Undefined when the prompt has no Conversation.
+   */
+  loadHistory?(): Promise<PromptHistory>;
+  /**
+   * Read the messages of the model history that this prompt replays, such as
+   * to find what this plugin's contributions and tools already showed.
+   * Undefined when the host has no history for the prompt.
+   */
+  historyMessages?(): PromptHistoryMessage[];
+  actor?: Actor | undefined;
   source: Source;
   state: PluginState;
+  /**
+   * The request of this Turn: what a person wrote, the task or message of a
+   * parent agent, or the instructions of an Automation. Runtime text, such as
+   * tags, generic instructions, Events, child agent results, and the question
+   * of an Inbox item, is not in it. Empty when the Turn has no request.
+   */
   text: string;
   users: {
     /** Resolve the current Actor's Identity and User. */

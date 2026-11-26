@@ -271,14 +271,17 @@ export async function appendVisibleHistory(
 /** Create a child conversation under a recorded root for reporting tests. */
 export async function createChild(args: {
   childConversationId: string;
-  /** Defaults to a Task. */
+  /** Defaults to a Task. `thread` makes a Thread. */
   kind?: "task" | "thread";
   parentConversationId: string;
 }): Promise<void> {
   const { getConversationEventStore, getDb } = await import("@/chat/db");
   const at = new Date(3);
   const [parent] = await getDb()
-    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .select({
+      rootConversationId: juniorConversations.rootConversationId,
+      visibility: juniorConversations.visibility,
+    })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, args.parentConversationId));
   if (!parent?.rootConversationId) throw new Error("Missing conversation root");
@@ -289,6 +292,8 @@ export async function createChild(args: {
       kind: args.kind ?? "task",
       parentConversationId: args.parentConversationId,
       rootConversationId: parent.rootConversationId,
+      // A child copies its root's visibility, as the store does.
+      visibility: parent.visibility,
       createdAt: at,
       lastActivityAt: at,
       updatedAt: at,

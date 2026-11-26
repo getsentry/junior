@@ -7,8 +7,8 @@ type OAuthTokenRequestInput = {
   clientId: string;
   clientSecret: string;
   payload: Record<string, string>;
-  tokenAuthMethod?: "body" | "basic";
-  tokenExtraHeaders?: Record<string, string>;
+  tokenAuthMethod?: "body" | "basic" | undefined;
+  tokenExtraHeaders?: Record<string, string> | undefined;
 };
 
 function requireNonEmptyTokenField(
@@ -29,19 +29,24 @@ function requireTokenResponseObject(data: unknown): Record<string, unknown> {
   return data as Record<string, unknown>;
 }
 
-const parsedOAuthTokenResponseSchema = z
+const parsedOAuthAccessTokenResponseSchema = z
   .object({
     accessToken: z.string().min(1),
-    refreshToken: z.string().min(1),
+    refreshToken: z.string().min(1).optional(),
     expiresAt: z.number().positive().optional(),
     refreshTokenExpiresAt: z.number().positive().optional(),
     scope: z.string().min(1).optional(),
   })
   .strict();
 
-export type OAuthTokenResponse = z.output<
-  typeof parsedOAuthTokenResponseSchema
+/** Provider tokens, where the provider may issue no refresh token. */
+export type OAuthAccessTokenResponse = z.output<
+  typeof parsedOAuthAccessTokenResponseSchema
 >;
+
+export type OAuthTokenResponse = OAuthAccessTokenResponse & {
+  refreshToken: string;
+};
 
 function contentTypeToBody(
   contentType: string,
@@ -76,15 +81,15 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
       `Basic ${Buffer.from(`${input.clientId}:${input.clientSecret}`).toString("base64")}`,
     );
   } else {
-    payload.client_id = input.clientId;
-    payload.client_secret = input.clientSecret;
+    payload["client_id"] = input.clientId;
+    payload["client_secret"] = input.clientSecret;
   }
 
   const contentType = headers.get("Content-Type") ?? DEFAULT_TOKEN_CONTENT_TYPE;
   const serializedHeaders: Record<string, string> = {};
-  headers.forEach((value, key) => {
+  for (const [key, value] of headers) {
     serializedHeaders[key] = value;
-  });
+  }
   return {
     headers: serializedHeaders,
     body: contentTypeToBody(contentType, payload),
@@ -96,22 +101,39 @@ export function parseOAuthTokenResponse(
   data: unknown,
   requestedScope?: string,
   options?: {
-    treatEmptyScopeAsUnreported?: boolean;
+    treatEmptyScopeAsUnreported?: boolean | undefined;
     refreshToken?: string;
   },
 ): OAuthTokenResponse {
+  const parsed = parseOAuthAccessTokenResponse(data, requestedScope, options);
+  const { refreshToken } = parsed;
+  if (!refreshToken) {
+    throw new Error("OAuth token response missing refresh_token");
+  }
+  return { ...parsed, refreshToken };
+}
+
+/**
+ * Parse provider tokens that may come without a refresh token, such as a
+ * token that does not expire.
+ */
+export function parseOAuthAccessTokenResponse(
+  data: unknown,
+  requestedScope?: string,
+  options?: {
+    treatEmptyScopeAsUnreported?: boolean | undefined;
+    refreshToken?: string;
+  },
+): OAuthAccessTokenResponse {
   const response = requireTokenResponseObject(data);
   const accessToken = requireNonEmptyTokenField(response, "access_token");
   const resolvedRefreshToken =
-    response.refresh_token === undefined
+    response["refresh_token"] === undefined
       ? options?.refreshToken
       : requireNonEmptyTokenField(response, "refresh_token");
-  if (!resolvedRefreshToken) {
-    throw new Error("OAuth token response missing refresh_token");
-  }
-  const expiresIn = response.expires_in;
-  const refreshTokenExpiresIn = response.refresh_token_expires_in;
-  const responseScope = response.scope;
+  const expiresIn = response["expires_in"];
+  const refreshTokenExpiresIn = response["refresh_token_expires_in"];
+  const responseScope = response["scope"];
   let scope: string | undefined;
 
   if (responseScope !== undefined) {
@@ -132,13 +154,15 @@ export function parseOAuthTokenResponse(
 
   const result: {
     accessToken: string;
-    refreshToken: string;
+    refreshToken?: string;
     expiresAt?: number;
     refreshTokenExpiresAt?: number;
     scope?: string;
   } = {
     accessToken,
-    refreshToken: resolvedRefreshToken,
+    ...(resolvedRefreshToken
+      ? { refreshToken: resolvedRefreshToken }
+      : undefined),
     ...(scope ? { scope } : undefined),
   };
 
@@ -166,5 +190,5 @@ export function parseOAuthTokenResponse(
     result.refreshTokenExpiresAt = Date.now() + refreshTokenExpiresIn * 1000;
   }
 
-  return parsedOAuthTokenResponseSchema.parse(result);
+  return parsedOAuthAccessTokenResponseSchema.parse(result);
 }

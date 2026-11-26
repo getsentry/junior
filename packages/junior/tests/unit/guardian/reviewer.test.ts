@@ -5,6 +5,11 @@ import {
   guardianDecision,
   guardianPrompt,
 } from "@/chat/guardian/reviewer";
+import {
+  GUARDIAN_ACTION_POLICY,
+  guardianPluginFacts,
+  guardianSystemPrompt,
+} from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
   type RootConversation,
@@ -18,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/chat/logging", () => ({
   logWarn: mocks.logWarn,
+  setSpanAttributes: vi.fn(),
 }));
 
 const proposal: ToolActionProposal = {
@@ -85,11 +91,58 @@ describe("Guardian action review", () => {
     ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxTokens: 8_000,
+        maxTokens: 2_000,
         modelId: "test/guardian",
         prompt: expect.stringContaining('"cadence": "weekly"'),
       }),
     );
+  });
+
+  it("puts sorted plugin destination facts after the policy in the system prompt", () => {
+    const notion = { plugin: "notion", text: "The Docs space is public." };
+    const linear = { plugin: "linear", text: "Team PY syncs to GitHub." };
+
+    const system = guardianSystemPrompt([notion, linear]);
+
+    expect(guardianSystemPrompt([linear, notion])).toBe(system);
+    expect(guardianSystemPrompt()).toBe(GUARDIAN_ACTION_POLICY);
+    expect(system.startsWith(GUARDIAN_ACTION_POLICY)).toBe(true);
+    expect(system.indexOf("`linear`: Team PY syncs to GitHub.")).toBeLessThan(
+      system.indexOf("`notion`: The Docs space is public."),
+    );
+  });
+
+  it("states which domains get each plugin's Sandbox credential", () => {
+    const facts = guardianPluginFacts([
+      {
+        name: "acme",
+        displayName: "Acme",
+        description: "Acme API",
+        configKeys: [],
+        reviewContext: "The Docs space is public.",
+        credentials: {
+          type: "oauth-bearer",
+          domains: ["api.acme.test", "uploads.acme.test"],
+          authTokenEnv: "ACME_TOKEN",
+        },
+      },
+      {
+        name: "plain",
+        displayName: "Plain",
+        description: "No credential",
+        configKeys: [],
+      },
+    ]);
+
+    expect(facts).toEqual([
+      { plugin: "acme", text: "The Docs space is public." },
+      {
+        plugin: "acme",
+        text: expect.stringContaining(
+          "`$ACME_TOKEN` in the Sandbox holds a placeholder. The runtime adds the real credential only to Sandbox requests to `api.acme.test`, `uploads.acme.test`",
+        ),
+      },
+    ]);
   });
 
   it("retries one invalid structured response", async () => {
@@ -250,5 +303,33 @@ describe("Guardian action review", () => {
     expect(
       guardianPrompt({ ...proposal, rootConversation: empty }),
     ).not.toContain("root_user_instructions");
+  });
+
+  it("reads a member's concern as a request only for a Lead's startAgent", () => {
+    const withRoot: ToolActionProposal = {
+      ...proposal,
+      rootConversation: {
+        messages: [
+          { author: "user", text: "I'm worried the export is broken" },
+        ],
+        truncated: false,
+      },
+    };
+    const start = {
+      ...withRoot,
+      tool: { description: "Start a child agent.", name: "startAgent" },
+    };
+    const leadRule = "This action is startAgent in a Space's Lead";
+
+    expect(
+      guardianPrompt({ ...start, context: { ...start.context, lead: true } }),
+    ).toContain(leadRule);
+    expect(guardianPrompt(start)).not.toContain(leadRule);
+    expect(
+      guardianPrompt({
+        ...withRoot,
+        context: { ...withRoot.context, lead: true },
+      }),
+    ).not.toContain(leadRule);
   });
 });

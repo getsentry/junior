@@ -10,7 +10,7 @@ import {
   lte,
   sql,
 } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
   decodeStoredConversationEvent,
@@ -40,8 +40,10 @@ import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
+import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
+  recordMentionedParticipants,
   rootConversationIsArchived,
 } from "./participants";
 
@@ -49,7 +51,7 @@ type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 type PersistedConversationEvent = {
   data: ConversationEventData;
-  idempotencyKey?: string;
+  idempotencyKey?: string | undefined;
   createdAtMs: number;
 };
 
@@ -69,7 +71,7 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
  * mentions and DMs, always address Junior.
  */
 function eventAddressesJunior(data: ConversationEventData): boolean {
-  return data.type === "message" && data.meta?.explicitMention !== false;
+  return data.type === "message" && data.meta?.["explicitMention"] !== false;
 }
 
 /**
@@ -93,10 +95,10 @@ function eventUnarchivesConversation(data: ConversationEventData): boolean {
   if (data.role !== "user") return false;
   const meta = data.meta;
   if (!meta) return true;
-  if (typeof meta.eventType === "string" && meta.eventType.length > 0) {
+  if (typeof meta["eventType"] === "string" && meta["eventType"].length > 0) {
     return false;
   }
-  const author = meta.author;
+  const author = meta["author"];
   if (
     author &&
     typeof author === "object" &&
@@ -130,6 +132,18 @@ function insertFromEvent(
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
+}
+
+/** Read a Conversation's stored event rows as they are, in seq order. */
+export async function readConversationEventRows(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<ConversationEventRow[]> {
+  return await db
+    .select()
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId))
+    .orderBy(asc(juniorConversationEvents.seq));
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
@@ -240,6 +254,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         const historyVersion = cursor.maxHistoryVersion ?? 0;
         let seq = cursor.nextSeq;
         const rows: ConversationEventInsert[] = [];
+        /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
         for (const event of pending) {
           const actorIdentityId = await resolveEventActorIdentityId(
             this.executor,
@@ -259,11 +274,13 @@ class SqlConversationEventStore implements ConversationEventStore {
             ),
           );
         }
+        /* oxlint-enable no-await-in-loop */
         const db = this.executor.db();
         await db
           .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
+        await writeMessageLinks(this.executor, conversationId, rows);
         if (
           pending.some(
             (event) =>
@@ -273,6 +290,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         ) {
           await refreshLastMessageAt(this.executor, conversationId);
         }
+        /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(
@@ -281,6 +299,7 @@ class SqlConversationEventStore implements ConversationEventStore {
             );
           }
         }
+        /* oxlint-enable no-await-in-loop */
         return rows.map((row) => ({
           seq: row.seq,
           historyVersion: row.historyVersion,
@@ -290,9 +309,11 @@ class SqlConversationEventStore implements ConversationEventStore {
   }
 
   /**
-   * Add the authors of Turn input messages to the conversation.
-   * Only people who start a Turn join it. Thread context, such as backfilled
-   * or skipped messages, keeps its author without membership.
+   * Add the authors of Turn input messages to the conversation, and the
+   * people that they mention in a public one. Only people who start a Turn,
+   * or whom they mention, join it. Thread context, such as backfilled
+   * or skipped messages, and Event Messages keep their author without
+   * membership.
    */
   private async recordTurnInputParticipants(
     conversationId: string,
@@ -320,9 +341,13 @@ class SqlConversationEventStore implements ConversationEventStore {
       conversationId,
     );
     let restores = false;
+    /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
+      // An Event author writes its Message for attribution only. They did
+      // not address this Conversation, so they do not join it.
+      if (data.meta?.["eventType"]) continue;
       const unarchives = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
@@ -331,7 +356,15 @@ class SqlConversationEventStore implements ConversationEventStore {
         resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
       restores ||= isPerson && unarchives;
+      if (isPerson) {
+        await recordMentionedParticipants(this.executor, {
+          atMs: row.createdAt.getTime(),
+          conversationId,
+          text: data.text,
+        });
+      }
     }
+    /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.
     if (restores) {
       await restoreArchivedPath(this.executor.db(), conversationId);
@@ -375,7 +408,11 @@ class SqlConversationEventStore implements ConversationEventStore {
               parsed,
             ),
           );
-        return { status: "replaced" as const, historyVersion };
+        return {
+          status: "replaced" as const,
+          historyVersion,
+          seq: cursor.nextSeq,
+        };
       },
     );
   }
@@ -573,6 +610,52 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, type),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadLatestEventOfTypes(
+    conversationId: string,
+    types: readonly KnownConversationEventType[],
+  ): Promise<ConversationEvent | undefined> {
+    const [row] = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          inArray(juniorConversationEvents.type, [...types]),
+        ),
+      )
+      .orderBy(desc(juniorConversationEvents.seq))
+      .limit(1);
+    return row ? eventFromRow(row) : undefined;
+  }
+
+  async loadCurrentEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]> {
+    const db = this.executor.db();
+    // One statement, as in `loadCurrentHistory`. Older versions stay out of
+    // the read, so its cost does not grow with every compaction.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
           eq(juniorConversationEvents.type, type),
         ),
       )

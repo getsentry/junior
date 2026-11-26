@@ -14,22 +14,14 @@ import { createPausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
-  resolveAgentDispatchId,
+  failStoppedDispatch,
 } from "@/chat/agent-dispatch/work";
-import {
-  createChildConversationWorker,
-  createDeliverToParent,
-  enqueueAgentInvocationResult,
-  withAgentInvocationResultActors,
-} from "@/chat/agent-invocations/result";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { botConfig } from "@/chat/config";
-import { logException } from "@/chat/logging";
-import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+import { stopChildAgentsOf } from "@/chat/child-agents/stop";
+import { logException, withLogContext } from "@/chat/logging";
+import { resumeForPersonInput } from "@/chat/conversations/session-stop";
+import { ownsLocation } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import { runConversation } from "@/chat/task-execution/run-conversation";
 import {
   getDispatchConversationId,
   getDispatchInputMessageId,
@@ -37,10 +29,7 @@ import {
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
-import {
-  scheduleSessionCompletedPluginTasks,
-  type ScheduleSessionCompletedPluginTasksOptions,
-} from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 
 type SlackRuntime = ReturnType<typeof createSlackRuntime>;
 
@@ -49,12 +38,8 @@ interface ConversationWorkOptions {
   conversationStore: ConversationStore;
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
-  /**
-   * Optional plugin-task send path for completed Turns.
-   * Production omits this and uses the default Vercel queue sender.
-   */
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  services?: JuniorRuntimeServiceOverrides;
+  sendPluginTask: SendPluginTask;
+  services?: JuniorRuntimeServiceOverrides | undefined;
   state?: StateAdapter;
   /** Keeps background work started by turns, such as titles, alive. */
   waitUntil?: (task: Promise<unknown>) => void;
@@ -85,9 +70,7 @@ export function createConversationWork(
   const baseRuntime = createSlackRuntime({
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns,
-    ...(options.sendPluginTask
-      ? { sendPluginTask: options.sendPluginTask }
-      : undefined),
+    sendPluginTask: options.sendPluginTask,
     services: {
       ...options.services,
       agentRunner: options.agentRunner,
@@ -95,14 +78,6 @@ export function createConversationWork(
     waitUntil: options.waitUntil,
   });
   const runtime = options.wrapRuntime?.(baseRuntime) ?? baseRuntime;
-  const scheduleCompletedPluginTasks = options.sendPluginTask
-    ? async (
-        params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
-      ) =>
-        await scheduleSessionCompletedPluginTasks(params, {
-          send: options.sendPluginTask,
-        })
-    : undefined;
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: options.getSlackAdapter,
     runNextPausedTurn: async (conversationId, runOptions) =>
@@ -110,13 +85,8 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         runOptions,
       ),
@@ -131,97 +101,27 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const enqueueResult = async (
-    invocation: TerminalAgentInvocation,
-  ): Promise<void> =>
-    await enqueueAgentInvocationResult(invocation, {
-      queue: options.queue,
-      state: options.state,
-    });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
     createSlackSystemTurnDelivery({
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
-    createDeliverToParent({ queue: options.queue, state: options.state }),
+    { queue: options.queue, state: options.state },
   );
-  const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
-    queue: options.queue,
-    runTurn: conversationTurnWorker,
-    state: options.state,
-  });
-  // A Slack Destination uses the Slack worker. All other root work must have
-  // been selected above this function.
-  const destinationWorker = async (
+  const runWithStopCascade = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    const destination = context.destination;
-    if (!destination) {
-      throw new Error(
-        `Conversation ${context.conversationId} is missing a destination`,
-      );
-    }
-    if (destination.platform === "slack") {
-      return await slackWorker(context);
-    }
-    throw new Error(
-      `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
-    );
-  };
-  const runRoot = async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const mailboxTurn = await resolveMailboxTurnWork(context);
-    if (mailboxTurn) {
-      const work = await withAgentInvocationResultActors(mailboxTurn);
-      if (!work) {
-        // A stop skipped every child result in this input.
-        await context.attempt.ack();
-        return { status: "completed" };
-      }
-      return await conversationTurnWorker(context, work);
-    }
-    const dispatchId = await resolveAgentDispatchId(context);
-    if (dispatchId) {
-      return await dispatchWorker(context, dispatchId);
-    }
-    return await destinationWorker(context);
-  };
-  const run = async (
-    attemptContext: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    // Apply a session stop to automated input, on a root or a child.
-    const stopped = await skipInputAfterConversationStop(attemptContext);
-    if ("skipped" in stopped) {
-      return stopped.skipped;
-    }
-    const { context } = stopped;
-    // The stored kind decides the worker, so child work never reaches a root
-    // worker. A child Turn can have any Source.
-    const conversation = await options.conversationStore.get({
-      conversationId: context.conversationId,
-    });
-    if (!isTopLevelKind(conversation?.kind ?? "root")) {
-      return await childWorker(context);
-    }
-    // A root's run can see its stop late. Then it stops the child agents that
-    // it spawned or gave new work to after the stop, as a child's worker does.
+    // A run can see its stop late. Then it stops the child agents that it
+    // spawned or gave new work to after the stop.
     const readStopSignal = context.stopSignal;
     let stopSignal: AbortSignal | undefined;
     const stopLateChildAgents = async () => {
@@ -231,12 +131,20 @@ export function createConversationWork(
     };
     let result: ConversationWorkerResult;
     try {
-      result = await runRoot({
-        ...context,
-        stopSignal: readStopSignal
-          ? () => (stopSignal = readStopSignal())
-          : undefined,
-      });
+      result = await runConversation(
+        {
+          ...context,
+          stopSignal: readStopSignal
+            ? () => (stopSignal = readStopSignal())
+            : undefined,
+        },
+        {
+          destinations: { slack: slackWorker },
+          runDispatch: dispatchWorker,
+          runTurn: conversationTurnWorker,
+          state: options.state,
+        },
+      );
     } catch (error) {
       // After a seen stop, the run throws only when saving the cancelled Turn
       // fails. With retries left, `recordConversationRetry` keeps the `runId`,
@@ -251,8 +159,34 @@ export function createConversationWork(
     await stopLateChildAgents();
     return result;
   };
+  const run = async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    // A person's input ends a stop, on a root or a child.
+    await resumeForPersonInput(
+      context.conversationId,
+      context.attempt.messages,
+    );
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
+    });
+    // A Conversation with its own Location, such as a Slack Conversation
+    // that moved into a Space, runs as a root, so it still gets Slack work.
+    const topLevel = !conversation || ownsLocation(conversation);
+    // Bind the tree root once, so spans of child agents count by root.
+    return await withLogContext(
+      {
+        rootConversationId:
+          conversation?.rootConversationId ??
+          (topLevel ? context.conversationId : undefined),
+      },
+      () => runWithStopCascade(context),
+    );
+  };
   return {
+    beforeWorkStops: failStoppedDispatch,
     conversationStore: options.conversationStore,
+    getSlackAdapter: options.getSlackAdapter,
     queue: options.queue,
     run,
     runtime,

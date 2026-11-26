@@ -1,3 +1,5 @@
+import { mapBounded } from "@/chat/fan-out";
+import { listClearedInboxItemPushes } from "@/chat/inbox-items/deliveries";
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
@@ -18,6 +20,12 @@ export interface WebPushConfig {
 /** The JSON body that the dashboard service worker shows. */
 export interface PushNotificationPayload {
   body: string;
+  /**
+   * Tags of earlier notifications that the device closes first, such as
+   * pushes of Inbox items that closed since. Web Push cannot close a
+   * notification without showing one, so the next push carries them.
+   */
+  close?: string[];
   /** Replaces an older notification with the same tag on the device. */
   tag: string;
   title: string;
@@ -25,19 +33,21 @@ export interface PushNotificationPayload {
   url: string;
 }
 
-/** Keep a reply notification for 12 hours while the device is offline. */
+/** Keep a notification for 12 hours while the device is offline. */
 const PUSH_TTL_SECONDS = 12 * 60 * 60;
 const PUSH_TIMEOUT_MS = 10_000;
 
 function subjectFromBaseUrl(): string | undefined {
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
+  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim();
   if (!baseUrl) return undefined;
-  return /^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
+    ? baseUrl
+    : `https://${baseUrl}`;
 }
 
 /** Web Push accepts only an `https:` or `mailto:` VAPID subject. */
 function isVapidSubject(subject: string): boolean {
-  return /^(https:\/\/|mailto:)/.test(subject);
+  return subject.startsWith("https://") || subject.startsWith("mailto:");
 }
 
 /**
@@ -46,17 +56,17 @@ function isVapidSubject(subject: string): boolean {
  * an `http://` base URL.
  */
 export function readWebPushConfig(): WebPushConfig | undefined {
-  const publicKey = process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY?.trim();
+  const publicKey = process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"]?.trim();
   const privateKey = readWebPushPrivateKey();
   if (!publicKey || !privateKey) return undefined;
   const subject =
-    process.env.JUNIOR_WEB_PUSH_SUBJECT?.trim() || subjectFromBaseUrl();
+    process.env["JUNIOR_WEB_PUSH_SUBJECT"]?.trim() || subjectFromBaseUrl();
   if (!subject || !isVapidSubject(subject)) return undefined;
   return { privateKey, publicKey, subject };
 }
 
 /** What caused a notification. A test send comes from the settings page. */
-export type PushNotificationKind = "reply" | "test";
+export type PushNotificationKind = "inbox_item" | "reply" | "test" | "wake";
 
 /** Device counts for one notification sent to one user. */
 export interface PushNotificationResult {
@@ -136,11 +146,16 @@ export async function sendPushNotificationToUser(args: {
   userId: string;
 }): Promise<PushNotificationResult> {
   const subscriptions = await listPushSubscriptions(args.db, args.userId);
-  const body = JSON.stringify(args.payload);
-  const outcomes = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendToDevice(subscription, body, args.config),
-    ),
+  const close = await listClearedInboxItemPushes(
+    args.db,
+    args.userId,
+    Date.now() - PUSH_TTL_SECONDS * 1000,
+  );
+  const body = JSON.stringify(
+    close.length > 0 ? { ...args.payload, close } : args.payload,
+  );
+  const outcomes = await mapBounded(subscriptions, (subscription) =>
+    sendToDevice(subscription, body, args.config),
   );
   const gone = subscriptions
     .filter((_, index) => outcomes[index] === "gone")

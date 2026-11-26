@@ -9,10 +9,33 @@ const observations = vi.hoisted(() => ({
     content?: unknown;
   }>,
   providerCalls: 0,
+  // Holds the start of the second parallel call, so the deadline passes
+  // while Pi prepares the batch.
+  releaseSecondRead: undefined as (() => void) | undefined,
+  secondReadPreparing: false,
   toolAborted: false,
   toolExecutions: [] as string[],
   toolStarted: false,
 }));
+
+vi.mock("@/chat/conversations/projection", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/chat/conversations/projection")>();
+  return {
+    ...actual,
+    recordToolExecutionStarted: async (
+      args: Parameters<typeof actual.recordToolExecutionStarted>[0],
+    ) => {
+      if (args.toolCallId === "read-call-2") {
+        observations.secondReadPreparing = true;
+        await new Promise<void>((resolve) => {
+          observations.releaseSecondRead = resolve;
+        });
+      }
+      return await actual.recordToolExecutionStarted(args);
+    },
+  };
+});
 
 vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
@@ -29,8 +52,21 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   };
 });
 
+// Guardian reviews each bash call. These tests cover sandbox wiring, so the
+// reviewer allows every call.
+vi.mock("@/chat/guardian/reviewer", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises sandbox runtime behavior.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
+}));
+
 // Keep the provider as the integration boundary. The real Pi loop executes
-// the tool, handles abort, persists the toolResult, and invokes continue().
+// the tools, handles abort, persists the toolResults, and invokes continue().
 vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn:
     () =>
@@ -39,89 +75,57 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       context: any,
       options?: { signal?: AbortSignal },
     ) => {
-      observations.providerCalls += 1;
+      // Pi still calls the model after a batch that the deadline aborted.
+      // A provider answers an aborted request with an aborted message.
+      const aborted = options?.signal?.aborted === true;
+      if (!aborted) {
+        observations.providerCalls += 1;
+      }
       const call = observations.providerCalls;
-      if (call > 1) {
+      if (call === 2 && !aborted) {
         observations.continuationMessages = context.messages ?? [];
       }
-
-      const timeoutContinuation =
-        !options?.signal?.aborted &&
-        JSON.stringify(context.messages ?? []).includes('"timed_out":true');
-      const message =
-        call === 1
-          ? {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "bash-call-1",
-                  name: "bash",
-                  arguments: {
-                    command: "run-the-targeted-cloudflare-test",
-                    timeoutMs: 180_000,
-                  },
-                },
-              ],
-              stopReason: "toolUse",
-              api: "test",
-              provider: "test",
-              model: model.id,
-              timestamp: Date.now(),
-              usage: { input: 2, output: 1, totalTokens: 3 },
-            }
-          : timeoutContinuation && observations.toolExecutions.length === 1
-            ? {
-                role: "assistant",
-                content: [
-                  {
-                    type: "toolCall",
-                    id: "bash-call-2",
-                    name: "bash",
-                    arguments: {
-                      command: "rerun-the-targeted-cloudflare-test",
-                      timeoutMs: 180_000,
-                    },
-                  },
-                ],
-                stopReason: "toolUse",
-                api: "test",
-                provider: "test",
-                model: model.id,
-                timestamp: Date.now(),
-                usage: { input: 4, output: 3, totalTokens: 7 },
-              }
-            : timeoutContinuation
-              ? {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "text",
-                      text: "The targeted test passed and the pull request was created.",
-                    },
-                  ],
-                  stopReason: "stop",
-                  api: "test",
-                  provider: "test",
-                  model: model.id,
-                  timestamp: Date.now(),
-                  usage: { input: 4, output: 3, totalTokens: 7 },
-                }
-              : {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "text",
-                      text: "The work was interrupted during the targeted Cloudflare test rerun.",
-                    },
-                  ],
-                  stopReason: "stop",
-                  api: "test",
-                  provider: "test",
-                  model: model.id,
-                  timestamp: Date.now(),
-                  usage: { input: 4, output: 3, totalTokens: 7 },
-                };
+      const toolCall = (
+        id: string,
+        name: string,
+        args: Record<string, unknown>,
+      ) => ({
+        type: "toolCall",
+        id,
+        name,
+        arguments: args,
+      });
+      // The first slice reads two files in one parallel batch. The resumed
+      // slice runs the test, and the second deadline interrupts it.
+      const content = aborted
+        ? []
+        : call === 1
+          ? [
+              toolCall("read-call-1", "readFile", { path: "/workspace/a.txt" }),
+              toolCall("read-call-2", "readFile", { path: "/workspace/b.txt" }),
+            ]
+          : call === 2
+            ? [
+                toolCall("bash-call-1", "bash", {
+                  command: "run-the-targeted-cloudflare-test",
+                  timeoutMs: 180_000,
+                }),
+              ]
+            : [{ type: "text", text: "Unexpected model call." }];
+      const message = {
+        role: "assistant",
+        content,
+        stopReason: aborted
+          ? "aborted"
+          : content[0]!.type === "toolCall"
+            ? "toolUse"
+            : "stop",
+        api: "test",
+        provider: "test",
+        model: model.id,
+        timestamp: Date.now(),
+        usage: { input: 2, output: 1, totalTokens: 3 },
+      };
 
       return {
         async *[Symbol.asyncIterator]() {
@@ -152,25 +156,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       }) => {
         const command = input.command ?? "";
         observations.toolExecutions.push(command);
-        if (observations.toolExecutions.length > 1) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  target: command,
-                  stdout: "targeted Cloudflare test passed",
-                  exit_code: 0,
-                }),
-              },
-            ],
-            details: {
-              target: command,
-              stdout: "targeted Cloudflare test passed",
-              exit_code: 0,
-            },
-          };
-        }
         observations.toolStarted = true;
         await new Promise<void>((resolve) => {
           const abort = () => {
@@ -184,7 +169,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
           signal?.addEventListener("abort", abort, { once: true });
         });
         const details = {
-          target: "run-the-targeted-cloudflare-test",
+          target: command,
           aborted: true,
           exit_code: 130,
           stderr: "Command aborted because the agent turn was cancelled.",
@@ -204,30 +189,33 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 
-async function waitForToolStart(): Promise<void> {
+async function waitFor(condition: () => boolean, label: string) {
   for (let attempt = 0; attempt < 2_000; attempt += 1) {
-    if (observations.toolStarted) {
+    if (condition()) {
       return;
     }
     await new Promise<void>((resolve) => realSetTimeout(resolve, 5));
   }
-  throw new Error("Expected sandbox tool execution to start");
+  throw new Error(`Expected ${label}`);
 }
 
 describe("tool timeout continuation composition", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     observations.continuationMessages = [];
     observations.providerCalls = 0;
+    observations.releaseSecondRead = undefined;
+    observations.secondReadPreparing = false;
     observations.toolAborted = false;
     observations.toolExecutions = [];
     observations.toolStarted = false;
@@ -239,9 +227,9 @@ describe("tool timeout continuation composition", () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
     if (ORIGINAL_STATE_ADAPTER === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+      process.env["JUNIOR_STATE_ADAPTER"] = ORIGINAL_STATE_ADAPTER;
     }
   });
 
@@ -251,6 +239,8 @@ describe("tool timeout continuation composition", () => {
     const request = {
       conversationId: conversationId,
       turnId: turnId,
+      // Guardian review of a bash call needs the Actor of the Run.
+      actor: { platform: "local" as const, userId: "local-test" },
       instruction: {
         text: "Run the targeted test and create the PR.",
       },
@@ -258,17 +248,59 @@ describe("tool timeout continuation composition", () => {
       source: createLocalSource(conversationId),
     };
 
+    // Pi prepares every call of a parallel batch before it starts them. The
+    // deadline passes while it prepares the second call.
+    await recordTurnStart(conversationId, turnId);
+    const firstSlicePromise = executeAgentRun({
+      ...request,
+      deadlineAtMs: Date.now() + 10_000,
+    });
+    await waitFor(
+      () => observations.secondReadPreparing,
+      "the second parallel call to be prepared",
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    observations.releaseSecondRead?.();
+    // The run state store needs real time to save the batch.
+    await new Promise<void>((resolve) => realSetTimeout(resolve, 500));
+    await vi.advanceTimersByTimeAsync(5_000);
+    const firstSlice = await firstSlicePromise;
+
+    // Pi 0.85.1 does not start a prepared call after the abort, and stops
+    // preparing the rest. Neither call reaches `afterToolCall`, so neither
+    // gets the `timed_out` shape. On 0.84.1 the prepared first call still
+    // ran with the aborted signal and got the `timed_out` shape.
+    const abortedRead = (toolCallId: string) =>
+      expect.objectContaining({
+        role: "toolResult",
+        toolCallId,
+        toolName: "readFile",
+        content: [{ type: "text", text: "Operation aborted" }],
+        details: {},
+        isError: true,
+      });
+    const abortedBatch = [
+      abortedRead("read-call-1"),
+      abortedRead("read-call-2"),
+    ];
+    expect(firstSlice.status).toBe("suspended");
+    const firstRecord = await getTurnRecord(conversationId, turnId);
+    expect(firstRecord?.piMessages.slice(-2)).toEqual(abortedBatch);
+
     const suspendedPromise = executeAgentRun({
       ...request,
       deadlineAtMs: Date.now() + 10_000,
     });
-    await waitForToolStart();
+    await waitFor(() => observations.toolStarted, "the test command to start");
     await vi.advanceTimersByTimeAsync(10_000);
-    // Let the runtime's bounded abort-settlement grace window expire if needed.
     await vi.advanceTimersByTimeAsync(5_000);
     const suspended = await suspendedPromise;
 
-    expect(observations.toolStarted).toBe(true);
+    // The resumed slice gives the model the saved results unchanged.
+    expect(observations.continuationMessages.slice(-2)).toEqual(abortedBatch);
+    expect(observations.toolExecutions).toEqual([
+      "run-the-targeted-cloudflare-test",
+    ]);
     expect(observations.toolAborted).toBe(true);
     expect(suspended.status).toBe("suspended");
     const suspendedRecord = await getTurnRecord(conversationId, turnId);
@@ -290,18 +322,5 @@ describe("tool timeout continuation composition", () => {
     expect(suspendedToolResult).not.toMatch(
       /cancelled|turn_deadline|execution_slice|unconfirmed|deadline/i,
     );
-
-    const resumed = await executeAgentRun(request);
-
-    expect(observations.continuationMessages.at(-1)).toMatchObject({
-      role: "toolResult",
-    });
-    expect(observations.toolExecutions).toEqual([
-      "run-the-targeted-cloudflare-test",
-      "rerun-the-targeted-cloudflare-test",
-    ]);
-    expect(resumed.status).toBe("completed");
-    if (resumed.status !== "completed") return;
-    expect(resumed.result.text).not.toMatch(/interrupted/i);
   });
 });

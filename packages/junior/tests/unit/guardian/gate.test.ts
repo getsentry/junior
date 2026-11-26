@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import {
   createToolActionReview,
   MAX_TOOL_ACTION_BATCH,
@@ -130,7 +130,7 @@ describe("tool action review", () => {
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: true,
-        readOnlyHint: true,
+        readOnlyHint: false,
       },
       describeProposal: ({ reportId }) => `Generate report ${reportId}.`,
       identity: {
@@ -196,15 +196,15 @@ describe("tool action review", () => {
       "callMcpTool",
       definition({
         approvalMode: "auto",
-        // Partial annotations are still unknown risk.
+        // Without `readOnlyHint: true`, partial annotations are unknown risk.
         annotations: {
           destructiveHint: false,
-          readOnlyHint: true,
+          openWorldHint: false,
         },
         resolveApprovalMetadata: async () => ({
           annotations: {
             destructiveHint: false,
-            readOnlyHint: true,
+            openWorldHint: false,
           },
           description: "Call a remote MCP tool.",
           name: "mcp__demo__search",
@@ -242,26 +242,83 @@ describe("tool action review", () => {
     expect(review).toHaveBeenCalledTimes(1);
   });
 
-  it("auto-approves only fully annotated safe non-plugin actions", async () => {
+  it("skips review of read-only plugin and MCP actions", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>();
+    const pluginTool = definition({
+      approvalMode: "auto",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+        readOnlyHint: true,
+      },
+      identity: {
+        id: "github.getIssue",
+        name: "getIssue",
+        plugin: "github",
+      },
+      source: { id: "github", description: "GitHub" },
+    });
+    // MCP servers often send only `readOnlyHint`.
+    const mcpTool = definition({
+      approvalMode: "auto",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
+      resolveApprovalMetadata: async () => ({
+        annotations: { readOnlyHint: true },
+        description: "Search Linear issues.",
+        name: "mcp__linear__search_issues",
+        source: { id: "linear", description: "MCP provider linear" },
+      }),
+    });
 
     await reviewToolAction(
-      "tool-call",
-      "localSafeTool",
-      definition({
-        approvalMode: "auto",
-        annotations: {
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false,
-          readOnlyHint: true,
-        },
-      }),
-      {},
+      "plugin-call",
+      "github_getIssue",
+      pluginTool,
+      { issue: 1, repo: "getsentry/junior" },
+      reviewContext({ review }),
+    );
+    await reviewToolAction(
+      "mcp-call",
+      "callMcpTool",
+      mcpTool,
+      { tool_name: "mcp__linear__search_issues" },
       reviewContext({ review }),
     );
 
     expect(review).not.toHaveBeenCalled();
+  });
+
+  it("reviews read-only actions that are also marked destructive", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Conflicting annotations need review.",
+      riskLevel: "medium",
+      userAuthorization: "medium",
+    }));
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        resolveApprovalMetadata: async () => ({
+          annotations: { destructiveHint: true, readOnlyHint: true },
+          description: "Purge the demo cache.",
+          name: "mcp__demo__purge",
+          source: { id: "demo", description: "MCP provider demo" },
+        }),
+      }),
+      { tool_name: "mcp__demo__purge" },
+      reviewContext({ review }),
+    );
+
+    expect(review).toHaveBeenCalledTimes(1);
   });
 
   it("returns ask and deny decisions as expected tool rejections", async () => {
@@ -498,12 +555,12 @@ describe("tool action review", () => {
     // The first action finishes last, so completion order differs from
     // batch order.
     const review = vi.fn<ToolActionReviewer["review"]>(async (proposal) => {
-      if (proposal.input.slow) {
+      if (proposal.input["slow"]) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       return {
         decision: "deny",
-        reason: `Rejected ${String(proposal.input.target)}.`,
+        reason: `Rejected ${String(proposal.input["target"])}.`,
         riskLevel: "high",
         userAuthorization: "low",
       };
@@ -568,7 +625,7 @@ describe("tool action review", () => {
   it("counts each attempt once toward the rejection limit", async () => {
     const actionReview = reviewContext({
       review: vi.fn<ToolActionReviewer["review"]>(async (proposal) => ({
-        decision: proposal.input.deny ? "deny" : "allow",
+        decision: proposal.input["deny"] ? "deny" : "allow",
         reason: "Decided by the test.",
         riskLevel: "high",
         userAuthorization: "low",

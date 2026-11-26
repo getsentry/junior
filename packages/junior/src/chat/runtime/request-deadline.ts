@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
 
 export interface TurnRequestDeadline {
   deadlineAtMs: number;
@@ -25,7 +26,7 @@ export function getTurnRequestDeadline(): TurnRequestDeadline | undefined {
   return requestDeadlineStorage.getStore();
 }
 
-/** Run work with one host request deadline shared by nested queued turns. */
+/** Run work under the current host request deadline, or start one. */
 export function runWithTurnRequestDeadline<T>(
   callback: () => T,
   startedAtMs = Date.now(),
@@ -35,6 +36,14 @@ export function runWithTurnRequestDeadline<T>(
     return callback();
   }
 
+  return runWithNewTurnRequestDeadline(callback, startedAtMs);
+}
+
+/** Run work that a new host request owns, even inside another request. */
+export function runWithNewTurnRequestDeadline<T>(
+  callback: () => T,
+  startedAtMs = Date.now(),
+): T {
   return requestDeadlineStorage.run(
     createTurnRequestDeadline(startedAtMs),
     callback,

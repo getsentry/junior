@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 
-import { cn } from "../../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../../styles";
 
 /** Frame elevated dashboard content with the shared translucent surface. */
 export function Card(props: {
+  "aria-current"?: "true";
   as?: "div" | "section";
   children: ReactNode;
   className?: string;
+  id?: string;
   padding?: "none" | "sm" | "md";
   variant?: "default" | "raised" | "section";
 }) {
@@ -24,12 +26,15 @@ export function Card(props: {
         : "border-dashboard-border-subtle bg-dashboard-fill-faint";
   return (
     <Component
+      aria-current={props["aria-current"]}
       className={cn(
-        "min-w-0 overflow-hidden rounded-lg border",
+        "min-w-0 overflow-hidden border",
+        dashboardSurfaceRadiusClass,
         surface,
         padding,
         props.className,
       )}
+      id={props.id}
     >
       {props.children}
     </Component>

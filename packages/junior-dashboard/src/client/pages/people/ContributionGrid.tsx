@@ -3,7 +3,6 @@ import {
   contributionLevel,
   contributionLevelClass,
 } from "../../components/charts/contributionLevel";
-import { formatDuration } from "../../components/Duration";
 import {
   Tooltip,
   TooltipContent,
@@ -13,13 +12,14 @@ import {
 import { getDashboardAgentName } from "../../agentName";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { cn } from "../../styles";
+import { formatDuration, formatTime } from "../../time";
 
 type ContributionDay = {
   conversations: number;
-  costUsd?: number;
+  costUsd?: number | undefined;
   date: string;
   durationMs: number;
-  tokens?: number;
+  tokens?: number | undefined;
 };
 
 /** Render a calendar grid for daily conversation activity. */
@@ -55,7 +55,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
     ) {
       return "";
     }
-    return new Date(`${firstDay.date}T00:00:00Z`).toLocaleString(undefined, {
+    return formatTime(`${firstDay.date}T00:00:00Z`, {
       month: "short",
       timeZone: "UTC",
     });
@@ -149,7 +149,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
 }
 
 function formatDate(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+  return formatTime(`${date}T00:00:00Z`, {
     day: "numeric",
     month: "short",
     timeZone: "UTC",

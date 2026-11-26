@@ -24,8 +24,7 @@ fix, or a dependency update.
 
 The issue lets maintainers find architecture problems before you write code.
 For agent behavior, a prompt change often hides the real cause. Read
-`policies/` (start with `policies/agent-steering.md`) before you propose a
-change.
+`design/prompts.md` and `policies/` before you propose a change.
 
 Junior checks each new pull request, including drafts. If a larger change has
 no linked issue, Junior closes the pull request and explains why. Open an
@@ -34,11 +33,12 @@ reopen the old one. Users with the `maintain` or `admin` role are exempt.
 
 ## Local Setup
 
-You need Node.js 24, pnpm, Docker, the Vercel CLI
-(`pnpm dlx vercel@latest`), and access to the Sentry Vercel team.
+You need Node.js 24, pnpm 10 or later, Docker, the Vercel CLI
+(`pnpm dlx vercel@latest`), and access to the Sentry Vercel team. pnpm
+switches to the version that `packageManager` in `package.json` pins.
 
 ```bash
-make   # pnpm install + dotagents install
+make   # pnpm install + pnpm build + dotagents install
 pnpm dlx vercel@latest login
 pnpm dlx vercel@latest switch
 pnpm dlx vercel@latest link --yes --scope sentry
@@ -46,25 +46,10 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-`contribute/development.md` explains what `pnpm dev` starts, local Docker sandboxes,
-dashboard mock data, and the `pnpm worktree` helper for isolated branches.
-
-## Checks
-
-Run from the repo root:
-
-```bash
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm skills:check
-pnpm docs:check
-pnpm release:check
-pnpm build && pnpm package-types:check
-```
-
-`AGENTS.md` lists file-scoped test and eval commands. `contribute/testing.md` and
-`policies/testing.md` say which test layer to use.
+[Development](packages/docs/src/content/docs/contribute/development.md)
+explains what `pnpm dev` starts, how to run checks, local Docker sandboxes,
+dashboard mock data, Slack tunnels, and the `pnpm worktree` helper. Sentry
+staff use `junior-dev.sentry.cool` as the stable tunnel hostname.
 
 ## Documentation
 
@@ -73,29 +58,6 @@ Write docs in ASD-STE100 English and use the words in `TERMINOLOGY.md`.
 - Internal docs: follow `policies/documentation.md`.
 - Public docs: follow `contribute/documentation-guidelines.md` and the `public-docs`
   skill.
-- `openspec/changes/` holds temporary plans. Plans cannot override policy.
-  Delete a plan when its work is complete.
-
-## Slack Tunnel
-
-Install `cloudflared` (`brew install cloudflared`). For a random hostname, run
-`cloudflared tunnel --url http://localhost:3000`.
-
-For a stable hostname:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create junior-dev
-cloudflared tunnel route dns junior-dev junior-dev.sentry.cool
-pnpm cloudflare:token   # writes the tunnel token to .env.local
-pnpm dev
-```
-
-Run `pnpm cloudflare:token` again after `vercel env pull` rewrites
-`.env.local`. Set `CLOUDFLARE_TUNNEL_URL` to use a port other than 3000.
-
-Set the Slack Event Subscriptions and Interactivity request URL to
-`https://junior-dev.sentry.cool/api/webhooks/slack`.
 
 ## Releasing
 
@@ -115,21 +77,18 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`
-- `@sentry/junior-memory`
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
 - `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-vimeo`
 - `@sentry/junior-xdotcom`
 
 Run `pnpm release:check` after you change this list. It keeps CI, the bump
 script, and the release docs aligned. Craft publishes every public workspace
 package, so `.craft.yml` has no package list.
 
-To release, open **Actions → Release** and run it with a `bump` (`auto`,
-`pre`, `patch`, `minor`, or `major`). `auto` picks the bump from the commit
-titles, and `pre` releases a prerelease of that version.
-Set `force=true` only to bypass release blockers on purpose. `contribute/releasing.md` has the full process and the required repository
-configuration.
+[Releasing](packages/docs/src/content/docs/contribute/releasing.md) has the
+release steps and the required repository configuration.

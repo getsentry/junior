@@ -1,18 +1,37 @@
 /**
  * The heartbeat part of merge conflict checks. For each due repository, a
  * GraphQL search reads the open Junior pull requests with their
- * mergeability.
- * Only a conflict that a Watch or event automation wants publishes
- * `pull_request.merge_conflict`. No agent runs for the check.
+ * mergeability. Only a conflicted Junior pull request also reads its
+ * history. Only a conflict that a Watch or event automation wants, and that
+ * `policy.ts` allows, publishes `pull_request.merge_conflict`. No agent runs
+ * for the check.
  */
 import type {
   EventPublisher,
+  PluginCache,
+  PluginCodeChanges,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
-import { gitHubMergeConflictEvents } from "../webhooks/merge-conflict.js";
+import {
+  gitHubMergeConflictEvents,
+  type GitHubMergeConflict,
+  type GitHubPullRequestRef,
+} from "../webhooks/merge-conflict.js";
+import {
+  applyGitHubConflictPolicy,
+  closeGitHubConflictItems,
+  GITHUB_CONFLICT_GONE_REASON,
+} from "./policy.js";
+import { clearGitHubCachedConflict } from "../object-cache.js";
+import {
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "./resolved.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -43,9 +62,11 @@ const searchNodeSchema = z.union([
   z.object({
     baseRefName: z.string().min(1),
     headRefOid: z.string().min(1),
+    isDraft: z.boolean(),
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
     state: z.string(),
+    title: z.string(),
     url: z.string().min(1),
   }),
   z.object({}).strict(),
@@ -64,38 +85,101 @@ const searchResponseSchema = z.object({
 });
 
 type SearchOpenPullRequests = (input: {
-  after?: string;
+  after?: string | undefined;
   repositoryFullName: string;
 }) => Promise<unknown>;
 
 /** Return whether any open pull request still has an unknown answer. */
+/** Apply the conflict policy to one pull request and publish its events. */
+async function checkConflict(
+  args: CheckArgs,
+  input: {
+    conflict: GitHubMergeConflict;
+    draft: boolean;
+    ref: { number: number; repositoryFullName: string };
+    title: string;
+  },
+): Promise<void> {
+  const events = gitHubMergeConflictEvents({
+    ...input.ref,
+    conflict: input.conflict,
+  });
+  // Conflict events match only `repo` and `pullRequest`.
+  if (!(await args.events.hasMatch?.(events))) return;
+  for (const event of await applyGitHubConflictPolicy({
+    codeChanges: args.codeChanges,
+    conflict: input.conflict,
+    db: args.db,
+    draft: input.draft,
+    events,
+    loadHistory: args.loadHistory,
+    loadTitleParts: args.loadTitleParts,
+    log: args.log,
+    now: args.now,
+    ref: input.ref,
+    inboxItems: args.inboxItems,
+    title: input.title,
+  })) {
+    // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+    await args.events.publish(event);
+  }
+}
+
 async function checkRepository(
-  args: { events: EventPublisher; search: SearchOpenPullRequests },
+  args: CheckArgs,
   repositoryFullName: string,
 ): Promise<boolean> {
   let unknown = false;
   let after: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { search } = searchResponseSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
       await args.search({ after, repositoryFullName }),
     ).data;
+    const mergeable: number[] = [];
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
+      const ref = { number: node.number, repositoryFullName };
       if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable !== "CONFLICTING") continue;
-      const events = gitHubMergeConflictEvents({
-        conflict: {
-          baseBranch: node.baseRefName,
+      if (node.mergeable === "MERGEABLE") {
+        mergeable.push(node.number);
+        // oxlint-disable-next-line no-await-in-loop -- One entry write per mergeable pull request.
+        await clearGitHubCachedConflict(args.cache, ref, node.headRefOid);
+        // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+        await publishGitHubConflictResolved({
+          events: args.events,
           headSha: node.headRefOid,
-          url: node.url,
-        },
-        number: node.number,
-        repositoryFullName,
+          ref,
+          state: args.state,
+        });
+      }
+      if (node.mergeable !== "CONFLICTING") continue;
+      // oxlint-disable-next-line no-await-in-loop -- One state write per conflicted pull request.
+      await markGitHubConflict(args.state, ref);
+      const conflict: GitHubMergeConflict = {
+        baseBranch: node.baseRefName,
+        headSha: node.headRefOid,
+        url: node.url,
+      };
+      // oxlint-disable-next-line no-await-in-loop -- The sweep checks one pull request at a time, under GitHub rate limits.
+      await checkConflict(args, {
+        conflict,
+        draft: node.isDraft,
+        ref,
+        title: node.title,
       });
-      // Conflict events match only `repo` and `pullRequest`.
-      if (!(await args.events.hasMatch?.(events))) continue;
-      for (const event of events) await args.events.publish(event);
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
+    await closeGitHubConflictItems({
+      codeChanges: args.codeChanges,
+      db: args.db,
+      log: args.log,
+      numbers: mergeable,
+      reason: GITHUB_CONFLICT_GONE_REASON,
+      repositoryFullName,
+      inboxItems: args.inboxItems,
+      status: "done",
+    });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
     after = search.pageInfo.endCursor;
   }
@@ -103,10 +187,16 @@ async function checkRepository(
 }
 
 interface CheckArgs {
+  /** The plugin cache, whose entry a mergeable pull request clears of a conflict. */
+  cache: PluginCache;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
-  log: Pick<PluginLogger, "error">;
+  loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  loadTitleParts?: LoadGitHubTitleParts;
+  log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
+  inboxItems: PluginConversationInboxItems;
   search: SearchOpenPullRequests;
   state: PluginState;
 }
@@ -119,11 +209,15 @@ async function runCheck(
   try {
     unknown = await checkRepository(args, check.repositoryFullName);
   } catch (error) {
-    args.log.error("GitHub merge conflict check failed", {
-      attempts: check.attempts,
-      errorType: error instanceof Error ? error.name : "UnknownError",
-      repository: check.repositoryFullName,
-    });
+    args.log.error(
+      "GitHub merge conflict check failed",
+      {
+        attempts: check.attempts,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: check.repositoryFullName,
+      },
+      error,
+    );
     // Keep the claim, so the check runs again when the claim ends.
     if (check.attempts >= MAX_ATTEMPTS) {
       await settleGitHubConflictCheck(args.state, check);
@@ -147,9 +241,10 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
   const nowMs = args.now.getTime();
   let checked = 0;
   for (const repositoryFullName of await listGitHubRepositoriesWithOpenPullRequests(
-    args.db,
+    args.codeChanges,
   )) {
     if (checked >= CHECK_LIMIT) break;
+    // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.
     const check = await claimGitHubConflictCheck({
       claimedUntilMs: nowMs + CLAIM_MS,
       nowMs,
@@ -158,6 +253,7 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
     });
     if (!check) continue;
     checked += 1;
+    // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.
     await runCheck(args, check);
   }
 }

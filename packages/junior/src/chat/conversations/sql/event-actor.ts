@@ -1,4 +1,5 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
+import * as z from "zod";
 import { isSlackUserId, parseActorUserId } from "@/chat/actor";
 import { parseSessionSource } from "@/chat/source";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -11,36 +12,21 @@ import {
 } from "@/db/schema";
 import type { ConversationEventData } from "../history";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+// Legacy author metadata: drop fields with the wrong type instead of failing.
+const authorMetaSchema = z.object({
+  author: z.object({
+    email: z.string().optional().catch(undefined),
+    fullName: z.string().optional().catch(undefined),
+    isBot: z.boolean().optional().catch(undefined),
+    userId: z.string().optional().catch(undefined),
+    userName: z.string().optional().catch(undefined),
+  }),
+});
 
-function readAuthor(meta: unknown): {
-  email?: string;
-  fullName?: string;
-  isBot?: boolean;
-  userId?: string;
-  userName?: string;
-} {
-  if (!isRecord(meta) || !isRecord(meta.author)) {
-    return {};
-  }
-  const author = meta.author;
-  return {
-    ...(typeof author.email === "string" ? { email: author.email } : undefined),
-    ...(typeof author.fullName === "string"
-      ? { fullName: author.fullName }
-      : undefined),
-    ...(typeof author.isBot === "boolean"
-      ? { isBot: author.isBot }
-      : undefined),
-    ...(typeof author.userId === "string"
-      ? { userId: author.userId }
-      : undefined),
-    ...(typeof author.userName === "string"
-      ? { userName: author.userName }
-      : undefined),
-  };
+function readAuthor(
+  meta: unknown,
+): z.output<typeof authorMetaSchema>["author"] {
+  return authorMetaSchema.safeParse(meta).data?.author ?? {};
 }
 
 /** Read the Slack workspace that owns a conversation, when it has one. */
@@ -63,6 +49,7 @@ export async function loadConversationSlackTenantIds(
     .db()
     .select({
       conversationId: juniorConversations.conversationId,
+      provider: juniorDestinations.provider,
       providerTenantId: juniorDestinations.providerTenantId,
       sessionSource: juniorConversations.sessionSource,
     })
@@ -74,13 +61,28 @@ export async function loadConversationSlackTenantIds(
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
   const tenants = new Map<string, string>();
   for (const row of rows) {
-    const sessionSource = parseSessionSource(row.sessionSource);
-    const tenantId =
-      row.providerTenantId?.trim() ||
-      (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined);
+    const tenantId = conversationSlackTenantId(row);
     if (tenantId) tenants.set(row.conversationId, tenantId);
   }
   return tenants;
+}
+
+/**
+ * Return the Slack workspace that owns a conversation, from its Slack
+ * Destination tenant or its stored Slack session source. A dashboard
+ * Destination also has a tenant, such as `web`, which is not a Slack
+ * workspace.
+ */
+export function conversationSlackTenantId(row: {
+  provider: string | null | undefined;
+  providerTenantId: string | null | undefined;
+  sessionSource: unknown;
+}): string | undefined {
+  const sessionSource = parseSessionSource(row.sessionSource);
+  return (
+    (row.provider === "slack" ? row.providerTenantId?.trim() : undefined) ||
+    (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined)
+  );
 }
 
 async function findIdentityIdByProviderSubject(

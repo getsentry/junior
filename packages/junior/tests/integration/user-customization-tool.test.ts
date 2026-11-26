@@ -5,9 +5,10 @@ import { closeDb } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { createUserCustomizationTools } from "@/chat/tools/user-customization";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 const CONVERSATION_ID = "local:user-customization:current";
@@ -31,7 +32,8 @@ function context(
     },
     workspace: {} as ToolRuntimeContext["workspace"],
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
     ...overrides,
@@ -42,8 +44,8 @@ async function updateCustomization(
   runtime: ToolRuntimeContext,
   customization: string,
 ): Promise<unknown> {
-  const tool = createUserCustomizationTools(runtime).updateUserCustomization;
-  if (!tool?.execute || !tool.prepareArguments) {
+  const tool = createUpdateUserCustomizationTool(runtime);
+  if (!tool.execute || !tool.prepareArguments) {
     throw new Error("updateUserCustomization is missing");
   }
   return await tool.execute(tool.prepareArguments({ customization }), {});
@@ -55,26 +57,27 @@ describe("user customization tool", () => {
   });
 
   it("exists only when the app opts in, and never for child agents", () => {
-    expect(createUserCustomizationTools(context())).toEqual({});
+    const toolNames = (runtime: ToolRuntimeContext): string[] =>
+      Object.keys(createTools([], {}, runtime));
+    expect(toolNames(context())).not.toContain("updateUserCustomization");
 
     setExperimentalFeatures({
       ...SUITE_EXPERIMENTAL,
       "user-customization": true,
     });
-    expect(Object.keys(createUserCustomizationTools(context()))).toEqual([
-      "updateUserCustomization",
-    ]);
+    expect(toolNames(context())).toContain("updateUserCustomization");
     expect(
-      createUserCustomizationTools(
+      toolNames(
         context({
           parentConversationId: "local:user-customization:parent",
           turnTools: turnBehavior({
             kind: "task",
+            hasParent: true,
             personInput: false,
           }).tools,
         }),
       ),
-    ).toEqual({});
+    ).not.toContain("updateUserCustomization");
   });
 
   it("replaces the current user's text and rejects people without a user", async () => {

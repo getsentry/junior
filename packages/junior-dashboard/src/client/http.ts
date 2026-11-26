@@ -28,15 +28,18 @@ function takeEarlyResponse(path: string): Promise<Response> | undefined {
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
-  readonly fields?: Record<string, string[]>;
-  readonly code?: string;
+  readonly fields?: Record<string, string[]> | undefined;
+  readonly code?: string | undefined;
   readonly apiError?: string;
 
   constructor(
     path: string,
     status: number,
     apiError?: string,
-    detail?: { fields?: Record<string, string[]>; code?: string },
+    detail?: {
+      fields?: Record<string, string[]> | undefined;
+      code?: string | undefined;
+    },
   ) {
     super(`${path} returned ${status}`);
     this.status = status;
@@ -152,9 +155,18 @@ export async function put<T>(
   return readResponseJson(response, schema);
 }
 
-/** Delete one authenticated dashboard resource. */
-export async function deleteDashboardResource(path: string): Promise<void> {
+/** Delete one authenticated dashboard resource, named by a JSON `body` if given. */
+export async function deleteDashboardResource(
+  path: string,
+  body?: unknown,
+): Promise<void> {
   const response = await fetchDashboard(path, {
+    ...(body === undefined
+      ? undefined
+      : {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+        }),
     credentials: "same-origin",
     method: "DELETE",
   });
@@ -186,6 +198,28 @@ async function fetchDashboard(
   const response = await fetch(input, init);
   recordDashboardServerVersion(response);
   return response;
+}
+
+/**
+ * Check that an authenticated dashboard file can be downloaded, without
+ * downloading it, and throw the server's reason when it cannot. A HEAD
+ * response has no body, so a refused check asks again with GET to read the
+ * error. That GET fails before it sends file bytes.
+ */
+export async function checkDashboardDownload(path: string): Promise<void> {
+  const head = await fetchDashboard(path, {
+    credentials: "same-origin",
+    method: "HEAD",
+  });
+  if (head.status === 401) restartDashboardSignIn();
+  if (head.ok) return;
+  const response = await fetchDashboard(path, { credentials: "same-origin" });
+  if (response.ok) {
+    // The file became readable after the check. Do not read it here.
+    await response.body?.cancel();
+    return;
+  }
+  await throwDashboardApiError(path, response);
 }
 
 /**

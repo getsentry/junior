@@ -2,22 +2,21 @@ import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
-  githubLinkedIssues,
-} from "../tools/footer.js";
+} from "../conversation-footer.js";
 import type {
   GitHubPullRequestConversationsInput,
-  GitHubPullRequestLinkedIssuesInput,
   GitHubPullRequestOutcomeInput,
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
-// `ready_for_review` and `converted_to_draft` change only the draft state.
+// GitHub can deliver the first push (`synchronize`) before `opened`.
 const pullRequestLifecycleActionsSchema = z.enum([
   "opened",
   "closed",
   "reopened",
   "ready_for_review",
   "converted_to_draft",
+  "synchronize",
 ]);
 
 const canonicalPullRequestOutcomeSchema = z
@@ -28,7 +27,6 @@ const canonicalPullRequestOutcomeSchema = z
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
-        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -55,7 +53,6 @@ const pullRequestOutcomeSchema = z
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
-        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -80,7 +77,6 @@ const pullRequestOutcomeSchema = z
         body: provider.pull_request.body,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
-        draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
@@ -148,7 +144,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 /** Normalize only the fields required for the Junior-owned PR projection. */
 export function normalizeGitHubPullRequestOutcome(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubPullRequestOutcomeInput | undefined {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
@@ -159,6 +155,13 @@ export function normalizeGitHubPullRequestOutcome(args: {
   }
   const parsed = pullRequestOutcomeSchema.parse(args.body);
   const pullRequest = parsed.pull_request;
+  // A push to the branch of a closed pull request does not reopen it.
+  if (
+    parsed.action === "synchronize" &&
+    (pullRequest.merged || pullRequest.closed_at)
+  ) {
+    return undefined;
+  }
   const openedAt = timestamp(pullRequest.created_at);
   const updatedAt = timestamp(pullRequest.updated_at);
   if (!openedAt || !updatedAt) {
@@ -173,9 +176,12 @@ export function normalizeGitHubPullRequestOutcome(args: {
     isBotLogin(pullRequest.user.login, args.botEmail) &&
     pullRequest.body?.includes(GITHUB_SESSION_FOOTER_START),
   );
+  // GitHub can deliver the first push before `opened`.
   const candidateOwned =
     hasOwnershipMarker &&
-    (parsed.action === "opened" || parsed.action === "closed");
+    (parsed.action === "opened" ||
+      parsed.action === "closed" ||
+      parsed.action === "synchronize");
   const state =
     parsed.action !== "closed"
       ? "open"
@@ -193,8 +199,6 @@ export function normalizeGitHubPullRequestOutcome(args: {
   return {
     candidateOwned,
     closedAt,
-    // A close keeps the stored draft state.
-    draft: closed ? undefined : pullRequest.draft,
     mergedAt,
     number: pullRequest.number,
     openedAt,
@@ -210,7 +214,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
 /** Normalize native conversation ids written to a Junior-owned PR by its bot. */
 export function normalizeGitHubPullRequestConversations(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubPullRequestConversationsInput | undefined {
   const parsed = pullRequestConversationSchema.safeParse(args.body);
   if (!parsed.success) return undefined;
@@ -224,31 +228,6 @@ export function normalizeGitHubPullRequestConversations(args: {
   return conversationIds.length > 0
     ? {
         conversationIds,
-        pullRequestId: String(parsed.data.pull_request.id),
-      }
-    : undefined;
-}
-
-/** Normalize linked issues written into a Junior-owned PR body by its bot. */
-export function normalizeGitHubPullRequestLinkedIssues(args: {
-  body: unknown;
-  botEmail?: string;
-}): GitHubPullRequestLinkedIssuesInput | undefined {
-  const parsed = pullRequestConversationSchema.safeParse(args.body);
-  if (!parsed.success) return undefined;
-  if (
-    !isBotLogin(parsed.data.pull_request.user.login, args.botEmail) ||
-    !isBotLogin(parsed.data.sender.login, args.botEmail)
-  ) {
-    return undefined;
-  }
-  const linkedIssues = githubLinkedIssues(
-    parsed.data.pull_request.body,
-    parsed.data.repository.full_name,
-  );
-  return linkedIssues.length > 0
-    ? {
-        linkedIssues,
         pullRequestId: String(parsed.data.pull_request.id),
       }
     : undefined;

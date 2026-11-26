@@ -1,0 +1,44 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "1bf59037-95bb-4ae3-91a2-2b9886bfef5d",
+  "prevIds": ["55c18ad2-d481-442c-8f93-252ca2aa199f"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_code_changes", "url"],
+      "writes": [
+        "s|col|public.junior_code_changes.url",
+        "n|col|public.junior_code_changes.url",
+        "e|col|public.junior_code_changes.url"
+      ],
+      "reads": ["n|tbl|public.junior_code_changes", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_code_repositories",
+        "url"
+      ],
+      "writes": [
+        "s|col|public.junior_code_repositories.url",
+        "n|col|public.junior_code_repositories.url",
+        "e|col|public.junior_code_repositories.url"
+      ],
+      "reads": ["n|tbl|public.junior_code_repositories", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_changes\",\"url\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_code_repositories\",\"url\"]"
+    }
+  ]
+}

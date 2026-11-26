@@ -1,9 +1,9 @@
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
 import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
 
-import { formatDuration } from "../../components/Duration";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
+import { formatDuration } from "../../time";
 
 /** Format a merge rate, or a dash when no change has finished. */
 export function formatMergeRate(value: number | undefined): string {

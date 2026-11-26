@@ -1,13 +1,29 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
+import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
+import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
+import { PreviewLinksProvider } from "./links";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
+import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
+import { SkillReferencesProvider } from "./skills";
 
-export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { KnownObjectsProvider } from "./ObjectLinks";
+export { MentionText } from "./mentions";
+export {
+  type ListedObject,
+  MessageObjectsProvider,
+  NearScreenObjects,
+  sameTypeCard,
+  useListedObjects,
+  useNearScreen,
+  useResolvedObject,
+} from "./resolvedObjects";
+export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
@@ -23,6 +39,13 @@ const NO_MENTIONS: readonly ActorIdentity[] = [];
 export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
+  /**
+   * Inline mode: show links as messages do. A bare URL shows its object
+   * title, and a person shows as a chip. Only outside a link or a button.
+   * The links take the quiet look of a row preview, and resolve once the
+   * text shows, also past a clamp.
+   */
+  chips?: boolean;
   /** Keep body line height compact in narrow panels. */
   compact?: boolean;
   /** Read a Markdown file, not a chat message. */
@@ -34,44 +57,82 @@ export const DisplayText = memo(function DisplayText(props: {
    */
   links?: boolean;
   /** People that the API resolved for this text. */
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
+  /**
+   * Inline mode with chips: keep the text's paragraphs, line breaks, and
+   * lists, for a preview with room for more than one line.
+   */
+  paragraphs?: boolean;
+  /**
+   * Show each `$skill-name` of an installed skill as a link to its SKILL.md,
+   * as the runtime reads it in a person's message. Not in code.
+   */
+  skills?: boolean;
   text: string;
 }) {
-  return (
-    <MentionPeopleProvider
-      links={props.links ?? true}
-      mentions={props.mentions ?? NO_MENTIONS}
-    >
-      {props.inline ? (
-        <MarkdownText inline text={props.text} />
-      ) : props.document ? (
-        // One tree, so reference links and footnotes resolve across fences.
-        <MarkdownText document text={props.text} />
-      ) : (
-        <DisplayTextBlocks
-          chat={props.chat}
-          compact={props.compact}
-          text={props.text}
-        />
-      )}
-    </MentionPeopleProvider>
+  const chips = Boolean(props.inline && props.chips);
+  const content = (
+    <MessageObjectsProvider>
+      <MentionPeopleProvider
+        links={props.links ?? true}
+        mentions={props.mentions ?? NO_MENTIONS}
+      >
+        {/* Set in every mode, so text nested in a preview's hover card
+            draws its own links. */}
+        <PreviewLinksProvider value={chips}>
+          {chips ? (
+            <ResolveWhenVisible block={props.paragraphs ?? false}>
+              <MarkdownText
+                chips
+                inline
+                paragraphs={props.paragraphs}
+                text={props.text}
+              />
+            </ResolveWhenVisible>
+          ) : props.inline ? (
+            <MarkdownText inline text={props.text} />
+          ) : props.document ? (
+            // One tree, so reference links and footnotes resolve across fences.
+            <MarkdownText document text={props.text} />
+          ) : (
+            <DisplayTextBlocks
+              chat={props.chat}
+              compact={props.compact}
+              text={props.text}
+            />
+          )}
+        </PreviewLinksProvider>
+      </MentionPeopleProvider>
+    </MessageObjectsProvider>
+  );
+  return props.skills ? (
+    <SkillReferencesProvider text={props.text}>
+      {content}
+    </SkillReferencesProvider>
+  ) : (
+    content
   );
 });
 
 function DisplayTextBlocks(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  compact?: boolean | undefined;
   text: string;
 }) {
+  // A URL repeated in one message shows one card, in its first block.
+  const shownCardUrls: string[] = [];
   return (
     <div className="grid min-w-0 gap-2">
       {parseMarkdownBlocks(props.text).map((block, index) => {
         if (block.language === "markdown" && !block.fenced) {
+          const shown = [...shownCardUrls];
+          shownCardUrls.push(...standaloneUrlKeys(block.code));
           return (
             <MarkdownText
               chat={props.chat}
               compact={props.compact}
               key={index}
+              shownCardUrls={shown}
               text={block.code}
             />
           );
@@ -95,5 +156,41 @@ function DisplayTextBlocks(props: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Display text clamped to `lines` lines, such as an ask's text in an Inbox
+ * row. Only the prose clamps: each bare URL alone in a paragraph shows after
+ * it, in order and in full, as its object card. Inline links stay in the
+ * prose.
+ */
+export function ClampedDisplayText(props: {
+  className?: string;
+  /** What the clamp toggle expands, for its accessible name. */
+  label: string;
+  lines: number;
+  mentions?: readonly ActorIdentity[] | undefined;
+  text: string;
+}) {
+  const { prose, urls } = useMemo(
+    () => splitStandaloneUrls(props.text),
+    [props.text],
+  );
+  return (
+    <>
+      {prose ? (
+        <ClampedPreview
+          className={props.className}
+          label={props.label}
+          lines={props.lines}
+        >
+          <DisplayText mentions={props.mentions} text={prose} />
+        </ClampedPreview>
+      ) : null}
+      {urls.map((url, index) => (
+        <DisplayText key={`${index}:${url}`} text={url} />
+      ))}
+    </>
   );
 }

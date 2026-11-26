@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { linearPlugin } from "../../../junior-linear/src/index.js";
 import { getConversationStore, getDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import { createPluginHookRunner, setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
+import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
@@ -182,7 +183,9 @@ describe("Linear MCP create annotations", () => {
           cards: createResult.cards,
         });
         expect(
-          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params[
+            "metadata"
+          ],
         ).toMatchObject({
           entities: [
             {

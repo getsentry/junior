@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  isNull,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -14,9 +22,11 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
+import type { SpaceRef } from "@/chat/spaces/conversations";
 import type { ConversationAccess, ConversationAccessReader } from "./access";
 import { readConversationForks } from "./fork";
 import {
@@ -36,12 +46,12 @@ const detailViewer = alias(juniorUsers, "detail_viewer");
 const forkSource = alias(juniorConversations, "detail_fork_source");
 const fork = alias(juniorConversations, "detail_fork");
 const agentTreeRoot = alias(juniorConversations, "detail_agent_tree_root");
+const spaceRoot = alias(juniorConversations, "detail_space_root");
 
 /**
  * Return the root fields that label the agent tree of a child: its title and
- * channel name. The other labels cannot change once the child exists. An
- * agent invocation keeps its title and agent name after insert, and only the
- * spawn sets a title. Access to each node comes from the shared root, so the
+ * channel name. The other labels cannot change once the child exists. Only
+ * the spawn sets a child's title and agent name. Access to each node comes from the shared root, so the
  * viewer's access covers it. This keeps the recursive lineage read out of
  * every poll.
  */
@@ -54,14 +64,21 @@ function agentTreeRootLabel(db: JuniorDatabase, rootConversationId: SQL) {
     .where(eq(agentTreeRoot.conversationId, rootConversationId));
 }
 
+const SUBTREE = "detail_subtree";
+
 /**
- * Sum the detail versions of a Conversation and its child agents. Child
+ * Sum the detail versions of each Conversation and its child agents, one
+ * row per Conversation found, in one pass over all their trees. Child
  * writes bump only their own row, and the row count changes when a child
  * starts, so the parent needs no bump of its own.
  */
-function subtreeDetailVersion(conversationId: string) {
+function subtreeDetailVersions(conversationIds: readonly string[]) {
   return getDb()
     .select({
+      conversationId:
+        sql<string>`${conversationSubtreeColumns.scopeConversationId}`.as(
+          "conversation_id",
+        ),
       conversations: sql<number>`count(*)::int`.as("conversations"),
       version:
         sql<string>`coalesce(sum(${juniorConversations.detailVersion}), 0)::text`.as(
@@ -70,13 +87,14 @@ function subtreeDetailVersion(conversationId: string) {
     })
     .from(juniorConversations)
     .innerJoin(
-      conversationSubtree([conversationId]),
+      conversationSubtree(conversationIds),
       eq(
         conversationSubtreeColumns.conversationId,
         juniorConversations.conversationId,
       ),
     )
-    .as("detail_subtree");
+    .groupBy(conversationSubtreeColumns.scopeConversationId)
+    .as(SUBTREE);
 }
 
 const versionConversation = alias(juniorConversations, "version_conversation");
@@ -91,11 +109,12 @@ const versionUser = alias(juniorUsers, "version_user");
  * Hash the detail state whose writes do not bump `detail_version`: the
  * viewer's marks and auto-archive choice on the root, the forks, and the
  * matched Slack files. Each part is a lookup by key, so the versions poll
- * stays one cheap statement.
+ * stays one cheap statement. `conversationId` is the id column of the
+ * outer row.
  */
 function viewerStateVersion(
   db: JuniorDatabase,
-  conversationId: string,
+  conversationId: SQLWrapper,
   viewerId: string,
 ) {
   const root = db
@@ -140,28 +159,78 @@ function viewerStateVersion(
   ))`;
 }
 
+const versionSpaceConversation = alias(
+  juniorConversations,
+  "version_space_conversation",
+);
+const versionSpaceRoot = alias(juniorConversations, "version_space_root");
+
 /**
- * Return a query for the change token of a Conversation and its child
- * agents, as the viewer sees it, or a null token when it is missing. The
- * detail report sends the same token, so the dashboard can find a stale
- * detail without asking for the report.
+ * Hash the root's Space. A move writes only the root, and a rename writes
+ * only the Space, so a child's token reads both through its root.
  */
-export function conversationVersionQuery(
+function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
+  const space = db
+    .select({
+      state: sql<string>`md5(concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name}))`,
+    })
+    .from(versionSpaceConversation)
+    .innerJoin(
+      versionSpaceRoot,
+      eq(
+        versionSpaceRoot.conversationId,
+        sql`coalesce(${versionSpaceConversation.rootConversationId}, ${versionSpaceConversation.conversationId})`,
+      ),
+    )
+    .leftJoin(juniorSpaces, eq(juniorSpaces.id, versionSpaceRoot.spaceId))
+    .where(eq(versionSpaceConversation.conversationId, conversationId));
+  return sql<string>`coalesce((${space}), '')`;
+}
+
+/**
+ * Return a query for the change token of each Conversation and its child
+ * agents, as the viewer sees it, one row per Conversation found. A missing
+ * one has no row. The detail report sends the same token, so the dashboard
+ * can find a stale detail without asking for the report. All ids share
+ * one plan, so a longer list adds no subquery per id.
+ */
+export function conversationVersionsQuery(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+  viewerId: string | undefined,
+) {
+  const subtree = subtreeDetailVersions(conversationIds);
+  // Drizzle leaves the columns of a lone subquery unqualified, and each
+  // lookup in the viewer state reads a table with its own
+  // `conversation_id`. So the row's id names its table.
+  const rowConversationId = sql`${sql.identifier(SUBTREE)}.${sql.identifier("conversation_id")}`;
+  const viewerState = viewerId
+    ? viewerStateVersion(db, rowConversationId, viewerId)
+    : sql`null`;
+  return db
+    .select({
+      conversationId: subtree.conversationId,
+      version:
+        sql<string>`concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${rootSpaceVersion(db, rowConversationId)}, ${viewerState})`.as(
+          "version",
+        ),
+    })
+    .from(subtree);
+}
+
+/**
+ * Return a query for the `conversationVersionsQuery` token of one
+ * Conversation, or a null token when it is missing.
+ */
+function conversationVersionQuery(
   db: JuniorDatabase,
   conversationId: string,
   viewerId: string | undefined,
 ) {
-  const subtree = subtreeDetailVersion(conversationId);
-  const viewerState = viewerId
-    ? viewerStateVersion(db, conversationId, viewerId)
-    : sql`null`;
-  return db
-    .select({
-      version: sql<
-        string | null
-      >`case when ${subtree.conversations} = 0 then null else concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${viewerState}) end`,
-    })
-    .from(subtree);
+  const versions = conversationVersionsQuery(db, [conversationId], viewerId).as(
+    "detail_token",
+  );
+  return db.select({ version: versions.version }).from(versions);
 }
 
 /**
@@ -198,7 +267,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
-      ...conversationRecordColumns,
+      ...conversationRecordColumns(),
       // A root Conversation has no agent tree.
       agentTreeRootLabel: sql<
         string | null
@@ -217,6 +286,9 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId,
+      // A child is in the Space of its root.
+      spaceId: juniorSpaces.id,
+      spaceName: juniorSpaces.name,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
@@ -233,6 +305,8 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         juniorConversations.forkedFromConversationId,
       ),
     )
+    .leftJoin(spaceRoot, eq(spaceRoot.conversationId, rootConversationId))
+    .leftJoin(juniorSpaces, eq(juniorSpaces.id, spaceRoot.spaceId))
     .leftJoin(juniorConversationParticipants, viewerParticipant)
     .leftJoin(
       detailViewer,
@@ -247,10 +321,15 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
  * that other Conversations own (forks).
  */
 export type ConversationDetailState = {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
+  /**
+   * The Space of the root, or null. A move writes only the root, so the
+   * ETag hashes it for each Conversation in the tree.
+   */
+  space: SpaceRef | null;
   /** The viewer has not unsubscribed from the root. */
   subscribed?: boolean;
   /**
@@ -269,7 +348,7 @@ async function readDetailState(
   DetailStateRead & {
     /** `agentTreeRootLabel` of a child, or undefined for a root. */
     agentTreeRootLabel: string | undefined;
-    /** `conversationVersionQuery` token, or undefined when missing. */
+    /** `conversationVersionsQuery` token, or undefined when missing. */
     version: string | undefined;
   }
 > {
@@ -323,6 +402,13 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
+      // Only members may learn a private Space's name.
+      space:
+        row?.spaceId &&
+        row.spaceName &&
+        (!access?.privateSpaceId || access.canViewPrivateContent)
+          ? { id: row.spaceId, name: row.spaceName }
+          : null,
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
       ...(viewerMarks ? { viewerMarks } : undefined),
@@ -373,14 +459,14 @@ export async function readConversationDetailState(
 export async function readConversationDetailEtag(
   conversationId: string,
   options: {
-    limit?: number;
+    limit?: number | undefined;
     readAccess: ConversationAccessReader;
     viewer?: User;
   },
 ): Promise<
   | (DetailStateRead & {
       etag: string;
-      /** `conversationVersionQuery` token of the same read. */
+      /** `conversationVersionsQuery` token of the same read. */
       version: string;
     })
   | undefined
@@ -399,6 +485,7 @@ export async function readConversationDetailEtag(
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
+    space: state.space,
     subscribed: state.subscribed ?? null,
     version,
     viewerMarks: state.viewerMarks ?? null,

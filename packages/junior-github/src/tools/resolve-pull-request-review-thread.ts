@@ -64,7 +64,6 @@ interface Result extends PluginToolOutput {
 
 /** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
 export function createGitHubResolvePullRequestReviewThreadTool(
-  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -83,11 +82,15 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
-          "Invalid GitHub resolvePullRequestReviewThread input.",
+          "Invalid GitHub resolvePullRequestReviewThread input. Check the arguments against the tool schema and call it again.",
           { cause: parsedInput.error },
         );
       }
@@ -150,7 +153,9 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       const parsedNode =
         rawNode == null ? undefined : threadNodeSchema.safeParse(rawNode);
       if (!parsedNode?.success) {
-        throw new PluginToolInputError("GitHub review thread was not found.");
+        throw new PluginToolInputError(
+          "GitHub review thread was not found. Set thread_id to the node id of a review thread on a pull request in repo.",
+        );
       }
       const thread = parsedNode.data;
 
@@ -161,7 +166,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         pullRequest.author?.databaseId === botUserId;
       if (!ownsPullRequest) {
         throw new PluginToolInputError(
-          "This bot can only resolve review threads on pull requests it authored.",
+          "This bot can only resolve review threads on pull requests it authored. Leave this thread for a person to resolve.",
         );
       }
       if (thread.isResolved) {

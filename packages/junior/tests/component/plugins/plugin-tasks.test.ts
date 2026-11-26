@@ -21,7 +21,7 @@ const destination = {
 function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
   return messages.map((message, index) => {
     const timestamp = index + 1;
-    if (message.role === "assistant") {
+    if (message["role"] === "assistant") {
       return {
         api: "openai-responses",
         provider: "openai",
@@ -31,20 +31,20 @@ function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : message.content,
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : message["content"],
       } as PiMessage;
     }
-    if (message.role === "toolResult") {
+    if (message["role"] === "toolResult") {
       return {
         toolCallId: `test-call-${index}`,
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : (message.content ?? []),
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : (message["content"] ?? []),
       } as PiMessage;
     }
     return { timestamp, ...message } as PiMessage;
@@ -126,7 +126,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+  const { setPlugins } = await import("@/chat/plugins/hooks/registry");
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   setPlugins([]);
   await disconnectStateAdapter();
@@ -148,7 +148,7 @@ describe("plugin background tasks", () => {
     const runActor = { name: "plugin", platform: "system" } as const;
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
@@ -175,60 +175,76 @@ describe("plugin background tasks", () => {
       destination: runDestination,
       source: "internal",
     });
+    const piMessages = testPiMessages([
+      {
+        role: "user",
+        content: "Remember that stale prior turn data must not leak.",
+      },
+      {
+        role: "toolResult",
+        toolName: "createMemory",
+        isError: false,
+        content: "saved prior memory",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nRelevant memories must not leak.\n</runtime-turn-context>",
+          },
+          {
+            type: "text",
+            text: "I prefer pull request summaries with test evidence.",
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolName: "searchDocs",
+        isError: false,
+        output: "Incident runbooks live in Notion.",
+      },
+      {
+        role: "assistant",
+        content: "Understood.",
+      },
+    ]);
+    // The first two messages are an earlier Turn.
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    await commitMessages({
+      conversationId: runConversationId,
+      messages: piMessages.slice(0, 2),
+    });
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: runDestination,
-      piMessages: testPiMessages([
-        {
-          role: "user",
-          content: "Remember that stale prior turn data must not leak.",
-        },
-        {
-          role: "toolResult",
-          toolName: "createMemory",
-          isError: false,
-          content: "saved prior memory",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "<runtime-turn-context>\nRelevant memories must not leak.\n</runtime-turn-context>",
-            },
-            {
-              type: "text",
-              text: "I prefer pull request summaries with test evidence.",
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolName: "searchDocs",
-          isError: false,
-          output: "Incident runbooks live in Notion.",
-        },
-        {
-          role: "assistant",
-          content: "Understood.",
-        },
-      ]),
+      piMessages,
       turnId: runSessionId,
       sliceId: 1,
       source: runSource,
       actor: runActor,
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 2,
     });
     expect(await getTurnRecord(runConversationId, runSessionId)).toBeDefined();
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const messages = queue.queuedMessages();
-    expect(messages).toHaveLength(1);
+    // Core event search also stores lexemes after every completed Turn, core
+    // Memory extracts memories from it, and core Conversation metadata
+    // updates the summary.
+    expect(messages.map((message) => message.plugin)).toEqual([
+      "task-demo",
+      "event-search",
+      "memory",
+      "junior",
+    ]);
 
     await processPluginTask(messages[0]!);
 
@@ -275,7 +291,7 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -303,7 +319,7 @@ describe("plugin background tasks", () => {
     // instruction-authority entry.
     const embeddedUserText = [
       "<thread-transcript>",
-      '  <message index="1" role="user" author="bob" actor_id="U_BOB">',
+      '  <message index="1" role="user" author_id="U_BOB" author_name="bob">',
       "  I prefer really short, emoji-heavy summaries when these get written up.",
       "  </message>",
       "</thread-transcript>",
@@ -313,6 +329,8 @@ describe("plugin background tasks", () => {
       "</current-instruction>",
     ].join("\n");
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -334,12 +352,11 @@ describe("plugin background tasks", () => {
       },
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -387,7 +404,7 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -434,6 +451,8 @@ describe("plugin background tasks", () => {
       },
     ]);
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -447,12 +466,11 @@ describe("plugin background tasks", () => {
       actor: runActor,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -507,7 +525,7 @@ describe("plugin background tasks", () => {
     });
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
@@ -538,6 +556,8 @@ describe("plugin background tasks", () => {
     });
 
     vi.useFakeTimers({ now: completionMs });
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -551,7 +571,6 @@ describe("plugin background tasks", () => {
       actor: alice,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
     expect(
       await getTurnRecord(slackConversationId, slackSessionId),
@@ -579,7 +598,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -610,7 +629,7 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -632,6 +651,8 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -644,12 +665,11 @@ describe("plugin background tasks", () => {
       source: runSource,
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -685,7 +705,7 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -735,6 +755,8 @@ describe("plugin background tasks", () => {
       }),
     });
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -748,12 +770,11 @@ describe("plugin background tasks", () => {
       actor: runActor,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -774,7 +795,7 @@ describe("plugin background tasks", () => {
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();
@@ -801,7 +822,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
 
@@ -811,7 +832,7 @@ describe("plugin background tasks", () => {
   });
 
   it("attempts every plugin task send when one enqueue fails", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const attempted: PluginTaskQueueMessage[] = [];
@@ -850,13 +871,11 @@ describe("plugin background tasks", () => {
     await expect(
       scheduleSessionCompletedPluginTasks(
         { conversationId: "local:test:send-failure", sessionId: "turn-1" },
-        {
-          async send(message) {
-            attempted.push(message);
-            if (message.plugin === "task-send-failure-demo") {
-              throw new Error("enqueue failure marker");
-            }
-          },
+        async (message) => {
+          attempted.push(message);
+          if (message.plugin === "task-send-failure-demo") {
+            throw new Error("enqueue failure marker");
+          }
         },
       ),
     ).rejects.toThrow("enqueue failure marker");
@@ -864,11 +883,14 @@ describe("plugin background tasks", () => {
     expect(attempted.map((message) => message.plugin)).toEqual([
       "task-send-failure-demo",
       "task-send-success-demo",
+      "event-search",
+      "memory",
+      "junior",
     ]);
   });
 
   it("rejects task messages for unregistered plugin tasks", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();
@@ -893,7 +915,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
     setPlugins([]);

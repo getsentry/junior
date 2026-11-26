@@ -2,6 +2,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { ConversationGlanceMetrics } from "../src/client/conversations/ConversationMeta";
 import { ConversationUsageBreakdown } from "../src/client/conversations/ConversationUsageBreakdown";
 import { conversationFromDetail } from "../src/client/format";
 
@@ -10,7 +11,7 @@ function detail(
 ): ConversationDetailReport {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -21,7 +22,8 @@ function detail(
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
     ...overrides,
   };
@@ -163,5 +165,49 @@ describe("ConversationUsageBreakdown", () => {
 
   it("renders nothing without model or auxiliary usage", () => {
     expect(render(detail())).toBe("");
+  });
+});
+
+describe("ConversationGlanceMetrics", () => {
+  it("shows a cost that only per-model usage records", () => {
+    // The Usage trigger leaves totals to the glance, so the glance must
+    // show them.
+    const report = detail({
+      modelUsage: [
+        {
+          modelId: "openai/gpt-5",
+          usage: {
+            inputTokens: 1_000,
+            outputTokens: 200,
+            cost: { total: 0.04 },
+          },
+        },
+      ],
+    });
+    const text = renderToStaticMarkup(
+      <ConversationGlanceMetrics
+        conversation={conversationFromDetail(report)}
+        detail={report}
+      />,
+    ).replace(/<[^>]+>/g, " ");
+    expect(text).toContain("$0.04");
+  });
+  it("shows no cost for unpriced model usage", () => {
+    const report = detail({
+      modelUsage: [
+        {
+          modelId: "local/unpriced",
+          usage: { inputTokens: 1_000, outputTokens: 200 },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      <ConversationGlanceMetrics
+        conversation={conversationFromDetail(report)}
+        detail={report}
+      />,
+    );
+    expect(html).not.toContain("$");
+    expect(html).not.toContain("font-medium");
   });
 });

@@ -1,10 +1,10 @@
 /**
  * Core model calls with required cost attribution.
  *
- * Core code calls the text, object, and decision models only through this
- * module. Each call names its operation and where its cost goes, so a new
- * call site cannot drop its cost. Plugins get the same rule through
- * `chat/plugins/model.ts`.
+ * Core code calls the text, object, decision, embedding, web search, image,
+ * and transcription models only through this module. Each call names its
+ * operation and where its cost goes, so a new call site cannot drop its cost.
+ * Plugins get the same rule through `chat/plugins/model.ts`.
  */
 import type { ZodTypeAny } from "zod";
 import type * as z from "zod";
@@ -12,26 +12,31 @@ import { getConversationEventStore } from "@/chat/db";
 import { JUNIOR_NATIVE_EVENT_NAMESPACE } from "@/chat/conversations/structured-events";
 import { extractGenAiUsageSummary, runBestEffort } from "@/chat/logging";
 import * as gateway from "@/chat/pi/client";
+import * as transcription from "@/chat/pi/transcription";
 import { agentTurnCostUsd } from "@/chat/usage";
 
-// These operations store `costUsd` on their own event: `brief_updated`,
-// `guardian_action_reviewed`, and `passive_reply_routed`.
-type CallerRecordedOperation =
-  | "brief_update"
-  | "guardian_action_review"
-  | "passive_reply_route";
+// These operations store `costUsd` on their own event:
+// `guardian_action_reviewed` and `passive_reply_routed`.
+type CallerRecordedOperation = "guardian_action_review" | "passive_reply_route";
 
 // The name of the cost event in the `junior` namespace. Conversation cost
 // and the dashboard usage breakdown read these events.
 type ConversationRecordedOperation =
   | "cache_warmup"
   | "conversation_catch_up"
+  | "conversation_embedding"
+  | "conversation_metadata"
+  | "conversation_search_embedding"
   | "conversation_title"
+  | "image_generation"
   | "image_prompt_enrichment"
-  | "review_item_reply_match"
+  | "inbox_item_reply_match"
   | "run_title"
   | "task_title"
-  | "vision_summary";
+  | "tool_search_rerank"
+  | "transcription"
+  | "vision_summary"
+  | "web_search";
 
 /** No Conversation exists, such as an eval. The cost stays on the span. */
 type NoConversation = { owner: "none" };
@@ -129,6 +134,60 @@ export async function completeDecision<
   const result = await gateway.completeDecision<TQuestions>(
     gatewayParams(params),
   );
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Embed texts with the configured embedding model and attribute the cost. */
+export async function embedTexts(
+  params: Omit<Parameters<typeof gateway.embedTexts>[0], "metadata"> &
+    ModelCallAttribution,
+): Promise<Awaited<ReturnType<typeof gateway.embedTexts>>> {
+  const { cost, operation: _operation, ...rest } = params;
+  const result = await gateway.embedTexts({
+    ...rest,
+    ...("conversationId" in cost
+      ? { metadata: { conversationId: cost.conversationId } }
+      : undefined),
+  });
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Run one web search and attribute its cost. */
+export async function searchWeb(
+  params: Attributed<Parameters<typeof gateway.searchWeb>[0]>,
+): Promise<Awaited<ReturnType<typeof gateway.searchWeb>>> {
+  const result = await gateway.searchWeb(gatewayParams(params));
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Generate or edit images and attribute the cost. */
+export async function generateImages(
+  params: Parameters<typeof gateway.generateImages>[0] & ModelCallAttribution,
+): Promise<Awaited<ReturnType<typeof gateway.generateImages>>> {
+  const { cost: _cost, operation: _operation, ...rest } = params;
+  const result = await gateway.generateImages(rest);
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Transcribe speech in a file at a signed URL and attribute the cost. */
+export async function transcribeFromUrl(
+  params: Omit<
+    Parameters<typeof transcription.transcribeFromUrl>[0],
+    "conversationId"
+  > &
+    ModelCallAttribution,
+): Promise<Awaited<ReturnType<typeof transcription.transcribeFromUrl>>> {
+  const { cost, operation: _operation, ...rest } = params;
+  const result = await transcription.transcribeFromUrl({
+    ...rest,
+    ...("conversationId" in cost
+      ? { conversationId: cost.conversationId }
+      : undefined),
+  });
   await recordCost(params, result.costUsd);
   return result;
 }

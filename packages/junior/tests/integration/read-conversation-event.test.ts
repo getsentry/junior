@@ -16,11 +16,12 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
-import { createTools } from "@/chat/tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 
@@ -72,6 +73,7 @@ async function runScript(source: string) {
     reviewer: { review },
   });
   const resume = createResumeState({
+    historySeqs: [],
     checkpoint: { resumed: false, sliceId: 1 },
     conversationId: CURRENT_CONVERSATION_ID,
     destination: context().destination,

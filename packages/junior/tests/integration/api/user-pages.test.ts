@@ -11,15 +11,15 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 function plugin() {
   return defineJuniorPlugin({
     manifest: {
-      name: "memory",
-      displayName: "Memory",
-      description: "Long-term memory storage and recall.",
+      name: "notes",
+      displayName: "Notes",
+      description: "Team notes.",
     },
     userPages: [
       {
@@ -51,7 +51,7 @@ function plugin() {
                 title: "Memory storage",
                 actions: [
                   {
-                    href: "/api/plugins/memory/storage/connect",
+                    href: "/api/plugins/notes/storage/connect",
                     label: "Connect",
                     method: "GET" as const,
                   },
@@ -63,6 +63,11 @@ function plugin() {
       },
     ],
   });
+}
+
+/** Pages of the test plugin, without the pages of core Memory. */
+function notesPages<Page extends { pluginName: string }>(pages: Page[]) {
+  return pages.filter((page) => page.pluginName === "notes");
 }
 
 function authenticatedApi(email: string) {
@@ -90,14 +95,16 @@ describe("plugin user page API", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(pluginUserPageLinksSchema.parse(await response.json())).toEqual([
+    expect(
+      notesPages(pluginUserPageLinksSchema.parse(await response.json())),
+    ).toEqual([
       {
         description: "Personal facts Junior remembers about you.",
         id: "memories",
         label: "Memories",
         navigation: "profile",
-        pluginDisplayName: "Memory",
-        pluginName: "memory",
+        pluginDisplayName: "Notes",
+        pluginName: "notes",
       },
     ]);
   });
@@ -106,7 +113,7 @@ describe("plugin user page API", () => {
     setPlugins([plugin()]);
 
     const response = await createJuniorApi().request(
-      "http://localhost/api/user-pages/memory/memories",
+      "http://localhost/api/user-pages/notes/memories",
     );
 
     expect(response.status).toBe(401);
@@ -117,9 +124,9 @@ describe("plugin user page API", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Long-term memory storage and recall.",
+          name: "notes",
+          displayName: "Notes",
+          description: "Team notes.",
         },
         userPages: [
           {
@@ -139,7 +146,7 @@ describe("plugin user page API", () => {
     ]);
 
     const response = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
+      "http://localhost/api/user-pages/notes/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
     );
 
     expect(response.status).toBe(200);
@@ -151,13 +158,13 @@ describe("plugin user page API", () => {
     });
 
     const emptyLimit = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?limit=",
+      "http://localhost/api/user-pages/notes/memories?limit=",
     );
     expect(emptyLimit.status).toBe(200);
     expect(receivedInput).toEqual({ limit: 20 });
 
     const invalid = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?limit=500",
+      "http://localhost/api/user-pages/notes/memories?limit=500",
     );
     expect(invalid.status).toBe(400);
   });
@@ -202,7 +209,7 @@ describe("plugin user page API", () => {
       setPlugins([plugin()]);
 
       const response = await authenticatedApi("VIEWER@example.com").request(
-        "http://localhost/api/user-pages/memory/memories",
+        "http://localhost/api/user-pages/notes/memories",
       );
 
       expect(response.status).toBe(200);
@@ -218,14 +225,14 @@ describe("plugin user page API", () => {
       });
 
       // Admin pages stay hidden and unreadable until the viewer is an admin.
-      const adminPageUrl = "http://localhost/api/user-pages/memory/storage";
+      const adminPageUrl = "http://localhost/api/user-pages/notes/storage";
       const hidden = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/user-pages",
       );
       expect(
-        pluginUserPageLinksSchema
-          .parse(await hidden.json())
-          .map((page) => page.id),
+        notesPages(pluginUserPageLinksSchema.parse(await hidden.json())).map(
+          (page) => page.id,
+        ),
       ).toEqual(["memories"]);
       expect(
         (await authenticatedApi("viewer@example.com").request(adminPageUrl))
@@ -237,9 +244,9 @@ describe("plugin user page API", () => {
         "http://localhost/api/user-pages",
       );
       expect(
-        pluginUserPageLinksSchema
-          .parse(await listed.json())
-          .map((page) => [page.id, page.navigation]),
+        notesPages(pluginUserPageLinksSchema.parse(await listed.json())).map(
+          (page) => [page.id, page.navigation],
+        ),
       ).toEqual([
         ["memories", "profile"],
         ["storage", "admin"],
@@ -252,7 +259,7 @@ describe("plugin user page API", () => {
           ?.actions,
       ).toEqual([
         {
-          href: "/api/plugins/memory/storage/connect",
+          href: "/api/plugins/notes/storage/connect",
           label: "Connect",
           method: "GET",
         },

@@ -15,6 +15,15 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
+  isWindowRoot,
+  preferredExplicitScrollBehavior,
+  scrollRootFor,
+  scrollSnapshot,
+  setScrollTop,
+  viewportBounds,
+} from "./transcriptScrollRoot";
+import {
+  captureRowAnchor,
   captureScrollAnchor,
   scrollAnchorShift,
   type ScrollAnchor,
@@ -22,14 +31,23 @@ import {
 
 const BOTTOM_PROXIMITY_PX = 96;
 const HISTORY_PAGE_PROXIMITY_PX = 600;
+/** Viewports of content below the reader before the jump control shows. */
+const FAR_FROM_BOTTOM_VIEWPORTS = 2;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
+// Leave a little earlier context above a row taller than the viewport.
+const TALL_ROW_TOP_GAP_PX = 48;
 
-type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
 
 export type TranscriptFollowIntent = "follow" | "pause" | "preserve";
+
+/** Show a row, and leave follow when the row is not at the latest. */
+export type ShowTranscriptRow = (
+  row: Element,
+  options?: { instant?: boolean },
+) => boolean;
 
 export type ScrollSnapshot = {
   clientHeight: number;
@@ -44,12 +62,12 @@ type BottomPinResult = {
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
   /**
-   * Show a mounted row. A row that the reader asks for moves to the middle
-   * of the viewport. A row that `arrived` by itself moves only into view,
-   * and only while the reader follows the latest. Returns false when the
-   * row does not show.
+   * Show a mounted row that the reader asks for. It moves to the middle of
+   * the viewport, or its start to the top when it does not fit. An
+   * `instant` move skips smooth scrolling. Returns false when the row does
+   * not show.
    */
-  showRow: (row: Element, options: { arrived: boolean }) => boolean;
+  showRow: ShowTranscriptRow;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -137,89 +155,107 @@ function changesVisibleTranscript(event: ConversationReportEvent): boolean {
   );
 }
 
+type EventData<T extends ConversationReportEvent["data"]["type"]> = Extract<
+  ConversationReportEvent["data"],
+  { type: T }
+>;
+type EventTailVersions = {
+  [T in ConversationReportEvent["data"]["type"]]: (
+    data: EventData<T>,
+    event: ConversationReportEvent,
+  ) => string;
+};
+
+const EVENT_TAIL_VERSIONS = {
+  message: (data) =>
+    [
+      data.type,
+      data.role,
+      data.messageId,
+      data.redacted ? "redacted" : (data.text?.length ?? 0),
+      data.eventType ?? "",
+    ].join(":"),
+  assistant_message: (data) => {
+    const parts = data.parts;
+    const lastPart = parts.at(-1);
+    return [
+      data.type,
+      parts.length,
+      lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+    ].join(":");
+  },
+  tool_calls: (data) => {
+    const call = data.calls.at(-1);
+    return [
+      data.type,
+      data.calls.length,
+      call?.toolCallId ?? "",
+      call?.name ?? "",
+      call?.status ?? "",
+      call?.output === undefined ? "" : "output",
+    ].join(":");
+  },
+  subagent: (data) =>
+    [
+      data.type,
+      data.childConversationId,
+      data.status,
+      data.subagentKind,
+      data.parentToolCallId ?? "",
+    ].join(":"),
+  turn_lifecycle: (data) =>
+    [
+      data.type,
+      data.turnId,
+      data.state,
+      "failureCode" in data ? data.failureCode : "",
+      "failureReason" in data ? (data.failureReason ?? "") : "",
+    ].join(":"),
+  structured_event: (data) =>
+    [
+      data.type,
+      data.namespace,
+      data.name,
+      data.version,
+      data.presentation.title,
+      data.presentation.preview?.length ?? 0,
+    ].join(":"),
+  message_handled: (data) => [data.type, data.messageId].join(":"),
+  attachments_delivered: (data) =>
+    [
+      data.type,
+      data.attachments.length,
+      ...data.attachments.map(
+        (attachment) =>
+          `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
+      ),
+    ].join(":"),
+  compaction: (data, event) =>
+    [data.type, data.summary?.length ?? 0, event.createdAt].join(":"),
+  guardian_action_reviewed: (data) =>
+    [data.type, data.turnId, data.toolCallId, data.decision].join(":"),
+  turn_context: (data) =>
+    [data.type, data.turnId, data.pluginName, data.kind, data.version].join(
+      ":",
+    ),
+  reply_posted: (data, event) => `${data.type}:${event.seq}`,
+} satisfies EventTailVersions;
+
+function dataTailVersion<T extends ConversationReportEvent["data"]["type"]>(
+  data: EventData<T>,
+  event: ConversationReportEvent,
+): string {
+  const version: EventTailVersions[T] = EVENT_TAIL_VERSIONS[data.type];
+  return version(data, event);
+}
+
 function eventTailVersion(event: ConversationReportEvent | undefined): string {
   if (!event) return "";
   const data = event.data;
-  switch (data.type) {
-    case "message":
-      return [
-        data.type,
-        data.role,
-        data.messageId,
-        data.redacted ? "redacted" : (data.text?.length ?? 0),
-        data.eventType ?? "",
-      ].join(":");
-    case "assistant_message": {
-      const parts = data.parts;
-      const lastPart = parts.at(-1);
-      return [
-        data.type,
-        parts.length,
-        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
-      ].join(":");
-    }
-    case "tool_calls": {
-      const call = data.calls.at(-1);
-      return [
-        data.type,
-        data.calls.length,
-        call?.toolCallId ?? "",
-        call?.name ?? "",
-        call?.status ?? "",
-        call?.output === undefined ? "" : "output",
-      ].join(":");
-    }
-    case "subagent":
-      return [
-        data.type,
-        data.childConversationId,
-        data.status,
-        data.subagentKind,
-        data.parentToolCallId ?? "",
-      ].join(":");
-    case "turn_lifecycle":
-      return [
-        data.type,
-        data.turnId,
-        data.state,
-        "failureCode" in data ? data.failureCode : "",
-        "failureReason" in data ? (data.failureReason ?? "") : "",
-      ].join(":");
-    case "structured_event":
-      return [
-        data.type,
-        data.namespace,
-        data.name,
-        data.version,
-        data.presentation.title,
-        data.presentation.preview?.length ?? 0,
-      ].join(":");
-    case "message_handled":
-      return [data.type, data.messageId].join(":");
-    case "attachments_delivered":
-      return [
-        data.type,
-        data.attachments.length,
-        ...data.attachments.map(
-          (attachment) =>
-            `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
-        ),
-      ].join(":");
-    case "compaction":
-      return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "guardian_action_reviewed":
-      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
-    case "turn_context":
-      return [
-        data.type,
-        data.turnId,
-        data.pluginName,
-        data.kind,
-        data.version,
-      ].join(":");
-    default:
-      return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
+  if (!Object.hasOwn(EVENT_TAIL_VERSIONS, data.type)) {
+    return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
   }
+  return dataTailVersion(data, event);
 }
 
 /** Require both live mode and reader intent before moving the viewport. */
@@ -249,13 +285,15 @@ export function terminalReplyPinState(input: {
 
 /**
  * Show the jump control only when the reader left the bottom and a newer tail
- * arrived, when the transcript opened at unread rows, or when it does not end
- * at the latest event. Staying pinned, or intentionally following, must not
- * flash it.
+ * arrived, when the transcript opened at unread rows, when it does not end
+ * at the latest event, or when the reader scrolled far up a long transcript.
+ * Staying pinned, or intentionally following, must not flash it.
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
-  endsAtLatest?: boolean;
+  endsAtLatest?: boolean | undefined;
+  /** More than a few viewports of content are below the reader. */
+  farFromBottom?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
@@ -264,8 +302,21 @@ export function shouldShowJumpToLatest(input: {
     !input.following &&
     (input.endsAtLatest === false ||
       Boolean(input.openedAtUnread) ||
+      Boolean(input.farFromBottom) ||
       (input.enabled && input.hasPendingUpdate))
   );
+}
+
+/** True when more than `FAR_FROM_BOTTOM_VIEWPORTS` of content sit below the viewport. */
+export function isFarFromScrollBottom(snapshot: ScrollSnapshot): boolean {
+  const remaining =
+    snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight;
+  return remaining > snapshot.clientHeight * FAR_FROM_BOTTOM_VIEWPORTS;
+}
+
+/** True when the viewport touches the end of the content. */
+function isAtScrollEnd(snapshot: ScrollSnapshot): boolean {
+  return snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight < 1;
 }
 
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
@@ -279,7 +330,10 @@ export function transcriptFollowIntent(input: {
     input.previousScrollTop != null &&
     input.snapshot.scrollTop < input.previousScrollTop - USER_SCROLL_DELTA_PX
   ) {
-    return "pause";
+    // Content that shrinks, or a viewport that grows, clamps scrollTop down
+    // to the new end. A reader who scrolls up never lands there, so a clamp
+    // keeps the follow state. A jump leaves follow itself, in `showRow`.
+    return isAtScrollEnd(input.snapshot) ? "preserve" : "pause";
   }
 
   if (input.source === "scroll" && isNearScrollBottom(input.snapshot)) {
@@ -308,7 +362,7 @@ export function programmaticSettleScrollAction(input: {
 
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
-  conversationId?: string;
+  conversationId?: string | undefined;
   enabled: boolean;
   /**
    * False while newer pages are not loaded. The end of the transcript is
@@ -318,11 +372,11 @@ export function usePinnedTranscriptBottom(input: {
   endsAtLatest?: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
-  pinRequestVersion?: number;
+  pinRequestVersion?: number | undefined;
   /** Open where a link shows its row, not at the latest message. */
-  startAtLink?: boolean;
+  startAtLink?: boolean | undefined;
   /** Open at the "New" marker when the transcript has one. */
-  startAtUnread?: boolean;
+  startAtUnread?: boolean | undefined;
   view: TranscriptViewMode;
   versions: Record<TranscriptViewMode, string>;
 }): BottomPinResult {
@@ -343,6 +397,10 @@ export function usePinnedTranscriptBottom(input: {
   // and the restore after them needs the place from before.
   const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
+  // True while the anchor is the row that a jump showed. Restores keep that
+  // anchor, so the row stays put through later changes, such as a search
+  // that clears. Any other anchor moves to the first row in view.
+  const holdsShownRowRef = useRef(false);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
@@ -350,6 +408,7 @@ export function usePinnedTranscriptBottom(input: {
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
+  const [farFromBottom, setFarFromBottom] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [openedAtUnread, setOpenedAtUnread] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -380,6 +439,7 @@ export function usePinnedTranscriptBottom(input: {
     const content = contentElementRef.current;
     const root = scrollRootFor(content);
     if (!content || !root) return;
+    holdsShownRowRef.current = false;
     scrollAnchorRef.current = captureScrollAnchor(
       content,
       viewportBounds(root),
@@ -403,17 +463,21 @@ export function usePinnedTranscriptBottom(input: {
       previousScrollTopRef.current = restored;
       restoredScrollTopRef.current = restored;
     }
-    rememberPlace();
+    if (shift === null || !holdsShownRowRef.current) rememberPlace();
   }, [rememberPlace]);
 
-  const leaveBottom = useCallback(() => {
+  const stopFollowing = useCallback(() => {
     if (!followingRef.current) return;
-    const root = scrollRootFor(contentElementRef.current);
-    // Content that fits the viewport has nothing above to read.
-    if (!root || scrollSnapshot(root).scrollTop <= 0) return;
     programmaticScrollGenerationRef.current = 0;
     setFollowingIntent(false);
   }, [setFollowingIntent]);
+
+  const leaveBottom = useCallback(() => {
+    const root = scrollRootFor(contentElementRef.current);
+    // Content that fits the viewport has nothing above to read.
+    if (!root || scrollSnapshot(root).scrollTop <= 0) return;
+    stopFollowing();
+  }, [stopFollowing]);
 
   const measurePosition = useCallback(
     (source: PositionMeasureSource) => {
@@ -423,6 +487,7 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
+      setFarFromBottom(isFarFromScrollBottom(snapshot));
 
       if (source === "scroll") {
         const restored = restoredScrollTopRef.current;
@@ -486,12 +551,12 @@ export function usePinnedTranscriptBottom(input: {
         }
         if (suppressSettleNoise) programmaticScrollGenerationRef.current = 0;
         const settled = scrollSnapshot(root);
+        // Away from the bottom, the reader moved after the pin. Its scroll
+        // event can come after this callback, so keep the place that the
+        // event compares with, or the move does not pause follow.
+        if (!isNearScrollBottom(settled)) return;
         previousScrollTopRef.current = settled.scrollTop;
-        if (
-          enabledRef.current &&
-          followingRef.current &&
-          isNearScrollBottom(settled)
-        ) {
+        if (enabledRef.current && followingRef.current) {
           setFollowingIntent(true);
           setHasPendingUpdate(false);
         }
@@ -511,40 +576,52 @@ export function usePinnedTranscriptBottom(input: {
   );
 
   const showRow = useCallback(
-    (row: Element, options: { arrived: boolean }): boolean => {
+    (row: Element, options?: { instant?: boolean }): boolean => {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return false;
-      // A reader who scrolled away reads something else. Do not move it.
-      if (options.arrived && !followingRef.current) return false;
       const bounds = viewportBounds(root);
       const rect = row.getBoundingClientRect();
-      const offset = options.arrived
-        ? Math.max(0, rect.bottom - bounds.bottom)
-        : rect.top -
-          bounds.top -
-          (bounds.bottom - bounds.top - rect.height) / 2;
-      if (Math.abs(offset) < 1) return true;
+      const viewportHeight = bounds.bottom - bounds.top;
+      // Hold the place on the shown row, not the first row in view.
+      const holdShownRow = () => {
+        scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
+        holdsShownRowRef.current = scrollAnchorRef.current !== null;
+      };
+      // A row taller than the viewport shows from its start, not its middle.
+      const offset =
+        rect.top -
+        bounds.top -
+        (rect.height > viewportHeight
+          ? TALL_ROW_TOP_GAP_PX
+          : (viewportHeight - rect.height) / 2);
       // The reader goes to the row, so the latest must not pull them back.
-      if (offset < 0) leaveBottom();
-      const behavior = preferredExplicitScrollBehavior();
-      setScrollTop(
-        root,
-        Math.max(0, scrollSnapshot(root).scrollTop + offset),
-        behavior,
-      );
+      // Decide without the scroll geometry: a search can shrink the content
+      // so that the row sits at its end, and clearing the search then shows
+      // the latest far below the row.
+      stopFollowing();
+      if (Math.abs(offset) < 1) {
+        holdShownRow();
+        return true;
+      }
+      const scrollTop = Math.max(0, scrollSnapshot(root).scrollTop + offset);
+      const behavior = options?.instant
+        ? "auto"
+        : preferredExplicitScrollBehavior();
+      setScrollTop(root, scrollTop, behavior);
       // A layout change must not restore the place that the reader left.
       // A smooth scroll remembers each new place on its scroll events.
       if (behavior === "smooth") {
+        holdsShownRowRef.current = false;
         scrollAnchorRef.current = null;
         return true;
       }
       const snapshot = scrollSnapshot(root);
       previousScrollTopRef.current = snapshot.scrollTop;
       restoredScrollTopRef.current = snapshot.scrollTop;
-      rememberPlace();
+      holdShownRow();
       return true;
     },
-    [leaveBottom, rememberPlace],
+    [stopFollowing],
   );
 
   /** Scroll to the "New" marker, if the transcript has one. */
@@ -818,6 +895,7 @@ export function usePinnedTranscriptBottom(input: {
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
+        farFromBottom,
         following,
         hasPendingUpdate,
         openedAtUnread,
@@ -826,6 +904,7 @@ export function usePinnedTranscriptBottom(input: {
     [
       contentElement,
       contentRef,
+      farFromBottom,
       following,
       hasPendingUpdate,
       input.enabled,
@@ -881,70 +960,4 @@ export function useAutoLoadHistoryPage(input: {
   }, [input.edge, input.enabled, input.historyVersion, sentinel]);
 
   return setSentinel;
-}
-
-/** Find the nearest element that scrolls the transcript, or the window. */
-export function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
-  if (typeof window === "undefined") return null;
-  if (!element) return window;
-
-  let current = element.parentElement;
-  while (current && current !== document.body) {
-    const style = window.getComputedStyle(current);
-    if (/(auto|scroll|overlay)/.test(style.overflowY)) return current;
-    current = current.parentElement;
-  }
-
-  return window;
-}
-
-function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {
-  if (isWindowRoot(root)) {
-    const element = document.scrollingElement ?? document.documentElement;
-    return {
-      clientHeight: window.innerHeight,
-      scrollHeight: element.scrollHeight,
-      scrollTop: window.scrollY || element.scrollTop,
-    };
-  }
-
-  return {
-    clientHeight: root.clientHeight,
-    scrollHeight: root.scrollHeight,
-    scrollTop: root.scrollTop,
-  };
-}
-
-function setScrollTop(
-  root: ScrollRoot,
-  scrollTop: number,
-  behavior: ScrollBehavior = "auto",
-): void {
-  if (isWindowRoot(root)) {
-    window.scrollTo({ behavior, top: scrollTop });
-    return;
-  }
-  root.scrollTo({ behavior, top: scrollTop });
-}
-
-/** Read the visible band of a scroll root in client coordinates. */
-function viewportBounds(root: ScrollRoot): { bottom: number; top: number } {
-  if (isWindowRoot(root)) return { bottom: window.innerHeight, top: 0 };
-  const top = root.getBoundingClientRect().top;
-  return { bottom: top + root.clientHeight, top };
-}
-
-function isWindowRoot(root: ScrollRoot): root is Window {
-  return root === window;
-}
-
-function preferredExplicitScrollBehavior(): ScrollBehavior {
-  if (typeof window === "undefined") return "auto";
-  if (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
-    return "auto";
-  }
-  return "smooth";
 }

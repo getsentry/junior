@@ -8,17 +8,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { formatMs } from "../format";
-import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
-  isAgentInvocationResultMessage,
+  isChildResultMessage,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
+import { isReceivedAgentMessage, isSentAgentMessage } from "./agentMessage";
+import type { TranscriptViewMessage } from "../types";
+import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { LiveActivityStep, useWorkingTime } from "./TranscriptLiveStep";
+import { formatDuration } from "../time";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -33,24 +36,22 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "attachments_delivered") return false;
   // Thread cards and Task lines stay in the main view.
   if (entry.kind === "subagent") return false;
-  // An agent invocation result left only for its recalled memories is
+  // A child result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
-    return isAgentInvocationResultMessage(entry.message);
+    return isChildResultMessage(entry.message);
   }
-  // A Turn's captured memories stay visible, so the reader sees what it saved.
-  if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
-  }
-  return true;
+  // A message to another agent stays in view, like a message from one.
+  return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
 }
 
 /**
  * Keys of message rows that fold into activity: each quiet reply and the
  * Event messages that started its Turn, and each Event message whose Turn
  * ended without a reply. Event messages wait for the next reply; a message
- * from a person clears them.
+ * from a person clears them. Watch Events are left out: the routine rule
+ * decides those. Messages from other agents are left out too.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -61,6 +62,10 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
+      // A message from another agent stays in view, like a message to one.
+      if (isWatchEventMessage(message) || isReceivedAgentMessage(message)) {
+        continue;
+      }
       if (message.noReply) {
         keys.add(entry.key);
         continue;
@@ -74,6 +79,67 @@ export function quietTurnEntryKeys(
       for (const key of eventKeys) keys.add(key);
     }
     eventKeys = [];
+  }
+  return keys;
+}
+
+/** True for a message that a Watch delivered: a child update or a provider Event. */
+function isWatchEventMessage(message: TranscriptViewMessage): boolean {
+  return (
+    message.role === "user" &&
+    message.eventWatchId !== undefined &&
+    // A relay of a person change shows like the person's own message.
+    !message.reviewItemChanges?.length
+  );
+}
+
+/**
+ * Keys of routine Watch Event messages. Every Watch Event is routine except:
+ * the latest status of a watched Conversation, when it needs a person or
+ * failed; and the last Watch Event before a reply that Junior posted, since
+ * the reply answers it. Routine Events fold into activity like quiet ones,
+ * so a long run of child updates, bot comments, and check results is one
+ * row that opens in place.
+ */
+export function routineEventEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const messages = entries.flatMap((entry) =>
+    entry.kind === "message"
+      ? [{ key: entry.key, message: entry.message }]
+      : [],
+  );
+  // A message without an identifier is its own source.
+  const source = (entry: (typeof messages)[number]) =>
+    entry.message.eventIdentifier === undefined
+      ? entry.key
+      : `${entry.message.eventNamespace}\n${entry.message.eventIdentifier}`;
+  const latest = new Map<string, string>();
+  const replied = new Set<string>();
+  let lastEvent: string | undefined;
+  for (const entry of messages) {
+    if (isWatchEventMessage(entry.message)) {
+      latest.set(source(entry), entry.key);
+      lastEvent = entry.key;
+      continue;
+    }
+    const { message } = entry;
+    if (message.role === "assistant") {
+      if (!message.quiet && lastEvent !== undefined) replied.add(lastEvent);
+      lastEvent = undefined;
+    } else if (message.role === "user" && message.eventType === undefined) {
+      // A person's message is what the next reply answers. Other Turn
+      // inputs, such as a child result, keep the Event.
+      lastEvent = undefined;
+    }
+  }
+  const keys = new Set<string>();
+  for (const entry of messages) {
+    if (!isWatchEventMessage(entry.message) || replied.has(entry.key)) continue;
+    const state = watchReport(entry.message)?.state;
+    const attention = state === "needs_you" || state === "failed";
+    if (attention && latest.get(source(entry)) === entry.key) continue;
+    keys.add(entry.key);
   }
   return keys;
 }
@@ -92,6 +158,18 @@ function entryEndMs(entry: RenderedTranscriptEntry): number | undefined {
   }
   if (entry.kind === "message") return entry.message.timestamp;
   return entry.timestamp;
+}
+
+function activityGroupStartMs(
+  entries: readonly RenderedTranscriptEntry[],
+): number | undefined {
+  const starts = entries
+    .map(entryStartMs)
+    .filter(
+      (start): start is number =>
+        typeof start === "number" && Number.isFinite(start),
+    );
+  return starts.length > 0 ? Math.min(...starts) : undefined;
 }
 
 /** Span one activity group from the earliest start to the latest end. */
@@ -122,10 +200,18 @@ export function activityGroupDurationMs(
 
 /** Build a uniform collapsed label for one activity group. */
 export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
+  // A run of Watch Events only took time between deliveries, not work.
+  if (
+    entries.every(
+      (entry) => entry.kind === "message" && isWatchEventMessage(entry.message),
+    )
+  ) {
+    return countLabel(entries.length, "1 routine update", "routine updates");
+  }
   const count = countLabel(entries.length, "1 event", "events");
   const durationMs = activityGroupDurationMs(entries);
   if (typeof durationMs !== "number" || durationMs <= 0) return count;
-  return `${count} · ${formatMs(durationMs)}`;
+  return `${count} · ${formatDuration(durationMs)}`;
 }
 
 /** Build a breakdown of what one collapsed activity group contains. */
@@ -187,6 +273,11 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
   entries: RenderedTranscriptEntry[];
+  /**
+   * The activity of the running Turn. Closed, it also shows the latest step,
+   * so the reader can follow along without opening it.
+   */
+  live?: boolean;
   /** Keeps the group open while it unmounts outside the viewport. */
   openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
@@ -197,9 +288,17 @@ export function TranscriptActivityGroup(props: {
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
-  const label = activityGroupLabel(props.entries);
+  // A running Turn counts its time up, like a stopwatch.
+  const workingTime = useWorkingTime(
+    props.live ? activityGroupStartMs(props.entries) : undefined,
+  );
+  const label = workingTime
+    ? `Working for ${workingTime}`
+    : activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
-  const live = hasLiveActivity(props.entries);
+  // The running Turn's step line is the one thing that shimmers, so its
+  // "Working for" time stays still.
+  const shimmer = !props.live && hasLiveActivity(props.entries);
 
   if (searchActive) {
     return (
@@ -215,7 +314,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "group/activity-run flex items-center gap-1 text-xs leading-tight text-dashboard-text-muted",
-          live && "text-dashboard-accent-text/80",
+          shimmer && "text-dashboard-accent-text/80",
         )}
       >
         <Tooltip>
@@ -225,8 +324,8 @@ export function TranscriptActivityGroup(props: {
             }
           >
             <span className="min-w-0 truncate">
-              <ShimmerText active={live}>
-                {open ? `Hide ${label}` : label}
+              <ShimmerText active={shimmer}>
+                {open && !workingTime ? `Hide ${label}` : label}
               </ShimmerText>
             </span>
             <ChevronRight
@@ -238,6 +337,9 @@ export function TranscriptActivityGroup(props: {
           <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
       </TranscriptSummaryTrigger>
+      {props.live && !open ? (
+        <LiveActivityStep entries={props.entries} />
+      ) : null}
       {/* Closed rows stay in the page, so browser find can open the group. */}
       <CollapsibleContent hiddenUntilFound>
         <TranscriptActivityNesting.Provider value>

@@ -3,17 +3,54 @@ import {
   objectLinkFilterSpecificity,
   type ObjectAnnotation,
   type ObjectLinkFilter,
+  type ObjectLinkPrefetchOutcome,
   type ObjectType,
   type User,
 } from "@sentry/junior-plugin-api";
 
 /** One link type of core or a plugin, with the viewer-scoped resolver. */
 export interface ObjectLinkType {
+  /**
+   * False when the resolver reads a cache that its writes clear, so a
+   * change shows at once instead of after the card cache expires.
+   */
+  cacheCards?: false;
+  /**
+   * Whether the viewer may see the object. Called before `resolve`, with
+   * the URL's prefetch outcome in a page read.
+   */
+  canView(
+    viewer: User,
+    url: URL,
+    prefetched?: ObjectLinkPrefetchOutcome,
+  ): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
-  objectType: ObjectType;
+  /** The object types that `resolve` can return. */
+  objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */
   owner: string;
-  resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
+  /**
+   * Load the objects of many URLs in one call, before each is resolved.
+   * Returns the outcome of each URL whose read must know it, by `href`.
+   */
+  prefetch?(
+    viewer: User,
+    urls: URL[],
+  ): Promise<ReadonlyMap<string, ObjectLinkPrefetchOutcome> | void>;
+  /** The tool that reads the object live, for a Turn after an attach. */
+  readTool?(object: ObjectAnnotation): string | undefined;
+  resolve(
+    viewer: User,
+    url: URL,
+    prefetched?: ObjectLinkPrefetchOutcome,
+  ): Promise<ObjectAnnotation | undefined>;
+  /** Show the web page card when `canView` returns false. */
+  webPageFallback?: true;
+}
+
+/** A link type name for errors, such as `github/task/code_change`. */
+export function linkTypeName(linkType: ObjectLinkType): string {
+  return `${linkType.owner}/${linkType.objectTypes.join("/")}`;
 }
 
 function compareSpecificity(left: number[], right: number[]): number {
@@ -73,7 +110,7 @@ export function assertNoObjectLinkConflicts(
         filtersOverlap(left.filter, right.filter)
       ) {
         throw new Error(
-          `Link types "${left.linkType.owner}/${left.linkType.objectType}" and "${right.linkType.owner}/${right.linkType.objectType}" claim the same URLs with equal filters.`,
+          `Link types "${linkTypeName(left.linkType)}" and "${linkTypeName(right.linkType)}" claim the same URLs with equal filters.`,
         );
       }
     }

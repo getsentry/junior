@@ -11,8 +11,8 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
-import { captureMessage } from "@/chat/sentry";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { captureMessage, metrics } from "@/chat/sentry";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import {
   MINUTE_MS,
   WARMUP_MARGIN_MS,
@@ -23,17 +23,27 @@ export const KEY_PREFIX = "junior:cache_warming";
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
 // timing use the TTL of this retention (`CACHE_TTL_MS`).
+//
+// The 1h retention costs more on Anthropic: Opus writes cost $8/MTok for 1h
+// and $5/MTok for 5 minutes. A 1h write on every call costs more than it
+// saves. A 1h write of the whole prefix when a Conversation goes idle costs
+// $8/MTok of prefix. An hour of 5-minute warmups costs about $2.6/MTok (12
+// warmups at $0.22), so that write never wins either.
 export const CACHE_RETENTION: CacheRetention = "short";
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
 // A miss ends only its own warming. When many recent warmups of one provider
 // miss, its warmup request or cache is likely broken, so warming of that
-// provider stops for every Conversation for a day. Only a miss reads the outcomes. Every other warmup
-// reads only the open key.
+// provider stops for every Conversation for a while. Only a miss reads the
+// outcomes. Every other warmup reads only the open key.
 const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
 const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
-const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
+// Providers sometimes drop cached prefixes for a few minutes, which trips the
+// breaker without a broken request. A short pause keeps such a burst from
+// stopping warming for long. Opening clears the outcomes, so a provider that
+// stays broken must miss again to reopen it.
+const BREAKER_OPEN_TTL_MS = 30 * MINUTE_MS;
 
 // The breaker is per provider, so a provider whose cache behaves differently
 // than its TTL says cannot stop warming for the others.
@@ -42,6 +52,15 @@ const breakerOutcomesKey = (provider: string) =>
 const breakerOpenKey = (provider: string) =>
   `${KEY_PREFIX}:breaker:${provider}:open`;
 const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
+// The System page counts breaker changes from this metric. A breaker that
+// closes when its pause ends records nothing.
+const countBreakerEvent = (provider: string, event: "opened" | "closed") =>
+  metrics.count("cache_warming.breaker", 1, {
+    attributes: {
+      "app.cache_warming.breaker_event": event,
+      "app.cache_warming.provider": provider,
+    },
+  });
 
 /** One model request of an agent run, as the provider received it. */
 export interface ModelRequest {
@@ -114,8 +133,13 @@ export function supportsWarming(request: ModelRequest): boolean {
 /** Return the cache TTL of a request that Junior can warm. */
 export function cacheTtlMs(request: ModelRequest): number | undefined {
   return supportsWarming(request)
-    ? CACHE_TTL_MS[providerOf(request.model.id)]
+    ? providerCacheTtlMs(request.model.id)
     : undefined;
+}
+
+/** Return the cache TTL of the model's provider, when it has a fixed one. */
+export function providerCacheTtlMs(modelId: string): number | undefined {
+  return CACHE_TTL_MS[providerOf(modelId)];
 }
 
 /** Return the cached prefix tokens of a finished model request. */
@@ -162,14 +186,55 @@ export async function breakerOpen(
   );
 }
 
+/**
+ * Report whether the breaker is open for each warmed provider of these
+ * models. Providers that no model uses are left out.
+ */
+export async function breakerStates(
+  state: ConnectedState,
+  modelIds: readonly string[],
+): Promise<Array<{ provider: string; open: boolean }>> {
+  const providers = new Set(
+    modelIds
+      .map(providerOf)
+      .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
+  );
+  const warmed = [...providers];
+  const open = await getStateValues(state, warmed.map(breakerOpenKey));
+  return warmed.map((provider, index) => ({
+    provider,
+    open: open[index] === true,
+  }));
+}
+
+/**
+ * Close a provider's breaker so warming starts again, and forget its recent
+ * outcomes so old misses cannot reopen it. Returns false for a provider that
+ * is not warmed.
+ */
+export async function closeBreaker(
+  state: ConnectedState,
+  provider: string,
+): Promise<boolean> {
+  if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  const open = (await state.get<boolean>(breakerOpenKey(provider))) === true;
+  await state.delete(breakerOutcomesKey(provider));
+  await state.delete(breakerOpenKey(provider));
+  if (open) countBreakerEvent(provider, "closed");
+  return true;
+}
+
 // Count one warmup outcome. Open the breaker when too many recent warmups
-// missed. Only the call that opens it reports to Sentry.
+// missed. Only the call that opens it reports to Sentry. Warmups that started
+// before it opened are not counted, so their misses cannot reopen it right
+// after the pause.
 async function countOutcome(
   state: ConnectedState,
   modelId: string,
   miss: boolean,
 ): Promise<void> {
   const provider = providerOf(modelId);
+  if (await breakerOpen(state, modelId)) return;
   await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
     maxLength: BREAKER_OUTCOMES_MAX,
     ttlMs: BREAKER_OUTCOMES_TTL_MS,
@@ -185,6 +250,8 @@ async function countOutcome(
       BREAKER_OPEN_TTL_MS,
     ))
   ) {
+    await state.delete(breakerOutcomesKey(provider));
+    countBreakerEvent(provider, "opened");
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],
@@ -212,7 +279,11 @@ export async function sendWarmup(
     reasoning?: ThinkingLevel;
     prefixTokens: number;
   },
-): Promise<{ refreshed: boolean; attributes: Record<string, unknown> }> {
+): Promise<{
+  refreshed: boolean;
+  costUsd: number;
+  attributes: Record<string, unknown>;
+}> {
   const { conversationId, modelId, context, prefixTokens } = params;
   const { message: result } = await completeText({
     modelId,
@@ -256,5 +327,5 @@ export async function sendWarmup(
     });
   }
   await countOutcome(state, modelId, !refreshed);
-  return { refreshed, attributes };
+  return { refreshed, costUsd: result.usage.cost.total, attributes };
 }

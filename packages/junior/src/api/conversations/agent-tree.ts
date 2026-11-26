@@ -1,12 +1,14 @@
-import { getChildAgentLabel } from "@/chat/agent-invocations/store";
+import { mapBounded } from "@/chat/fan-out";
+import { getChildAgentLabel } from "@/chat/child-agents/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationKind } from "@/chat/conversations/store";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
 import type { ConversationAccessReader } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
+import { readConversationRecordFromSql } from "./record";
 
 /** Bound the parent chain that one agent tree reads. */
 const MAX_AGENT_TREE_DEPTH = 16;
@@ -42,9 +44,10 @@ export async function readConversationAgentTree(
     lineage.map((entry) => [entry.conversationId, entry.kind]),
   );
   // After a cycle or the depth bound, the first entry is still a child.
-  const root = lineage[0]!.parentConversationId
+  const rootRecord = lineage[0]!.parentConversationId
     ? undefined
-    : await getConversationStore().get({ conversationId: ids[0]! });
+    : await readConversationRecordFromSql(ids[0]!);
+  const root = rootRecord?.conversation;
 
   const [
     access,
@@ -55,36 +58,35 @@ export async function readConversationAgentTree(
     readAutomationTitlesByConversationId(root ? [root] : []),
     readFirstHumanMessageTexts(getDb(), root ? [root] : []),
   ]);
-  return await Promise.all(
-    ids.map(async (id) => {
-      const itemAccess = access.get(id);
-      if (root?.conversationId === id) {
-        // The summary projection owns root titles and their privacy labels.
-        const summary = conversationSummaryFromStoredConversation({
-          access: itemAccess,
-          automationTitle: automationTitleByConversation.get(id),
-          conversation: root,
-          durationMs: 0,
-          firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
-        });
-        return {
-          conversationId: id,
-          kind: "root" as const,
-          label: summary.displayTitle,
-        };
-      }
-      const kind = kindById.get(id)!;
-      if (!itemAccess?.canViewPrivateContent) {
-        return { conversationId: id, kind, label: childLabel(kind) };
-      }
-      const agent = await getChildAgentLabel(id);
+  return await mapBounded(ids, async (id) => {
+    const itemAccess = access.get(id);
+    if (rootRecord && root?.conversationId === id) {
+      // The summary projection owns root titles and their privacy labels.
+      const summary = conversationSummaryFromStoredConversation({
+        access: itemAccess,
+        automationTitle: automationTitleByConversation.get(id),
+        conversation: root,
+        durationMs: 0,
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
+        status: rootRecord.status,
+      });
       return {
         conversationId: id,
-        kind,
-        label: agent?.title ?? agent?.agentName ?? childLabel(kind),
-        ...(agent?.agentType ? { agentType: agent.agentType } : undefined),
-        ...(agent?.fork ? { fork: true as const } : undefined),
+        kind: root.kind,
+        label: summary.displayTitle,
       };
-    }),
-  );
+    }
+    const kind = kindById.get(id)!;
+    if (!itemAccess?.canViewPrivateContent) {
+      return { conversationId: id, kind, label: childLabel(kind) };
+    }
+    const agent = await getChildAgentLabel(id);
+    return {
+      conversationId: id,
+      kind,
+      label: agent?.title ?? agent?.agentName ?? childLabel(kind),
+      ...(agent?.agentType ? { agentType: agent.agentType } : undefined),
+      ...(agent?.fork ? { fork: true as const } : undefined),
+    };
+  });
 }

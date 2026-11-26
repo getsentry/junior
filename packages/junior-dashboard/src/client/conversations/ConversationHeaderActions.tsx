@@ -39,7 +39,7 @@ import {
  */
 export function ConversationHeaderActions(props: {
   /** Turn every row off, such as before the Conversation exists. */
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   menu: ConversationMenu;
   onDetailsClick(): void;
   onSearchClick(): void;
@@ -91,7 +91,7 @@ export function ConversationHeaderActions(props: {
 }
 
 function ConversationMenuRow(props: {
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   item: ConversationMenuItem;
 }) {
   const { item } = props;
@@ -183,6 +183,7 @@ export function HeaderIconButton({
   label,
   pressed,
   shortcut,
+  tooltip,
   tooltipDisabled,
   ...buttonProps
 }: Omit<ComponentProps<typeof Button>, "children" | "size"> & {
@@ -190,12 +191,14 @@ export function HeaderIconButton({
   controls?: string;
   expanded?: boolean;
   /** `aria-keyshortcuts` value for the shortcut. */
-  keyShortcuts?: string;
+  keyShortcuts?: string | undefined;
   label: string;
   pressed?: boolean;
   ref?: Ref<HTMLButtonElement>;
   /** Shortcut text shown in the tooltip, such as `⌘F`. */
-  shortcut?: string;
+  shortcut?: string | undefined;
+  /** Tooltip text when the label alone does not say enough. */
+  tooltip?: ReactNode;
   /** Hide the tooltip, such as while the menu this button opens covers it. */
   tooltipDisabled?: boolean;
 }) {
@@ -222,8 +225,11 @@ export function HeaderIconButton({
           </Button>
         }
       />
-      <TooltipContent size="compact">
-        {label}
+      <TooltipContent
+        className={tooltip ? "max-w-64" : undefined}
+        size={tooltip ? "default" : "compact"}
+      >
+        {tooltip ?? label}
         {shortcut ? (
           <Kbd className="ml-1.5" variant="plain">
             {shortcut}

@@ -1,14 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Destination, Location } from "@sentry/junior-plugin-api";
 import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
 import {
   resolveConversationRouting,
+  resolveTurnResumeRouting,
   resolveTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import type { SessionSource } from "@/chat/source";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+
+vi.hoisted(() => {
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+});
 
 const DESTINATION = {
   platform: "slack",
@@ -34,7 +41,7 @@ function conversation(args: {
   return {
     conversationId: args.conversationId ?? "slack:C123:1712345.0001",
     createdAtMs: 1,
-    kind: args.parentConversationId ? "task" : "root",
+    kind: args.parentConversationId ? "task" : "thread",
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,
@@ -102,6 +109,36 @@ describe("resolveTurnSessionRouting", () => {
       }),
     ).rejects.toThrow(
       "Conversation slack:C123:1712345.0001 is missing durable routing metadata",
+    );
+  });
+});
+
+describe("resolveTurnResumeRouting", () => {
+  afterEach(async () => {
+    await disconnectStateAdapter();
+  });
+
+  it("rejects a dispatch that belongs to another conversation", async () => {
+    const { record: dispatch } = await createOrGetDispatch({
+      nowMs: Date.now(),
+      options: {
+        destination: DESTINATION,
+        destinationVisibility: "private",
+        idempotencyKey: "other-conversation",
+        input: "Post the scheduled digest.",
+        source: { kind: "scheduled_automation" },
+      },
+      plugin: "scheduler",
+    });
+
+    await expect(
+      resolveTurnResumeRouting({
+        conversationId: "agent-dispatch:other",
+        conversationStore: conversationStore(),
+        dispatchId: dispatch.id,
+      }),
+    ).rejects.toThrow(
+      `Dispatch ${dispatch.id} belongs to agent-dispatch:${dispatch.id}, not agent-dispatch:other`,
     );
   });
 });

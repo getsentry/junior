@@ -2,27 +2,56 @@ import { memo, useMemo } from "react";
 import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
-import {
-  formatElapsedDuration,
-  formatMessageTimestamp,
-  formatPayloadSize,
-  stringifyPartValue,
-} from "../format";
-import type { TranscriptViewToolCallPart } from "../types";
+import { formatPayloadSize, stringifyPartValue } from "../format";
+import type {
+  ConversationTranscript,
+  TranscriptViewToolCallPart,
+} from "../types";
 import { ShimmerText } from "../components/ShimmerText";
-import { ReviewItemAskRow } from "../review-desk/ReviewItemChangeRow";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { InboxItemAskRow } from "../inbox/InboxItemChangeRow";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { cn } from "../styles";
+import { sentAgentMessage } from "./agentMessage";
 import { ToolFrame } from "./ToolFrame";
+import { TranscriptAgentMessage } from "./TranscriptAgentMessage";
 import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { formatElapsedDuration, formatMessageTimestamp } from "../time";
 
-/** Render one tool invocation as it advances from running to a terminal result. */
-export const TranscriptToolView = memo(function TranscriptToolView(props: {
-  conversationId: string;
+type ToolViewProps = {
+  conversation: ConversationTranscript;
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
-}) {
+  timestamp?: number | undefined;
+};
+
+/**
+ * Render one tool invocation as it advances from running to a terminal
+ * result. A message to another agent shows as its message row.
+ */
+export const TranscriptToolView = memo(
+  function TranscriptToolView(props: ToolViewProps) {
+    const sent = sentAgentMessage(props.part);
+    return sent ? (
+      <TranscriptAgentMessage
+        conversation={props.conversation}
+        message={sent}
+        timestamp={props.timestamp}
+      />
+    ) : (
+      <ToolCallView {...props} />
+    );
+  },
+  // A message row reads titles from the rest of the Conversation. Events
+  // store them before the message is sent, so newer events do not change
+  // them. The agent tree takes the current titles, such as after a rename.
+  (previous, next) =>
+    previous.part === next.part &&
+    previous.timestamp === next.timestamp &&
+    previous.conversation.conversationId === next.conversation.conversationId &&
+    previous.conversation.agentTree === next.conversation.agentTree,
+);
+
+function ToolCallView(props: ToolViewProps) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(
     props.timestamp,
@@ -69,18 +98,18 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
 
   // A question that Junior asked shows as its one-line record. The tool call
   // shows only when the viewer cannot read the item.
-  const reviewItemId = reviewItemIdFromToolCall(props.part);
-  if (reviewItemId) {
+  const inboxItemId = inboxItemIdFromToolCall(props.part);
+  if (inboxItemId) {
     return (
-      <ReviewItemAskRow
-        conversationId={props.conversationId}
+      <InboxItemAskRow
+        conversationId={props.conversation.conversationId}
         fallback={frame}
-        itemId={reviewItemId}
+        itemId={inboxItemId}
       />
     );
   }
   return <div className="min-w-0">{frame}</div>;
-});
+}
 
 function ToolSignature(props: {
   name: string;

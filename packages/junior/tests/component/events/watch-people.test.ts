@@ -6,10 +6,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { closeDb, getSqlExecutor } from "@/chat/db";
+import { closeDb } from "@/chat/db";
 import { ingestEvent } from "@/chat/events/ingest";
-import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
@@ -17,34 +16,13 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+import { seedLinkedPerson } from "../../fixtures/slack-user";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
-
-async function seedSlackUser(args: {
-  email: string;
-  githubLogin?: string;
-  slackTeamId?: string;
-  slackUserId: string;
-}): Promise<void> {
-  const slack = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: args.slackTeamId ?? "T123",
-    providerSubjectId: args.slackUserId,
-    email: args.email,
-    emailVerified: true,
-  });
-  if (!args.githubLogin) return;
-  await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
-    kind: "user",
-    provider: "github",
-    providerSubjectId: `gh-${args.githubLogin}`,
-    handle: args.githubLogin,
-  });
-}
 
 describe("Watch Event people", () => {
   afterEach(async () => {
@@ -70,7 +48,10 @@ describe("Watch Event people", () => {
             },
           },
           hooks: {
-            tools(ctx) {
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
               events = ctx.events;
               return {};
             },
@@ -78,18 +59,22 @@ describe("Watch Event people", () => {
         }),
       ]),
     });
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "requester@example.com",
-      githubLogin: "Requester",
+      linked: {
+        handle: "Requester",
+        provider: "demo",
+        subjectId: "demo-Requester",
+      },
       slackUserId: "U123",
     });
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "coauthor@example.com",
       slackUserId: "U456",
     });
     // The same person in another Slack workspace is neither ambiguous nor
     // mentioned.
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "coauthor@example.com",
       slackTeamId: "T999",
       slackUserId: "U999",
@@ -128,17 +113,21 @@ describe("Watch Event people", () => {
           namespace: "demo",
           identifier: "job-1",
           trustedSummary: `Demo job 1: ${eventType}.`,
-          // The Event names this linked person by handle only.
-          doneBy: { provider: "github", handle: "REQUESTER" },
+          // The trust decision names the author by account id. The Event
+          // still calls them by its own handle.
+          author: { handle: "REQUESTER", subjectId: "demo-Requester" },
           // Handles match without case. Unlinked people and repeats drop out.
           people: [
-            { provider: "github", handle: "requester" },
+            { provider: "demo", handle: "requester" },
             { email: "CoAuthor@example.com" },
-            { provider: "github", handle: "unlinked" },
+            { provider: "demo", handle: "unlinked" },
             { email: "requester@example.com" },
           ],
         },
-        { queue, slackTeamId: "T123" },
+        {
+          queue,
+          slackTeamId: "T123",
+        },
       );
     }
 

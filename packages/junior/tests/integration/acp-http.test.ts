@@ -23,7 +23,7 @@ import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
 import { readProxyProperty } from "../fixtures/proxy-property";
 
-mockAcpDashboardConfig();
+mockAcpDashboardConfig("Marky");
 
 describe("remote ACP HTTP", () => {
   afterEach(async () => {
@@ -238,7 +238,7 @@ describe("remote ACP HTTP", () => {
           authMethods: [
             expect.objectContaining({
               id: "junior",
-              name: "Sign in to Junior",
+              name: "Sign in to Marky",
             }),
           ],
         });
@@ -642,7 +642,7 @@ describe("remote ACP HTTP", () => {
     let connectionId: string | undefined;
     let cookie: string | undefined;
     const fetch: typeof globalThis.fetch = async (input, init) => {
-      const request = new Request(input, init as RequestInit);
+      const request = new Request(input, init);
       cookie ??= request.headers.get("cookie") ?? undefined;
       const isSessionStream =
         request.method === "GET" && request.headers.has("Acp-Session-Id");

@@ -26,13 +26,7 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { DisplayText } from "../../display-text/DisplayText";
-import {
-  automationPath,
-  formatCostSummary,
-  formatRelativeTime,
-  formatRuntime,
-  peoplePath,
-} from "../../format";
+import { automationPath, formatCostSummary } from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
 import { AutomationCost } from "./AutomationCost";
@@ -51,6 +45,10 @@ import {
   formatAutomationRunTime,
 } from "./automationFormat";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { formatRelativeTime, formatRuntime } from "../../time";
+import { agentNamePossessive } from "../../agentName";
+import { PersonReference } from "../../components/PersonReference";
+import { automationCreator } from "../../person";
 
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
@@ -382,7 +380,7 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
         <Fact label="Accounts">
           {automation.credentialMode === "creator"
             ? `Connected by ${creator}`
-            : "Junior’s only"}
+            : `${agentNamePossessive()} only`}
         </Fact>
       </FactList>
     </FactSection>
@@ -395,30 +393,23 @@ function AutomationAbout({ automation }: { automation: AutomationSummary }) {
   const versions = useAutomationVersionsData(true, automation.id);
   const activeVersion = versions.data?.activeVersion;
   const creator = (
-    <span className="inline-flex items-center gap-2">
-      <ActorAvatar
-        imageUrl={automation.createdByAvatarUrl}
-        name={automation.createdBy}
-        size="list"
-      />
-      {automation.ownedByViewer ? "You" : automation.createdBy}
-    </span>
+    <PersonReference
+      className="inline-flex items-center gap-2 text-inherit no-underline hover:underline"
+      label={automation.ownedByViewer ? "You" : undefined}
+      person={automationCreator(automation)}
+      photo={
+        <ActorAvatar
+          imageUrl={automation.createdByAvatarUrl}
+          name={automation.createdBy}
+          size="list"
+        />
+      }
+    />
   );
   return (
     <FactSection title="About">
       <FactList>
-        <Fact label="Created by">
-          {automation.createdByEmail ? (
-            <Link
-              className="text-inherit no-underline hover:underline"
-              to={peoplePath(automation.createdByEmail)}
-            >
-              {creator}
-            </Link>
-          ) : (
-            creator
-          )}
-        </Fact>
+        <Fact label="Created by">{creator}</Fact>
         <Fact label="Created">
           {formatAutomationRunTime(automation.createdAt)}
         </Fact>

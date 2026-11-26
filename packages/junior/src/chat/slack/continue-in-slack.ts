@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import type { ConversationAccess } from "@/api/conversations/access";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   claimProviderConversation,
@@ -19,6 +18,7 @@ import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   deleteSlackMessage,
   getSlackMessagePermalink,
+  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import {
@@ -33,8 +33,9 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
-const BUSY = "Wait for Junior to finish, then try again.";
-const THREAD_TAKEN = "This thread already has a Junior conversation.";
+/** Refusal for a move that cannot wait for the active Run. */
+export const BUSY = "Wait for the current reply to finish, then try again.";
+const THREAD_TAKEN = "This Slack thread already has a conversation.";
 // Thrown in the move transaction to roll back the thread claim.
 const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
 
@@ -51,7 +52,9 @@ export type ContinueInSlackResult =
       locationUrl?: string;
       status: "moved";
     }
-  | { message: string; status: "refused" };
+  | { message: string; status: "refused" }
+  // A Run holds the Conversation. Nothing was posted.
+  | { status: "busy" };
 
 /**
  * Return whether a Conversation can still move to a Slack thread.
@@ -92,15 +95,13 @@ async function movedMessageText(
   conversation: Conversation,
   actorName: string,
 ): Promise<string> {
-  const title = conversation.title ?? "Junior conversation";
+  const title = conversation.title ?? "Untitled conversation";
   const url = getDashboardConversationLink(conversation.conversationId);
-  const brief = await readLatestConversationBrief(
-    getDb(),
-    conversation.conversationId,
-  );
   return [
     `*${url ? formatSlackLink(url, title) : escapeSlackMrkdwnText(title)}*`,
-    ...(brief ? [`> ${escapeSlackMrkdwnText(brief.content.summary)}`] : []),
+    ...(conversation.summary
+      ? [`> ${escapeSlackMrkdwnText(conversation.summary)}`]
+      : []),
     `${escapeSlackMrkdwnText(actorName)} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
   ].join("\n");
 }
@@ -135,6 +136,7 @@ async function postMovedMessage(
     });
     if (!joined.ok) return { refused: joined.error };
   }
+  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
   const posted = await postSlackMessage({
     channelId: channel.channelId,
     includePermalink: true,
@@ -212,7 +214,7 @@ export async function continueConversationInSlack(args: {
     conversation.execution.status === "running" ||
     conversation.execution.status === "paused"
   ) {
-    return { message: BUSY, status: "refused" };
+    return { status: "busy" };
   }
   const executor = getSqlExecutor();
   const binding = (threadTs: string) => ({
@@ -305,14 +307,14 @@ export async function continueConversationInSlack(args: {
       channelId: channel.channelId,
       timestamp: posted.ts,
     });
-    let message = BUSY;
-    if (moved === "not_moved") {
-      const current = await getConversationStore().get({ conversationId });
-      message = threadTaken
+    if (moved === "busy") return { status: "busy" };
+    const current = await getConversationStore().get({ conversationId });
+    return {
+      message: threadTaken
         ? THREAD_TAKEN
-        : await alreadyContinuesInSlackMessage(current ?? conversation);
-    }
-    return { message, status: "refused" };
+        : await alreadyContinuesInSlackMessage(current ?? conversation),
+      status: "refused",
+    };
   }
   // Thread replies without a mention join the Conversation history.
   await getStateAdapter().subscribe(`slack:${channel.channelId}:${threadTs}`);

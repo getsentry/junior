@@ -8,8 +8,10 @@ import {
   findComposerSafeAreaBottomPadding,
   findDashboardUtilityAssertions,
   findNeutralSurfaceLiterals,
+  findNewUiEllipsis,
   findNonstandardNeutralTextColors,
   findPxBreakpoints,
+  findTileGlyphTextSizes,
   findUndersizedHardcodedFontSizes,
   findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
@@ -114,6 +116,25 @@ test("reports absolute arbitrary text sizes and allows relative em", () => {
     [
       'src/example.tsx:1: const tooSmall = "font-mono text-[0.54rem] uppercase";',
       'src/example.tsx:2: const responsive = "sm:text-[12px] text-dashboard-text";',
+    ],
+  );
+});
+
+test("reports the Space tile glyph size outside the Space tile", () => {
+  const contents = 'const glyph = "text-3xs tracking-tighter";';
+  assert.deepEqual(
+    findTileGlyphTextSizes([
+      {
+        path: "packages/junior-dashboard/src/client/spaces/SpaceTile.tsx",
+        contents,
+      },
+      { path: "src/example.tsx", contents },
+      { path: "src/badge.tsx", contents: 'const badge = "md:text-3xs";' },
+      { path: "src/named.tsx", contents: 'const label = "text-2xs";' },
+    ]),
+    [
+      'src/example.tsx:1: const glyph = "text-3xs tracking-tighter";',
+      'src/badge.tsx:1: const badge = "md:text-3xs";',
     ],
   );
 });
@@ -225,5 +246,31 @@ test("reports composer footers that reintroduce bottom safe-area math", () => {
     [
       'src/client/conversations/ConversationPage.tsx:1: const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
     ],
+  );
+});
+
+test("reports ellipsis truncation in the new UI only", () => {
+  const contents = [
+    '<span className="min-w-0 truncate">',
+    '<span className="md:truncate">',
+    '<p className="text-ellipsis">',
+    "{data.truncated ? <Notice /> : null}",
+    "// A long title truncates here.",
+  ].join("\n");
+  assert.deepEqual(
+    findNewUiEllipsis([
+      { path: "src/client/shell/Row.tsx", contents },
+      { path: "src/client/classic/Row.tsx", contents },
+      { path: "src/client/inbox/InboxItemCard.tsx", contents },
+      { path: "src/client/shell/inbox/InboxItemCard.tsx", contents },
+    ]),
+    [
+      "src/client/shell/Row.tsx",
+      "src/client/shell/inbox/InboxItemCard.tsx",
+    ].flatMap((path) => [
+      `${path}:1: <span className="min-w-0 truncate">`,
+      `${path}:2: <span className="md:truncate">`,
+      `${path}:3: <p className="text-ellipsis">`,
+    ]),
   );
 });

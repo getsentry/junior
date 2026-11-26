@@ -17,14 +17,15 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { createTools } from "@/chat/tools";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
 
 const ROOT_TURN_TOOLS = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 
@@ -57,7 +58,7 @@ function deferred<T = void>() {
  */
 function fakeGuardian() {
   return vi.fn<ToolActionReviewer["review"]>(async (proposal) =>
-    proposal.input.channel === "#public"
+    proposal.input["channel"] === "#public"
       ? {
           decision: "deny",
           reason: "Private data would go to a public channel.",
@@ -103,6 +104,7 @@ function pipelineFor(
 
 function turnCount() {
   return createResumeState({
+    historySeqs: [],
     checkpoint: { resumed: false, sliceId: 1 },
     conversationId: CONVERSATION_ID,
     destination: DESTINATION,
@@ -236,19 +238,23 @@ describe("Code Mode bridge", () => {
 
   it("refuses model-only tools inside the script", async () => {
     const spawnAgent = vi.fn();
-    const registry = createTools([], {}, {
-      conversationId: CONVERSATION_ID,
-      destination: DESTINATION,
-      egress: {
-        async fetch() {
-          return new Response("ok");
+    const registry = createTools(
+      [],
+      {},
+      {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
         },
+        source: SOURCE,
+        spawnAgent,
+        turnTools: ROOT_TURN_TOOLS,
+        workspace: {} as never,
       },
-      source: SOURCE,
-      spawnAgent,
-      turnTools: ROOT_TURN_TOOLS,
-      workspace: {} as never,
-    } as never);
+    );
     const { directTools, scriptTools } = planToolExposure(registry);
     const modelOnlyTools = Object.keys(directTools).filter(
       (name) => !Object.hasOwn(scriptTools, name),
@@ -260,7 +266,7 @@ describe("Code Mode bridge", () => {
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         try {
-          await tools.spawnAgent({ task: "Inspect the failing checks." });
+          await tools.startAgent({ task: "Inspect the failing checks." });
         } catch (error) {
           return error.message;
         }
@@ -272,8 +278,8 @@ describe("Code Mode bridge", () => {
     expect(result).toMatchObject({
       ok: true,
       value:
-        "spawnAgent does not run in a script. Call it directly, outside the script.",
-      calls: [{ toolName: "spawnAgent", status: "error" }],
+        "startAgent does not run in a script. Call it directly, outside the script.",
+      calls: [{ toolName: "startAgent", status: "error" }],
     });
 
     // A name that no tool has still gets pi's error.
@@ -281,7 +287,7 @@ describe("Code Mode bridge", () => {
       countToolCall: turnCount().countToolCall,
       modelOnlyTools,
       pipeline: pipelineFor(fakeGuardian()),
-      source: `await tools.spawnAgents({ task: "Inspect the failing checks." });`,
+      source: `await tools.startAgents({ task: "Inspect the failing checks." });`,
       toolCallId: CODEMODE_CALL_ID,
       tools: scriptTools,
     });
@@ -325,7 +331,7 @@ describe("Code Mode bridge", () => {
           .catch(() => null);
         await tools.searchTools({ query: "customers" }).catch(() => null);
         // Never awaited, so it never starts, but it keeps its error.
-        tools.executeTool({ tool_name: "spawnAgent", arguments: {} });
+        tools.executeTool({ tool_name: "startAgent", arguments: {} });
         return found;
       `,
       toolCallId: CODEMODE_CALL_ID,
@@ -353,7 +359,7 @@ describe("Code Mode bridge", () => {
           toolName: "executeTool",
           status: "not_started",
           error:
-            "executeTool does not run in a script, and spawnAgent is not a script tool. Call spawnAgent outside the script.",
+            "executeTool does not run in a script, and startAgent is not a script tool. Call startAgent outside the script.",
         },
       ],
     });
@@ -405,19 +411,23 @@ describe("Code Mode bridge", () => {
     ]);
     try {
       expect(await manager.activateProvider("ci")).toBe(true);
-      const registry = createTools([], {}, {
-        conversationId: CONVERSATION_ID,
-        destination: DESTINATION,
-        egress: {
-          async fetch() {
-            return new Response("ok");
+      const registry = createTools(
+        [],
+        {},
+        {
+          conversationId: CONVERSATION_ID,
+          destination: DESTINATION,
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
           },
+          mcpToolManager: manager,
+          source: SOURCE,
+          turnTools: ROOT_TURN_TOOLS,
+          workspace: {} as never,
         },
-        mcpToolManager: manager,
-        source: SOURCE,
-        turnTools: ROOT_TURN_TOOLS,
-        workspace: {} as never,
-      } as never);
+      );
       const { scriptTools } = planToolExposure(registry);
 
       const result = await runCodeModeScript({

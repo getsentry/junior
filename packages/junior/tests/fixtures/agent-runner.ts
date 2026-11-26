@@ -2,14 +2,26 @@ import {
   createAgentRunner,
   type AgentRunner,
 } from "@/chat/runtime/agent-runner";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
-import type { AgentRun } from "@/chat/agent/types";
+import type {
+  AgentEnvironment,
+  AgentHistory,
+  AgentRun,
+} from "@/chat/agent/types";
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
+
+/**
+ * History that earlier Turns committed, with a placeholder seq for each
+ * message. Without a `turn_started` event, none of it belongs to the Turn.
+ */
+export function committedHistory(messages: readonly PiMessage[]): AgentHistory {
+  return { messages, seqs: messages.map((_, index) => index) };
+}
 
 function assistantMessage(text: string): AssistantMessage {
   return fauxAssistantMessage(text);
@@ -33,19 +45,32 @@ export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
     await executeTurn(agentRunner, run, saveResult);
 }
 
-/** Run the real agent while replacing only model output. */
-export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
-  return createModelAgentRunnerForRun(() => streamFn);
+/** The agent tool binders that the production runner gets. */
+type AgentToolBinders = Pick<
+  AgentEnvironment,
+  "bindMessageAgent" | "bindSpawnAgent"
+>;
+
+/**
+ * Run the real agent while replacing only model output. Without `binders`,
+ * no Turn gets agent tools.
+ */
+export function createModelAgentRunner(
+  streamFn: AgentRequestStreamFn,
+  binders?: AgentToolBinders,
+): AgentRunner {
+  return createModelAgentRunnerForRun(() => streamFn, binders);
 }
 
 /** Run the real agent while choosing a fixed model stream for each run. */
 export function createModelAgentRunnerForRun(
-  streamForRun: (run: AgentRun) => StreamFn,
+  streamForRun: (run: AgentRun) => AgentRequestStreamFn,
+  binders?: AgentToolBinders,
 ): AgentRunner {
   return createAgentRunner(async (run) => {
     const { executeAgentRun } = await import("@/chat/agent");
     return await executeAgentRun(run, streamForRun(run));
-  });
+  }, binders);
 }
 
 /**
@@ -71,7 +96,7 @@ export async function deliverAssistantMessagesForTest(
   }
   const history = finalHistory
     ? finalHistory.slice(0, -replies.length)
-    : [...(run.history ?? [])];
+    : [...(run.history?.messages ?? [])];
   const firstReplyIndex = (finalHistory?.length ?? 0) - replies.length;
   for (const [index, reply] of replies.entries()) {
     const message =

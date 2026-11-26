@@ -45,6 +45,16 @@ jobs:
               - 'packages/junior/src/chat/guardian/**'
               # guardian-tools.ts builds each case's tool from these sources.
               - 'packages/junior/src/chat/tools/**'
+              - 'packages/junior/src/chat/tool-support/**'
+              - 'packages/junior/src/chat/inbox-items/tools/**'
+              - 'packages/junior/src/chat/inbox-items/tool-support.ts'
+              - 'packages/junior/src/chat/inbox-items/user-input-request.ts'
+              - 'packages/junior/src/chat/sandbox/edit-file.ts'
+              - 'packages/junior/src/chat/sandbox/file-uploads.ts'
+              - 'packages/junior/src/chat/sandbox/file-utils.ts'
+              - 'packages/junior/src/chat/sandbox/generated-files.ts'
+              - 'packages/junior/src/chat/sandbox/image-files.ts'
+              - 'packages/junior/src/chat/identities/lookup-providers.ts'
               - 'packages/junior-github/src/**'
               - 'packages/junior-google/src/**'
               - 'packages/junior-vercel/src/**'
@@ -95,6 +105,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Evals load the built output of some workspace packages.
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
       - name: Run Guardian evals
         id: run
         continue-on-error: true

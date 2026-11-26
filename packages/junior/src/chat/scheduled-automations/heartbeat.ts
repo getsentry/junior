@@ -4,6 +4,8 @@ import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
+import { isTerminalDispatchStatus } from "@/chat/agent-dispatch/store";
+import { AGENT_DISPATCH_MAX_AGE_MS } from "@/chat/agent-dispatch/work";
 import { renderTaskInput } from "@/chat/task-input";
 import { automationTaskText } from "@/chat/automations/task";
 import {
@@ -105,7 +107,7 @@ async function logRunOutcome(args: {
   db: JuniorDatabase;
   /** Prefer a fresh task load after terminal status transitions. */
   task?: ScheduledAutomation;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> | undefined;
 }): Promise<void> {
   const task =
     args.task ?? (await readScheduledAutomation(args.db, args.run.taskId));
@@ -277,6 +279,7 @@ export async function runScheduledAutomationHeartbeat(args: {
   await settleEventAutomationRuns(db, args.nowMs);
   let processedCount = 0;
   let dispatchCount = 0;
+  /* oxlint-disable no-await-in-loop -- Settle runs in schedule order, so each Automation's runs finish in order. */
   for (const run of await listIncompleteScheduledRuns(db)) {
     if (!run.dispatchId) continue;
     const dispatch = await getScheduledAutomationDispatch(run.dispatchId);
@@ -299,9 +302,28 @@ export async function runScheduledAutomationHeartbeat(args: {
       })
     ) {
       processedCount += 1;
+      continue;
+    }
+    // Dispatch work does not run past this age. A dispatch that is still
+    // open now lost its work, and its run would block every later run.
+    if (
+      !isTerminalDispatchStatus(dispatch.status) &&
+      args.nowMs - (run.startedAtMs ?? run.claimedAtMs) >
+        AGENT_DISPATCH_MAX_AGE_MS
+    ) {
+      await finishClaimedRun({
+        db,
+        errorMessage:
+          "Scheduled automation run did not finish within 24 hours.",
+        nowMs: args.nowMs,
+        run,
+        status: "failed",
+      });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
+  /* oxlint-disable no-await-in-loop -- Claim one due run at a time, up to the heartbeat limit. */
   for (
     let index = processedCount;
     index < SCHEDULED_AUTOMATION_HEARTBEAT_LIMIT;
@@ -418,5 +440,6 @@ export async function runScheduledAutomationHeartbeat(args: {
     );
     dispatchCount += 1;
   }
+  /* oxlint-enable no-await-in-loop */
   return dispatchCount;
 }

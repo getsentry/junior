@@ -43,7 +43,7 @@ function readDashboardColorIcon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-avatar.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard color icon was not found");
+    throw new Error("Dashboard color icon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }
@@ -80,6 +80,9 @@ export function dashboardPagePaths(
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
     {
+      path: basePath === "/" ? "/inbox" : `${basePath}/inbox`,
+    },
+    {
       path: basePath === "/" ? "/review" : `${basePath}/review`,
     },
     {
@@ -109,6 +112,10 @@ export function dashboardPagePaths(
     {
       nested: true,
       path: basePath === "/" ? "/settings" : `${basePath}/settings`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/spaces" : `${basePath}/spaces`,
     },
     {
       nested: true,
@@ -184,7 +191,10 @@ export function renderDashboard(
   {
     bootstrap,
     sentry,
-  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
+  }: {
+    bootstrap?: DashboardBootstrap | undefined;
+    sentry?: BrowserSentryConfig | undefined;
+  } = {},
 ): Response {
   const encodedAgentName = scriptJson(agentName);
   const bootstrapScript = bootstrap
@@ -215,6 +225,7 @@ export function renderDashboard(
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
+  <link rel="icon" href="/favicon.ico" type="image/png" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
   ${renderSentryHead(sentry)}
   <script>${conversationOpenScript(basePath)}</script>
@@ -301,7 +312,7 @@ function readDashboardFavicon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-favicon.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard favicon was not found");
+    throw new Error("Dashboard favicon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }

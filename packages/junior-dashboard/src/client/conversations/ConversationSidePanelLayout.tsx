@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useDetailsPanel } from "../components/DetailsPanel";
 import {
@@ -25,6 +26,7 @@ export function ConversationSidePanelLayout(props: {
   const panelFits = useDetailsPanel();
   const groupRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
+  const sidePanel = useRef<PanelImperativeHandle>(null);
   const sheetSlotRef = useRef<HTMLDivElement>(null);
   // Below the panel width, side panels show as bottom sheets instead. The
   // side panel renders into one host node that moves between the column and
@@ -38,6 +40,17 @@ export function ConversationSidePanelLayout(props: {
   });
   const open = props.side !== undefined;
   const resizable = open && panelFits;
+  // The panel group remembers a layout for each set of panel ids, as shares
+  // of its width then. A panel that opens again with the same id takes that
+  // old share of a column of another width, and ends a few px off its
+  // chosen width. So each time the panel opens, it gets a new id.
+  const [wasResizable, setWasResizable] = useState(resizable);
+  const [panelOpens, setPanelOpens] = useState(0);
+  if (resizable !== wasResizable) {
+    setWasResizable(resizable);
+    if (resizable) setPanelOpens((count) => count + 1);
+  }
+  const sidePanelId = `${SIDE_PANEL_ID}-${panelOpens}`;
   useLayoutEffect(() => {
     const slot = resizable ? columnRef.current : sheetSlotRef.current;
     if (host && slot && host.parentNode !== slot) slot.append(host);
@@ -51,8 +64,16 @@ export function ConversationSidePanelLayout(props: {
         onLayoutChanged={(layout, meta) => {
           // Save only the reader's own resize, after it ends. Mount and
           // constraint passes can squeeze the panel below the chosen width.
-          if (!meta.isUserInteraction) return;
-          const percent = layout[SIDE_PANEL_ID] ?? 0;
+          if (!meta.isUserInteraction) {
+            // A panel that opens while its column still resizes converts its
+            // chosen width to a share of that column, rounded, so it can end
+            // a fraction of a px off. Size it again against the new column.
+            sidePanel.current?.resize(
+              readDetailsWidth(groupRef.current?.offsetWidth ?? 0),
+            );
+            return;
+          }
+          const percent = layout[sidePanelId] ?? 0;
           const groupWidth = groupRef.current?.offsetWidth ?? 0;
           if (percent > 0) saveDetailsWidth((percent / 100) * groupWidth);
         }}
@@ -73,9 +94,11 @@ export function ConversationSidePanelLayout(props: {
             />
             <ResizablePanel
               className="grid min-h-0"
-              defaultSize={readDetailsWidth()}
+              data-testid={SIDE_PANEL_ID}
+              defaultSize={readDetailsWidth(groupRef.current?.offsetWidth ?? 0)}
               groupResizeBehavior="preserve-pixel-size"
-              id={SIDE_PANEL_ID}
+              id={sidePanelId}
+              panelRef={sidePanel}
               maxSize={`${DETAILS_WIDTH.max}rem`}
               minSize={`${DETAILS_WIDTH.min}rem`}
             >

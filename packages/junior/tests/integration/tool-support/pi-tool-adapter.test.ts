@@ -8,9 +8,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import type { ToolActionReview } from "@/chat/guardian/gate";
@@ -18,7 +18,7 @@ import {
   disableTools,
   tool,
   type AnyToolDefinition,
-} from "@/chat/tools/definition";
+} from "@/chat/tool-support/definition";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
@@ -43,7 +43,8 @@ function runtimeContext() {
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
     workspace: {} as any,
@@ -112,8 +113,8 @@ describe("Pi tool adapter integration", () => {
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
                   const input = args as Record<string, unknown>;
-                  return typeof input.customer_id === "string"
-                    ? { customerId: input.customer_id }
+                  return typeof input["customer_id"] === "string"
+                    ? { customerId: input["customer_id"] }
                     : (input as { customerId: string });
                 },
                 execute: async ({ customerId }) =>
@@ -130,22 +131,16 @@ describe("Pi tool adapter integration", () => {
 
     try {
       const registry = createTools([], {}, runtimeContext());
-      const tools = createPiAgentTools(
-        registry,
-        new SkillSandbox([], []),
-        {},
-        undefined,
-        undefined,
-        undefined,
+      const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
         onToolCall,
-        undefined,
-        "private",
-        undefined,
+        conversationPrivacy: "private",
         actionReview,
-      );
+      });
 
-      expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
-      expect(registry.agentDemo_lookupCustomer?.source).toEqual({
+      expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
+      expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
@@ -212,7 +207,7 @@ describe("Pi tool adapter integration", () => {
           {
             toolCallId: "tool-execute",
             toolName: "agentDemo_lookupCustomer",
-            tool: registry.agentDemo_lookupCustomer,
+            tool: registry["agentDemo_lookupCustomer"],
             input: { customerId: "C123" },
           },
         ],
@@ -255,7 +250,10 @@ describe("Pi tool adapter integration", () => {
         execute: async () => ({ tool: "codemodeDemo" }),
       }),
     };
-    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
+    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTool(tools, "executeTool");
 
     expect(tools.map((candidate) => candidate.name).sort()).toEqual([
@@ -273,7 +271,7 @@ describe("Pi tool adapter integration", () => {
           tool_name: toolName,
           arguments: {},
         }),
-      ).rejects.toThrow("can only call catalog tools");
+      ).rejects.toThrow("is not a catalog tool");
     }
     await expect(
       executeTool.execute("tool-direct", {
@@ -293,7 +291,7 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow(
-      /^executeTool can only call catalog tools returned by searchTools: hiddenDemo\.$/,
+      /^`hiddenDemo` is not a catalog tool\. Call searchTools to find its exact name\.$/,
     );
     await expect(
       executeTool.execute("tool-missing", {
@@ -301,16 +299,16 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow(
-      /^executeTool can only call catalog tools returned by searchTools: missingDemo\.$/,
+      /^`missingDemo` is not a catalog tool\. Call searchTools to find its exact name\.$/,
     );
-    // A close name gets a hint, never a guessed call.
+    // A close name gets a hint and the next call, never a guessed call.
     await expect(
       executeTool.execute("tool-misspelled", {
         tool_name: "catalog_only_demo",
         arguments: {},
       }),
     ).rejects.toThrow(
-      "executeTool can only call catalog tools returned by searchTools: catalog_only_demo. Did you mean `catalogOnlyDemo`?",
+      /^`catalog_only_demo` is not a catalog tool\. Did you mean `catalogOnlyDemo`\? Call executeTool again with the exact name as tool_name\.$/,
     );
   });
 
@@ -325,22 +323,25 @@ describe("Pi tool adapter integration", () => {
         messageAgent,
         parentConversationId: "local:test:parent",
         spawnAgent,
-        // Every model-only tool at once, as an agent Turn on a child loads.
+        // Every model-only tool at once.
         turnTools: {
           ...runtimeContext().turnTools,
-          reply: "parent",
+          reply: true,
           noReply: true,
           reportBlocked: "parent",
         },
       },
     );
-    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});
+    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const modelOnlyTools = [
       "messageAgent",
       "noReply",
       "reply",
       "reportBlocked",
-      "spawnAgent",
+      "startAgent",
     ];
 
     expect(tools.map((candidate) => candidate.name)).toEqual(
@@ -352,7 +353,7 @@ describe("Pi tool adapter integration", () => {
           tool_name: toolName,
           arguments: {},
         }),
-      ).rejects.toThrow("can only call catalog tools");
+      ).rejects.toThrow("is not a catalog tool");
     }
     expect(spawnAgent).not.toHaveBeenCalled();
     expect(messageAgent).not.toHaveBeenCalled();
@@ -375,20 +376,11 @@ describe("Pi tool adapter integration", () => {
     };
     const sandbox = new SkillSandbox([], []);
     const withCodeMode = (registry: Record<string, AnyToolDefinition>) =>
-      createPiAgentTools(
-        registry,
-        sandbox,
-        {},
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { countToolCall: () => 1 },
-      );
+      createPiAgentTools(registry, sandbox, {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        codeMode: { countToolCall: () => 1 },
+      });
     const enabled = withCodeMode(definitions);
     const disabled = withCodeMode(
       disableTools(definitions, "It needs a person's message."),

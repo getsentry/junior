@@ -11,11 +11,11 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import { installEvalClock } from "./src/eval-clock";
+import { installTestClock } from "@sentry/junior-testing/clock";
 import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
@@ -93,8 +93,8 @@ export default async function setup(
   };
 
   try {
-    const redisUrl = process.env.REDIS_URL?.trim();
-    const stateKeyPrefix = process.env.JUNIOR_STATE_KEY_PREFIX?.trim();
+    const redisUrl = process.env["REDIS_URL"]?.trim();
+    const stateKeyPrefix = process.env["JUNIOR_STATE_KEY_PREFIX"]?.trim();
     if (!redisUrl || !stateKeyPrefix) {
       throw new Error(
         "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
@@ -122,7 +122,7 @@ export default async function setup(
     // The worker makes egress tokens, leases, and fixture credentials with
     // the eval clock, and this process checks them. Until the first test
     // sets it, the clock is real, so snapshot warmup below uses real time.
-    const evalClock = installEvalClock();
+    const evalClock = installTestClock();
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
@@ -145,7 +145,7 @@ export default async function setup(
       },
     });
     process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
-    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    process.env["JUNIOR_BASE_URL"] = egress.baseUrl;
     for (const packages of [
       [],
       ["@sentry/junior-github"],
@@ -169,6 +169,7 @@ export default async function setup(
     try {
       await cleanup();
     } catch (cleanupError) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- `errors` keeps both failures; `cause` keeps the setup failure first.
       throw new AggregateError(
         [error, cleanupError],
         "Eval global setup and cleanup failed",

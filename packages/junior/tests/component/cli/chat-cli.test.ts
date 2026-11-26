@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_USAGE, runChat } from "@/cli/chat";
+import { readChatConfig } from "@/chat/config";
 import type {
   LocalAgentReply,
   LocalAgentTurnResult,
@@ -27,9 +28,9 @@ vi.mock("@/chat/db", () => ({
   getDb: db.getDb,
 }));
 
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
-const ORIGINAL_REDIS_URL = process.env.REDIS_URL;
-const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
+const ORIGINAL_REDIS_URL = process.env["REDIS_URL"];
+const ORIGINAL_DATABASE_URL = process.env["DATABASE_URL"];
 const ORIGINAL_CWD = process.cwd();
 
 function reply(outcome: LocalAgentTurnResult["outcome"]): {
@@ -93,8 +94,11 @@ describe("chat cli", () => {
     expect(await runChat(["--conversation"], io)).toBe(1);
     expect(await runChat(["-p"], io)).toBe(1);
     expect(await runChat(["unexpected"], io)).toBe(1);
+    expect(await runChat(["--engine", "core"], io)).toBe(1);
+    expect(await runChat(["--engine", "core", "-p"], io)).toBe(1);
+    expect(await runChat(["--engine", "other", "-p", "hi"], io)).toBe(1);
 
-    expect(lines).toEqual([CHAT_USAGE, CHAT_USAGE, CHAT_USAGE, CHAT_USAGE]);
+    expect(lines).toEqual(Array.from({ length: 7 }, () => CHAT_USAGE));
   });
 
   it("returns success for a successful prompt reply", async () => {
@@ -166,8 +170,8 @@ describe("chat cli", () => {
   });
 
   it("defaults prompt local chat to memory even when REDIS_URL is present", async () => {
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    process.env["REDIS_URL"] = "redis://localhost:6379";
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
       await deps.deliverReply(result.reply);
@@ -182,13 +186,12 @@ describe("chat cli", () => {
     };
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
-    const { getChatConfig } = await import("@/chat/config");
-    expect(getChatConfig().state.adapter).toBe("memory");
+    expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("memory");
+    expect(readChatConfig(process.env).state.adapter).toBe("memory");
   });
 
   it("fails local chat for hook plugins when database access fails", async () => {
-    delete process.env.DATABASE_URL;
+    delete process.env["DATABASE_URL"];
     db.getDb.mockImplementationOnce(() => {
       throw new Error("DATABASE_URL is required");
     });
@@ -329,8 +332,8 @@ export const plugins = {
   });
 
   it("preserves an explicit prompt local chat state adapter", async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "redis";
-    process.env.REDIS_URL = "redis://localhost:6379";
+    process.env["JUNIOR_STATE_ADAPTER"] = "redis";
+    process.env["REDIS_URL"] = "redis://localhost:6379";
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
       const result = reply("success");
       await deps.deliverReply(result.reply);
@@ -345,14 +348,13 @@ export const plugins = {
     };
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("redis");
-    const { getChatConfig } = await import("@/chat/config");
-    expect(getChatConfig().state.adapter).toBe("redis");
+    expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("redis");
+    expect(readChatConfig(process.env).state.adapter).toBe("redis");
   });
 
   it("defaults interactive local chat to memory even when REDIS_URL is present", async () => {
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    process.env["REDIS_URL"] = "redis://localhost:6379";
     const input = new PassThrough();
     const output = new Writable({
       write(_chunk, _encoding, callback) {
@@ -370,9 +372,8 @@ export const plugins = {
     input.end();
 
     expect(await pending).toBe(0);
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
-    const { getChatConfig } = await import("@/chat/config");
-    expect(getChatConfig().state.adapter).toBe("memory");
+    expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("memory");
+    expect(readChatConfig(process.env).state.adapter).toBe("memory");
   });
 
   it("uses a fresh local conversation for each prompt invocation", async () => {

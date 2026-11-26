@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 
@@ -17,7 +18,9 @@ function fixture(...responses: Response[]) {
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   return {
     fetch,
-    tools: vercelPlugin().hooks!.tools!({ egress: { fetch } } as never),
+    tools: bindPluginTools(vercelPlugin().hooks!.tools!(), {
+      egress: { fetch },
+    } as never),
   };
 }
 
@@ -36,7 +39,7 @@ describe("Vercel actions", () => {
           target: target === "production" ? "production" : null,
         }),
       );
-      const result = await tools.deploymentCreate.execute?.(
+      const result = await tools["deploymentCreate"].execute?.(
         {
           project: "other-app",
           team: "another-team",
@@ -90,13 +93,13 @@ describe("Vercel actions", () => {
       Response.json({ alias: "qa.example.com", deploymentId: "dpl_other" }),
     );
     await expect(
-      tools.deploymentInspect.execute?.(
+      tools["deploymentInspect"].execute?.(
         { deployment: deployment.id, team: "team_example" },
         options,
       ),
     ).resolves.toMatchObject({ state: "READY", deployment_id: deployment.id });
     await expect(
-      tools.aliasAssign.execute?.(
+      tools["aliasAssign"].execute?.(
         {
           deployment_id: deployment.id,
           alias: "qa.example.com",
@@ -123,10 +126,10 @@ describe("Vercel actions", () => {
       new Response(null, { status: 204 }),
     );
     await expect(
-      tools.aliasInspect.execute?.({ alias: "www.example.com" }, options),
+      tools["aliasInspect"].execute?.({ alias: "www.example.com" }, options),
     ).resolves.toMatchObject({ redirect: "example.com", deployment_id: null });
     await expect(
-      tools.deploymentDelete.execute?.(
+      tools["deploymentDelete"].execute?.(
         { deployment_id: deployment.id, team: "team_other" },
         options,
       ),
@@ -146,20 +149,24 @@ describe("Vercel actions", () => {
       }),
     );
     await expect(
-      tools.deploymentCreate.execute?.({ project: "other", ref: sha }, options),
+      tools["deploymentCreate"].execute?.(
+        { project: "other", ref: sha },
+        options,
+      ),
     ).rejects.toMatchObject({ name: "PluginToolInputError" });
     expect(fetch).toHaveBeenCalledTimes(1);
     const missing = fixture(
       new Response("private provider details", { status: 404 }),
     );
     await expect(
-      missing.tools.aliasInspect.execute?.(
+      missing.tools["aliasInspect"].execute?.(
         { alias: "missing.example.com" },
         options,
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "vercel.alias.get failed with HTTP 404",
+      message:
+        "vercel.alias.get failed with HTTP 404. Check the ids and names in the arguments.",
     });
   });
 
@@ -168,7 +175,7 @@ describe("Vercel actions", () => {
       new Response("private provider details", { status: 500 }),
     );
     await expect(
-      tools.deploymentDelete.execute?.(
+      tools["deploymentDelete"].execute?.(
         { deployment_id: deployment.id },
         options,
       ),

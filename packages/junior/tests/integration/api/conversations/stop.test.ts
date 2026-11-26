@@ -2,17 +2,10 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { listChildAgents } from "@/chat/agent-invocations/list";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { getAgentInvocationResultMessageId } from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { stopChildAgentsOf } from "@/chat/child-agents/stop";
+import { getAgentReplyMessageId } from "@/chat/child-agents/ids";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
+import type { AgentRun } from "@/chat/agent/types";
 import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
@@ -21,11 +14,12 @@ import {
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   getConversationStoppedAtMs,
-  resumeStoppedConversationTree,
+  resumeConversationTree,
+  stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getConversationEventStore } from "@/chat/db";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   ackMessages,
   completeConversationWork,
@@ -35,21 +29,25 @@ import {
 import {
   closeConversationFixture,
   createConversationFixture,
+  stoppedConversationMessageTexts,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import {
   abortableAgentRunner,
   expectChildAgentStopped,
-  invocationInput,
+  spawnInput,
   loadTurnEvents,
   spawnChildAgent,
   startRunningChildAgent,
-} from "../../../fixtures/agent-invocations";
+  createPublishChildTurn,
+} from "../../../fixtures/child-agents";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
 import {
   createConversationWorkHarness,
   deferred,
 } from "../../../fixtures/conversation-work";
+import { finishRun } from "../../../fixtures/thread-input";
 import { signedInViewer } from "../../../fixtures/user";
 
 function stopRequest(
@@ -108,6 +106,32 @@ async function startParentTurn(
   return { created, leaseToken: lease.leaseToken };
 }
 
+/**
+ * Run each Turn in a long tool call that sees a stop only when it returns,
+ * like a run whose tool call spawns a child agent while the stop comes.
+ */
+function lateStopRunner() {
+  const started = deferred();
+  const toolCallDone = deferred();
+  return {
+    agentRunner: {
+      run: async (run: AgentRun): Promise<never> => {
+        started.resolve();
+        await toolCallDone.promise;
+        const signal = run.signal!;
+        if (!signal.aborted) {
+          await new Promise((resolve) =>
+            signal.addEventListener("abort", resolve, { once: true }),
+          );
+        }
+        throw signal.reason;
+      },
+    },
+    started,
+    toolCallDone,
+  };
+}
+
 describe("conversation stop API", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -162,7 +186,7 @@ describe("conversation stop API", () => {
       created.conversationId,
       "stranger@example.com",
     );
-    expect(stranger.status).toBe(403);
+    expect(stranger.status).toBe(404);
 
     const response = await stopRequest(
       fixture,
@@ -192,7 +216,11 @@ describe("conversation stop API", () => {
   });
 
   it("stops child agents that still run after the parent Turn ended", async () => {
-    const fixture = await createConversationFixture();
+    const work = await createConversationWorkHarness({ run: finishRun });
+    const fixture = {
+      ...(await createConversationFixture()),
+      queue: work.queue,
+    };
     const { actor, conversationStore, queue, state } = fixture;
     const { created, leaseToken } = await startParentTurn(
       fixture,
@@ -206,16 +234,20 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    const doneResult = (await completeAgentInvocation({
-      invocationId: done.invocationId,
-      result: "Child fact: 42.",
-      status: "completed",
-    })) as TerminalAgentInvocation;
-    await enqueueAgentInvocationResult(doneResult, { queue, state });
+    // Its Turn took its task and replied.
+    await work.process(queue.takeMessageFor(done.childConversationId));
+    await createPublishChildTurn({ queue, state })({
+      actor: spawnInput.actor,
+      conversationId: done.childConversationId,
+      update: { status: "done", text: "Child fact: 42." },
+      turnId: "turn_done-child",
+    });
     await ackMessages({
       conversationId: created.conversationId,
       conversationStore,
-      inboundMessageIds: [getAgentInvocationResultMessageId(done.invocationId)],
+      inboundMessageIds: [
+        getAgentReplyMessageId(done.childConversationId, "turn_done-child"),
+      ],
       leaseToken,
       state,
     });
@@ -246,20 +278,11 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(created.conversationId),
     ).resolves.toBeDefined();
-    // A stop keeps a result that the parent already read. The child's
-    // session still ends, so no watch or queued input starts it again.
-    await expect(getAgentInvocation(done.invocationId)).resolves.toMatchObject({
-      parentMailboxStatus: "appended",
-      status: "completed",
-    });
+    // The finished child's session ends too, so no watch or queued input
+    // starts it again.
     await expect(
-      listChildAgents(created.conversationId),
-    ).resolves.toContainEqual(
-      expect.objectContaining({
-        childConversationId: done.childConversationId,
-        lastResult: "completed",
-      }),
-    );
+      getConversationStoppedAtMs(done.childConversationId),
+    ).resolves.toBeDefined();
   });
 
   it("stops child agents when an ACP client cancels the parent Turn", async () => {
@@ -308,10 +331,12 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    const helper = await createAgentInvocation({
-      ...invocationInput,
+    const helper = await spawnChildAgent({
+      conversationStore,
       idempotencyKey: "stop-child-helper",
       parentConversationId: child.childConversationId,
+      queue,
+      state,
     });
     const processing = work.process(
       queue.takeMessageFor(child.childConversationId),
@@ -330,22 +355,17 @@ describe("conversation stop API", () => {
     ).toMatchObject({ status: "requested" });
     await expect(processing).resolves.toMatchObject({ status: "completed" });
 
-    await expect(getAgentInvocation(child.invocationId)).resolves.toMatchObject(
-      {
-        errorMessage: "Agent invocation was stopped",
-        parentMailboxStatus: "appended",
-        status: "stopped",
-      },
-    );
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent_invocation.stopped"]);
-    await expect(
-      getAgentInvocation(helper.invocationId),
-    ).resolves.toMatchObject({
-      parentMailboxStatus: "skipped",
-      status: "stopped",
-    });
+    ).resolves.toEqual(["agent.update"]);
+    const [stopped] =
+      (
+        await getConversationWorkState({
+          conversationId: created.conversationId,
+          state,
+        })
+      )?.messages ?? [];
+    expect(stopped?.input.text).toMatch(/^<agent-result [^>]*status="stopped"/);
     // The stop ends the sessions of the child and the agents below it, but
     // not of its parent.
     await expect(
@@ -380,10 +400,7 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(created.conversationId),
     ).resolves.toBe(rootStopAtMs);
-    await resumeStoppedConversationTree(
-      created.conversationId,
-      rootStopAtMs + 1,
-    );
+    await resumeConversationTree(created.conversationId, rootStopAtMs + 1);
     for (const conversationId of [
       child.childConversationId,
       helper.childConversationId,
@@ -394,7 +411,7 @@ describe("conversation stop API", () => {
     }
   });
 
-  it("starts no parent Turn for a child result that waits when a person stops the parent", async () => {
+  it("drops a child result that waits when a person stops the parent", async () => {
     const work = await createConversationWorkHarness(neverRunAgentRunner());
     const fixture = {
       ...(await createConversationFixture()),
@@ -418,16 +435,15 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    // A completed child sends nothing, so this one ends blocked.
-    const result = (await completeAgentInvocation({
-      errorMessage: "Child needs a token.",
-      invocationId: child.invocationId,
-      status: "blocked",
-    })) as TerminalAgentInvocation;
-    await enqueueAgentInvocationResult(result, { queue, state });
+    await createPublishChildTurn({ queue, state })({
+      actor: spawnInput.actor,
+      conversationId: child.childConversationId,
+      update: { status: "blocked", text: "Child needs a token." },
+      turnId: "turn_blocked-child",
+    });
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent_invocation.blocked"]);
+    ).resolves.toEqual(["agent.update"]);
 
     const response = await stopRequest(
       fixture,
@@ -435,12 +451,17 @@ describe("conversation stop API", () => {
       actor.email,
     );
     expect(response.status).toBe(200);
-    await expect(
-      work.process(queue.takeMessageFor(created.conversationId)),
-    ).resolves.toMatchObject({ status: "completed" });
+    // The stop also stops the child, so the parent gets no result from it,
+    // and nothing is left to run.
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
     ).resolves.toEqual([]);
+    await expect(
+      stoppedConversationMessageTexts(created.conversationId),
+    ).resolves.toEqual([]);
+    await expect(
+      work.process(queue.takeMessageFor(created.conversationId)),
+    ).resolves.toMatchObject({ status: "no_work" });
     await expect(loadTurnEvents(created.conversationId)).resolves.toEqual([]);
   });
 
@@ -456,10 +477,12 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    const grandchild = await createAgentInvocation({
-      ...invocationInput,
+    const grandchild = await spawnChildAgent({
+      conversationStore,
       idempotencyKey: "late-cascade-grandchild",
-      parentConversationId: child.invocation.childConversationId,
+      parentConversationId: child.child.childConversationId,
+      queue,
+      state,
     });
     const response = await stopRequest(
       fixture,
@@ -475,7 +498,7 @@ describe("conversation stop API", () => {
     // The child's run sees the stop later and stops its own child agents.
     // That does not move the stop of a Conversation that is already stopped.
     clock.mockReturnValue(clock() + 1_000);
-    await stopChildAgentsOf(child.invocation.childConversationId, state);
+    await stopChildAgentsOf(child.child.childConversationId, state);
     await expect(
       getConversationStoppedAtMs(grandchild.childConversationId),
     ).resolves.toBe(stoppedAtMs);
@@ -483,73 +506,60 @@ describe("conversation stop API", () => {
     // After a person's input to the root ends the stop of the tree, a late
     // cascade does not stop the grandchild again.
     clock.mockReturnValue(clock() + 1_000);
-    await resumeStoppedConversationTree(created.conversationId, clock());
+    await resumeConversationTree(created.conversationId, clock());
     clock.mockReturnValue(clock() + 1_000);
-    await stopChildAgentsOf(child.invocation.childConversationId, state);
+    await stopChildAgentsOf(child.child.childConversationId, state);
     await expect(
       getConversationStoppedAtMs(grandchild.childConversationId),
     ).resolves.toBeUndefined();
   });
 
   it("stops a child agent that a stopped child agent spawned before its run saw the stop", async () => {
-    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const fixture = await createConversationFixture();
-    const { actor, conversationStore, queue, state } = fixture;
+    const lateStop = lateStopRunner();
+    const work = await createConversationWorkHarness(lateStop.agentRunner);
+    const fixture = {
+      ...(await createConversationFixture()),
+      queue: work.queue,
+    };
+    const { conversationStore, queue, state } = fixture;
     const { created } = await startParentTurn(fixture, "missed-spawn-root");
-    const child = await startRunningChildAgent({
+    const { childConversationId } = await spawnChildAgent({
       conversationStore,
       idempotencyKey: "missed-spawn-child",
       parentConversationId: created.conversationId,
       queue,
       state,
     });
-    const response = await stopRequest(
-      fixture,
-      child.invocation.childConversationId,
-      actor.email,
-    );
-    expect(response.status).toBe(200);
-    const stoppedAtMs = clock();
-
-    // The child's run spawns a child agent before it sees the stop, and that
-    // child agent finishes. When the run sees the stop, its cascade still
-    // stops that child agent, with the child's stop.
-    clock.mockReturnValue(clock() + 1_000);
-    const missed = await createAgentInvocation({
-      ...invocationInput,
+    const processing = work.process(queue.takeMessageFor(childConversationId));
+    await lateStop.started.promise;
+    const stoppedAtMs = Date.now();
+    // The tool call's spawn raced the stop of the child: the stop read the
+    // tree before the spawn committed, so it reached only the child.
+    const missed = await startChildAgent({
+      actor: spawnInput.actor,
+      conversationStore,
       idempotencyKey: "missed-spawn-grandchild",
-      parentConversationId: child.invocation.childConversationId,
+      nowMs: stoppedAtMs + 1_000,
+      parentConversationId: childConversationId,
+      queue,
+      state,
     });
-    await completeAgentInvocation({
-      invocationId: missed.invocationId,
-      result: "Missed fact: 42.",
-      status: "completed",
+    queue.takeMessageFor(missed);
+    await stopConversationTree([childConversationId], {
+      queue,
+      state,
+      stoppedAtMs,
     });
-    clock.mockReturnValue(clock() + 1_000);
-    await stopChildAgentsOf(child.invocation.childConversationId, state);
-    await expect(
-      getConversationStoppedAtMs(missed.childConversationId),
-    ).resolves.toBe(stoppedAtMs);
+    lateStop.toolCallDone.resolve();
+    // When the child's run sees the stop, its cascade still stops that child
+    // agent, with the child's stop.
+    await expect(processing).resolves.toMatchObject({ status: "completed" });
+    await expect(getConversationStoppedAtMs(missed)).resolves.toBe(stoppedAtMs);
   });
 
   it("stops a child agent that a stopped root spawned before its run saw the stop", async () => {
-    const started = deferred();
-    const toolCallDone = deferred();
-    // The root's run is in a long tool call when the stop comes. It sees the
-    // stop only when that call returns.
-    const work = await createConversationWorkHarness({
-      run: async (run) => {
-        started.resolve();
-        await toolCallDone.promise;
-        const signal = run.signal!;
-        if (!signal.aborted) {
-          await new Promise((resolve) =>
-            signal.addEventListener("abort", resolve, { once: true }),
-          );
-        }
-        throw signal.reason;
-      },
-    });
+    const lateStop = lateStopRunner();
+    const work = await createConversationWorkHarness(lateStop.agentRunner);
     const fixture = {
       ...(await createConversationFixture()),
       queue: work.queue,
@@ -563,83 +573,34 @@ describe("conversation stop API", () => {
       },
       { conversationStore, queue, state },
     );
-    // The root already read the result of a child agent that finished.
-    const read = await createAgentInvocation({
-      ...invocationInput,
-      idempotencyKey: "late-root-read-child",
-      parentConversationId: created.conversationId,
-    });
-    const lease = await startConversationWork({
-      conversationId: created.conversationId,
-      conversationStore,
-      state,
-    });
-    if (lease.status !== "acquired") throw new Error("Expected work lease");
-    await enqueueAgentInvocationResult(
-      (await completeAgentInvocation({
-        invocationId: read.invocationId,
-        result: "Read fact: 42.",
-        status: "completed",
-      })) as TerminalAgentInvocation,
-      { queue, state },
-    );
-    await ackMessages({
-      conversationId: created.conversationId,
-      conversationStore,
-      inboundMessageIds: [getAgentInvocationResultMessageId(read.invocationId)],
-      leaseToken: lease.leaseToken,
-      state,
-    });
-    await completeConversationWork({
-      conversationId: created.conversationId,
-      conversationStore,
-      leaseToken: lease.leaseToken,
-      state,
-    });
     const processing = work.process(
       queue.takeMessageFor(created.conversationId),
     );
-    await started.promise;
-    const response = await stopRequest(
-      fixture,
-      created.conversationId,
-      actor.email,
-    );
-    expect(response.status).toBe(200);
-
-    // The tool call spawns a child agent after the stop.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const missed = await createAgentInvocation({
-      ...invocationInput,
+    await lateStop.started.promise;
+    const stoppedAtMs = Date.now();
+    // The tool call's spawn raced the stop: the stop read the tree before
+    // the spawn committed, so it reached only the root.
+    const missed = await startChildAgent({
+      actor: spawnInput.actor,
+      conversationStore,
       idempotencyKey: "late-root-spawn-child",
+      nowMs: stoppedAtMs + 1_000,
       parentConversationId: created.conversationId,
+      queue,
+      state,
     });
-    toolCallDone.resolve();
+    queue.takeMessageFor(missed);
+    await stopConversationTree([created.conversationId], {
+      queue,
+      state,
+      stoppedAtMs,
+    });
+    lateStop.toolCallDone.resolve();
     await expect(processing).resolves.toMatchObject({ status: "completed" });
 
-    await expect(
-      getAgentInvocation(missed.invocationId),
-    ).resolves.toMatchObject({ status: "stopped" });
-    await expect(
-      getConversationStoppedAtMs(missed.childConversationId),
-    ).resolves.toBeDefined();
-    // The late cascade keeps the result that the root already read.
-    await expect(getAgentInvocation(read.invocationId)).resolves.toMatchObject({
-      parentMailboxStatus: "appended",
-      status: "completed",
-    });
-    await expect(
-      listChildAgents(created.conversationId),
-    ).resolves.toContainEqual(
-      expect.objectContaining({
-        childConversationId: read.childConversationId,
-        lastResult: "completed",
-      }),
-    );
+    await expect(getConversationStoppedAtMs(missed)).resolves.toBe(stoppedAtMs);
     // A person's input to the root ends the stop of that child agent too.
-    await resumeStoppedConversationTree(created.conversationId, Date.now());
-    await expect(
-      getConversationStoppedAtMs(missed.childConversationId),
-    ).resolves.toBeUndefined();
+    await resumeConversationTree(created.conversationId, stoppedAtMs + 2_000);
+    await expect(getConversationStoppedAtMs(missed)).resolves.toBeUndefined();
   });
 });

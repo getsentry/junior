@@ -23,7 +23,7 @@ function conversation(
   events: ConversationReportEvent[],
 ): ConversationTranscript {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -34,7 +34,8 @@ function conversation(
     lastProgressAt: "2026-01-01T00:00:00.000Z",
     lastSeenAt: "2026-01-01T00:00:00.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
 }

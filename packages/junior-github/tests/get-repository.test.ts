@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it } from "vitest";
-import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
+import { gitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
@@ -7,7 +8,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetRepositoryTool, ctx) };
 }
 
 describe("getRepository", () => {
@@ -66,10 +67,15 @@ describe("getRepository", () => {
           "issue.reopened",
           "issue.updated",
           "pull_request.checks.failed",
+          "pull_request.checks.passed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
           "pull_request.opened",
+          "pull_request.reopened",
           "pull_request.ready_for_review",
+          "pull_request.converted_to_draft",
+          "pull_request.synchronized",
+          "pull_request.review_requested",
           "pull_request.review.approved",
           "pull_request.review.changes_requested",
           "pull_request.review.commented",
@@ -77,6 +83,7 @@ describe("getRepository", () => {
           "pull_request.merged",
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
+          "pull_request.merge_conflict.resolved",
         ],
         type: "repository",
       },
@@ -100,8 +107,25 @@ describe("getRepository", () => {
         { toolCallId: "missing-repository" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub repository lookup failed with HTTP 404",
+      message:
+        "GitHub repository lookup failed with HTTP 404. Check repo. If it is correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
+    });
+  });
+
+  it("reports other lookup failures as system errors", async () => {
+    const { tool } = toolContext([
+      { body: { message: "Server Error" }, status: 503 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior" },
+        { toolCallId: "failed-repository" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub repository lookup failed with HTTP 503",
+      name: "Error",
     });
   });
 });

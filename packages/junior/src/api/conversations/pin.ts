@@ -2,7 +2,6 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { setSpanAttributes } from "@/chat/logging";
-import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -17,7 +16,6 @@ import type {
   ReorderPinnedConversationsResponse,
 } from "../schema/conversation-pin";
 import { readConversationAccessFromSql } from "./access";
-import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 /**
  * Pin or unpin one conversation for the signed-in viewer.
@@ -107,7 +105,7 @@ async function setPin(
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
-  if (!isTopLevelKind(conversationKindFromRow(conversation))) {
+  if (conversation.parentConversationId) {
     throwApiError(
       409,
       `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,
@@ -169,7 +167,6 @@ export async function reorderPinnedConversations(
     ids.map((id, index) => sql`when ${id} then ${index}::integer`),
     sql` `,
   );
-  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   const updated = await getDb()
     .update(participants)
     .set({

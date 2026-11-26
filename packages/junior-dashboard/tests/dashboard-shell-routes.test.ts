@@ -8,9 +8,9 @@ import {
   resetDashboardEnv,
 } from "./dashboard-test-helpers";
 
-const { readUserAutoArchiveSettings, readViewerAvatarUrl, resolveViewerUser } =
-  vi.hoisted(() => ({
-    readUserAutoArchiveSettings: vi.fn(async (_userId: string) => ({
+const { readUserSettings, readViewerAvatarUrl, resolveViewerUser } = vi.hoisted(
+  () => ({
+    readUserSettings: vi.fn(async (_userId: string) => ({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 6,
     })),
@@ -22,16 +22,18 @@ const { readUserAutoArchiveSettings, readViewerAvatarUrl, resolveViewerUser } =
       id: `user:${email}`,
       identities: [] as [],
     })),
-  }));
+  }),
+);
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
-  readUserAutoArchiveSettings,
+  readUserSettings,
   readViewerAvatarUrl,
   resolveViewerUser,
 }));
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
@@ -202,6 +204,7 @@ describe("dashboard shell routes", () => {
       "/memories/memory-1",
       "/settings",
       "/settings/api-tokens",
+      "/spaces/22222222-2222-4222-8222-222222222222",
       "/system/workspaces",
       "/system/workspaces/new",
       "/system/workspaces/11111111-1111-4111-8111-111111111111",
@@ -378,6 +381,7 @@ describe("dashboard shell routes", () => {
 
   it("serves the notification service worker for the dashboard scope without auth", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       basePath: "/ops",

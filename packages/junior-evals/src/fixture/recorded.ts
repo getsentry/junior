@@ -7,6 +7,7 @@
  */
 import { UNCOPIED_EVENT_TYPES } from "@/chat/conversations/fork";
 import { getConversationStore, getDb } from "@/chat/db";
+import { readConversationEventRows } from "@/chat/conversations/sql/history";
 import { juniorConversationEvents } from "@/db/schema";
 
 /** One stored event row, without its Conversation and actor identity. */
@@ -55,15 +56,20 @@ const NAME_KEYS = new Set([
 function webActorIds(rows: RecordedEventRow[]): string[] {
   const ids = new Set<string>();
   const visit = (value: unknown): void => {
-    if (Array.isArray(value)) return value.forEach(visit);
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
     if (!value || typeof value !== "object") return;
     const record = value as Record<string, unknown>;
-    if (record.platform === "web" && typeof record.userId === "string") {
-      ids.add(record.userId);
+    if (record["platform"] === "web" && typeof record["userId"] === "string") {
+      ids.add(record["userId"]);
     }
-    Object.values(record).forEach(visit);
+    for (const item of Object.values(record)) visit(item);
   };
-  rows.forEach((row) => visit(row.payload));
+  for (const row of rows) {
+    visit(row.payload);
+  }
   return [...ids];
 }
 
@@ -150,10 +156,7 @@ export async function exportRecordedConversation(
   if (!conversation) {
     throw new Error(`Conversation ${conversationId} was not found`);
   }
-  const rows = await getDb().query.juniorConversationEvents.findMany({
-    orderBy: (row, { asc }) => [asc(row.seq)],
-    where: (row, { eq }) => eq(row.conversationId, conversationId),
-  });
+  const rows = await readConversationEventRows(getDb(), conversationId);
   return {
     version: 1,
     surface: conversation.destination?.platform === "slack" ? "slack" : "web",

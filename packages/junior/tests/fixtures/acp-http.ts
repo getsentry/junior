@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import * as acp from "@agentclientprotocol/sdk";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
 import type { StateAdapter } from "chat";
@@ -8,12 +9,17 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationWebHarness } from "./conversation";
 import { createSlackAdapterFixture } from "./conversation-work";
+import { mockBuiltSystemPrompts } from "./built-system-prompts";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
 
-/** Supply dashboard browser authentication for ACP integration tests. */
-export function mockAcpDashboardConfig(): void {
+/**
+ * Supply dashboard browser authentication and the build-time system prompts
+ * for ACP integration tests. Both use `botName`, as a build does.
+ */
+export function mockAcpDashboardConfig(botName = "junior"): void {
   vi.doMock("#junior/config", () => ({
+    botName,
     createDashboardApp: () => ({
       fetch: () => new Response("Not Found", { status: 404 }),
     }),
@@ -23,6 +29,7 @@ export function mockAcpDashboardConfig(): void {
     plugins: undefined,
     pluginRuntimeRegistrations: [],
   }));
+  mockBuiltSystemPrompts(botName);
 }
 
 /** Read the browser verification code shown by an ACP URL elicitation. */
@@ -73,7 +80,7 @@ export function appFetch(...apps: Hono[]): typeof globalThis.fetch {
     const app = apps[nextApp % apps.length];
     nextApp += 1;
     if (!app) throw new Error("ACP test fetch requires an app");
-    return await app.fetch(new Request(input, init as RequestInit));
+    return await app.fetch(new Request(input, init));
   };
 }
 
@@ -87,6 +94,7 @@ export function createIndependentConversationWork(
     conversationStore: harness.conversationStore,
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue: harness.queue,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner: harness.agentRunner },
     state,
   });

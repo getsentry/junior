@@ -10,6 +10,7 @@ import { mcpClientMetadataHandlers } from "./handlers/mcp-client-metadata";
 import { setupServer } from "msw/node";
 import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
+import { workloadIdentityHandlers } from "./handlers/workload-identity";
 
 const EVAL_MCP_AUTH_HOSTNAME = new URL(EVAL_MCP_AUTH_ORIGIN).hostname;
 const EVAL_MCP_NO_AUTH_HOSTNAME = new URL(EVAL_MCP_NO_AUTH_ORIGIN).hostname;
@@ -27,7 +28,7 @@ export function enforceUnhandledExternalRequestFailure(request: Request): void {
   const url = new URL(request.url);
   if (
     allowsLiveTestHttpHost(url.hostname, {
-      juniorBaseUrl: process.env.JUNIOR_BASE_URL,
+      juniorBaseUrl: process.env["JUNIOR_BASE_URL"],
     }) &&
     !HOST_HTTP_FIXTURE_ALLOWLIST.has(url.hostname)
   ) {
@@ -46,4 +47,5 @@ export const mswServer = setupServer(
   ...evalOAuthHandlers,
   ...githubApiHandlers,
   ...mcpClientMetadataHandlers,
+  ...workloadIdentityHandlers,
 );

@@ -12,11 +12,11 @@ import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -24,6 +24,13 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
+import { mapBounded } from "@/chat/fan-out";
+import { isAttemptInterrupt } from "./attempt-selection";
+import {
+  normalizeMessageSenders,
+  withMessageSenders,
+  type InboundMessageSenders,
+} from "./message-sender";
 
 const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
@@ -93,8 +100,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** Review item change that this input reports, on any Source. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this input reports, on any Source. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -149,6 +156,8 @@ type StoredInboundMessage = z.output<typeof storedInboundMessageSchema>;
 
 export interface Lease {
   acquiredAtMs: number;
+  /** Input of the attempt that the lease holder runs. A stop leaves it. */
+  attemptInboundMessageIds?: string[] | undefined;
   expiresAtMs: number;
   lastCheckInAtMs: number;
   token: string;
@@ -162,30 +171,37 @@ export interface ConversationStop {
 
 export interface ConversationExecution {
   inboundMessageIds: string[];
-  lastCheckpointAtMs?: number;
-  lastEnqueuedAtMs?: number;
-  lastProgressAtMs?: number;
-  retryCount?: number;
-  lease?: Lease;
+  /** Sender fields of the ids in `inboundMessageIds` that have them. */
+  messageSenders?: InboundMessageSenders | undefined;
+  lastCheckpointAtMs?: number | undefined;
+  lastEnqueuedAtMs?: number | undefined;
+  lastProgressAtMs?: number | undefined;
+  retryCount?: number | undefined;
+  lease?: Lease | undefined;
+  /**
+   * Input of a running attempt that a stop held. Its Turn saves it, or the
+   * next claim holds it when the attempt ended without saving it.
+   */
+  heldInboundMessageIds?: string[] | undefined;
   pendingCount: number;
   pendingMessages: InboundMessage[];
-  runId?: string;
+  runId?: string | undefined;
   status: ExecutionStatus;
-  updatedAtMs?: number;
+  updatedAtMs?: number | undefined;
 }
 
 /** Redis execution state. SQL owns the durable Conversation. */
 export interface ConversationExecutionState {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId: string;
   createdAtMs: number;
-  destination?: Destination;
+  destination?: Destination | undefined;
   execution: ConversationExecution;
   lastActivityAtMs: number;
-  actor?: StoredSlackActor;
+  actor?: StoredSlackActor | undefined;
   schemaVersion: 2;
-  source?: Source;
-  title?: string;
+  source?: Source | undefined;
+  title?: string | undefined;
   updatedAtMs: number;
 }
 
@@ -197,10 +213,15 @@ export interface ConversationWorkLease {
 }
 
 export interface ConversationWorkState extends ConversationExecutionState {
-  lastEnqueuedAtMs?: number;
+  lastEnqueuedAtMs?: number | undefined;
   lease?: ConversationWorkLease;
   messages: InboundMessage[];
   needsRun: boolean;
+  /**
+   * Ids in `messages` that the active attempt took. They stay in the
+   * mailbox until its Turn acks them.
+   */
+  runningInboundMessageIds: string[];
 }
 
 export interface StartConversationWorkAcquired {
@@ -228,7 +249,7 @@ export interface AppendInboundMessageResult {
 }
 
 export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessageResult {
-  queueMessageId?: string;
+  queueMessageId?: string | undefined;
 }
 
 /** Result of requesting that the current Conversation run stop. */
@@ -269,10 +290,10 @@ interface ConversationIndexEntry {
 interface ConversationIndexStore {
   list(args: {
     indexKey: string;
-    limit?: number;
-    offset?: number;
+    limit?: number | undefined;
+    offset?: number | undefined;
     order: "asc" | "desc";
-    scoreMax?: number;
+    scoreMax?: number | undefined;
   }): Promise<ConversationIndexEntry[]>;
   remove(args: { conversationId: string; indexKey: string }): Promise<void>;
   upsert(args: {
@@ -292,6 +313,10 @@ function conversationKey(conversationId: string): string {
 
 function conversationStopKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:stop:${conversationId}`;
+}
+
+function deferredMoveKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:deferred-move:${conversationId}`;
 }
 
 function indexLockKey(indexKey: string): string {
@@ -425,75 +450,100 @@ function normalizeActor(value: unknown): StoredSlackActor | undefined {
   return parseStoredSlackActor(value);
 }
 
+const storedNonEmptyStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0);
+// Optional stored fields drop an invalid value instead of failing the record.
+const storedOptionalStringSchema = storedNonEmptyStringSchema
+  .optional()
+  .catch(undefined);
+const storedOptionalNumberSchema = z.number().optional().catch(undefined);
+const storedIdListSchema = z.array(z.unknown()).catch([]);
+
+const storedLeaseSchema = z.object({
+  token: storedNonEmptyStringSchema,
+  acquiredAtMs: z.number(),
+  attemptInboundMessageIds: z.array(z.string()).optional().catch(undefined),
+  lastCheckInAtMs: z.number(),
+  expiresAtMs: z.number(),
+});
+
 function normalizeLease(value: unknown): Lease | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const token = toOptionalString(value.token);
-  const acquiredAtMs = toOptionalNumber(value.acquiredAtMs);
-  const lastCheckInAtMs = toOptionalNumber(value.lastCheckInAtMs);
-  const expiresAtMs = toOptionalNumber(value.expiresAtMs);
-  if (
-    !token ||
-    typeof acquiredAtMs !== "number" ||
-    typeof lastCheckInAtMs !== "number" ||
-    typeof expiresAtMs !== "number"
-  ) {
+  const parsed = storedLeaseSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+const storedStopSchema = z.object({
+  inboundMessageIds: storedIdListSchema,
+  runId: storedNonEmptyStringSchema,
+});
+
+function normalizeStop(value: unknown): ConversationStop | undefined {
+  const parsed = storedStopSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
   return {
-    token,
-    acquiredAtMs,
-    lastCheckInAtMs,
-    expiresAtMs,
+    inboundMessageIds: uniqueStrings(
+      parsed.data.inboundMessageIds.filter(
+        (id): id is string => typeof id === "string",
+      ),
+    ),
+    runId: parsed.data.runId,
   };
 }
 
-function normalizeStop(value: unknown): ConversationStop | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
-    ? uniqueStrings(
-        value.inboundMessageIds.filter(
-          (id): id is string => typeof id === "string",
-        ),
-      )
-    : [];
-  const runId = toOptionalString(value.runId);
-  return runId ? { inboundMessageIds, runId } : undefined;
-}
+const storedExecutionSchema = z.object({
+  status: z.unknown().optional(),
+  pendingMessages: z.array(z.unknown()).catch([]),
+  inboundMessageIds: storedIdListSchema,
+  messageSenders: z.unknown().optional(),
+  lease: z.unknown().optional(),
+  heldInboundMessageIds: z.array(z.string()).optional().catch(undefined),
+  lastCheckpointAtMs: storedOptionalNumberSchema,
+  lastEnqueuedAtMs: storedOptionalNumberSchema,
+  lastProgressAtMs: storedOptionalNumberSchema,
+  retryCount: storedOptionalNumberSchema,
+  runId: storedOptionalStringSchema,
+  updatedAtMs: storedOptionalNumberSchema,
+});
 
 /** Decode stored execution state. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
 ): ConversationExecution | undefined {
-  if (!isRecord(value)) {
+  const parsed = storedExecutionSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const status = normalizeExecutionStatus(value.status);
+  const stored = parsed.data;
+  const status = normalizeExecutionStatus(stored.status);
   if (!status) {
     return undefined;
   }
   const pendingMessages: InboundMessage[] = [];
-  if (Array.isArray(value.pendingMessages)) {
-    for (const rawMessage of value.pendingMessages) {
-      const message = normalizeMessage(rawMessage);
-      if (!message || message.conversationId !== conversationId) {
-        return undefined;
-      }
-      pendingMessages.push(message);
+  for (const rawMessage of stored.pendingMessages) {
+    const message = normalizeMessage(rawMessage);
+    if (!message || message.conversationId !== conversationId) {
+      return undefined;
     }
-    pendingMessages.sort(compareMessages);
+    pendingMessages.push(message);
   }
-  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
-    ? uniqueStrings(
-        value.inboundMessageIds
-          .map((id) => (typeof id === "string" ? id : undefined))
-          .filter((id): id is string => Boolean(id)),
-      )
-    : [];
+  pendingMessages.sort(compareMessages);
+  const inboundMessageIds = uniqueStrings(
+    stored.inboundMessageIds.filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    ),
+  );
+  const messageSenders = withMessageSenders(
+    normalizeMessageSenders(stored.messageSenders),
+    pendingMessages,
+  );
+  // Held input that is no longer pending was saved by its Turn.
+  const heldInboundMessageIds = stored.heldInboundMessageIds?.filter((id) =>
+    pendingMessages.some((message) => message.inboundMessageId === id),
+  );
 
   return {
     status,
@@ -501,42 +551,53 @@ function normalizeExecution(
       ...inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    lease: normalizeLease(value.lease),
-    lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
-    lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
-    lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
-    retryCount: toOptionalNumber(value.retryCount),
-    runId: toOptionalString(value.runId),
-    updatedAtMs: toOptionalNumber(value.updatedAtMs),
+    lease: normalizeLease(stored.lease),
+    ...(heldInboundMessageIds?.length ? { heldInboundMessageIds } : undefined),
+    lastCheckpointAtMs: stored.lastCheckpointAtMs,
+    lastEnqueuedAtMs: stored.lastEnqueuedAtMs,
+    lastProgressAtMs: stored.lastProgressAtMs,
+    retryCount: stored.retryCount,
+    runId: stored.runId,
+    updatedAtMs: stored.updatedAtMs,
   };
 }
+
+const storedConversationSchema = z.object({
+  schemaVersion: z.literal(CONVERSATION_SCHEMA_VERSION),
+  conversationId: storedNonEmptyStringSchema,
+  createdAtMs: z.number(),
+  lastActivityAtMs: z.number(),
+  updatedAtMs: z.number(),
+  execution: z.unknown().optional(),
+  destination: z.unknown().optional(),
+  title: storedOptionalStringSchema,
+  channelName: storedOptionalStringSchema,
+  actor: z.unknown().optional(),
+  source: z.unknown().optional(),
+});
 
 /** Decode current conversation records. */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): ConversationExecutionState | undefined {
-  if (!isRecord(value) || value.schemaVersion !== CONVERSATION_SCHEMA_VERSION) {
+  const parsed = storedConversationSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const storedConversationId = toOptionalString(value.conversationId);
-  const createdAtMs = toOptionalNumber(value.createdAtMs);
-  const lastActivityAtMs = toOptionalNumber(value.lastActivityAtMs);
-  const updatedAtMs = toOptionalNumber(value.updatedAtMs);
-  const execution = normalizeExecution(conversationId, value.execution);
+  const stored = parsed.data;
+  const execution = normalizeExecution(conversationId, stored.execution);
   const destination =
-    value.destination === undefined
+    stored.destination === undefined
       ? undefined
-      : parseDestination(value.destination);
+      : parseDestination(stored.destination);
   if (
-    storedConversationId !== conversationId ||
-    typeof createdAtMs !== "number" ||
-    typeof lastActivityAtMs !== "number" ||
-    typeof updatedAtMs !== "number" ||
+    stored.conversationId !== conversationId ||
     !execution ||
-    (value.destination !== undefined && !destination)
+    (stored.destination !== undefined && !destination)
   ) {
     return undefined;
   }
@@ -556,31 +617,27 @@ function normalizeConversation(
   return {
     schemaVersion: CONVERSATION_SCHEMA_VERSION,
     conversationId,
-    createdAtMs,
-    lastActivityAtMs,
-    updatedAtMs,
+    createdAtMs: stored.createdAtMs,
+    lastActivityAtMs: stored.lastActivityAtMs,
+    updatedAtMs: stored.updatedAtMs,
     execution,
     ...(destination ? { destination } : undefined),
-    ...(toOptionalString(value.title)
-      ? { title: toOptionalString(value.title) }
+    ...(stored.title ? { title: stored.title } : undefined),
+    ...(stored.channelName ? { channelName: stored.channelName } : undefined),
+    ...(normalizeActor(stored.actor)
+      ? { actor: normalizeActor(stored.actor) }
       : undefined),
-    ...(toOptionalString(value.channelName)
-      ? { channelName: toOptionalString(value.channelName) }
-      : undefined),
-    ...(normalizeActor(value.actor)
-      ? { actor: normalizeActor(value.actor) }
-      : undefined),
-    ...(normalizeSource(value.source)
-      ? { source: normalizeSource(value.source) }
+    ...(normalizeSource(stored.source)
+      ? { source: normalizeSource(stored.source) }
       : undefined),
   };
 }
 
 function emptyConversation(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   nowMs: number;
-  source?: Source;
+  source?: Source | undefined;
 }): ConversationExecutionState {
   return {
     schemaVersion: CONVERSATION_SCHEMA_VERSION,
@@ -648,12 +705,17 @@ function executionWithPendingMessages(
   pending: InboundMessage[],
 ): ConversationExecution {
   const pendingMessages = [...pending].sort(compareMessages);
+  const messageSenders = withMessageSenders(
+    execution.messageSenders,
+    pendingMessages,
+  );
   return {
     ...execution,
     inboundMessageIds: uniqueStrings([
       ...execution.inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingMessages,
     pendingCount: pendingMessages.length,
   };
@@ -697,6 +759,7 @@ async function withIndexLock<T>(
   const startedAtMs = now();
   let lock: Lock | null;
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the index lock is free.
     lock = await state.acquireLock(
       indexLockKey(indexKey),
       CONVERSATION_INDEX_LOCK_TTL_MS,
@@ -709,6 +772,7 @@ async function withIndexLock<T>(
         `Could not acquire conversation index lock for ${indexKey}`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
     await sleep(CONVERSATION_INDEX_LOCK_RETRY_MS);
   }
   try {
@@ -718,18 +782,16 @@ async function withIndexLock<T>(
   }
 }
 
+const storedIndexEntrySchema = z.object({
+  conversationId: storedNonEmptyStringSchema,
+  score: z.number(),
+});
+
 function normalizeIndexEntry(
   value: unknown,
 ): ConversationIndexEntry | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const conversationId = toOptionalString(value.conversationId);
-  const score = toOptionalNumber(value.score);
-  if (!conversationId || typeof score !== "number") {
-    return undefined;
-  }
-  return { conversationId, score };
+  const parsed = storedIndexEntrySchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function uniqueIndexEntries(value: unknown): ConversationIndexEntry[] {
@@ -777,10 +839,8 @@ function parseRedisIndexEntries(values: unknown): ConversationIndexEntry[] {
   const entries: ConversationIndexEntry[] = [];
   for (let index = 0; index < values.length; index += 2) {
     const conversationId = toOptionalString(values[index]);
-    const score =
-      typeof values[index + 1] === "number"
-        ? values[index + 1]
-        : Number(values[index + 1]);
+    const rawScore: unknown = values[index + 1];
+    const score = typeof rawScore === "number" ? rawScore : Number(rawScore);
     if (!conversationId || !Number.isFinite(score)) {
       continue;
     }
@@ -974,6 +1034,7 @@ async function acquireMutationLock(
 ): Promise<Lock> {
   const startedAtMs = now();
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the mutation lock is free.
     const lock = await state.acquireLock(
       mutationLockKey(conversationId),
       CONVERSATION_MUTATION_LOCK_TTL_MS,
@@ -986,6 +1047,7 @@ async function acquireMutationLock(
         `Could not acquire conversation mutation lock for ${conversationId}`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
     await sleep(CONVERSATION_MUTATION_RETRY_MS);
   }
 }
@@ -993,7 +1055,7 @@ async function acquireMutationLock(
 async function withConversationMutation<T>(
   args: {
     conversationId: string;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   },
   callback: (state: StateAdapter, lock: Lock) => Promise<T>,
 ): Promise<T> {
@@ -1150,13 +1212,16 @@ function conversationWorkState(
       : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
+    runningInboundMessageIds: isLeaseActive(lease, now())
+      ? [...(lease?.attemptInboundMessageIds ?? [])]
+      : [],
   };
 }
 
 /** Return a persisted conversation record, if one exists. */
 export async function getConversation(args: {
   conversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<ConversationExecutionState | undefined> {
   const state = await getConnectedState(args.state);
   return await readConversation(state, args.conversationId);
@@ -1165,7 +1230,7 @@ export async function getConversation(args: {
 /** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<ConversationWorkState | undefined> {
   const conversation = await getConversation(args);
   return conversation ? conversationWorkState(conversation) : undefined;
@@ -1240,8 +1305,8 @@ async function appendInboundMessageWithAdmission(args: {
   exclusive: boolean;
   message: InboundMessage;
   nowMs?: number;
-  renderText?: RenderInboundText;
-  state?: StateAdapter;
+  renderText?: RenderInboundText | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<AppendExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(
@@ -1286,7 +1351,10 @@ async function appendInboundMessageWithAdmission(args: {
         return { status: "active" };
       }
       const text = args.renderText
-        ? await args.renderText(current.execution.inboundMessageIds)
+        ? await args.renderText(
+            current.execution.inboundMessageIds,
+            current.execution.messageSenders ?? {},
+          )
         : args.message.input.text;
       if (text === undefined) {
         // Record the id, so a repeat append of the dropped message is a
@@ -1302,6 +1370,10 @@ async function appendInboundMessageWithAdmission(args: {
                 ...current.execution.inboundMessageIds,
                 args.message.inboundMessageId,
               ],
+              messageSenders: withMessageSenders(
+                current.execution.messageSenders,
+                [args.message],
+              ),
             },
             nowMs,
           ),
@@ -1318,7 +1390,8 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        args.message.delivery === "defer"
+        // Input that cannot start its own attempt waits for the yielded Turn.
+        !isAttemptInterrupt(args.message, current)
       ) {
         status = "paused";
       } else {
@@ -1356,21 +1429,32 @@ async function appendInboundMessageWithAdmission(args: {
 }
 
 /**
+ * Ends what a conversation owns before its work stops for good. It runs
+ * under the conversation lock, before the stop is written.
+ */
+export type BeforeWorkStops = (
+  conversationId: string,
+  inboundMessageIds: readonly string[],
+) => Promise<void>;
+
+/**
  * Render the text of one inbound message from the ids that already reached
- * its mailbox. It runs under the mailbox lock, so two appends that depend on
- * each other see each other. Undefined drops the message for good: its id
- * is recorded and nothing is appended, as for a duplicate.
+ * its mailbox and their sender fields. It runs under the mailbox lock, so two
+ * appends that depend on each other see each other. Undefined drops the
+ * message for good: its id is recorded and nothing is appended, as for a
+ * duplicate.
  */
 export type RenderInboundText = (
   inboundMessageIds: readonly string[],
+  messageSenders: Readonly<InboundMessageSenders>,
 ) => Promise<string | undefined>;
 
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {
   message: InboundMessage;
   nowMs?: number;
-  renderText?: RenderInboundText;
-  state?: StateAdapter;
+  renderText?: RenderInboundText | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<AppendInboundMessageResult> {
   const result = await appendInboundMessageWithAdmission({
     ...args,
@@ -1393,7 +1477,7 @@ export async function appendInboundMessage(args: {
 export async function claimInboundMessage(args: {
   message: InboundMessageClaim;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<ClaimInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   // Set once the duplicate check passes. From then on a throw may come after
@@ -1457,7 +1541,7 @@ export async function claimInboundMessage(args: {
 export async function releaseInboundMessage(args: {
   message: InboundMessageClaim;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const nowMs = args.nowMs ?? now();
   const id = args.message.inboundMessageId;
@@ -1503,7 +1587,7 @@ export async function releaseInboundMessage(args: {
 export async function appendExclusiveInboundMessage(args: {
   message: InboundMessage;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AppendExclusiveInboundMessageResult> {
   return await appendInboundMessageWithAdmission({
     ...args,
@@ -1514,9 +1598,9 @@ export async function appendExclusiveInboundMessage(args: {
 /** Mark a conversation runnable when there is no new mailbox message. */
 export async function requestConversationWork(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<RequestConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -1558,12 +1642,12 @@ export async function requestConversationWork(args: {
 /** Record visible conversation activity without making the conversation runnable. */
 export async function recordConversationActivity(args: {
   activityAtMs?: number;
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   nowMs?: number;
-  actor?: StoredSlackActor;
-  source?: Source;
+  actor?: StoredSlackActor | undefined;
+  source?: Source | undefined;
   state?: StateAdapter;
   title?: string;
 }): Promise<void> {
@@ -1630,12 +1714,7 @@ export async function moveIdleConversationDestination(args: {
 }): Promise<"busy" | "moved" | "not_moved"> {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
-    if (
-      existing &&
-      (existing.execution.lease ||
-        existing.execution.status === "running" ||
-        existing.execution.status === "paused")
-    ) {
+    if (existing && isHeldByRun(existing)) {
       return "busy";
     }
     if (!(await args.move())) return "not_moved";
@@ -1655,11 +1734,89 @@ export async function moveIdleConversationDestination(args: {
   });
 }
 
+/**
+ * Run `work` while no Run holds the Conversation and no work waits for one.
+ * A Run takes its lease under the same mutation lock, so none can start until
+ * `work` ends. Returns `busy` without calling `work` when a Run holds the
+ * Conversation or work waits, such as a pending mailbox message: that Run
+ * reads the history next, so `work` must not change it first. `work` calls
+ * `fence` right before its durable write; it throws when the lock expired.
+ */
+export async function withIdleConversation<T>(
+  args: { conversationId: string; state?: StateAdapter },
+  work: (fence: () => Promise<void>) => Promise<T>,
+): Promise<T | "busy"> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && (isHeldByRun(existing) || hasRunnableWork(existing))) {
+      return "busy";
+    }
+    return await work(() =>
+      fenceConversationMutation(state, lock, args.conversationId),
+    );
+  });
+}
+
+function isHeldByRun(conversation: ConversationExecutionState): boolean {
+  return (
+    conversation.execution.lease !== undefined ||
+    conversation.execution.status === "running" ||
+    conversation.execution.status === "paused"
+  );
+}
+
+/**
+ * Store one Destination move until the Run that holds the Conversation ends.
+ *
+ * The first stored move wins: a later call gets it back. With no Run, this
+ * stores nothing and returns `idle`, so the caller moves now.
+ */
+export async function deferConversationMove(args: {
+  conversationId: string;
+  move: unknown;
+  state?: StateAdapter;
+}): Promise<{ status: "idle" } | { move: unknown; status: "deferred" }> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (!existing || !isHeldByRun(existing)) return { status: "idle" };
+    const key = deferredMoveKey(args.conversationId);
+    const stored = await state.get(key);
+    if (stored !== null) return { move: stored, status: "deferred" };
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.set(key, args.move, JUNIOR_THREAD_STATE_TTL_MS);
+    return { move: args.move, status: "deferred" };
+  });
+}
+
+/**
+ * Remove and return the deferred move once no Run holds the Conversation.
+ * The caller runs it, and defers it again when a new Run started first.
+ */
+export async function takeDeferredConversationMove(args: {
+  conversationId: string;
+  state?: StateAdapter | undefined;
+}): Promise<unknown> {
+  const key = deferredMoveKey(args.conversationId);
+  // Almost every Run ends with no deferred move. Skip the lock for those.
+  if ((await (await getConnectedState(args.state)).get(key)) === null) {
+    return undefined;
+  }
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && isHeldByRun(existing)) return undefined;
+    const stored = await state.get(key);
+    if (stored === null) return undefined;
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.delete(key);
+    return stored;
+  });
+}
+
 /** Record that a wake-up nudge was accepted for the conversation. */
 export async function markConversationWorkEnqueued(args: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const nowMs = args.nowMs ?? now();
   await withConversationMutation(args, async (state, lock) => {
@@ -1686,7 +1843,7 @@ export async function markConversationWorkEnqueued(args: {
 export async function clearConsumedConversationWake(args: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -1718,7 +1875,7 @@ export async function clearConsumedConversationWake(args: {
 export async function startConversationWork(args: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<StartConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -1772,7 +1929,7 @@ export async function checkInConversationWork(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -1811,7 +1968,7 @@ export async function drainConversationMailbox(args: {
   handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<{ changed: boolean; messages: InboundMessage[] }> {
   const nowMs = args.nowMs ?? now();
   const pending = await withConversationMutation(args, async (state) => {
@@ -1889,7 +2046,7 @@ export async function ackMessages(args: {
   inboundMessageIds: string[];
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   const inboundMessageIds = new Set(args.inboundMessageIds);
@@ -1948,7 +2105,7 @@ async function fenceConversationMutation(
 export async function hasConversationStop(args: {
   conversationId: string;
   runId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const state = await getConnectedState(args.state);
   return (
@@ -1962,8 +2119,8 @@ export async function stopConversationWork(args: {
   conversationId: string;
   nowMs?: number;
   /** Stop only person input sent at or before this time. */
-  sentAtOrBeforeMs?: number;
-  state?: StateAdapter;
+  sentAtOrBeforeMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<StopConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2005,7 +2162,7 @@ export async function completeConversationStop(args: {
   leaseToken: string;
   nowMs?: number;
   runId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<CompleteConversationStopResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2093,7 +2250,7 @@ export async function dropPendingMessages(args: {
   conversationId: string;
   inboundMessageIds: readonly string[];
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<string[]> {
   const ids = new Set(args.inboundMessageIds);
   const dropped = await removePendingMessages(args, (message) =>
@@ -2102,8 +2259,157 @@ export async function dropPendingMessages(args: {
   return dropped.map((message) => message.inboundMessageId);
 }
 
+/** Outcome of claiming the input of the attempt that a lease holder starts. */
+export type ClaimConversationAttemptResult =
+  | { status: "claimed" }
+  | { status: "reselect" }
+  | { status: "held"; messages: InboundMessage[]; pendingCount: number };
+
+/**
+ * Record the input of the attempt that the lease holder starts. Returns
+ * `reselect` when the lease is lost or a stop already took some of the input.
+ * Returns `held` with the input that a stop held from an attempt that ended
+ * without saving it, so the worker saves it as held before it selects again.
+ */
+export async function claimConversationAttempt(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<ClaimConversationAttemptResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    const lease = current?.execution.lease;
+    if (!current || !lease || lease.token !== args.leaseToken) {
+      return { status: "reselect" };
+    }
+    const heldIds = new Set(current.execution.heldInboundMessageIds);
+    if (heldIds.size > 0) {
+      const messages = current.execution.pendingMessages.filter((message) =>
+        heldIds.has(message.inboundMessageId),
+      );
+      const pendingMessages = current.execution.pendingMessages.filter(
+        (message) => !heldIds.has(message.inboundMessageId),
+      );
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            heldInboundMessageIds: undefined,
+            pendingMessages,
+          },
+          nowMs,
+        ),
+      );
+      return {
+        status: "held",
+        messages,
+        pendingCount: pendingMessages.length,
+      };
+    }
+    const pendingIds = new Set(
+      current.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
+    );
+    if (!args.inboundMessageIds.every((id) => pendingIds.has(id))) {
+      return { status: "reselect" };
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lease: {
+            ...lease,
+            attemptInboundMessageIds: [...args.inboundMessageIds],
+          },
+        },
+        nowMs,
+      ),
+    );
+    return { status: "claimed" };
+  });
+}
+
+/**
+ * Remove the pending Event input of a Conversation and return it, so a stop
+ * can hold input that reached the mailbox before it. The input of a running
+ * attempt stays and is marked held: that Turn saves it, or the next claim
+ * holds it.
+ */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return [];
+    }
+    const lease = current.execution.lease;
+    const runningIds = new Set(
+      isLeaseActive(lease, nowMs) ? lease?.attemptInboundMessageIds : [],
+    );
+    const events = current.execution.pendingMessages.filter(
+      (message) => message.source === "event",
+    );
+    const removed = events.filter(
+      (message) => !runningIds.has(message.inboundMessageId),
+    );
+    const held = events
+      .filter((message) => runningIds.has(message.inboundMessageId))
+      .map((message) => message.inboundMessageId);
+    if (removed.length === 0 && held.length === 0) {
+      return [];
+    }
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !removed.includes(message),
+    );
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          heldInboundMessageIds: uniqueStrings([
+            ...(current.execution.heldInboundMessageIds ?? []),
+            ...held,
+          ]),
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
+        },
+        nowMs,
+      ),
+    );
+    return removed;
+  });
+}
+
 async function removePendingMessages(
-  args: { conversationId: string; nowMs?: number; state?: StateAdapter },
+  args: {
+    conversationId: string;
+    nowMs?: number;
+    state?: StateAdapter | undefined;
+  },
   shouldRemove: (message: InboundMessage) => boolean,
 ): Promise<InboundMessage[]> {
   const nowMs = args.nowMs ?? now();
@@ -2201,10 +2507,10 @@ export async function steerWebPendingMessages(args: {
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2238,7 +2544,7 @@ export async function beginConversationResume(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2271,7 +2577,7 @@ export async function releaseConversationWork(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2301,10 +2607,11 @@ export async function releaseConversationWork(args: {
 
 /** Count one failed execution attempt and stop the conversation when retries are exhausted. */
 export async function recordConversationRetry(args: {
+  beforeWorkStops?: BeforeWorkStops | undefined;
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<"lost_lease" | "recorded" | "stopped"> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2314,6 +2621,15 @@ export async function recordConversationRetry(args: {
     }
     const count = (current.execution.retryCount ?? 0) + 1;
     const stopped = count >= CONVERSATION_WORK_MAX_RETRIES;
+    if (stopped) {
+      // Runs under the lock, as in `clearExpiredConversationLease`. When it
+      // throws, the work keeps its lease, so a later attempt or the
+      // heartbeat stops it.
+      await args.beforeWorkStops?.(
+        args.conversationId,
+        current.execution.inboundMessageIds,
+      );
+    }
     await writeConversation(
       state,
       lock,
@@ -2343,7 +2659,7 @@ export async function completeConversationWork(args: {
   nowMs?: number;
   /** Keep a raced stop runnable after a stop-aware adapter returns. */
   resumeIfStopped?: boolean;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<"completed" | "lost_lease" | "pending"> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2407,7 +2723,7 @@ export async function recordAttemptFailure(args: {
   inboundMessageIds: string[];
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AttemptFailure> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2491,7 +2807,7 @@ export async function deadLetterAttempt(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<"failed" | "lost_lease" | "pending"> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2520,13 +2836,10 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: BeforeWorkStops | undefined;
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<"not_expired" | "requeued" | "stopped"> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
@@ -2598,7 +2911,7 @@ export async function deleteConversationState(args: {
  */
 export async function pruneActiveConversation(args: {
   conversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   await withConversationMutation(args, async (state) => {
     let current: ConversationExecutionState | undefined;
@@ -2625,7 +2938,7 @@ export async function listActiveConversationIds(
   args: {
     limit?: number;
     staleBeforeMs?: number;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   } = {},
 ): Promise<string[]> {
   const state = await getConnectedState(args.state);
@@ -2655,21 +2968,29 @@ export async function listConversationsByActivity(
     offset: args.offset,
     order: "desc",
   });
-  const conversations: ConversationExecutionState[] = [];
-  for (const entry of entries) {
+  const reads = await mapBounded(entries, async (entry) => {
     try {
-      const conversation = await readConversation(state, entry.conversationId);
-      if (conversation) {
-        conversations.push(conversation);
-      }
+      return {
+        conversation: await readConversation(state, entry.conversationId),
+        entry,
+      };
     } catch (error) {
       if (!(error instanceof InvalidConversationRecordError)) {
         throw error;
       }
+      return { conversation: undefined, entry, invalid: true };
+    }
+  });
+  const conversations: ConversationExecutionState[] = [];
+  for (const read of reads) {
+    if (read.conversation) {
+      conversations.push(read.conversation);
+    } else if ("invalid" in read) {
+      // oxlint-disable-next-line no-await-in-loop -- Each removal takes the shared index lock.
       await removeIndexEntry({
         state,
         indexKey: CONVERSATION_BY_ACTIVITY_INDEX_KEY,
-        conversationId: entry.conversationId,
+        conversationId: read.entry.conversationId,
       });
     }
   }

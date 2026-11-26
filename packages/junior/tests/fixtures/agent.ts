@@ -1,14 +1,14 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { vi } from "vitest";
 import type { BotConfig } from "@/chat/config";
 import { botConfig } from "@/chat/config";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createConversationWebHarness } from "./conversation";
 import { createModelStream } from "./model-stream";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 type ModelInput = Pick<Context, "systemPrompt"> & { messages: Message[] };
 
@@ -29,7 +29,7 @@ type AgentFixtureOptions = {
   botConfig?: Partial<BotConfig>;
   previousTurns?: PreviousTurn[];
   responses?: string[];
-  modelStream?: StreamFn;
+  modelStream?: AgentRequestStreamFn;
 };
 
 /**
@@ -60,7 +60,7 @@ export async function createAgent(
   const agent: AgentFixture = {
     async agentHistory() {
       if (!conversationId) throw new Error("No conversation to inspect");
-      return await loadProjection({ conversationId });
+      return (await loadConversationProjection({ conversationId })).messages;
     },
     conversationId() {
       if (!conversationId) throw new Error("No conversation to inspect");

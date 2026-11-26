@@ -6,8 +6,6 @@ import type {
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatRuntime,
-  formatTime,
   formatTokenSummary,
   summarizeCost,
   summarizeModelCost,
@@ -27,6 +25,7 @@ import {
   type UsageCardSection,
   type UsageCardSplit,
 } from "./UsageCard";
+import { formatRuntime, formatTime } from "../time";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -328,18 +327,25 @@ export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
+    "junior/conversation_embedding": "Conversation embedding",
+    "junior/conversation_metadata": "Conversation metadata",
     "junior/cache_warmup": "Cache warmup",
     "junior/compaction": "Compaction",
     "junior/conversation_catch_up": "Catch-up",
+    "junior/conversation_search_embedding": "Conversation search",
     "junior/conversation_title": "Conversation title",
     "junior/guardian_action_reviewed": "Guardian",
+    "junior/image_generation": "Image generation",
     "junior/image_prompt_enrichment": "Image prompt",
     "junior/passive_reply_routed": "Passive reply routing",
-    "junior/review_item_reply_match": "Review reply matching",
+    "junior/inbox_item_reply_match": "Review reply matching",
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
+    "junior/tool_search_rerank": "Tool search",
+    "junior/transcription": "Transcription",
     "junior/turn_routed": "Thinking routing",
     "junior/vision_summary": "Image summary",
+    "junior/web_search": "Web search",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
     "memory/task_model_called": "Memory extraction",
@@ -355,13 +361,13 @@ export function auxiliaryOperationLabel(
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
-  auxiliaryCosts?: ConversationAuxiliaryCosts;
-  childAgentTotals?: ConversationChildAgentTotals;
+  auxiliaryCosts?: ConversationAuxiliaryCosts | undefined;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: CostUsageSummary | undefined;
-  tooltipPlacement?: "above" | "below";
+  tooltipPlacement?: "above" | "below" | undefined;
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -397,11 +403,11 @@ export function CostMetric(props: {
 /** Render total token usage with a hoverable breakdown. */
 export function TokenMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
-  compactionCount?: number;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
+  compactionCount?: number | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: TokenUsageSummary | undefined;
 }) {
   if (!props.summary) return null;
@@ -430,7 +436,7 @@ export function TokenMetric(props: {
 /** Render a duration value with start/end timestamps in the tooltip. */
 export function DurationMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   durationMs?: number;
   endedAt?: string;
   label: string;

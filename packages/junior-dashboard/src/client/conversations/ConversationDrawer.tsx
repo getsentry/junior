@@ -5,11 +5,7 @@ import { Link } from "react-router";
 import { ChildAgentTags } from "./ChildAgentTags";
 import { useConversationData } from "./queries";
 import { conversationPath } from "./conversationRoutes";
-import {
-  conversationDetailTitle,
-  formatMessageTimestamp,
-  formatRelativeMessageTimestamp,
-} from "../format";
+import { conversationDetailTitle } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -26,6 +22,7 @@ import { TranscriptLoading } from "./TranscriptLoading";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import { useTranscriptSearchMatch } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { formatMessageTimestamp, formatRelativeTime } from "../time";
 
 /** One Conversation to show, with what the page that opens it already knows. */
 export interface ConversationDrawerTarget {
@@ -33,7 +30,7 @@ export interface ConversationDrawerTarget {
   agentName?: string;
   conversationId: string;
   /** Task title or agent name, shown before the child loads. */
-  label?: string;
+  label?: string | undefined;
   /** When the opener's work started, such as a run. Defaults to the
    * Conversation start, which can be much earlier. */
   startedAt?: string;
@@ -192,7 +189,7 @@ function ConversationDrawerContent(
                 dateTime={startedAtIso}
                 title={formatMessageTimestamp(startedAt, true)}
               >
-                Started {formatRelativeMessageTimestamp(startedAt)}
+                Started {formatRelativeTime(startedAt)}
               </time>
             ) : null}
             <Link
@@ -225,8 +222,8 @@ function ConversationDrawerContent(
             Conversation failed to load.
           </AlertTitle>
           <AlertDescription className="leading-relaxed">
-            Junior could not get this conversation. Use Open conversation to
-            view it on its own page.
+            Could not load this conversation. Use Open conversation to view it
+            on its own page.
           </AlertDescription>
         </Alert>
       ) : detail ? (
@@ -238,7 +235,6 @@ function ConversationDrawerContent(
           loadingPreviousPage={query.isLoadingPreviousPage}
           onLoadPreviousPage={query.loadPreviousPage}
           search={search}
-          onSearchChange={setSearch}
           searchMatch={searchMatch.index}
           onSearchMatches={searchMatch.setMatches}
           transcript={detail}
@@ -255,7 +251,12 @@ function statusLabel(
   status: string | undefined,
   detailStatus: string | undefined,
 ): string | undefined {
-  if (status && status !== "running" && status !== "completed") {
+  if (
+    status &&
+    status !== "running" &&
+    status !== "completed" &&
+    status !== "done"
+  ) {
     return status;
   }
   return detailStatus ?? status;

@@ -1,0 +1,790 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "4b7d91df-2a2e-4e0d-89b4-fd28f23c3ad4",
+  "prevIds": ["038a9228-d00e-4ad2-8253-91d80403c025"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|tbl|public.junior_automations",
+        "n|tbl|public.junior_automations",
+        "e|tbl|public.junior_automations",
+        "n|rel|public.junior_automations",
+        "n|type|public.junior_automations",
+        "n|rel|public.junior_automations_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "alter_pk",
+      "statementTarget": ["table", "public", "junior_automation_versions"],
+      "writes": ["s|pk|public.junior_automation_versions"],
+      "reads": [
+        "n|tbl|public.junior_automation_versions",
+        "n|sch|public",
+        "n|col|public.junior_automation_versions.automation_id",
+        "n|col|public.junior_automation_versions.version"
+      ],
+      "sharedWrites": [
+        "e|uniqueness|public.junior_automation_versions.automation_id.kind.version"
+      ],
+      "sqlHash": "c280110a10c62f03"
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automation_versions",
+        "kind"
+      ],
+      "writes": ["s|colprop|public.junior_automation_versions.kind.notNull"],
+      "reads": [
+        "n|tbl|public.junior_automation_versions",
+        "n|sch|public",
+        "n|col|public.junior_automation_versions.kind"
+      ],
+      "sqlHash": "dc921cda5c9458df"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_team_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_team_idx",
+        "n|idx|public.junior_automations_team_idx",
+        "e|idx|public.junior_automations_team_idx",
+        "n|rel|public.junior_automations_team_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.team_id",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_idx",
+        "n|idx|public.junior_automations_creator_idx",
+        "e|idx|public.junior_automations_creator_idx",
+        "n|rel|public.junior_automations_creator_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.team_id",
+        "n|col|public.junior_automations.creator_slack_user_id",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_creator_identity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_creator_identity_idx",
+        "n|idx|public.junior_automations_creator_identity_idx",
+        "e|idx|public.junior_automations_creator_identity_idx",
+        "n|rel|public.junior_automations_creator_identity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.creator_identity_id",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_run_now_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_run_now_due_idx",
+        "n|idx|public.junior_automations_run_now_due_idx",
+        "e|idx|public.junior_automations_run_now_due_idx",
+        "n|rel|public.junior_automations_run_now_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.run_now_at_ms",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_next_run_due_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_next_run_due_idx",
+        "n|idx|public.junior_automations_next_run_due_idx",
+        "e|idx|public.junior_automations_next_run_due_idx",
+        "n|rel|public.junior_automations_next_run_due_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.next_run_at_ms",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_match_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_match_idx",
+        "n|idx|public.junior_automations_match_idx",
+        "e|idx|public.junior_automations_match_idx",
+        "n|rel|public.junior_automations_match_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automations.namespace",
+        "n|col|public.junior_automations.identifier",
+        "n|col|public.junior_automations.created_at_ms",
+        "n|col|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automation_versions"],
+      "writes": [
+        "s|fk|public.junior_automation_versions.junior_automation_versions_automation_id_fk",
+        "n|fk|public.junior_automation_versions.junior_automation_versions_automation_id_fk",
+        "e|fk|public.junior_automation_versions.junior_automation_versions_automation_id_fk",
+        "n|con|public.junior_automation_versions.junior_automation_versions_automation_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_versions",
+        "n|sch|public",
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automation_versions.automation_id",
+        "n|col|public.junior_automations.id",
+        "e|uniqueness|public.junior_automations.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_automations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "team_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "channel_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "creator_slack_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "creator_identity_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "status_reason",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "instruction",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "next_run_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "run_now_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "namespace",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "identifier",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "record",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_team_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_creator_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "team_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "creator_slack_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_creator_identity_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "creator_identity_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"creator_identity_id\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_run_now_due_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "run_now_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"run_now_at_ms\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_next_run_due_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "next_run_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"next_run_at_ms\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_match_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "namespace",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "identifier",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_versions",
+        "name": "junior_automation_versions_automation_id_fk",
+        "nameExplicit": true,
+        "columns": ["automation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_automations",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_kind_check",
+        "value": "\"junior_automations\".\"kind\" in ('scheduled', 'event')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_status_check",
+        "value": "\"junior_automations\".\"status\" in ('active', 'blocked', 'paused', 'completed', 'deleted')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_record_check",
+        "value": "jsonb_typeof(\"junior_automations\".\"record\") = 'object'",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_trigger_check",
+        "value": "(\"junior_automations\".\"kind\" = 'scheduled' and \"junior_automations\".\"namespace\" is null and \"junior_automations\".\"identifier\" is null) or (\"junior_automations\".\"kind\" = 'event' and \"junior_automations\".\"namespace\" is not null and \"junior_automations\".\"identifier\" is not null and \"junior_automations\".\"next_run_at_ms\" is null and \"junior_automations\".\"run_now_at_ms\" is null and \"junior_automations\".\"status\" <> 'completed')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_automation_versions\",\"kind\"]",
+      "set": {
+        "notNull": false
+      }
+    },
+    {
+      "op": "alter",
+      "key": "pks\u0000[\"public\",\"junior_automation_versions\",\"junior_automation_versions_pk\"]",
+      "set": {
+        "columns": ["automation_id", "version"]
+      }
+    }
+  ]
+}

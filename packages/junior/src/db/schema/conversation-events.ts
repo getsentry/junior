@@ -51,7 +51,7 @@ export const juniorConversationEvents = pgTable(
       columns: [table.conversationId, table.seq],
     }),
     foreignKey({
-      name: "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk",
+      name: "junior_conversation_events_conversation_id_junior_conversations",
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }),
@@ -76,6 +76,11 @@ export const juniorConversationEvents = pgTable(
     index("junior_conversation_events_guardian_review_time_idx")
       .on(table.createdAt)
       .where(sql`${table.type} = 'guardian_action_reviewed'`),
+    // Recent authorization requests of one Conversation. Few events are
+    // requests, so a Conversation with none reads one small index page.
+    index("junior_conversation_events_authorization_request_idx")
+      .on(table.conversationId, table.createdAt)
+      .where(sql`${table.type} = 'authorization_requested'`),
     // Reads of one plugin event in one Conversation. Postgres ignores the
     // statistics of partial expression indexes, so without this index it
     // reads the plugin_report_idx rows of every Conversation.
@@ -107,6 +112,13 @@ export const juniorConversationEvents = pgTable(
         table.createdAt,
         table.seq,
       )
+      .where(sql`${table.type} = 'message'`),
+    // The newest Message with one role in transcript order, for status.
+    // A newest-first read stops at the first entry; in message_role_idx
+    // `created_at` comes before `seq`, so that read sorts every Message of
+    // the role.
+    index("junior_conversation_events_message_role_seq_idx")
+      .on(table.conversationId, sql`(${table.payload}->>'role')`, table.seq)
       .where(sql`${table.type} = 'message'`),
     // The newest user instruction, for each listed Conversation. With the
     // provenance check in the predicate, a newest-first read stops at the

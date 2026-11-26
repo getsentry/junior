@@ -18,17 +18,16 @@ import {
 } from "./check-suite.js";
 import {
   definedValues,
-  gitHubDoneBy,
+  gitHubEventAuthor,
   gitHubEventKey,
-  gitHubSenderData,
   gitHubSenderSchema,
+  type GitHubAuthorOptions,
   nonBlank,
   providerTime,
   pullRequestTargets,
   titleAndBodyText,
 } from "./event-targets.js";
 import { normalizeIssueUpdateEvents } from "./issue-update.js";
-import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
   GitHubCheckSuiteFacts,
@@ -301,23 +300,6 @@ const commentAuthorDataSchema = z.object({
   senderLogin: z.string().min(1).optional(),
 });
 
-/**
- * Who wrote a comment or review, and whether its text mentions the bot.
- * `mentionsBot` is set only when the bot email is configured.
- */
-function commentAuthorData(input: {
-  botEmail: string | undefined;
-  sender: z.output<typeof gitHubSenderSchema> | undefined;
-  text: string | null | undefined;
-}) {
-  return {
-    mentionsBot: input.botEmail
-      ? mentionsBotLogin(input.text ?? "", input.botEmail)
-      : undefined,
-    ...gitHubSenderData(input.sender),
-  };
-}
-
 /** The pull request values that every pull request webhook sends. */
 const pullRequestSchema = z.object({
   draft: z.boolean().optional(),
@@ -400,18 +382,21 @@ const issueCommentWebhookSchema = z.object({
 function normalizeIssueCommentEvents(
   deliveryId: string,
   body: unknown,
-  botEmail: string | undefined,
+  authors: GitHubAuthorOptions,
 ): EventInput[] {
   const parsed = issueCommentWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "created") return [];
   const { comment, issue, sender } = parsed.data;
   const author = comment.user?.login;
-  if (isBotLogin(author, botEmail)) return [];
+  const writtenBy = gitHubEventAuthor(
+    { login: author, sender, text: comment.body },
+    authors,
+  );
+  if (writtenBy.isSelf) return [];
   const input = {
     number: issue.number,
     repo: parsed.data.repository.full_name,
   };
-  const writtenBy = commentAuthorData({ botEmail, sender, text: comment.body });
   if (issue.pull_request) {
     const eventType = "pull_request.comment.created";
     const resource = gitHubPullRequestResource(input);
@@ -422,17 +407,19 @@ function normalizeIssueCommentEvents(
         occurredAtMs: Date.now(),
         identifier: resource.identifier,
         trustedSummary: `${resource.label} received a comment${author ? ` from ${author}` : ""}.`,
-        ...gitHubDoneBy(author),
+        ...(writtenBy.author ? { author: writtenBy.author } : undefined),
         data: pullRequestEventData({
           comment: {
             commentId: comment.id,
             commentKind: "conversation",
-            ...writtenBy,
+            ...writtenBy.data,
           },
           pullRequest: issue,
           repo: input.repo,
         }),
-        untrustedText: comment.body,
+        ...(writtenBy.untrustedText
+          ? { untrustedText: writtenBy.untrustedText }
+          : undefined),
       },
       input.repo,
     );
@@ -444,7 +431,7 @@ function normalizeIssueCommentEvents(
     repo: input.repo,
     issue: input.number,
     commentId: comment.id,
-    ...writtenBy,
+    ...writtenBy.data,
   });
   return [issueResource, repository].map((resource) => ({
     eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
@@ -452,9 +439,11 @@ function normalizeIssueCommentEvents(
     occurredAtMs: Date.now(),
     identifier: resource.identifier,
     trustedSummary: `${issueResource.label} received a comment${author ? ` from ${author}` : ""}.`,
-    ...gitHubDoneBy(author),
+    ...(writtenBy.author ? { author: writtenBy.author } : undefined),
     data,
-    untrustedText: comment.body,
+    ...(writtenBy.untrustedText
+      ? { untrustedText: writtenBy.untrustedText }
+      : undefined),
   }));
 }
 
@@ -475,9 +464,9 @@ const issueWebhookSchema = z.object({
 function normalizeIssueEvents(
   deliveryId: string,
   body: unknown,
-  botEmail: string | undefined,
+  authors: GitHubAuthorOptions,
 ): EventInput[] {
-  const updates = normalizeIssueUpdateEvents(deliveryId, body, botEmail);
+  const updates = normalizeIssueUpdateEvents(deliveryId, body, authors);
   if (updates) return updates;
   const parsed = issueWebhookSchema.safeParse(body);
   if (!parsed.success) return [];
@@ -530,13 +519,17 @@ const pullRequestReviewCommentWebhookSchema = z.object({
 function normalizePullRequestReviewCommentEvent(
   deliveryId: string,
   body: unknown,
-  botEmail: string | undefined,
+  authors: GitHubAuthorOptions,
 ): EventInput[] {
   const parsed = pullRequestReviewCommentWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "created") return [];
   const { comment, pull_request: pullRequest, sender } = parsed.data;
   const author = comment.user?.login;
-  if (isBotLogin(author, botEmail)) return [];
+  const writtenBy = gitHubEventAuthor(
+    { login: author, sender, text: comment.body },
+    authors,
+  );
+  if (writtenBy.isSelf) return [];
   const eventType = "pull_request.review_comment.created";
   const repo = parsed.data.repository.full_name;
   const resource = gitHubPullRequestResource({
@@ -550,17 +543,19 @@ function normalizePullRequestReviewCommentEvent(
       occurredAtMs: Date.now(),
       identifier: resource.identifier,
       trustedSummary: `${resource.label} received an inline review comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
+      ...(writtenBy.author ? { author: writtenBy.author } : undefined),
       data: pullRequestEventData({
         comment: {
           commentId: comment.id,
           commentKind: "review",
-          ...commentAuthorData({ botEmail, sender, text: comment.body }),
+          ...writtenBy.data,
         },
         pullRequest,
         repo,
       }),
-      untrustedText: comment.body,
+      ...(writtenBy.untrustedText
+        ? { untrustedText: writtenBy.untrustedText }
+        : undefined),
     },
     repo,
   );
@@ -585,12 +580,17 @@ const pullRequestReviewWebhookSchema = z.object({
 function normalizePullRequestReviewEvent(
   deliveryId: string,
   body: unknown,
-  botEmail: string | undefined,
+  authors: GitHubAuthorOptions,
 ): EventInput[] {
   const parsed = pullRequestReviewWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "submitted") return [];
   const { pull_request: pullRequest, review, sender } = parsed.data;
-  if (isBotLogin(review.user?.login, botEmail)) return [];
+  const reviewer = review.user?.login;
+  const writtenBy = gitHubEventAuthor(
+    { login: reviewer, sender, text: review.body ?? null },
+    authors,
+  );
+  if (writtenBy.isSelf) return [];
   const reviewState = review.state.toUpperCase();
   const eventType =
     reviewState === "APPROVED"
@@ -606,7 +606,6 @@ function normalizePullRequestReviewEvent(
     number: pullRequest.number,
     repo,
   });
-  const reviewer = review.user?.login;
   const event: EventInput = {
     eventKey: gitHubEventKey(deliveryId, eventType),
     eventType,
@@ -618,18 +617,20 @@ function normalizePullRequestReviewEvent(
         : eventType === "pull_request.review.changes_requested"
           ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
-    ...gitHubDoneBy(reviewer),
+    ...(writtenBy.author ? { author: writtenBy.author } : undefined),
     data: pullRequestEventData({
       comment: {
         ...(review.id !== undefined && nonBlank(review.body)
           ? { commentId: review.id, commentKind: "review_body" as const }
           : undefined),
-        ...commentAuthorData({ botEmail, sender, text: review.body }),
+        ...writtenBy.data,
       },
       pullRequest,
       repo,
     }),
-    untrustedText: review.body ?? undefined,
+    ...(writtenBy.untrustedText
+      ? { untrustedText: writtenBy.untrustedText }
+      : undefined),
   };
   const events = pullRequestTargets(event, repo);
   if (eventType !== "pull_request.review.approved" || !nonBlank(review.body)) {
@@ -661,9 +662,12 @@ const pullRequestWebhookSchema = z.object({
     updated_at: z.string().optional(),
   }),
   repository: repositorySchema,
+  // A `review_requested` webhook names one person or one team.
+  requested_reviewer: z.object({ login: z.string().min(1) }).nullish(),
+  requested_team: z.object({ slug: z.string().min(1) }).nullish(),
 });
 
-/** Normalize pull request opened, ready-for-review, and terminal lifecycle events. */
+/** Normalize pull request lifecycle, push, and review request events. */
 function normalizePullRequestEvent(
   deliveryId: string,
   body: unknown,
@@ -689,7 +693,7 @@ function normalizePullRequestEvent(
     isDraft?: false;
     occurredAtMs: number;
     trustedSummary: string;
-    untrustedText?: string;
+    untrustedText?: string | undefined;
   }): EventInput[] =>
     pullRequestTargets(
       {
@@ -730,17 +734,52 @@ function normalizePullRequestEvent(
     return events;
   }
 
-  if (parsed.data.action === "ready_for_review") {
-    return lifecycleEvents({
-      eventType: "pull_request.ready_for_review",
-      isDraft: false,
-      occurredAtMs: providerTime(pullRequest.updated_at) ?? Date.now(),
-      trustedSummary: `${resource.label} is ready for review.`,
-      untrustedText,
-    });
+  const updatedAtMs = providerTime(pullRequest.updated_at) ?? Date.now();
+  switch (parsed.data.action) {
+    case "ready_for_review":
+      return lifecycleEvents({
+        eventType: "pull_request.ready_for_review",
+        isDraft: false,
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} is ready for review.`,
+        untrustedText,
+      });
+    case "reopened":
+      return lifecycleEvents({
+        eventType: "pull_request.reopened",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} was reopened.`,
+        untrustedText,
+      });
+    case "converted_to_draft":
+      return lifecycleEvents({
+        eventType: "pull_request.converted_to_draft",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} was converted to a draft.`,
+      });
+    case "review_requested": {
+      const reviewer =
+        nonBlank(parsed.data.requested_reviewer?.login) ??
+        (parsed.data.requested_team
+          ? `team ${parsed.data.requested_team.slug}`
+          : undefined);
+      return lifecycleEvents({
+        eventType: "pull_request.review_requested",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: reviewer
+          ? `${resource.label} has a review request for ${reviewer}.`
+          : `${resource.label} has a review request.`,
+      });
+    }
+    case "synchronize":
+      return lifecycleEvents({
+        eventType: "pull_request.synchronized",
+        occurredAtMs: updatedAtMs,
+        trustedSummary: `${resource.label} has new commits.`,
+      });
+    default:
+      return gitHubPullRequestTerminalEvents(body);
   }
-
-  return gitHubPullRequestTerminalEvents(body);
 }
 
 /**
@@ -868,15 +907,22 @@ function normalizeReleaseEvent(
  * Normalize one verified GitHub delivery into conversation events.
  *
  * Comments and reviews written by the configured bot are dropped, so Junior
- * does not react to or act on its own feedback.
+ * does not react to or act on its own feedback. Comment, review, and issue
+ * update Events name their `author`, and core decides whether to trust it.
  */
 export function normalizeGitHubEvents(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
   checkSuiteFacts?: GitHubCheckSuiteFacts;
   deliveryId: string;
   eventName: string;
+  /** Logins that the app config lists as trusted authors. */
+  trustedAuthors?: readonly string[];
 }): EventInput[] {
+  const authors: GitHubAuthorOptions = {
+    botEmail: args.botEmail,
+    trustedAuthors: args.trustedAuthors,
+  };
   switch (args.eventName) {
     case "deployment":
       return normalizeDeploymentEvent(args.deliveryId, args.body);
@@ -885,24 +931,20 @@ export function normalizeGitHubEvents(args: {
     case "pull_request":
       return normalizePullRequestEvent(args.deliveryId, args.body);
     case "issues":
-      return normalizeIssueEvents(args.deliveryId, args.body, args.botEmail);
+      return normalizeIssueEvents(args.deliveryId, args.body, authors);
     case "pull_request_review":
       return normalizePullRequestReviewEvent(
         args.deliveryId,
         args.body,
-        args.botEmail,
+        authors,
       );
     case "issue_comment":
-      return normalizeIssueCommentEvents(
-        args.deliveryId,
-        args.body,
-        args.botEmail,
-      );
+      return normalizeIssueCommentEvents(args.deliveryId, args.body, authors);
     case "pull_request_review_comment":
       return normalizePullRequestReviewCommentEvent(
         args.deliveryId,
         args.body,
-        args.botEmail,
+        authors,
       );
     case "check_suite":
       return normalizeCheckSuiteEvents(

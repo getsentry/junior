@@ -1,0 +1,941 @@
+import type { Page } from "@playwright/test";
+
+import { withRequestedMailbox } from "../harness";
+import { longPress } from "../long-press";
+import { viewAsParticipant } from "./conversationMenu";
+import { expect, test } from "../test";
+import { mobile, screenshot } from "../screenshot";
+
+test.describe("new UI", () => {
+  /** Hold new Conversation creates until the returned function runs. */
+  async function holdCreate(page: Page): Promise<() => void> {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/conversations", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      await released;
+      await route.fallback();
+    });
+    return release;
+  }
+
+  const FOCUSED_COMPOSER_HEIGHT_PX = 520;
+  const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
+
+  test("records focused mobile conversation composer", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(
+        "slack:CQA123:1770003600.000200",
+      )}`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Investigate checkout latency" }),
+    ).toBeVisible();
+
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
+    await composer.focus();
+    await page.evaluate(
+      ({ height, offsetTop }) => {
+        Object.defineProperties(window.visualViewport, {
+          height: { configurable: true, value: height },
+          offsetTop: { configurable: true, value: offsetTop },
+        });
+        window.visualViewport?.dispatchEvent(new Event("resize"));
+      },
+      {
+        height: FOCUSED_COMPOSER_HEIGHT_PX,
+        offsetTop: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+      },
+    );
+    const shell = page.locator("main").first();
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-keyboard-open"),
+        ),
+      )
+      .toBe("1");
+    await expect(composer).toBeFocused();
+    await screenshot(page, "conversation-detail-focused", {
+      clip: {
+        height: FOCUSED_COMPOSER_HEIGHT_PX,
+        width: mobile.width,
+        x: 0,
+        y: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+      },
+      view: "mobile",
+    });
+
+    // A downward swipe puts the keyboard away. An upward swipe keeps it.
+    const touch = await page.context().newCDPSession(page);
+    const swipe = async (from: { x: number; y: number }, dy: number) => {
+      const send = (
+        type: "touchStart" | "touchMove" | "touchEnd",
+        points: { id: number; x: number; y: number }[],
+      ) =>
+        touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+      await send("touchStart", [{ id: 1, ...from }]);
+      for (const step of [0.25, 0.5, 0.75, 1]) {
+        await send("touchMove", [{ id: 1, x: from.x, y: from.y + dy * step }]);
+      }
+      await send("touchEnd", []);
+    };
+    await swipe({ x: 200, y: 400 }, -120);
+    await expect(composer).toBeFocused();
+    await swipe({ x: 200, y: 300 }, 120);
+    await expect(composer).not.toBeFocused();
+    await touch.detach();
+  });
+
+  /**
+   * Focused composers must stay in the bottom of the visual viewport.
+   * Hit-test near the bottom edge so a mid-screen/centered regression fails
+   * without using banned bounding-box layout APIs.
+   *
+   * Sample in layout coordinates: shell top is offsetTop, height is visualHeight,
+   * so the visible bottom is offsetTop + visualHeight.
+   */
+  async function expectFocusedComposerAtVisualViewportBottom(
+    composer: import("@playwright/test").Locator,
+    visualHeightPx: number,
+    offsetTopPx = 0,
+  ) {
+    await expect(composer).toBeFocused();
+    await expect
+      .poll(() =>
+        composer.evaluate(
+          (node, geometry) => {
+            const form = node.closest("form");
+            if (!(node instanceof HTMLElement) || !form) return "missing-form";
+            if (document.activeElement !== node) return "not-focused";
+
+            // Sample just above the bottom edge of the simulated visual viewport.
+            const sampleY = geometry.offsetTopPx + geometry.heightPx - 12;
+            const sampleX = Math.max(24, Math.floor(window.innerWidth / 2));
+            const hit = document.elementFromPoint(sampleX, sampleY);
+            if (!hit) return "no-hit";
+            if (hit === node || form.contains(hit) || node.contains(hit)) {
+              return "composer-at-bottom";
+            }
+            return "composer-not-at-bottom";
+          },
+          { heightPx: visualHeightPx, offsetTopPx },
+        ),
+      )
+      .toBe("composer-at-bottom");
+  }
+
+  test("starts a new conversation from a centered compose empty state", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 844, width: 390 });
+    // A phone opens on the Inbox entries; "+" opens the composer.
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
+
+    const heading = page.getByRole("heading", { name: "What do you need?" });
+    const composer = page.getByLabel("Start a conversation");
+    await expect(heading).toBeVisible();
+    await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+    await expect(composer).toBeVisible();
+    await composer.focus();
+    await expect(composer).toBeFocused();
+
+    // The composer is its own page, with a Back to the list it came from.
+    await expect(
+      page.getByRole("link", { name: "Back to Inbox" }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        composer.evaluate((node) => {
+          const form = node.closest("form");
+          const section = node.closest('[aria-label="New conversation"]');
+          const title = section?.querySelector("h2");
+          if (!form || !(title instanceof HTMLElement) || !section) {
+            return "missing-compose-stack";
+          }
+          const position = title.compareDocumentPosition(form);
+          if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+            return "title-not-above-composer";
+          }
+          if (form.closest("[data-composer-dock]")) {
+            return "pinned-on-composer-dock";
+          }
+          if (!form.closest("main")) return "missing-page-scroll";
+          return "landing-compose";
+        }),
+      )
+      .toBe("landing-compose");
+
+    // A short new transcript must not leave the reply composer mid-screen.
+    const releaseCreate = await holdCreate(page);
+    await composer.fill("Check the deploy");
+    await composer.press("Enter");
+    // The new Conversation shows its chrome before its route exists, so the
+    // header does not flash the composer's first.
+    await expect(
+      page.getByRole("button", { name: "Back to Inbox" }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "New conversation" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Open navigation" }),
+    ).toBeHidden();
+    releaseCreate();
+    await expect(page).toHaveURL(/\/conversations\/.+/);
+    await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
+    const reply = page.locator('[aria-placeholder="Message Junior…"]');
+    await reply.focus();
+    await expectFocusedComposerAtVisualViewportBottom(reply, 844);
+  });
+
+  test.describe("on a touch screen", () => {
+    test.use({ hasTouch: true });
+
+    test("adds a line on Return instead of sending", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/conversations/new`);
+
+      const composer = page.getByLabel("Start a conversation");
+      await expect(composer).toHaveAttribute("enterkeyhint", "enter");
+      await composer.fill("First line");
+      await composer.press("Enter");
+      await composer.pressSequentially("Second line");
+      await expect(composer).toHaveText("First line\nSecond line", {
+        useInnerText: true,
+      });
+      await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
+    });
+
+    test("opens the row menu on a long press of a Conversation row", async ({
+      page,
+      dashboard,
+    }) => {
+      await viewAsParticipant(page);
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+      const head = page.getByRole("link", { name: /Closed issue summary/ });
+      await expect(head).toBeVisible();
+
+      const menu = page.getByRole("menu");
+      await longPress(head, menu);
+      await screenshot(page, "conversation-row-menu", { view: "mobile" });
+
+      await menu.getByRole("menuitem", { name: "Pin", exact: true }).click();
+      await expect(menu).toHaveCount(0);
+      await expect(page).toHaveURL(
+        `${dashboard.baseURL}/inbox?view=conversations`,
+      );
+      await page.getByRole("link", { name: "Pinned", exact: true }).click();
+      await expect(head).toBeVisible();
+    });
+
+    test("opens the keyboard on the composer only when asked or opened there", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/conversations/new`);
+      const composer = page.getByLabel("Start a conversation");
+      await expect(composer).toBeFocused();
+
+      // A browser back and forward is not a request to type. A direct link
+      // has no origin, so Back goes to Conversations.
+      const conversationsUrl = `${dashboard.baseURL}/inbox?view=conversations`;
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      await expect(page).toHaveURL(conversationsUrl);
+      await page.goBack();
+      await page.goForward();
+      await expect(page).toHaveURL(conversationsUrl);
+      await page.goBack();
+      await expect(composer).toBeVisible();
+      await expect(composer).not.toBeFocused();
+
+      // "+" asks to type.
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      await page.getByRole("button", { name: "New conversation" }).click();
+      await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
+      await expect(composer).toBeFocused();
+    });
+  });
+
+  test("opens and closes a conversation on mobile", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.route("**/api/conversations/*/messages", async (route) => {
+      await route.fulfill({
+        json: {
+          conversationId: "slack:CQA123:1770003600.000200",
+          messageId: "mobile-message",
+          status: "accepted",
+        },
+      });
+    });
+    await page.goto(`${dashboard.baseURL}/conversations`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
+    // A phone opens on the Inbox entries: the list of lists.
+    const entries = page.getByRole("navigation", { name: "Primary" });
+    await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await expect(
+      entries.getByRole("link", { name: "Conversations", exact: true }),
+    ).toBeVisible();
+    await expect(
+      entries.getByRole("link", { name: "Code", exact: true }),
+    ).toBeVisible();
+    const navigationTrigger = page.getByRole("button", {
+      name: "Open navigation",
+    });
+    await expect(navigationTrigger).toBeVisible();
+    await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Open profile menu for Dashboard User",
+      }),
+    ).toBeHidden();
+    await navigationTrigger.click();
+    await expect(page.getByText(/^junior version /)).toBeVisible();
+    const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
+    const spendCallout = navigationSheet.getByLabel(
+      "Personal model spend: 7 days $0.46, 30 days $0.46",
+      { exact: true },
+    );
+    await expect(spendCallout).toBeVisible();
+    await expect(spendCallout.getByText("7d $0.46")).toBeVisible();
+    await expect(spendCallout.getByText("30d $0.46")).toBeVisible();
+    // Spend sits above every destination, including primary nav.
+    const spendAbovePrimary = await spendCallout.evaluate((node) => {
+      const dialog = node.closest('[role="dialog"]');
+      const primary = dialog?.querySelector('nav[aria-label="Primary"]');
+      if (!dialog || !primary) return false;
+      return Boolean(
+        node.compareDocumentPosition(primary) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+    expect(spendAbovePrimary).toBe(true);
+    await expect(
+      page.getByLabel("Account menu for Dashboard User"),
+    ).toBeVisible();
+    await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
+    await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+    const accountMenu = page.getByLabel("Account menu for Dashboard User");
+    // Code is an Inbox entry, under Conversations, not an account page.
+    await expect(
+      accountMenu.getByRole("link", { name: "Code", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      accountMenu.getByRole("link", { name: "System", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "API tokens" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+    const closeNavigation = page.getByRole("button", {
+      name: "Close navigation",
+    });
+    await expect(closeNavigation).toBeVisible();
+    await closeNavigation.click();
+    // Compact mobile composer needs a participant fixture. In flight lists
+    // the running Conversation one tap away.
+    await entries
+      .getByRole("link", { name: /Investigate checkout latency/ })
+      .click();
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+    );
+    // One shell row: back + title + overflow. No duplicate title chrome.
+    await expect(
+      page.getByRole("heading", { name: "Investigate checkout latency" }),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole("link", { name: "Back to Inbox" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Junior home" })).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Open navigation" }),
+    ).toBeHidden();
+    await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+    await expect(
+      page.getByRole("group", { name: "Transcript view" }),
+    ).toBeHidden();
+    const menu = page.getByRole("button", { name: "Conversation menu" });
+    await expect(menu).toBeVisible();
+    // The phone menu is a bottom sheet, with no App menu row: Back leads to
+    // the list, which has the navigation button.
+    await menu.click();
+    const menuSheet = page.getByRole("dialog", {
+      name: "Investigate checkout latency",
+    });
+    await expect(
+      menuSheet.getByRole("button", { name: "Search transcript" }),
+    ).toBeVisible();
+    await expect(
+      menuSheet.getByRole("button", { name: "Open event log", exact: true }),
+    ).toBeVisible();
+    await expect(
+      menuSheet.getByRole("button", { name: "App menu" }),
+    ).toHaveCount(0);
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    const details = page.getByRole("dialog", { name: "Conversation details" });
+    await expect(details).toHaveAttribute("aria-modal", "true");
+    // The sheet moves focus inside it.
+    await expect(details.locator(":focus")).toHaveCount(1);
+    await page.keyboard.press("Shift+Tab");
+    // Details lead with the cost and the location.
+    await expect(
+      details.getByRole("link", { name: /#proj-checkout/ }),
+    ).toBeVisible();
+    await expect(details.locator(":focus")).toHaveCount(1);
+    await screenshot(page, "conversation-details-sheet", {
+      lightTheme: true,
+      view: "mobile",
+    });
+    await page.keyboard.press("Escape");
+    await expect(details).toBeHidden();
+    await expect(menu).toBeFocused();
+    await menu.click();
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    await details.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(details).toBeHidden();
+    await expect(menu).toBeFocused();
+    await menu.click();
+    await menuSheet
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    // The sheet moves focus inside it.
+    await expect(details.locator(":focus")).toHaveCount(1);
+    await page.mouse.click(8, 8);
+    await expect(details).toBeHidden();
+    await expect(menu).toBeFocused();
+    const transcript = page.getByLabel("Conversation transcript");
+    await expect(transcript.getByText("1.9k tokens")).toBeHidden();
+    await expect(page.getByRole("note")).toBeHidden();
+
+    const pending = page.getByLabel("Pending messages");
+    await expect(pending).toBeVisible();
+    // Mobile collapsed control owns the total count.
+    const expand = pending.getByRole("button", { name: "7 queued messages" });
+    await expect(expand).toBeVisible();
+    await expect(expand).toHaveAttribute("aria-expanded", "false");
+    await expect(pending.getByText("7 queued messages")).toHaveCount(1);
+    await expect(
+      pending.getByText("Also check the canary traffic from the last deploy."),
+    ).toBeHidden();
+
+    await expand.click();
+    await expect(
+      pending.getByText("Also check the canary traffic from the last deploy."),
+    ).toBeVisible();
+    await expect(
+      pending.getByRole("button", { name: "Show fewer queued messages" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    // Footer growth must keep a completed conversation at its latest message.
+    await expect
+      .poll(() =>
+        transcript.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
+    await expect(composer).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    await composer.focus();
+    await expect(composer).toBeFocused();
+
+    const shell = page.locator("main").first();
+    // Rubber-band pans can change visualViewport.offsetTop while the keyboard is
+    // closed. The fixed shell must stay pinned to the layout viewport.
+    await page.evaluate(() => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: window.innerHeight },
+        offsetTop: { configurable: true, value: 48 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("scroll"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("0px");
+    await expect
+      .poll(() =>
+        shell.evaluate(
+          (element) =>
+            element.style.getPropertyValue("--dashboard-viewport-height") ===
+            `${window.innerHeight}px`,
+        ),
+      )
+      .toBe(true);
+
+    // Open keyboard: shell follows live visual geometry (height + offset).
+    await page.evaluate(() => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 520 },
+        offsetTop: { configurable: true, value: 140 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-height"),
+        ),
+      )
+      .toBe("520px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("140px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-keyboard-open"),
+        ),
+      )
+      .toBe("1");
+    // Reply threads must use the dock owner, not the create landing scroll path.
+    await expect
+      .poll(() =>
+        composer.evaluate((node) => {
+          const form = node.closest("form");
+          if (!form) return "missing-form";
+          if (!form.closest("[data-composer-dock]"))
+            return "missing-composer-dock";
+          if (
+            !form.closest("[data-chat-scroll]") &&
+            !document.querySelector("[data-chat-scroll]")
+          ) {
+            return "missing-chat-scroll";
+          }
+          // Dock is a sibling of the scroll region under ChatLayout, not inside it.
+          if (form.closest("[data-chat-scroll]"))
+            return "composer-inside-chat-scroll";
+          return "reply-dock";
+        }),
+      )
+      .toBe("reply-dock");
+
+    // Focused reply input must stay docked at the bottom of the visual viewport.
+    await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+    // iOS 18 Safari shrinks innerHeight with the keyboard but keeps
+    // documentElement.clientHeight tall and pans the visual viewport down. The
+    // shell must follow that pan, or it slides up off screen.
+    await page.evaluate(() => {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 520,
+      });
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 520 },
+        offsetTop: { configurable: true, value: 140 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("140px");
+    await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+    // When the whole page shrank for the keyboard (resizes-content), a leftover
+    // visual offset must not shove the fixed shell down (composer under the
+    // keyboard).
+    await page.evaluate(() => {
+      Object.defineProperty(document.documentElement, "clientHeight", {
+        configurable: true,
+        value: 520,
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-height"),
+        ),
+      )
+      .toBe("520px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("0px");
+    await expectFocusedComposerAtVisualViewportBottom(composer, 520, 0);
+
+    // Restore classic visual-dock geometry for the remaining checks.
+    await page.evaluate(() => {
+      Reflect.deleteProperty(document.documentElement, "clientHeight");
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 844,
+      });
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 520 },
+        offsetTop: { configurable: true, value: 140 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("140px");
+
+    // Later visual updates still follow live geometry (no freeze lock-in).
+    await page.evaluate(() => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 500 },
+        offsetTop: { configurable: true, value: 150 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-height"),
+        ),
+      )
+      .toBe("500px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("150px");
+    await expectFocusedComposerAtVisualViewportBottom(composer, 500, 150);
+
+    await composer.blur();
+    // Closed keyboard must snap the shell back to the layout top even if a stale
+    // visual offset remains for a frame after blur.
+    await page.evaluate(() => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: window.innerHeight },
+        offsetTop: { configurable: true, value: 180 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("0px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-keyboard-open"),
+        ),
+      )
+      .toBe("0");
+
+    // Open-keyboard pans with no focused editor may follow visual offset.
+    await page.evaluate(() => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 520 },
+        offsetTop: { configurable: true, value: 200 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+        ),
+      )
+      .toBe("200px");
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-keyboard-open"),
+        ),
+      )
+      .toBe("1");
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await composer.focus();
+    await expect
+      .poll(() =>
+        transcript.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    // Keyboard resize keeps the latest message above the focused composer.
+    await page.evaluate(() => {
+      Object.defineProperty(window.visualViewport, "height", {
+        configurable: true,
+        value: 480,
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    });
+    await expect
+      .poll(() =>
+        transcript.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    await composer.fill("Keep the mobile composer ready");
+    await composer.press("Enter");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveText("", { useInnerText: true });
+    await expect
+      .poll(() =>
+        transcript.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+
+    await menu.click();
+    await menuSheet.getByRole("button", { name: "Search transcript" }).click();
+    // The search field keeps focus after the sheet closes.
+    await expect(menuSheet).toBeHidden();
+    await expect(page.getByPlaceholder("Search transcript…")).toBeFocused();
+    await menu.click();
+    await menuSheet
+      .getByRole("button", { name: "Open event log", exact: true })
+      .click();
+    const eventLog = page.getByRole("region", {
+      name: "Conversation event log",
+    });
+    await expect(eventLog).toBeVisible();
+    await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+
+    // Back leaves the event log for its Conversation, then the list.
+    await page
+      .getByRole("button", { name: "Back to conversation", exact: true })
+      .click();
+    await expect(eventLog).toBeHidden();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
+    await expect(entries).toBeVisible();
+
+    // Log out must POST and dismiss the sheet before the response completes.
+    let finishSignOut: (() => void) | undefined;
+    const signOutGate = new Promise<void>((resolve) => {
+      finishSignOut = resolve;
+    });
+    await page.route("**/api/auth/sign-out", async (route) => {
+      await signOutGate;
+      await route.fulfill({ json: {} });
+    });
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    const openNavigationSheet = page.getByRole("dialog", {
+      name: "Navigation",
+    });
+    const signOutRequest = page.waitForRequest(
+      (request) =>
+        request.url().endsWith("/api/auth/sign-out") &&
+        request.method() === "POST",
+    );
+    await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
+    await signOutRequest;
+    await expect(openNavigationSheet).toBeHidden();
+    // Sign-out reloads the page. Wait for the reload, so the test does not
+    // end while the document request is in flight.
+    const reloaded = page.waitForEvent("load");
+    finishSignOut?.();
+    await reloaded;
+  });
+
+  test("keeps the message in view while earlier history and late content load", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    const generatedAt = "2026-08-07T11:00:00.000Z";
+    const conversation = {
+      conversationId: "long-history",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Long history",
+      isParticipant: true,
+      kind: "thread",
+      lastProgressAt: generatedAt,
+      lastSeenAt: generatedAt,
+      startedAt: generatedAt,
+      status: "done",
+      turnActive: false,
+      surface: "internal",
+    };
+    const events = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, index) => {
+        const seq = from + index;
+        return {
+          createdAt: new Date(
+            Date.parse(generatedAt) + seq * 1_000,
+          ).toISOString(),
+          data: {
+            type: "message",
+            messageId: `message-${seq}`,
+            role: seq % 2 === 0 ? "user" : "assistant",
+            text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+          },
+          seq,
+        };
+      });
+    let releaseEarlierPage: (() => void) | undefined;
+    const earlierPageGate = new Promise<void>((resolve) => {
+      releaseEarlierPage = resolve;
+    });
+
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        if (new URL(route.request().url()).pathname !== "/api/conversations") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          json: {
+            conversations: [conversation],
+            generatedAt,
+            source: "conversation_index",
+          },
+        });
+      },
+    );
+    await page.route(
+      "**/api/conversations/long-history/events?*",
+      async (route) => {
+        await earlierPageGate;
+        await route.fulfill({
+          json: {
+            eventHistory: { status: "available" },
+            events: events(0, 40),
+            generatedAt,
+          },
+        });
+      },
+    );
+    await page.route("**/api/conversations/long-history*", async (route) => {
+      await route.fulfill({
+        json: withRequestedMailbox(route, {
+          ...conversation,
+          eventHistory: { status: "available" },
+          events: events(40, 80),
+          generatedAt,
+          previousCursor: "before-40",
+        }),
+      });
+    });
+
+    // A scroll event fires on the next frame, before its animation frame
+    // callbacks. The transcript records the reader's place there, so wait for it
+    // before the layout changes. Otherwise the place it records already
+    // includes the change.
+    const scrollEventHandled = () =>
+      page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(resolve)),
+      );
+
+    await page.goto(`${dashboard.baseURL}/conversations/long-history`);
+    const transcript = page.getByLabel("Conversation transcript");
+    const latest = transcript.getByText("Transcript message 79 ");
+    await expect(latest).toBeInViewport();
+
+    // Scroll to the top to load earlier history. The reader keeps scrolling
+    // while the page loads, so their place is where they stop, not where the
+    // load started.
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect(
+      transcript.getByText("Loading earlier messages…"),
+    ).toBeVisible();
+    await transcript.evaluate((element) => {
+      element.scrollTop = 160;
+    });
+    await scrollEventHandled();
+    const reading = transcript.getByText("Transcript message 43 ");
+    await expect(reading).toBeInViewport({ ratio: 1 });
+    releaseEarlierPage?.();
+    // Rows far above the reader do not mount, so wait for the load to end.
+    await expect(transcript.getByText("Loading earlier messages…")).toHaveCount(
+      0,
+    );
+    await expect(reading).toBeInViewport({ ratio: 1 });
+    await expect(
+      transcript.getByText("Transcript message 39 "),
+    ).not.toBeInViewport();
+
+    // Rows keep their real size while the reader scrolls up through them, so
+    // the transcript never corrects the reader's own scroll. On phones, such
+    // corrections make the transcript jump.
+    await transcript.evaluate((element) => {
+      const scrollTo = element.scrollTo.bind(element);
+      element.dataset["scrollCorrections"] = "0";
+      element.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
+        element.dataset["scrollCorrections"] = String(
+          Number(element.dataset["scrollCorrections"]) + 1,
+        );
+        if (typeof options === "number") scrollTo(options, y ?? 0);
+        else scrollTo(options);
+      };
+    });
+    await transcript.hover();
+    for (let step = 0; step < 10; step += 1) {
+      await page.mouse.wheel(0, -150);
+    }
+    await expect(
+      transcript.getByText("Transcript message 30 "),
+    ).toBeInViewport();
+    await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+    await transcript
+      .getByText("Transcript message 43 ")
+      .scrollIntoViewIfNeeded();
+    await scrollEventHandled();
+
+    // Content that grows above the reader, such as an image that loads late,
+    // must not push the message they are reading out of view. The row must be
+    // one that mounts near the reader.
+    await transcript.getByText("Transcript message 35 ").evaluate((element) => {
+      const spacer = document.createElement("div");
+      spacer.style.height = "1200px";
+      element.append(spacer);
+    });
+    await expect(reading).toBeInViewport({ ratio: 1 });
+  });
+});

@@ -3,6 +3,7 @@ import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, QueueEntry, StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
+import { mapBounded } from "@/chat/fan-out";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
@@ -295,7 +296,7 @@ function getOptionalRedisStateAdapter(): RedisStateAdapter | undefined {
 }
 
 export async function getConnectedStateContext(): Promise<{
-  redisStateAdapter?: RedisStateAdapter;
+  redisStateAdapter?: RedisStateAdapter | undefined;
   stateAdapter: StateAdapter;
 }> {
   const adapter = getStateAdapter();
@@ -319,7 +320,8 @@ export async function getDefaultRedisStateAdapterFor(
     : undefined;
 }
 
-function redisCacheKey(key: string): string {
+/** The Redis key that the default Redis adapter uses for one state value key. */
+export function redisStateKey(key: string): string {
   const prefix = getChatConfig().state.keyPrefix;
   return `${REDIS_STATE_KEY_PREFIX}:cache:${prefix ? `${prefix}:` : ""}${key}`;
 }
@@ -332,9 +334,9 @@ export async function getStateValues(
   if (keys.length === 0) return [];
   const redis = await getDefaultRedisStateAdapterFor(state);
   if (!redis) {
-    return await Promise.all(keys.map((key) => state.get(key)));
+    return await mapBounded(keys, (key) => state.get(key));
   }
-  const values = await redis.getClient().mGet(keys.map(redisCacheKey));
+  const values = await redis.getClient().mGet(keys.map(redisStateKey));
   return values.map((value) => {
     if (value === null) return null;
     // Match `RedisStateAdapter.get`, which returns a value that is not JSON as is.
@@ -355,14 +357,12 @@ export async function setStateValues(
   if (entries.length === 0) return;
   const redis = await getDefaultRedisStateAdapterFor(state);
   if (!redis) {
-    await Promise.all(
-      entries.map(({ key, value }) => state.set(key, value, ttlMs)),
-    );
+    await mapBounded(entries, ({ key, value }) => state.set(key, value, ttlMs));
     return;
   }
   const pipeline = redis.getClient().multi();
   for (const { key, value } of entries) {
-    pipeline.set(redisCacheKey(key), JSON.stringify(value), { PX: ttlMs });
+    pipeline.set(redisStateKey(key), JSON.stringify(value), { PX: ttlMs });
   }
   await pipeline.execAsPipeline();
 }

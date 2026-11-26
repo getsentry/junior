@@ -4,16 +4,23 @@ import {
   exists,
   inArray,
   isNotNull,
+  isNull,
   not,
+  or,
+  sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 /** A person by User id, or by primary email when no User is known. */
 export type ConversationMember = { userId: string } | { email: string };
@@ -59,10 +66,92 @@ export function conversationHasParticipantUser(userId: string): SQL {
   return exists(memberParticipantRow({ userId }));
 }
 
+function privateSpaceIds() {
+  return getDb()
+    .select({ id: juniorSpaces.id })
+    .from(juniorSpaces)
+    .where(eq(juniorSpaces.visibility, "private"));
+}
+
+const spaceLead = alias(juniorConversations, "membership_space_lead");
+
 /**
- * True when the person is a Participant of the conversation. Feeds filter
- * with this id set instead of a per-row membership check, so Postgres reads
- * only that person's conversations, not every root.
+ * The Leads of some Spaces, as one array. Every Conversation in a Space has
+ * its Lead as its tree root, so this finds the Space of every row. The
+ * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
+ * once, where a hashed subquery in a filter is charged on each index probe.
+ */
+function spaceLeadArray(spaceIds: SQLWrapper): SQL {
+  const leads = getDb()
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(
+      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
+    );
+  return sql`array(${leads})`;
+}
+
+/** True when the outer conversation is in no private Space. */
+function outsidePrivateSpaces(): SQL {
+  return or(
+    isNull(juniorConversations.rootConversationId),
+    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
+  )!;
+}
+
+/**
+ * True when the outer conversation is in a tree that the person is a
+ * Participant of. In a Space the Lead is the root, so this holds for every
+ * Conversation of each Space that the person is a member of.
+ */
+function inParticipantTree(member: ConversationMember): SQL {
+  const rows = getDb()
+    .select({ id: juniorConversationParticipants.rootConversationId })
+    .from(juniorConversationParticipants);
+  const roots =
+    "userId" in member
+      ? rows.where(eq(juniorConversationParticipants.userId, member.userId))
+      : rows
+          .innerJoin(
+            juniorUsers,
+            eq(juniorUsers.id, juniorConversationParticipants.userId),
+          )
+          .where(eq(juniorUsers.primaryEmailNormalized, member.email));
+  return sql`${juniorConversations.rootConversationId} = any(array(${roots}))`;
+}
+
+/**
+ * True when the outer root conversation is in no Space, in a public Space,
+ * or in a private Space that the person is a member of. A participant who
+ * leaves a private Space no longer reads its roots.
+ */
+export function rootSpaceReadableBy(member: ConversationMember): SQL {
+  return or(outsidePrivateSpaces(), inParticipantTree(member))!;
+}
+
+/**
+ * True when the viewer may find the outer root conversation by a link to
+ * it: the root is public, or the viewer is a Participant. A root in a
+ * private Space is visible only to the Space's members, and to all of them.
+ */
+export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
+  return or(
+    and(
+      outsidePrivateSpaces(),
+      or(
+        isPublicConversation(juniorConversations),
+        viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
+      ),
+    ),
+    viewerUserId ? inParticipantTree({ userId: viewerUserId }) : undefined,
+  )!;
+}
+
+/**
+ * True when the person is a Participant of the conversation, or of the Lead
+ * whose child it is, since a Lead's Participants are its Space's members.
+ * Feeds filter with this id set instead of a per-row membership check, so
+ * Postgres reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -81,7 +170,11 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  return inArray(juniorConversations.conversationId, memberRoots);
+  // Top-level filters keep only a parent match whose parent is a Lead.
+  return or(
+    inArray(juniorConversations.conversationId, memberRoots),
+    inArray(juniorConversations.parentConversationId, memberRoots),
+  )!;
 }
 
 /**
@@ -111,19 +204,19 @@ export type ConversationViewerMarks = {
   pinPosition?: number;
 };
 
-/** Read personal pin marks for a bounded set of conversation roots. */
-export async function conversationViewerMarks(
+/**
+ * Read the roots among a bounded set where one person is a Participant, each
+ * with their pin marks. An unpinned root maps to empty marks.
+ */
+export async function readMemberParticipants(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  subject: ConversationMember | undefined,
+  member: ConversationMember | undefined,
 ): Promise<Map<string, ConversationViewerMarks>> {
-  if (!subject || conversationIds.length === 0) return new Map();
-  const marked = and(
-    inArray(juniorConversationParticipants.rootConversationId, [
-      ...conversationIds,
-    ]),
-    isNotNull(juniorConversationParticipants.pinnedAt),
-  );
+  if (!member || conversationIds.length === 0) return new Map();
+  const listed = inArray(juniorConversationParticipants.rootConversationId, [
+    ...conversationIds,
+  ]);
   const query = db
     .select({
       pinnedAt: juniorConversationParticipants.pinnedAt,
@@ -132,12 +225,9 @@ export async function conversationViewerMarks(
     })
     .from(juniorConversationParticipants);
   const rows =
-    "userId" in subject
+    "userId" in member
       ? await query.where(
-          and(
-            eq(juniorConversationParticipants.userId, subject.userId),
-            marked,
-          ),
+          and(eq(juniorConversationParticipants.userId, member.userId), listed),
         )
       : await query
           .innerJoin(
@@ -145,13 +235,13 @@ export async function conversationViewerMarks(
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(
-            and(eq(juniorUsers.primaryEmailNormalized, subject.email), marked),
+            and(eq(juniorUsers.primaryEmailNormalized, member.email), listed),
           );
   return new Map(
-    rows.flatMap((row) => {
-      const marks = viewerMarksFromParticipant(row);
-      return marks ? [[row.rootConversationId, marks] as const] : [];
-    }),
+    rows.map((row) => [
+      row.rootConversationId,
+      viewerMarksFromParticipant(row) ?? {},
+    ]),
   );
 }
 
