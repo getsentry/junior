@@ -100,11 +100,17 @@ function InFlightRow(props: {
             {conversation.displayTitle}
           </span>
           {/* The `⋯` takes the state's place while it shows. Phones show
-              both. The pin leads the row, so it does not show here too. */}
-          <ConversationStateIcon
-            className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
-            state={state === "pinned" ? undefined : state}
-          />
+              both. The pin leads the row, so it does not show here too, and
+              an idle pin keeps the empty column so the `⋯` does not cover
+              its title. */}
+          {state && state !== "pinned" ? (
+            <ConversationStateIcon
+              className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
+              state={state}
+            />
+          ) : (
+            <span aria-hidden="true" className="size-3.5" />
+          )}
         </Link>
         <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>
           <DropdownMenuTrigger
