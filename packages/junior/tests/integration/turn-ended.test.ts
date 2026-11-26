@@ -278,6 +278,38 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
     expect(engine.sentStepMessages(next!.id)).toBe(0);
   });
 
+  it("ends the Turn as failed on the first try when a required loader throws TurnFailedError", async () => {
+    await engine.addTestInput("How many Turns?");
+    // Core names the loader in a new error, with this one as its cause.
+    const memory = loader(
+      "memory",
+      () =>
+        Promise.reject(
+          new TurnFailedError("memory_refused", {
+            failureCode: "agent_run_failed",
+          }),
+        ),
+      { timeoutMs: 1_000 },
+    );
+    const prompt = promptForEveryTurn(
+      testPrompt([
+        testInputs(),
+        fragment("memory", {
+          loader: memory,
+          format: (text): FragmentMessage => ({ role: "user", content: text }),
+        }),
+      ]),
+    );
+
+    await engine.advance({ prompt });
+
+    await expect(engine.readTurn()).resolves.toMatchObject({
+      state: "failed",
+      endReason: "memory_refused",
+      failureCode: "agent_run_failed",
+    });
+  });
+
   it("drops the inputs when every try of a step throws, and moves none", async () => {
     const inputId = await engine.addTestInput("How many Turns?");
     // Injected fault: a loader of the prompt fails each time.
