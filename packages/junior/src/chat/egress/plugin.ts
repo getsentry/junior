@@ -121,7 +121,7 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
   // viewers, or a viewer and the system Actor, never share an entry.
   const scope = `egress:${JSON.stringify([
     deps.credentialContext,
-    deps.userOAuthOnly ?? false,
+    deps.userOAuthOnly ? "user-oauth" : "any",
   ])}`;
   return {
     async fetch(input) {
