@@ -67,8 +67,6 @@ const messageHistoryEventTypes = [
   "message_handled",
 ] as const;
 
-const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
-
 /**
  * True when a Turn input message is addressed to Junior, which subscribes its
  * author again (contract: `api/conversations/subscription.ts`). A Slack
@@ -88,12 +86,6 @@ function eventAddressesJunior(data: ConversationEventData): boolean {
  * activity clocks, but they must not unarchive on their own.
  */
 function eventUnarchivesConversation(data: ConversationEventData): boolean {
-  if (data.type === "user_message") {
-    const provenance = data.provenance;
-    if (provenance.authority !== "instruction") return false;
-    const platform = provenance.actor?.platform;
-    return platform === undefined || HUMAN_INSTRUCTION_PLATFORMS.has(platform);
-  }
   // message_updated is hydration/delivery on an existing row, not a new human.
   if (data.type !== "message") {
     return false;
