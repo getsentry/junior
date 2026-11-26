@@ -323,7 +323,7 @@ describe("static tool registry", () => {
   // Every Turn of a Task reports to the parent with its final text.
   it("sends a Task Turn no noReply", async () => {
     const task = await sentTurn(
-      turnBehavior({ kind: "task", personInput: false }),
+      turnBehavior({ kind: "task", hasParent: true, personInput: false }),
       turnRun("slack:T0:C0:1.0:task", false, { kind: "parent_message" }),
     );
 

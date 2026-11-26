@@ -3,7 +3,11 @@
 -- it as `thread`, and both checks accept both values until every writer
 -- stores `thread`. NOT VALID skips the scan under lock, and every new write
 -- is checked. The next migration moves the stored `root` rows to `thread`.
+-- Each new check accepts every value that the dropped one accepted, so the
+-- release that is live during the deploy keeps writing.
+-- squawk-ignore ban-drop-constraint -- unused since 0.315.0
 ALTER TABLE "junior_conversations" DROP CONSTRAINT "junior_conversations_kind_check";--> statement-breakpoint
+-- squawk-ignore ban-drop-constraint -- unused since 0.315.0
 ALTER TABLE "junior_conversations" DROP CONSTRAINT "junior_conversations_kind_parent_check";--> statement-breakpoint
 ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_kind_check" CHECK ("kind" in ('root', 'thread', 'automation', 'lead', 'task')) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_kind_parent_check" CHECK ("kind" is null or "kind" in ('root', 'thread') or (("kind" in ('automation', 'lead')) = ("parent_conversation_id" is null))) NOT VALID;--> statement-breakpoint
