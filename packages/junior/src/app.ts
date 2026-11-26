@@ -25,11 +25,6 @@ import {
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
 import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
-import {
-  getSandboxResourceConfig,
-  setSandboxResourceConfig,
-  type SandboxResourceConfig,
-} from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
@@ -267,7 +262,12 @@ export interface JuniorAppOptions extends BotModelConfig {
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
-  sandbox?: SandboxResourceConfig & {
+  sandbox?: {
+    /**
+     * vCPUs of each sandbox. Each vCPU adds 2 GB of memory. A Workspace vCPU
+     * count wins over it, and it wins over `SANDBOX_VCPUS`.
+     */
+    vcpus?: number | undefined;
     /**
      * Egress domains allowed to carry Sentry trace propagation headers.
      * Entries may be exact domains or leading wildcard domains such as
@@ -364,6 +364,7 @@ function appConfigInput(
     },
     functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
     limits: options?.limits,
+    sandbox: { vcpus: options?.sandbox?.vcpus },
     slack: {
       completedReactionEmoji: options?.slack?.completedReactionEmoji,
       processingReactionEmoji: options?.slack?.processingReactionEmoji,
@@ -492,7 +493,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
-  const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
@@ -508,7 +508,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     restoreChatConfig?.();
-    setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
     setMemoryConfig(previousMemoryConfig);
@@ -531,7 +530,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
-    setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
