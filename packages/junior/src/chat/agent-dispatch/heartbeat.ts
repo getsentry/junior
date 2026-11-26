@@ -9,11 +9,11 @@ import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import { runInboxItemPushTimers } from "@/chat/notifications/inbox-item-push";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import {
   createPluginEventPublisher,
-  getRegistrations,
   type AppEventPublisher,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { logException, logInfo } from "@/chat/logging";

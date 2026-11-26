@@ -1,4 +1,4 @@
-import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 /**

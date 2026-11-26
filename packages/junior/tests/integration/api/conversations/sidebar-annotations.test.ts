@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 

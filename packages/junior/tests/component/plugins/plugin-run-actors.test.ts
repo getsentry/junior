@@ -120,9 +120,9 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
-vi.mock("@/chat/plugins/agent-hooks", async (importOriginal) => {
+vi.mock("@/chat/plugins/hooks/runner", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/chat/plugins/agent-hooks")>();
+    await importOriginal<typeof import("@/chat/plugins/hooks/runner")>();
   return {
     ...actual,
     createPluginHookRunner: (

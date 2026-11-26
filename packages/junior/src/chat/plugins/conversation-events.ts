@@ -6,7 +6,7 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { getConversationEventStore } from "@/chat/db";
-import { getRegistrations } from "./agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 
 function registeredDefinition(
   plugin: PluginRegistration,
