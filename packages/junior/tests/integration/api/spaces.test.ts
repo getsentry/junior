@@ -29,6 +29,7 @@ import type {
 } from "@/chat/configuration/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import {
@@ -385,8 +386,9 @@ describe("Spaces API", () => {
       "local:spaces-tool-thread",
     );
     const move = (
-      input: { conversation_id?: string; space: string | null },
+      input: { conversation_id?: string; space?: string | null },
       from = thread,
+      spaceId?: string,
     ) =>
       createMoveConversationToSpaceTool({
         conversationId: from,
@@ -394,6 +396,7 @@ describe("Spaces API", () => {
           identity: { id: `identity:${anaUser.id}` } as Identity,
           user: anaUser,
         }),
+        spaceId,
       }).execute?.(input, {});
 
     // By a dashboard link, from a Thread of the root.
@@ -424,6 +427,18 @@ describe("Spaces API", () => {
     await expect(
       move({ conversation_id: conversationId, space: others.id }),
     ).rejects.toThrow("Join the Space to add work to it.");
+    // A Lead moves it into its own Space with no Space named.
+    const lead = await getSpaceLead({ member: anaUser, space: first });
+    expect(
+      await move(
+        { conversation_id: conversationId },
+        lead.conversationId,
+        first.id,
+      ),
+    ).toMatchObject({ space: { id: first.id } });
+    await expect(move({ conversation_id: conversationId })).rejects.toThrow(
+      "This conversation is in no Space.",
+    );
     expect(
       await move({ conversation_id: conversationId, space: null }),
     ).toMatchObject({ space: null });

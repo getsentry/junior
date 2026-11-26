@@ -175,6 +175,7 @@ async function runClaimedStep(
         model: await modelSettings(claim),
       }),
       tools: stepTools.definitions,
+      hooks: stepTools.hooks,
       client,
       session: claim.conversationId,
       // A later claim of the same step means an earlier attempt did not
