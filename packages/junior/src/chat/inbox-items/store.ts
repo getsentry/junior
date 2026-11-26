@@ -3,7 +3,6 @@ import {
   and,
   asc,
   desc,
-  exists,
   eq,
   gt,
   ilike,
@@ -554,6 +553,19 @@ export async function updateInboxItemContent(
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
+    // Lock the open item first, so a close cannot land between the
+    // question write and the item write. A close locks in the same order.
+    const open = await tx
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems)
+      .where(
+        and(
+          eq(juniorInboxItems.id, input.id),
+          eq(juniorInboxItems.status, "open"),
+        ),
+      )
+      .for("update");
+    if (!open[0]) return false;
     // The question changes first: the item write copies its content onto
     // the item for the release before this one (`20261126011025_inbox_item_owners`).
     if (isQuestion(input.subject)) {
@@ -566,22 +578,7 @@ export async function updateInboxItemContent(
             ? { turnId: input.addedByTurnId }
             : undefined),
         })
-        .where(
-          and(
-            eq(juniorQuestions.id, input.subject.id),
-            exists(
-              tx
-                .select({ one: sql`1` })
-                .from(juniorInboxItems)
-                .where(
-                  and(
-                    eq(juniorInboxItems.id, input.id),
-                    eq(juniorInboxItems.status, "open"),
-                  ),
-                ),
-            ),
-          ),
-        );
+        .where(eq(juniorQuestions.id, input.subject.id));
     }
     const updated = await tx
       .update(juniorInboxItems)
