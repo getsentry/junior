@@ -89,7 +89,7 @@ export interface Conversation {
    * has no parent or its parent is a Lead. Its child agents keep it when it
    * moves.
    */
-  topLevelConversationId?: string;
+  rootConversationId?: string;
   /**
    * Space of a Lead, or of a Lead's child, read from its Lead. Other
    * Conversations have none: a child agent is in the Space of its root. Only

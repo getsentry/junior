@@ -119,7 +119,7 @@ function viewerStateVersion(
 ) {
   const root = db
     .select({
-      id: sql<string>`coalesce(${versionConversation.topLevelConversationId}, ${versionConversation.conversationId})`,
+      id: sql<string>`coalesce(${versionConversation.rootConversationId}, ${versionConversation.conversationId})`,
     })
     .from(versionConversation)
     .where(eq(versionConversation.conversationId, conversationId));
@@ -166,14 +166,13 @@ const versionSpaceConversation = alias(
 const versionSpaceRoot = alias(juniorConversations, "version_space_root");
 
 /**
- * Hash the Space of the tree root, which is the Lead in a Space. A move
- * writes the moved work's root, and a rename writes only the Space, so a
- * token reads both through its root.
+ * Hash the root's Space. A move writes only the root, and a rename writes
+ * only the Space, so a child's token reads both through its root.
  */
 function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
   const space = db
     .select({
-      state: sql<string>`md5(concat_ws(':', ${juniorSpaces.id}, ${juniorSpaces.name}))`,
+      state: sql<string>`md5(concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name}))`,
     })
     .from(versionSpaceConversation)
     .innerJoin(
@@ -244,7 +243,7 @@ function conversationVersionQuery(
  */
 async function readDetailStateRow(conversationId: string, viewer?: User) {
   const db = getDb();
-  const rootConversationId = sql<string>`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`;
+  const rootConversationId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`;
   const forkIds = db
     .select({ conversationId: fork.conversationId })
     .from(fork)
@@ -306,13 +305,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         juniorConversations.forkedFromConversationId,
       ),
     )
-    .leftJoin(
-      spaceRoot,
-      eq(
-        spaceRoot.conversationId,
-        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
-      ),
-    )
+    .leftJoin(spaceRoot, eq(spaceRoot.conversationId, rootConversationId))
     .leftJoin(juniorSpaces, eq(juniorSpaces.id, spaceRoot.spaceId))
     .leftJoin(juniorConversationParticipants, viewerParticipant)
     .leftJoin(
@@ -376,10 +369,7 @@ async function readDetailState(
                 },
               }
             : undefined),
-          // A Lead's child is its own root, so it can be forked.
-          isChild:
-            Boolean(stored?.conversation.parentConversationId) &&
-            stored?.conversation.topLevelConversationId !== conversationId,
+          isChild: Boolean(stored?.conversation.parentConversationId),
         },
         readAccess,
       ),

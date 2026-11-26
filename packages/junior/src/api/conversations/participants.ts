@@ -151,7 +151,7 @@ async function readParticipantRows(
           eq(juniorConversationParticipants.userId, juniorIdentities.userId),
           eq(
             juniorConversationParticipants.rootConversationId,
-            sql`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`,
+            sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
           ),
         ),
       )

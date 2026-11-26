@@ -280,7 +280,6 @@ export async function createChild(args: {
   const [parent] = await getDb()
     .select({
       rootConversationId: juniorConversations.rootConversationId,
-      topLevelConversationId: juniorConversations.topLevelConversationId,
       visibility: juniorConversations.visibility,
     })
     .from(juniorConversations)
@@ -293,7 +292,6 @@ export async function createChild(args: {
       kind: args.kind ?? "task",
       parentConversationId: args.parentConversationId,
       rootConversationId: parent.rootConversationId,
-      topLevelConversationId: parent.topLevelConversationId,
       // A child copies its root's visibility, as the store does.
       visibility: parent.visibility,
       createdAt: at,

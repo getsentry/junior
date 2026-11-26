@@ -402,7 +402,7 @@ describe("To-dos for a person in the Inbox", () => {
     // A root with no stored root id is its own root, so Ana still sees it.
     await getDb()
       .update(juniorConversations)
-      .set({ rootConversationId: null, topLevelConversationId: null })
+      .set({ rootConversationId: null })
       .where(eq(juniorConversations.conversationId, PRIVATE_ROOT));
     expect(await inbox(ana).items()).toEqual([
       expect.objectContaining({ title: "Rotate the key" }),

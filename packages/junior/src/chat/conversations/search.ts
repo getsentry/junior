@@ -176,12 +176,12 @@ export async function searchConversations(
   // A child requester searches with the access of its root, and its own
   // tree is never a result.
   const [requester] = await db
-    .select({ rootId: conversations.topLevelConversationId })
+    .select({ rootId: conversations.rootConversationId })
     .from(conversations)
     .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
-  const ownTree = eq(conversations.topLevelConversationId, requesterRootId);
+  const ownTree = eq(conversations.rootConversationId, requesterRootId);
   const participates = (userId: string) =>
     exists(
       db
@@ -204,16 +204,13 @@ export async function searchConversations(
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
       ? or(
-          eq(
-            conversations.conversationId,
-            conversations.topLevelConversationId,
-          ),
+          eq(conversations.conversationId, conversations.rootConversationId),
           team ? ownTree : undefined,
         )
       : undefined,
     team
       ? ne(conversations.conversationId, requesterConversationId)
-      : ne(conversations.topLevelConversationId, requesterRootId),
+      : ne(conversations.rootConversationId, requesterRootId),
     or(
       isPublicConversation(conversations),
       // Conversations share a Destination only when they share an audience.
@@ -331,7 +328,7 @@ export async function searchConversations(
     .from(conversations)
     .innerJoin(
       roots,
-      eq(roots.conversationId, conversations.topLevelConversationId),
+      eq(roots.conversationId, conversations.rootConversationId),
     )
     .innerJoin(
       juniorDestinations,

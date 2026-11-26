@@ -138,11 +138,12 @@ function ownerConversationOpenTo(userId: string): SQL {
       .leftJoin(
         todoRoot,
         and(
-          eq(todoRoot.conversationId, todoOwner.topLevelConversationId),
-          eq(todoRoot.topLevelConversationId, todoRoot.conversationId),
+          eq(todoRoot.conversationId, todoOwner.rootConversationId),
+          eq(todoRoot.rootConversationId, todoRoot.conversationId),
+          isNull(todoRoot.parentConversationId),
           or(
             isNotNull(todoOwner.parentConversationId),
-            eq(todoOwner.topLevelConversationId, todoOwner.conversationId),
+            eq(todoOwner.rootConversationId, todoOwner.conversationId),
           ),
         ),
       )

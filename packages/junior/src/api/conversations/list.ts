@@ -148,7 +148,7 @@ function conversationCodeRepositoryFilter(
 ): SQL | undefined {
   return and(
     sql<boolean>`${juniorConversations.conversationId} IN (
-      SELECT coalesce(linked.top_level_conversation_id, linked.conversation_id)
+      SELECT coalesce(linked.root_conversation_id, linked.conversation_id)
       FROM ${juniorConversations} AS linked
       WHERE linked.conversation_id IN (
         SELECT unnest(${juniorCodeChanges.conversationIds})
@@ -323,7 +323,7 @@ function annotationMatch(
       .where(
         and(
           eq(
-            searchAnnotated.topLevelConversationId,
+            searchAnnotated.rootConversationId,
             juniorConversations.conversationId,
           ),
           includePrivate
@@ -424,7 +424,7 @@ export function conversationFeedVersionQuery(
     .where(
       or(
         eq(feedTree.conversationId, conversationId),
-        eq(feedTree.topLevelConversationId, conversationId),
+        eq(feedTree.rootConversationId, conversationId),
       ),
     );
   const annotations = db
@@ -439,7 +439,7 @@ export function conversationFeedVersionQuery(
         juniorConversationAnnotations.conversationId,
       ),
     )
-    .where(eq(feedAnnotated.topLevelConversationId, conversationId));
+    .where(eq(feedAnnotated.rootConversationId, conversationId));
   // Postgres runs the lookups below after the LIMIT, so once for each row
   // on the page.
   const page = db

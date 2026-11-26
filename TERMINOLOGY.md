@@ -27,9 +27,7 @@ Canonical words for Junior code and docs. One concept, one word.
   its Space. The Space's other Conversations are its child agents, and the
   Lead is the root of their tree. It does no work itself.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
-  Lead. Lists show these, and Participants, pins, and other state of one
-  piece of work key on its id (`top_level_conversation_id`). Its child
-  agents store the same id.
+  Lead. Top-level lists show these.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -90,11 +88,9 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a top-level
-  Conversation or its children, or who was invited to it. A Participant is
-  active until they Leave; an inactive Participant keeps access but leaves
-  the active feed. Access, feeds, and defaults that need people use
-  Participants. A
+- **Participant**: a User who is the Actor of a Turn in a root Conversation or
+  its children, or who was invited to it. A Participant is active until they
+  Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
@@ -207,9 +203,9 @@ Canonical words for Junior code and docs. One concept, one word.
   stopped result, reaches the parent. Do not say "Agent invocation"; it is the
   retired name.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
-  top-level agent (the agent of a top-level Conversation). To a child it is
-  the child's instruction: a Parent message that starts work or steers a
-  running Turn.
+  top-level agent (the agent of a root Conversation). To a child it is the
+  child's instruction: a Parent message that starts work or steers a running
+  Turn.
   To a parent or a top-level agent it is an Event Inbound message. The
   agent's own text gives no user approval. A person's own words that it
   passes on, linked to where the person wrote them, count as that person's

@@ -1,27 +1,21 @@
-import { and, eq, isNull, ne, or, type SQL } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { and, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 
 /**
  * Match top-level Conversations: one with no parent, or a Lead's child,
- * which is top-level Space work. Top-level lists show these. A Lead's child
- * is its own top-level Conversation, and its parent, the Lead, is its root.
- * A stray child that stores itself as both is not one.
+ * which is top-level Space work. Top-level lists show these.
  */
-export function topLevelConversation(
-  conversation: {
-    conversationId: AnyPgColumn;
-    parentConversationId: AnyPgColumn;
-    rootConversationId: AnyPgColumn;
-    topLevelConversationId: AnyPgColumn;
-  } = juniorConversations,
-): SQL {
+export function topLevelConversation(): SQL {
+  // One read of the Leads, through `junior_conversations_space_lead_idx`,
+  // for the whole query. Installs have few Spaces.
   return or(
-    isNull(conversation.parentConversationId),
-    and(
-      eq(conversation.topLevelConversationId, conversation.conversationId),
-      eq(conversation.rootConversationId, conversation.parentConversationId),
-    ),
+    isNull(juniorConversations.parentConversationId),
+    sql`${juniorConversations.parentConversationId} = any(array(
+      select listed_lead.conversation_id
+      from junior_conversations listed_lead
+      where listed_lead.kind = 'lead'
+        and listed_lead.space_id is not null
+    ))`,
   )!;
 }
 
@@ -37,8 +31,8 @@ export function notLeadConversation(): SQL {
 }
 
 /**
- * Match Conversations that lists and searches may show: tree roots that are
- * not an unkept Quick question or a Lead. Each list adds its own access and
+ * Match Conversations that lists and searches may show: top-level
+ * Conversations that are not an unkept Quick question or a Lead. Each list adds its own access and
  * scope filters. Structural root checks, such as retention, do not use this.
  */
 export function listedConversation(): SQL {

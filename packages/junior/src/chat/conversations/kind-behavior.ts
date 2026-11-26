@@ -349,10 +349,7 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
 export function canMoveToSpace(
   conversation: Pick<
     Conversation,
-    | "conversationId"
-    | "kind"
-    | "parentConversationId"
-    | "topLevelConversationId"
+    "kind" | "parentConversationId" | "rootConversationId" | "spaceId"
   >,
 ): boolean {
   return conversation.kind === "thread" && isTopLevelWork(conversation);
@@ -416,19 +413,22 @@ export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a Conversation is its own top-level Conversation: it has no
- * parent, or it is a Lead's child. Top-level lists show it, and its child
+ * Return whether a Conversation is top-level work: it has no parent, or it
+ * is a Lead's child. Top-level lists show it, and its child
  * agents move with it.
  */
 export function isTopLevelWork(
   conversation: Pick<
     Conversation,
-    "conversationId" | "parentConversationId" | "topLevelConversationId"
+    "parentConversationId" | "rootConversationId" | "spaceId"
   >,
 ): boolean {
+  // A Space's Lead is the root of its Space, so a Lead's child is a direct
+  // child of a root that has a Space.
   return (
     isTopLevel(conversation) ||
-    conversation.topLevelConversationId === conversation.conversationId
+    (conversation.spaceId !== undefined &&
+      conversation.parentConversationId === conversation.rootConversationId)
   );
 }
 
@@ -440,6 +440,19 @@ export function ownsLocation(
   conversation: Pick<Conversation, "ownLocation" | "parentConversationId">,
 ): boolean {
   return isTopLevel(conversation) || conversation.ownLocation === true;
+}
+
+/**
+ * Return whether a write may keep a stored parent that is not its own. A
+ * move into, out of, or between Spaces changes the parent only between no
+ * parent and a Lead, so a write from before the move keeps the stored one.
+ */
+export function keepsStoredParent(
+  stored: { id: string | null; isLead: boolean },
+  incoming: { id: string | undefined; isLead: boolean },
+): boolean {
+  if (stored.id === (incoming.id ?? null)) return true;
+  return (!stored.id || stored.isLead) && (!incoming.id || incoming.isLead);
 }
 
 /** Return whether a Conversation has no parent. */

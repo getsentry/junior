@@ -217,7 +217,7 @@ export function createConversationWork(
     return await withLogContext(
       {
         rootConversationId:
-          conversation?.topLevelConversationId ??
+          conversation?.rootConversationId ??
           (topLevel ? context.conversationId : undefined),
       },
       () => runByKind(context, topLevel),
