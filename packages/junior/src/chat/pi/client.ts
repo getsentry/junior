@@ -36,7 +36,6 @@ import {
   type GeneratedFile,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
-  type Experimental_DecisionState,
   type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
@@ -57,10 +56,6 @@ import {
   structuredOutputErrorCause,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
-import {
-  decisionEndAttributes,
-  decisionStartAttributes,
-} from "@/chat/pi/decision-span";
 import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
@@ -586,7 +581,7 @@ export async function completeDecision<
   const TQuestions extends Record<string, Experimental_DecisionQuestion>,
 >(params: {
   modelId: string;
-  state: Experimental_DecisionState;
+  state: string;
   questions: TQuestions;
   signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
@@ -617,14 +612,20 @@ export async function completeDecision<
           result.usage.inputTokens,
         );
         setSpanAttributes({
-          ...decisionEndAttributes({
-            answers: result.answers,
-            privacy,
-            response: result.response,
-          }),
           ...extractGenAiUsageAttributes(result.usage, {
             cost: { input: costUsd, total: costUsd },
           }),
+          "gen_ai.output.messages":
+            privacy === "public"
+              ? serializeGenAiAttribute([
+                  {
+                    role: "assistant",
+                    parts: [
+                      { type: "text", content: JSON.stringify(result.answers) },
+                    ],
+                  },
+                ])
+              : undefined,
         });
         return { answers: result.answers, costUsd };
       },
@@ -635,11 +636,21 @@ export async function completeDecision<
         "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "gen_ai.provider.auth_mode": credential.mode,
-        ...decisionStartAttributes({
-          privacy,
-          questions: params.questions,
-          state: params.state,
-        }),
+        "app.conversation.privacy": privacy,
+        // Questions can quote Conversation content, so they are content too.
+        ...(privacy === "public"
+          ? {
+              "gen_ai.system_instructions": serializeGenAiAttribute([
+                { type: "text", content: JSON.stringify(params.questions) },
+              ]),
+              "gen_ai.input.messages": serializeGenAiAttribute([
+                {
+                  role: "user",
+                  parts: [{ type: "text", content: params.state }],
+                },
+              ]),
+            }
+          : undefined),
       },
     );
     return {

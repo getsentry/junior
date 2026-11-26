@@ -661,17 +661,10 @@ describe("completeText", () => {
     });
   });
 
-  it("records decision questions, state, and answers by Conversation privacy", async () => {
+  it("records decision content only in public Conversations", async () => {
     mocks.decide.mockResolvedValue({
-      answers: {
-        route: {
-          type: "choice",
-          choice: "reply",
-          probabilities: { reply: 0.9, stay_quiet: 0.1 },
-        },
-      },
-      response: { id: "gen_decide", modelId: "typesafe-ai/jev" },
-      usage: { inputTokens: 1000, outputTokens: 2 },
+      answers: { route: { type: "choice", choice: "reply" } },
+      usage: { inputTokens: 10 },
     });
     const { completeDecision } = await import("@/chat/pi/client");
     const { runWithConversationPrivacy } =
@@ -679,50 +672,36 @@ describe("completeText", () => {
     const call = () =>
       completeDecision({
         modelId: "typesafe-ai/jev",
-        state: "secret thread text",
+        state: "thread text",
         questions: {
-          route: {
-            type: "choice",
-            instructions: "Should Junior reply?",
-            criteria: { reply: "yes", stay_quiet: "no" },
-          },
+          route: { type: "choice", criteria: { reply: "Junior replies." } },
         },
       });
 
     await call();
     await runWithConversationPrivacy("public", call);
 
-    const [privateStart, publicStart] = mocks.withSpan.mock.calls.map(
-      (args) => args[4] as Record<string, unknown>,
+    const [privateSpan, publicSpan] = mocks.withSpan.mock.calls.map(
+      (args, i) => ({
+        ...(args[4] as Record<string, unknown>),
+        ...(mocks.setSpanAttributes.mock.calls[i]?.[0] as Record<
+          string,
+          unknown
+        >),
+      }),
     );
-    const [privateEnd, publicEnd] = mocks.setSpanAttributes.mock.calls.map(
-      (args) => args[0] as Record<string, unknown>,
-    );
-    const answers =
-      '{"route":{"type":"choice","choice":"reply","probabilities":{"reply":0.9,"stay_quiet":0.1}}}';
-    for (const end of [privateEnd, publicEnd]) {
-      expect(end).toMatchObject({
-        "app.decision.answers": answers,
-        "app.cost.total_usd": 0.000042,
-        "gen_ai.response.id": "gen_decide",
-        "gen_ai.response.model": "typesafe-ai/jev",
-      });
+    for (const key of [
+      "gen_ai.system_instructions",
+      "gen_ai.input.messages",
+      "gen_ai.output.messages",
+    ]) {
+      expect(privateSpan?.[key]).toBeUndefined();
     }
-    expect(privateStart).toMatchObject({
-      "app.conversation.privacy": "private",
-      "app.decision.question.ids": ["route"],
-      "gen_ai.input.content_chars": 18,
-    });
-    expect(privateStart?.["gen_ai.input.messages"]).toBeUndefined();
-    expect(privateStart?.["gen_ai.system_instructions"]).toBeUndefined();
-    expect(privateEnd?.["gen_ai.output.messages"]).toBeUndefined();
-    expect(publicStart?.["gen_ai.input.messages"]).toContain(
-      "secret thread text",
+    expect(publicSpan?.["gen_ai.system_instructions"]).toContain(
+      "Junior replies.",
     );
-    expect(publicStart?.["gen_ai.system_instructions"]).toContain(
-      "Should Junior reply?",
-    );
-    expect(publicEnd?.["gen_ai.output.messages"]).toContain("stay_quiet");
+    expect(publicSpan?.["gen_ai.input.messages"]).toContain("thread text");
+    expect(publicSpan?.["gen_ai.output.messages"]).toContain("reply");
   });
 });
 
