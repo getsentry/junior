@@ -10,8 +10,10 @@ end-of-Turn contract. A person can see and steer each agent.
 
 - When an agent hands work to other agents, it learns how each one ended
   without checking again, so no agent polls and no agent waits forever.
-- When a person wants to steer one piece of work, they message its Thread
-  directly, so they do not go through the agent that started it.
+- When a person wants to steer one piece of work, they can message its
+  Thread or ask the agent that started it. Either way, the agent that
+  started it gets an update with what the person decided, so the decision
+  reaches its other work.
 - When an agent needs a person, that person gets one Inbox item from the
   agent that needs them, so no question or answer passes through other
   agents.
