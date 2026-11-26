@@ -6,11 +6,12 @@
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { and, asc, eq, inArray, is, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, is, isNotNull, ne, sql } from "drizzle-orm";
 import { alias, PgAsyncDatabase } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
+  juniorConversations,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorUsers,
@@ -414,48 +415,69 @@ function rejectUnassigned(ids: readonly number[]): never {
   );
 }
 
-/** A child's result that reached a Conversation: who sent it, how it ended, and when. */
-type ReceivedChildResult = {
+/** How a child's work ended for its parent's To-dos: which child, how, and when. */
+type ChildWorkEnd = {
   atMs: number;
   childConversationId: string;
   status: ClosedTodoStatus;
 };
 
 /**
- * Read the child results that wait in a Conversation's mailbox. A done
- * result closes the child's To-dos as done, and a stopped one drops them.
+ * Read the stopped results of child agents that wait in a Conversation's
+ * mailbox. A stop drops the child's To-dos. A done result closes nothing: a
+ * child that watches work reports after each Turn while that work goes on.
  * A Turn reads its To-dos when it builds its prompt, before it takes its
  * input out of the mailbox, so a read sees every result there.
  */
-async function readReceivedChildResults(
-  conversationId: string,
-): Promise<ReceivedChildResult[]> {
+async function readChildStops(conversationId: string): Promise<ChildWorkEnd[]> {
   const work = await getConversationWorkState({ conversationId });
   return (work?.execution.pendingMessages ?? []).flatMap((message) => {
     const sender = readInboundMessageSender(message);
     const metadata = message.input.metadata;
-    const result = isEventMailboxMetadata(metadata)
-      ? metadata.event.status
-      : undefined;
-    const status =
-      result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;
-    return sender && status
+    const stopped =
+      isEventMailboxMetadata(metadata) && metadata.event.status === "stopped";
+    return sender && stopped
       ? [
           {
             atMs: message.createdAtMs,
             childConversationId: sender.conversationId,
-            status,
+            status: "dropped" as const,
           },
         ]
       : [];
   });
 }
 
+/** Read when child agents of a Conversation were archived. Archive closes their To-dos as done. */
+async function readChildArchives(
+  db: JuniorDatabase,
+  conversationId: string,
+  childConversationIds: readonly string[],
+): Promise<ChildWorkEnd[]> {
+  const rows = await db
+    .select({
+      archivedAt: juniorConversations.archivedAt,
+      childConversationId: juniorConversations.conversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.parentConversationId, conversationId),
+        inArray(juniorConversations.conversationId, [...childConversationIds]),
+        isNotNull(juniorConversations.archivedAt),
+      ),
+    );
+  return rows.flatMap(({ archivedAt, childConversationId }) =>
+    archivedAt
+      ? [{ atMs: archivedAt.getTime(), childConversationId, status: "done" }]
+      : [],
+  );
+}
+
 /**
- * Close the open To-dos of a Conversation whose child's result reached it
- * after the To-do last changed: done when the child completed, dropped when
- * it was stopped. The received results decide it, so a repeat read changes
- * nothing.
+ * Close the open To-dos of a Conversation whose child ended its work after
+ * the To-do last changed: done when the child was archived, dropped when it
+ * was stopped. Stored state decides it, so a repeat read changes nothing.
  */
 async function settleChildTodos(
   executor: JuniorSqlDatabase,
@@ -466,21 +488,33 @@ async function settleChildTodos(
     (todo) => todo.assignee.kind === "agent" && isOpenTodoStatus(todo.status),
   );
   if (assigned.length === 0) return false;
-  const results = await readReceivedChildResults(conversationId);
+  const childIds = [
+    ...new Set(
+      assigned.flatMap((todo) =>
+        todo.assignee.kind === "agent" ? [todo.assignee.conversationId] : [],
+      ),
+    ),
+  ];
+  const results = (
+    await Promise.all([
+      readChildStops(conversationId),
+      readChildArchives(executor.db(), conversationId, childIds),
+    ])
+  ).flat();
   if (results.length === 0) return false;
   const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
   for (const todo of assigned) {
     if (todo.assignee.kind !== "agent") continue;
     const childId = todo.assignee.conversationId;
-    // The newest result after the To-do's last change decides it. A To-do
-    // given to a child after its result waits for the next one.
+    // The newest end after the To-do's last change decides it. A To-do
+    // given to a child after that waits for the next one.
     const latest = results
       .filter(
         (result) =>
           result.childConversationId === childId &&
           result.atMs > todo.updatedAtMs,
       )
-      .reduce<ReceivedChildResult | undefined>(
+      .reduce<ChildWorkEnd | undefined>(
         (newest, result) =>
           !newest || result.atMs >= newest.atMs ? result : newest,
         undefined,
@@ -523,7 +557,7 @@ async function settleChildTodos(
 
 /**
  * List every To-do of one Conversation, oldest first, with assignees
- * resolved. A To-do assigned to a child agent that has finished or stopped
+ * resolved. A To-do assigned to a child agent that was archived or stopped
  * since it last changed is closed first.
  */
 export async function listTodos(
