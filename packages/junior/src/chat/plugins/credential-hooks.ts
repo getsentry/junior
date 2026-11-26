@@ -17,7 +17,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 interface SafeSchema<T> {

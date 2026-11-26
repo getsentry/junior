@@ -7,7 +7,7 @@ import {
   subjectKindPlugin,
   type InboxItemSubject,
 } from "@/chat/inbox-items/subjects";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorCodeChanges,

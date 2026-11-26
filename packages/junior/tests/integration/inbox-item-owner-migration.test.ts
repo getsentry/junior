@@ -80,7 +80,7 @@ describe("inbox item owner migration", () => {
         fixture.sql.execute(
           oldWorkerItem(
             "again",
-            "T123",
+            "T999",
             "2026-10-03T12:00:00Z",
             "slack:C123:2.000001",
           ),

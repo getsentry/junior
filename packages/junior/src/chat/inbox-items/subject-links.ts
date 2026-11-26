@@ -9,7 +9,7 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { codeChangeUrl } from "@/chat/code/links";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {

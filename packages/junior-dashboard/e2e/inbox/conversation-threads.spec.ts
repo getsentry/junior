@@ -67,7 +67,11 @@ test.describe("new UI", () => {
     );
 
     const threads = details.getByRole("region", { name: "Threads" });
-    await expect(threads.getByRole("listitem")).toHaveCount(1);
+    // Its one Thread is done, so Done starts collapsed.
+    await expect(
+      threads.getByRole("button", { name: "Done · 1" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    // Archived Threads sit under Done, so showing them opens it.
     await threads.getByRole("button", { name: "Show archived (1)" }).click();
     await expect(
       threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),
@@ -380,6 +384,32 @@ test.describe("new UI", () => {
       page.getByRole("dialog", { name: "Review the dashboard plan" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
+
+    // A message to a child agent and the child's message back show as a
+    // pair of rows that link the child.
+    const sent = transcript.getByRole("group", {
+      name: "Message to Review the dashboard plan",
+    });
+    const received = transcript.getByRole("group", {
+      name: "Message from Review the dashboard plan",
+    });
+    await expect(sent).toContainText("Delivered");
+    await expect(sent).toContainText("after a hard reload");
+    await expect(
+      sent.getByRole("link", { name: "Review the dashboard plan" }),
+    ).toHaveAttribute("href", `/conversations/${encodeURIComponent(TASK_ID)}`);
+    await expect(received).toContainText("keeps the order");
+    await expect(received).not.toContainText("agent-message");
+    // A child agent without a title shows by the name that `to` used.
+    await expect(
+      transcript.getByRole("group", { name: "Message to reviewer" }),
+    ).toContainText("Delivered");
+    // No agent got a refused message, so it names no Conversation.
+    await expect(
+      transcript.getByRole("group", { name: "Message to Conversation" }),
+    ).toContainText("Refused");
+    await sent.scrollIntoViewIfNeeded();
+    await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 
     await archivedCard.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-thread-cards", { view: "desktop" });

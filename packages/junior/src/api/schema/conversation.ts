@@ -11,7 +11,7 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
+import { agentTypeSchema } from "@/chat/child-agents/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -323,8 +323,8 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     /** Identity id of the author. Detail `authors` maps it to the person. */
     actorIdentityId: z.string().min(1).optional(),
-    /** Set on input that an earlier release's agent wrote, not a person. */
-    agentInvocationId: z.string().min(1).optional(),
+    /** Set on input that a parent agent wrote, not a person. */
+    fromParentAgent: z.literal(true).optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
     eventNamespace: z.string().min(1).optional(),
@@ -394,8 +394,6 @@ const conversationReportToolCallSchema = z
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
-    /** The Conversation that a completed `startConversation` call started. */
-    startedConversationId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((call, context) => {

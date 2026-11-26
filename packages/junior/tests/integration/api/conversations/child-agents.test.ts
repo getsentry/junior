@@ -11,15 +11,15 @@ import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 async function requestDetail(conversationId: string, etag?: string) {
@@ -45,13 +45,13 @@ describe("conversation child agents API", () => {
   function spawn(
     conversationStore: ConversationStore,
     args: Omit<
-      Parameters<typeof spawnChildWithoutAgentInvocation>[0],
+      Parameters<typeof startChildAgent>[0],
       "actor" | "conversationStore" | "queue"
     >,
   ) {
     vi.useFakeTimers({ now: args.nowMs, toFake: ["Date"] });
-    return spawnChildWithoutAgentInvocation({
-      actor: slackInvocationInput.actor,
+    return startChildAgent({
+      actor: slackSpawnInput.actor,
       conversationStore,
       queue: createConversationWorkQueueTestAdapter(),
       ...args,
@@ -122,8 +122,9 @@ describe("conversation child agents API", () => {
     const response = await expectSqlBudget(
       () => requestChildAgents(slackParentConversationId),
       // Each running child also checks, in one read, that its waiting task
-      // comes from its parent and was sent after any stop.
-      { statements: 8, serialRounds: 5 },
+      // comes from its parent and was sent after any stop. The tree states
+      // of the children take one more read beside the metrics.
+      { statements: 9, serialRounds: 5 },
     );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer)).json(),
@@ -140,9 +141,11 @@ describe("conversation child agents API", () => {
           cumulativeDurationMs: 0,
           kind: "task",
           status: "stopped",
-          task: "Private repo read",
           title: "Private repo read",
+          // The test stops it without clearing its queued Turn.
+          treeState: "working",
           updatedAt: new Date(3_000).toISOString(),
+          watching: false,
         },
         {
           childAgentTotals: {
@@ -165,18 +168,22 @@ describe("conversation child agents API", () => {
           kind: "task",
           name: "reviewer",
           status: "running",
-          task: "Plan review",
           title: "Plan review",
+          // The reviewer's Turn is queued.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
         {
           conversationId: thread,
           cumulativeDurationMs: 0,
           kind: "thread",
           status: "running",
-          task: "",
+          title: null,
           archivedAt: new Date(4_000).toISOString(),
+          treeState: "working",
           updatedAt: new Date(500).toISOString(),
+          watching: false,
         },
       ],
       conversationId: slackParentConversationId,
@@ -262,8 +269,8 @@ describe("conversation child agents API", () => {
   it("redacts child agent content from viewers without private access", async () => {
     const { conversationStore } = await prepareParentConversation();
     vi.useFakeTimers({ now: 1_000, toFake: ["Date"] });
-    const child = await spawnChildWithoutAgentInvocation({
-      actor: invocationInput.actor,
+    const child = await startChildAgent({
+      actor: spawnInput.actor,
       agentConfig: { agentType: "reviewer", fork: true },
       agentName: "private-reviewer",
       conversationStore,
@@ -294,7 +301,10 @@ describe("conversation child agents API", () => {
           kind: "task",
           redacted: true,
           status: "running",
+          // Status shows no content, so a redacted row keeps it.
+          treeState: "working",
           updatedAt: new Date(1_000).toISOString(),
+          watching: false,
         },
       ],
       conversationId: parentConversationId,

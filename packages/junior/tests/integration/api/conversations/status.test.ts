@@ -15,7 +15,7 @@ import { juniorConversations, juniorInboxItems } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import {
   closeConversationFixture,
   webTestActor,

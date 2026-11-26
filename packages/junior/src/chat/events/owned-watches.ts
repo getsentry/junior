@@ -9,7 +9,7 @@ import { mapBounded } from "@/chat/fan-out";
 import {
   listDescendantAgents,
   type DescendantAgent,
-} from "@/chat/agent-invocations/list";
+} from "@/chat/child-agents/list";
 import { addConversationNote } from "@/chat/conversations/notes";
 import {
   cancelWatch,

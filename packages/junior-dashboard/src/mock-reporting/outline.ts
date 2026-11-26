@@ -33,8 +33,8 @@ export function readMockConversationOutline(
         ...(data.actorIdentityId
           ? { actorIdentityId: data.actorIdentityId }
           : undefined),
-        ...(data.agentInvocationId
-          ? { agentInvocationId: data.agentInvocationId }
+        ...(data.fromParentAgent
+          ? { fromParentAgent: data.fromParentAgent }
           : undefined),
         ...(mentions ? { mentions } : undefined),
       });

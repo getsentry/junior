@@ -1,9 +1,7 @@
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import {
-  createPluginEventPublisher,
-  getPlugins,
-} from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { createPluginEventPublisher } from "@/chat/plugins/hooks/routes";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
 import { createPluginConversationWatches } from "@/chat/plugins/watches";

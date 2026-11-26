@@ -1,82 +1,16 @@
 import {
-  readAttachmentStorageConfig,
-  type AttachmentStorageConfig,
-} from "@/chat/attachments/config";
-import {
-  readEncryptionKeyring,
-  type EncryptionKeyring,
-} from "@/chat/encryption/keyring";
+  DEFAULT_COMPLETED_REACTION_EMOJI,
+  DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
+  DEFAULT_PROCESSING_REACTION_EMOJI,
+  loadConfig,
+  resolveConversationWorkSoftYieldAfterMs,
+  resolveMaxTurnTimeoutMs,
+  type JuniorConfig,
+} from "@/config";
 import { resolveBotName } from "@/chat/bot-name";
 import { toOptionalTrimmed } from "@/chat/optional-string";
-import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import {
-  parseTurnReasoningLevel,
-  type TurnReasoningLevel,
-} from "@/chat/reasoning-level";
-
-const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
-const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
-const MAX_SLICES_PER_TURN = 100;
-/**
- * Max model spend in USD for one turn, including later execution slices of
- * that turn. Sentry span estimates put a child agent that made 250 tool calls
- * of real work at about $50.
- */
-const MAX_TURN_COST_USD = 100;
-/**
- * Max tool calls for one turn, including later execution slices of that turn.
- * A backstop for models without cost data. The spend limit should stop a turn
- * first. 250 calls stopped child agents that were still doing real work.
- */
-const MAX_TOOL_CALLS_PER_TURN = 1000;
-/**
- * Max consecutive automated turns before event wakes stop until a user message.
- * Resource-event CI watches and event-automation loops are the common runaway paths.
- * Sentry telemetry has no direct instrumentation for how long real automated
- * chains run (only failure paths on the notice are logged, and those show zero
- * hits in the last 30d), so this is sized qualitatively: it stays well under
- * the runaway CI-watch-loop range (hundreds of tool calls) while giving
- * multi-phase event-automation/scheduled-automation work enough headroom to
- * avoid pausing on legitimate longer-running automation.
- */
-const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
-/**
- * Max runs one Event automation can start in one rolling run window. Each run
- * is a full agent turn, and Event automations skip the consecutive
- * automated-turn limit. Kept low so a broad trigger, such as every message in
- * a channel, blocks quickly instead of starting a turn for each Event.
- */
-const MAX_EVENT_AUTOMATION_RUNS = 10;
-/** Length of the rolling window for the Event automation run limit. */
-const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
-const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
-const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
-const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
-const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
-export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
-/**
- * Buffer between the Vercel function timeout and the agent turn timeout so
- * Junior can abort, persist, and schedule continuation before host teardown.
- */
-export const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
-/** Additional buffer that makes conversation work yield before the hard request deadline. */
-export const CONVERSATION_WORK_SOFT_YIELD_BUFFER_SECONDS = 40;
-const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
-  "Consulting the orb",
-  "Bribing the gremlins",
-  "Shuffling the papers dramatically",
-  "Summoning the right stack trace",
-  "Negotiating with the mutex",
-  "Poking the internet with a stick",
-  "Asking the docs nicely",
-  "Searching for the least cursed path",
-  "Pretending this was obvious",
-  "Waking up the test suite",
-  "Untangling the spaghetti carefully",
-  "Rattling the command line",
-] as const;
 
 export interface BotModelConfig {
   /** Model that runs every agent Turn. */
@@ -103,177 +37,15 @@ export interface BotModelConfig {
   refusalFallbackModelId?: string;
 }
 
-export interface BotConfig {
-  contextWindowTokens: number;
-  decisionModelId: string;
-  embeddingModelId: string;
-  fastModelId: string;
-  guardianModelId: string;
-  rerankingModelId: string;
-  imageGenerationModelId: string;
-  transcriptionModelId: string;
-  loadingMessages: string[];
-  modelId: string;
-  reasoningLevel: TurnReasoningLevel;
-  refusalFallbackModelId?: string | undefined;
-  visionModelId?: string | undefined;
-  maxAgentDepth: number;
-  maxSlicesPerTurn: number;
-  maxToolCallsPerTurn: number;
-  maxTurnCostUsd: number;
-  maxConsecutiveAutomatedTurns: number;
-  maxEventAutomationRuns: number;
-  eventAutomationRunWindowMs: number;
-  turnTimeoutMs: number;
-  userName: string;
-  webSearchModelId: string;
-}
-
-export type SqlDriver = "neon" | "postgres";
-
-export interface ChatConfig {
-  attachmentStorage: AttachmentStorageConfig;
-  bot: BotConfig;
-  queue: QueueConfig;
-  functionMaxDurationSeconds: number;
-  /** Kill switch for prompt cache warming. Defaults to true. */
-  cacheWarmingEnabled: boolean;
-  /**
-   * Kill switch for compaction on idle: a warmup of a prefix at or above the
-   * background compaction mark swaps in a ready background summary instead.
-   * Defaults to true. It runs only while cache warming is on.
-   */
-  idleCompactionEnabled: boolean;
-  conversationWorkEnabled: boolean;
-  conversationWorkSoftYieldAfterMs: number;
-  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
-  encryption: EncryptionKeyring;
-  sql: {
-    databaseUrl: string;
-    driver: SqlDriver;
-    statementTimeoutMs: number | false;
-  };
-  slack: {
-    botToken?: string | undefined;
-    clientId?: string | undefined;
-    clientSecret?: string | undefined;
-    completedReactionEmoji: string;
-    processingReactionEmoji: string;
-    signingSecret?: string | undefined;
-  };
-  sandbox: {
-    /** Sandbox provider for this deployment. `docker` is for local development. */
-    provider: "vercel" | "docker";
-  };
-  state: {
-    adapter: "memory" | "redis";
-    keyPrefix?: string | undefined;
-    redisUrl?: string | undefined;
-  };
-}
-
-function parseAgentTurnTimeoutMs(
-  rawValue: string | undefined,
-  maxTimeoutMs: number,
-): number {
-  const value = Number.parseInt(rawValue ?? "", 10);
-  if (Number.isNaN(value)) {
-    return Math.max(
-      MIN_AGENT_TURN_TIMEOUT_MS,
-      Math.min(DEFAULT_AGENT_TURN_TIMEOUT_MS, maxTimeoutMs),
-    );
-  }
-  return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, Math.min(value, maxTimeoutMs));
-}
+export type ChatConfig = JuniorConfig;
+export type BotConfig = ChatConfig["bot"];
+export type SqlDriver = ChatConfig["sql"]["driver"];
 
 function resolveFunctionMaxDurationSeconds(
   functionMaxDurationSeconds?: number,
 ): number {
   return functionMaxDurationSeconds ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
 }
-
-function resolveConversationWorkSoftYieldAfterMs(
-  functionMaxDurationSeconds: number,
-): number {
-  return Math.max(
-    MIN_AGENT_TURN_TIMEOUT_MS,
-    (functionMaxDurationSeconds - CONVERSATION_WORK_SOFT_YIELD_BUFFER_SECONDS) *
-      1000,
-  );
-}
-
-function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
-  const budgetSeconds =
-    functionMaxDurationSeconds - FUNCTION_TIMEOUT_BUFFER_SECONDS;
-  return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, budgetSeconds * 1000);
-}
-
-function parseLoadingMessages(rawValue: string | undefined): string[] {
-  const trimmed = rawValue?.trim();
-  if (!trimmed) {
-    return [...DEFAULT_ASSISTANT_LOADING_MESSAGES];
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    throw new Error("JUNIOR_LOADING_MESSAGES must be a JSON array of strings");
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new Error("JUNIOR_LOADING_MESSAGES must be a JSON array of strings");
-  }
-
-  return parsed.map((value, index) => {
-    if (typeof value !== "string") {
-      throw new Error(`JUNIOR_LOADING_MESSAGES[${index}] must be a string`);
-    }
-    return value.trim();
-  });
-}
-
-function parseOptionalPositiveInteger(
-  envName: string,
-  rawValue: string | undefined,
-): number | undefined {
-  const trimmed = toOptionalTrimmed(rawValue);
-  if (trimmed === undefined) {
-    return undefined;
-  }
-
-  const value = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(value) || value <= 0 || String(value) !== trimmed) {
-    throw new Error(`${envName} must be a positive integer`);
-  }
-  return value;
-}
-
-// Operational kill switches default to on. Only "false" turns them off.
-function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
-  const value = toOptionalTrimmed(rawValue)?.toLowerCase();
-  if (value === undefined || value === "true") {
-    return true;
-  }
-  if (value === "false") {
-    return false;
-  }
-  throw new Error(`${name} must be true or false`);
-}
-
-const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
-const DEFAULT_REASONING_LEVEL: TurnReasoningLevel = "high";
-const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
-const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
-const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
-const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
-// The transcription tool sends a URL, not bytes. The model must accept
-// ElevenLabs `sourceUrl`.
-const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
-const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
@@ -316,182 +88,12 @@ function parseReactionEmoji(
   return normalized;
 }
 
-function readBotConfig(
-  env: NodeJS.ProcessEnv,
-  functionMaxDurationSeconds: number,
-): BotConfig {
-  const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
-  const modelId = validateGatewayModelId(env["AI_MODEL"]) ?? DEFAULT_MODEL_ID;
-  const reasoningLevel = toOptionalTrimmed(env["AI_REASONING_LEVEL"]);
-  const fastModelId =
-    validateGatewayModelId(env["AI_FAST_MODEL"] ?? env["AI_MODEL"]) ??
-    DEFAULT_FAST_MODEL_ID;
-  const guardianModelId =
-    validateGatewayModelId(env["AI_GUARDIAN_MODEL"]) ??
-    DEFAULT_GUARDIAN_MODEL_ID;
-
-  return {
-    userName: resolveBotName(undefined, env),
-    modelId,
-    contextWindowTokens:
-      parseOptionalPositiveInteger(
-        "AI_MODEL_CONTEXT_WINDOW_TOKENS",
-        env["AI_MODEL_CONTEXT_WINDOW_TOKENS"],
-      ) ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
-    reasoningLevel:
-      reasoningLevel === undefined
-        ? DEFAULT_REASONING_LEVEL
-        : parseTurnReasoningLevel(reasoningLevel),
-    decisionModelId:
-      toOptionalTrimmed(env["AI_DECISION_MODEL"]) ?? DEFAULT_DECISION_MODEL_ID,
-    fastModelId,
-    guardianModelId,
-    imageGenerationModelId:
-      toOptionalTrimmed(env["AI_IMAGE_MODEL"]) ??
-      DEFAULT_IMAGE_GENERATION_MODEL_ID,
-    transcriptionModelId:
-      toOptionalTrimmed(env["AI_TRANSCRIPTION_MODEL"]) ??
-      DEFAULT_TRANSCRIPTION_MODEL_ID,
-    embeddingModelId:
-      validateEmbeddingModelId(env["AI_EMBEDDING_MODEL"]) ??
-      DEFAULT_EMBEDDING_MODEL_ID,
-    rerankingModelId:
-      toOptionalTrimmed(env["AI_RERANKING_MODEL"]) ??
-      DEFAULT_RERANKING_MODEL_ID,
-    loadingMessages: parseLoadingMessages(env["JUNIOR_LOADING_MESSAGES"]),
-    refusalFallbackModelId: validateGatewayModelId(
-      env["AI_REFUSAL_FALLBACK_MODEL"],
-    ),
-    visionModelId:
-      env["AI_VISION_MODEL"] === undefined
-        ? DEFAULT_VISION_MODEL_ID
-        : validateGatewayModelId(env["AI_VISION_MODEL"]),
-    maxAgentDepth: 1,
-    maxSlicesPerTurn: MAX_SLICES_PER_TURN,
-    maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
-    maxTurnCostUsd: MAX_TURN_COST_USD,
-    maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
-    maxEventAutomationRuns: MAX_EVENT_AUTOMATION_RUNS,
-    eventAutomationRunWindowMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
-    turnTimeoutMs: parseAgentTurnTimeoutMs(
-      env["AGENT_TURN_TIMEOUT_MS"],
-      maxTurnTimeoutMs,
-    ),
-    webSearchModelId:
-      validateGatewayModelId(env["AI_WEB_SEARCH_MODEL"]) ??
-      DEFAULT_WEB_SEARCH_MODEL_ID,
-  };
-}
-
-function readDatabaseUrl(env: NodeJS.ProcessEnv): string {
-  const databaseUrl = toOptionalTrimmed(env["DATABASE_URL"]);
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required");
-  }
-  return databaseUrl;
-}
-
-function isLocalDatabaseUrl(databaseUrl: string): boolean {
-  try {
-    const { hostname } = new URL(databaseUrl);
-    return (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
-}
-
-function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
-  const value = toOptionalTrimmed(env["JUNIOR_DATABASE_DRIVER"]);
-  if (value === undefined) {
-    if (isLocalDatabaseUrl(databaseUrl)) {
-      return "postgres";
-    }
-    return "neon";
-  }
-  if (value === "neon" || value === "postgres") {
-    return value;
-  }
-  throw new Error("JUNIOR_DATABASE_DRIVER must be postgres or neon");
-}
-
-function readSqlStatementTimeoutMs(env: NodeJS.ProcessEnv): number | false {
-  const rawValue = toOptionalTrimmed(env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"]);
-  if (rawValue === undefined) {
-    return DEFAULT_SQL_STATEMENT_TIMEOUT_MS;
-  }
-  const value = Number.parseInt(rawValue, 10);
-  if (!Number.isSafeInteger(value) || value < 0 || String(value) !== rawValue) {
-    throw new Error(
-      "JUNIOR_SQL_STATEMENT_TIMEOUT_MS must be a non-negative integer",
-    );
-  }
-  return value === 0 ? false : value;
-}
-
 /** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
-  functionMaxDurationSeconds = DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
+  functionMaxDurationSeconds?: number,
 ): ChatConfig {
-  const databaseUrl = readDatabaseUrl(env);
-  const resolvedFunctionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(
-    functionMaxDurationSeconds,
-  );
-  return {
-    attachmentStorage: readAttachmentStorageConfig(env),
-    bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
-    queue: readQueueConfig(env),
-    functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
-    cacheWarmingEnabled: parseKillSwitch(
-      "JUNIOR_CACHE_WARMING_ENABLED",
-      env["JUNIOR_CACHE_WARMING_ENABLED"],
-    ),
-    idleCompactionEnabled: parseKillSwitch(
-      "JUNIOR_IDLE_COMPACTION_ENABLED",
-      env["JUNIOR_IDLE_COMPACTION_ENABLED"],
-    ),
-    conversationWorkEnabled: parseKillSwitch(
-      "JUNIOR_CONVERSATION_WORK_ENABLED",
-      env["JUNIOR_CONVERSATION_WORK_ENABLED"],
-    ),
-    conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
-      resolvedFunctionMaxDurationSeconds,
-    ),
-    encryption: readEncryptionKeyring(env),
-    sql: {
-      databaseUrl,
-      driver: readSqlDriver(env, databaseUrl),
-      statementTimeoutMs: readSqlStatementTimeoutMs(env),
-    },
-    slack: {
-      botToken:
-        toOptionalTrimmed(env["SLACK_BOT_TOKEN"]) ??
-        toOptionalTrimmed(env["SLACK_BOT_USER_TOKEN"]),
-      clientId: toOptionalTrimmed(env["SLACK_CLIENT_ID"]),
-      clientSecret: toOptionalTrimmed(env["SLACK_CLIENT_SECRET"]),
-      completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
-      processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
-      signingSecret: toOptionalTrimmed(env["SLACK_SIGNING_SECRET"]),
-    },
-    sandbox: {
-      provider:
-        env["JUNIOR_SANDBOX_PROVIDER"]?.trim().toLowerCase() === "docker"
-          ? "docker"
-          : "vercel",
-    },
-    state: {
-      adapter:
-        env["JUNIOR_STATE_ADAPTER"]?.trim().toLowerCase() === "memory"
-          ? "memory"
-          : "redis",
-      keyPrefix: toOptionalTrimmed(env["JUNIOR_STATE_KEY_PREFIX"]),
-      redisUrl: toOptionalTrimmed(env["REDIS_URL"]),
-    },
-  };
+  return loadConfig({ env, options: { functionMaxDurationSeconds } });
 }
 
 /** Chat configuration parsed once at module load from the process environment. */
@@ -568,7 +170,7 @@ export function resetRuntimeConfig(functionMaxDurationSeconds?: number): void {
   chatConfig.functionMaxDurationSeconds = resolved;
   chatConfig.conversationWorkSoftYieldAfterMs =
     resolveConversationWorkSoftYieldAfterMs(resolved);
-  replaceBotConfig(readBotConfig(process.env, resolved));
+  replaceBotConfig(readChatConfig(process.env, resolved).bot);
   chatConfig.slack.completedReactionEmoji = DEFAULT_COMPLETED_REACTION_EMOJI;
   chatConfig.slack.processingReactionEmoji = DEFAULT_PROCESSING_REACTION_EMOJI;
 }

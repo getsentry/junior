@@ -499,7 +499,7 @@ export async function insertInboxItem(
     }
     // The old owner columns stay for the release before this one, and a
     // trigger writes them from this owner (migration
-    // `20261126011025_inbox_item_owners`). A later release drops both.
+    // `20261126034025_inbox_item_owners`). A later release drops both.
     await tx.execute(
       sql`select set_config('junior.inbox_item_owner_kind', ${input.owner.kind}, true), set_config('junior.inbox_item_owner_id', ${input.owner.id}, true)`,
     );
@@ -555,6 +555,33 @@ export async function updateInboxItemContent(
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
+    // Lock the open item first, so a close cannot land between the
+    // question write and the item write. A close locks in the same order.
+    const open = await tx
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems)
+      .where(
+        and(
+          eq(juniorInboxItems.id, input.id),
+          eq(juniorInboxItems.status, "open"),
+        ),
+      )
+      .for("update");
+    if (!open[0]) return false;
+    // The question changes first: the item write copies its content onto
+    // the item for the release before this one (`20261126034025_inbox_item_owners`).
+    if (isQuestion(input.subject)) {
+      await tx
+        .update(juniorQuestions)
+        .set({
+          ...questionColumns(input),
+          updatedAt: new Date(input.nowMs),
+          ...(input.addedByTurnId
+            ? { turnId: input.addedByTurnId }
+            : undefined),
+        })
+        .where(eq(juniorQuestions.id, input.subject.id));
+    }
     const updated = await tx
       .update(juniorInboxItems)
       .set({
@@ -572,18 +599,6 @@ export async function updateInboxItemContent(
       )
       .returning({ ...ownerColumns(), id: juniorInboxItems.id });
     if (!updated[0]) return false;
-    if (isQuestion(input.subject)) {
-      await tx
-        .update(juniorQuestions)
-        .set({
-          ...questionColumns(input),
-          updatedAt: new Date(input.nowMs),
-          ...(input.addedByTurnId
-            ? { turnId: input.addedByTurnId }
-            : undefined),
-        })
-        .where(eq(juniorQuestions.id, input.subject.id));
-    }
     await replaceLinks(tx, updated[0].id, input);
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
@@ -611,10 +626,9 @@ export async function closeInboxItem(
     const closed = await tx
       .update(juniorInboxItems)
       .set({
-        // A question item's answer goes to its question.
-        answer: input.answer
-          ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
-          : null,
+        // A question item's answer goes to its question. The item keeps a
+        // copy, because the release before this one reads it there.
+        answer: input.answer ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,

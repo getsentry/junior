@@ -6,7 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { mapBounded } from "@/chat/fan-out";
 

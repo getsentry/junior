@@ -4,19 +4,23 @@ import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
-import { isTopLevel } from "@/chat/conversations/kind-behavior";
+import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
 
-/** True when the Conversation is a root that delivers to a Location. */
+/** True when the Conversation delivers to a Location of its own. */
 export function canPauseConversationDelivery(
-  conversation: Pick<Conversation, "parentConversationId" | "location">,
+  conversation: Pick<
+    Conversation,
+    "location" | "ownLocation" | "parentConversationId"
+  >,
 ): boolean {
-  return isTopLevel(conversation) && conversation.location !== undefined;
+  return ownsLocation(conversation) && conversation.location !== undefined;
 }
 
 const rootConversation = (conversationId: string) =>
   and(
     eq(juniorConversations.conversationId, conversationId),
-    isNull(juniorConversations.parentConversationId),
+    topLevelConversation(),
   );
 
 /**
@@ -62,8 +66,9 @@ export async function resumeConversationDelivery(
 }
 
 /**
- * True while the root of this Conversation is detached from its Location.
- * Only a root stores the pause, so a child agent reads its root's.
+ * True while this Conversation is detached from its Location. Only a
+ * Conversation with its own Location stores the pause, so a child agent
+ * reads its root's.
  */
 export async function isConversationDeliveryPaused(
   conversationId: string,
@@ -71,7 +76,11 @@ export async function isConversationDeliveryPaused(
   const root = alias(juniorConversations, "root");
   const [row] = await getSqlExecutor()
     .db()
-    .select({ pausedAt: root.deliveryPausedAt })
+    // A Conversation with its own Location, such as a Slack Conversation in
+    // a Space, stores its own pause.
+    .select({
+      pausedAt: sql<Date | null>`coalesce(${juniorConversations.deliveryPausedAt}, ${root.deliveryPausedAt})`,
+    })
     .from(juniorConversations)
     .innerJoin(
       root,

@@ -40,7 +40,7 @@ import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,

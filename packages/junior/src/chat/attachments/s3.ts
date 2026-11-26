@@ -1,41 +1,10 @@
 import { AwsClient } from "aws4fetch";
-import { toOptionalTrimmed } from "@/chat/optional-string";
 import { rangeHeader, type AttachmentStorage } from "./storage";
 import { mapBounded } from "@/chat/fan-out";
+import type { S3StorageConfig } from "@/config";
 
 // S3 objects that one delete removes at once.
 const S3_DELETE_CONCURRENCY = 8;
-
-/** Settings for an S3-compatible object store. */
-export interface S3StorageConfig {
-  accessKeyId: string;
-  bucket: string;
-  /** Base URL of the S3 API. Objects use path-style URLs under it. */
-  endpoint: string;
-  region: string;
-  secretAccessKey: string;
-}
-
-function readRequiredSetting(env: NodeJS.ProcessEnv, name: string): string {
-  const value = toOptionalTrimmed(env[name]);
-  if (value === undefined) {
-    throw new Error(
-      `${name} is required when JUNIOR_ATTACHMENT_STORAGE_PROVIDER is s3`,
-    );
-  }
-  return value;
-}
-
-/** Read S3 settings from `JUNIOR_S3_*` environment variables. */
-export function readS3StorageConfig(env: NodeJS.ProcessEnv): S3StorageConfig {
-  return {
-    accessKeyId: readRequiredSetting(env, "JUNIOR_S3_ACCESS_KEY_ID"),
-    bucket: readRequiredSetting(env, "JUNIOR_S3_BUCKET"),
-    endpoint: readRequiredSetting(env, "JUNIOR_S3_ENDPOINT"),
-    region: toOptionalTrimmed(env["JUNIOR_S3_REGION"]) ?? "us-east-1",
-    secretAccessKey: readRequiredSetting(env, "JUNIOR_S3_SECRET_ACCESS_KEY"),
-  };
-}
 
 /**
  * Path-style object URL. Local S3 servers and AWS S3 both accept it.

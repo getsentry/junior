@@ -36,14 +36,13 @@ import {
   type SandboxResourceConfig,
 } from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
   getPluginApiRoutes,
   getPluginRoutes,
-  setPlugins,
-  validatePlugins,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   setMemoryConfig,
@@ -96,8 +95,8 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import {
   createVercelPluginTaskCallback,
   sendVercelPluginTask,

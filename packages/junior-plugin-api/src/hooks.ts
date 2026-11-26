@@ -1,3 +1,4 @@
+import type * as z from "zod";
 import type { PluginContext } from "./context";
 import type { AnnotatedObject } from "./object-annotations";
 import type {
@@ -77,6 +78,48 @@ export interface FormatMarkdownHookContext {
    */
   provider?: string;
   text: string;
+}
+
+/** One Conversation whose history a compaction replaces. */
+export type CompactionContextHookContext = Pick<
+  PluginContext,
+  "db" | "log" | "plugin"
+> & {
+  conversationId: string;
+};
+
+/**
+ * Conversations whose transcripts Junior purges. `db` is the purge
+ * transaction, so content that the hook deletes goes with the transcript.
+ */
+export type PurgeConversationsHookContext = Pick<
+  PluginContext,
+  "db" | "log" | "plugin"
+> & {
+  conversationIds: string[];
+};
+
+/** The child agent that lists its team, and its parent. */
+export type ParentAgentFieldContext = Pick<
+  PluginContext,
+  "db" | "log" | "plugin"
+> & {
+  /** The child agent's Conversation. */
+  conversationId: string;
+  parentConversationId: string;
+};
+
+/**
+ * A field that this plugin adds to the parent's entry when a child agent
+ * lists its team. The field has the plugin's name.
+ */
+export interface ParentAgentField {
+  /** What the field shows, such as "the parent's open tasks". */
+  description: string;
+  /** Output schema of the field. Describe it for the model. */
+  schema: z.ZodType;
+  /** Read the field value, or undefined to leave the field out. */
+  load(ctx: ParentAgentFieldContext): Promise<unknown>;
 }
 
 /** First human message of a new Conversation, given before title generation. */
@@ -171,6 +214,20 @@ export interface PluginHooks {
    * it again when the person retries, so it must be safe to repeat.
    */
   inboxItemDismissed?(ctx: InboxItemDismissedHookContext): Promise<void> | void;
+  /**
+   * Return state that the model must keep when a compaction replaces the
+   * history, such as open work. Junior adds it to the compaction summary.
+   */
+  compactionContext?(
+    ctx: CompactionContextHookContext,
+  ): Promise<PromptMessage[] | undefined> | PromptMessage[] | undefined;
+  /**
+   * Delete this plugin's content of Conversations whose transcripts Junior
+   * purges, such as text that came from the transcript.
+   */
+  purgeConversations?(ctx: PurgeConversationsHookContext): Promise<void>;
+  /** Return the field that this plugin adds to a child agent's parent entry. */
+  parentAgentField?(): ParentAgentField;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;

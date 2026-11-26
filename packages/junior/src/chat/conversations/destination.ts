@@ -28,3 +28,16 @@ export function resolveConversationDestination(args: {
 }): Destination {
   return args.existing ?? requireLocalDestination(args.conversationId);
 }
+
+/**
+ * Create the local Destination of a Conversation that needs its own, such as
+ * a Lead's child. A child agent's id is not a local id, so it gets one under
+ * `local:`.
+ */
+export function ownLocalDestination(conversationId: string): LocalDestination {
+  return requireLocalDestination(
+    conversationId.startsWith("local:")
+      ? conversationId
+      : `local:${conversationId}`,
+  );
+}

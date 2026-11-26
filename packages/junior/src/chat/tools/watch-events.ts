@@ -18,7 +18,7 @@ import {
   AGENT_RESOURCE_TYPE,
   starterWatchId,
 } from "@/chat/conversations/watch-events";
-import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
 import { createWatch } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,

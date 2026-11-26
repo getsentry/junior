@@ -39,6 +39,10 @@ import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
 } from "@sentry/junior/api/schema";
+import {
+  mockReceivedAgentMessage,
+  mockSentAgentMessage,
+} from "./agent-messages";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./question-conversations";
@@ -1207,7 +1211,7 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         type: "message",
         messageId: "qa-reviewer-result",
         role: "user",
-        eventType: "agent_invocation.blocked",
+        eventType: "agent.update",
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),
@@ -1251,8 +1255,77 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         title: "Compare sidebar badges",
         status: "completed",
       }),
+      // Messages to and from child agents show as message rows: one that
+      // started a Task again, its reply, a long one to a blocked Task, and
+      // one that no agent got.
+      ...dashboardQaAgentMessages(startedAt, 25),
     ],
   });
+}
+
+function dashboardQaAgentMessages(
+  startedAt: string,
+  firstSeq: number,
+): ConversationReportEvent[] {
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  const [plannerSending, plannerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-planner",
+    startedAt: at(94_000),
+    startedSeq: firstSeq,
+    to: "planner",
+    text: "Also check that the plan keeps the pinned row order after a hard reload.",
+    result: { conversationId: DASHBOARD_QA_PLAN_ID, delivery: "started" },
+  });
+  const plannerReply = mockReceivedAgentMessage({
+    messageId: "qa-planner-message",
+    sender: {
+      conversationId: DASHBOARD_QA_PLAN_ID,
+      name: "planner",
+      source: "child_agent",
+      title: "Review the dashboard plan",
+    },
+    text: "The plan keeps the order after a hard reload. One pinned row moved once while the feed loaded again, and I could not make it happen again.",
+  });
+  const [reviewerSending, reviewerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-reviewer",
+    startedAt: at(100_000),
+    startedSeq: firstSeq + 3,
+    to: "reviewer",
+    text: [
+      "You now have read access to getsentry/junior-dashboard. Review the plan again with these limits:",
+      "",
+      "- Keep the sidebar order exactly as it is today.",
+      "- Do not change the pinned row styles.",
+      "- Check the empty, loading, and failed transcript states on a phone and on a desktop.",
+      "- Report each state that does not match the design, with a screenshot.",
+      "",
+      "Tell me when the review is done, or if you get blocked again.",
+    ].join("\n"),
+    result: { conversationId: DASHBOARD_QA_REVIEW_ID, delivery: "started" },
+  });
+  const [unknownSending, unknownRefused] = mockSentAgentMessage({
+    toolCallId: "qa-message-unknown",
+    startedAt: at(104_000),
+    startedSeq: firstSeq + 5,
+    to: "designer",
+    text: "Share the latest sidebar mockups with the reviewer.",
+    result: {
+      error:
+        '"designer" is not "parent", a child agent of this conversation, or a top-level agent that you can message. Use listAgents to find an agent.',
+    },
+  });
+  const events: [number, ConversationReportEvent["data"]][] = [
+    [94_000, plannerSending],
+    [95_000, plannerSent],
+    [98_000, plannerReply],
+    [100_000, reviewerSending],
+    [101_000, reviewerSent],
+    [104_000, unknownSending],
+    [104_500, unknownRefused],
+  ];
+  return events.map(([offsetMs, data], index) =>
+    reportEvent(firstSeq + index, at(offsetMs), data),
+  );
 }
 
 function advisorConversation(
@@ -1272,7 +1345,7 @@ function advisorConversation(
     // The viewer takes part, so QA shows that a Task still has no composer.
     isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
-    // its agent invocation input.
+    // the task that its parent agent gave it.
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
@@ -1283,7 +1356,7 @@ function advisorConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
-        agentInvocationId: `${conversationId}:invocation`,
+        fromParentAgent: true,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 18_000), {
@@ -1333,7 +1406,7 @@ function threadConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
-        agentInvocationId: `${conversationId}:invocation`,
+        fromParentAgent: true,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 12_000), {
@@ -1395,8 +1468,8 @@ function withFollowUpFiles(conversation: MockConversation): MockConversation {
 }
 
 /**
- * Add a Watch Event that reached a child after its last reply. The child runs
- * it as an agent invocation, so the input names the invocation and the Event.
+ * Add a Watch Event that reached a child after its last reply. No person
+ * wrote it, so the input names the Event and not the child's Actor.
  */
 function withChildWatchEvent(conversation: MockConversation): MockConversation {
   const last = conversation.events.at(-1)!;
@@ -1410,7 +1483,7 @@ function withChildWatchEvent(conversation: MockConversation): MockConversation {
         type: "message",
         messageId: `${conversationId}:watch-event`,
         role: "user",
-        agentInvocationId: `${conversationId}:watch-invocation`,
+        fromParentAgent: true,
         eventType: "pull_request.checks.failed",
         eventNamespace: "github",
         eventObjectType: "code_change",
@@ -3291,6 +3364,8 @@ export function readMockConversationChildAgents(
       archivedAt: mockArchivedAt.get(childConversationId) ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
+      treeState: "done" as const,
+      watching: false,
     };
   };
   if (conversationId === DASHBOARD_QA_PLAN_ID) {
@@ -3300,8 +3375,8 @@ export function readMockConversationChildAgents(
           ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
           conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
           kind: "task",
-          status: "completed",
-          task: "Check one claim in the dashboard plan.",
+          lastResult: "done",
+          status: "idle",
           title: "Check one plan claim",
           updatedAt: iso(startedAtMs, 16_000),
         },
@@ -3310,7 +3385,7 @@ export function readMockConversationChildAgents(
     };
   }
   // Match the API: archived children stay in the report.
-  const thread = (childConversationId: string, task: string) => {
+  const thread = (childConversationId: string) => {
     const child = conversations.find(
       (candidate) => candidate.conversationId === childConversationId,
     )!;
@@ -3318,20 +3393,15 @@ export function readMockConversationChildAgents(
       ...childMetrics(childConversationId),
       conversationId: childConversationId,
       kind: "thread",
-      status: "completed",
-      task,
+      lastResult: "done",
+      status: "idle",
       title: child.displayTitle,
       updatedAt: child.lastProgressAt,
     } as const;
   };
   if (conversationId === DASHBOARD_QA_THREAD_ID) {
     return {
-      agents: [
-        thread(
-          DASHBOARD_QA_NESTED_THREAD_ID,
-          "Recheck the pinned row order in Safari.",
-        ),
-      ],
+      agents: [thread(DASHBOARD_QA_NESTED_THREAD_ID)],
       conversationId,
     };
   }
@@ -3340,30 +3410,24 @@ export function readMockConversationChildAgents(
   }
   return {
     agents: [
-      thread(
-        DASHBOARD_QA_THREAD_ID,
-        "Check pinned row order with the person who reported it.",
-      ),
-      thread(
-        DASHBOARD_QA_ARCHIVED_THREAD_ID,
-        "Compare the sidebar badges with the design.",
-      ),
+      thread(DASHBOARD_QA_THREAD_ID),
+      thread(DASHBOARD_QA_ARCHIVED_THREAD_ID),
       {
         ...childMetrics(DASHBOARD_QA_REVIEW_ID),
         conversationId: DASHBOARD_QA_REVIEW_ID,
         kind: "task",
-        error: "GitHub access is needed to read the pull request.",
+        lastResult: "blocked",
         name: "reviewer",
-        status: "blocked",
-        task: "Review the open dashboard pull requests and list risky changes.",
+        status: "idle",
+        title: null,
         updatedAt: iso(startedAtMs, 44_000),
       },
       {
         ...childMetrics(DASHBOARD_QA_PLAN_ID),
         conversationId: DASHBOARD_QA_PLAN_ID,
         kind: "task",
-        status: "completed",
-        task: "Review the dashboard plan before editing.",
+        lastResult: "done",
+        status: "idle",
         title: "Review the dashboard plan",
         updatedAt: iso(startedAtMs, 20_000),
       },

@@ -142,6 +142,11 @@ export function parseDashboardConversationLink(
   return parseDashboardPageLink(url, "/conversations/");
 }
 
+/** Build the dashboard URL of one Space's page. */
+export function getDashboardSpaceLink(spaceId: string): string | undefined {
+  return resolveDashboardPath(`/spaces/${encodeURIComponent(spaceId)}`);
+}
+
 /** Build the dashboard URL of one person's page. */
 export function getDashboardPersonLink(email: string): string | undefined {
   return resolveDashboardPath(`/people/${encodeURIComponent(email)}`);

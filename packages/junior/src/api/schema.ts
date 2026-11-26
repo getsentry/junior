@@ -9,9 +9,10 @@ export {
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
   AGENT_UPDATE_EVENT_TYPE,
-  isAgentInvocationResultEventType,
+  isAgentMessageEventType,
+  isLegacyResultEventType,
   isAgentUpdateEventType,
-} from "../chat/agent-invocations/result-event-type";
+} from "../chat/child-agents/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   answeredChoices,

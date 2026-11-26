@@ -14,7 +14,7 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /**
  * Head a Lead with its Space: the Space's tile and name, a member's Space
- * menu, and the button that shows the Space's details. A phone puts these
+ * menu, and the button that shows the Lead's details. A phone puts these
  * in its header.
  */
 export function LeadHeader(props: {
@@ -29,7 +29,7 @@ export function LeadHeader(props: {
   const detailsButton = props.detailsOpen ? null : (
     <HeaderIconButton
       expanded={false}
-      label="Space details"
+      label="Conversation details"
       onClick={props.onDetailsClick}
     >
       <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />

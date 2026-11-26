@@ -136,7 +136,8 @@ describe("conversation list API response budget", () => {
       () =>
         expectSqlBudget(
           () => fixture.request("/api/conversations?include=links,media"),
-          { statements: 18, serialRounds: 3 },
+          // Threads' tree states wait for the Thread read: one more round.
+          { statements: 18, serialRounds: 4 },
         ),
       // Pins are not paged, so the body has no budget.
       {
@@ -147,7 +148,8 @@ describe("conversation list API response budget", () => {
         // row leaves them out.
         "conversations.participants": 52,
         "conversations.sidebarAnnotations": 674,
-        "conversations.threads": 637,
+        // A Thread's own fields, plus its tree state and Watch flag.
+        "conversations.threads": 673,
       },
     );
     expect(response.status).toBe(200);

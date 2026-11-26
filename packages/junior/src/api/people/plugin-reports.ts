@@ -20,7 +20,7 @@ export async function readPeoplePluginReports(args: {
     });
   }
   const { getPluginProfileReports } =
-    await import("@/chat/plugins/agent-hooks");
+    await import("@/chat/plugins/hooks/reports");
   return pluginOperationalReportFeedSchema.parse({
     generatedAt: new Date(nowMs).toISOString(),
     reports: await getPluginProfileReports({

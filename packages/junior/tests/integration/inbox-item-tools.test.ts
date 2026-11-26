@@ -31,8 +31,15 @@ type Context = Pick<
 >;
 
 // Parse the input first, as the agent runtime does.
-async function execute(tool: any, input: unknown): Promise<any> {
-  return await tool.execute(tool.prepareArguments(input), {} as any);
+async function execute(
+  tool: any,
+  input: unknown,
+  toolCallId?: string,
+): Promise<any> {
+  return await tool.execute(
+    tool.prepareArguments(input),
+    (toolCallId ? { toolCallId } : {}) as any,
+  );
 }
 
 const queue = createConversationWorkQueueTestAdapter();
@@ -97,6 +104,19 @@ function automationRun(conversationId: string, turnId?: string): Context {
   };
 }
 
+// The copy of a question item's content that the release before this one
+// reads on the item.
+async function legacyCopy(id: string) {
+  const [row] = await getDb()
+    .select({
+      answer: juniorInboxItems.answer,
+      title: juniorInboxItems.title,
+    })
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.id, id));
+  return row;
+}
+
 describe("inbox item tools", () => {
   afterEach(async () => {
     await closeDb();
@@ -137,7 +157,11 @@ describe("inbox item tools", () => {
     await expect(
       execute(first.add, { ...add, request: recommendBoth }),
     ).rejects.toThrow("can recommend only one option");
-    const added = await execute(first.add, add);
+    const added = await execute(first.add, add, "call-1");
+    // A Turn replays a call that committed before its result was saved, and
+    // the replay returns the item that the call added.
+    const replayed = await execute(first.add, add, "call-1");
+    expect(replayed.item.id).toBe(added.item.id);
     // Each add asks a new question, with its own id.
     expect(added.item.subject).toEqual({
       id: expect.stringMatching(/^ask:/),
@@ -153,6 +177,9 @@ describe("inbox item tools", () => {
       title: "Review acme entry again",
       assignees: ["ana@example.com"],
       visibility: "public",
+    });
+    expect(await legacyCopy(added.item.id)).toMatchObject({
+      title: "Review acme entry again",
     });
     // A later run changes the choices of the question by its id.
     const changed = await execute(second.update, {
@@ -627,6 +654,9 @@ describe("inbox item tools", () => {
         ),
       );
     const answered = await getInboxItem(getDb(), added.item.id);
+    expect(await legacyCopy(added.item.id)).toMatchObject({
+      answer: { values: { decision: ["Approve"] } },
+    });
     const before = await pending();
 
     // Ana answered it, and then the agent closes it, with any status.

@@ -12,7 +12,6 @@ import {
 } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
-import { readAttachmentStorageConfig } from "@/chat/attachments/config";
 import {
   bufferBody,
   createAttachmentStorage,
@@ -26,6 +25,7 @@ import {
   storeAttachment,
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
+import { loadConfig } from "@/config";
 import { juniorAttachments } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
@@ -64,13 +64,16 @@ function chunkedBody(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
 
 function s3Storage(secretAccessKey = S3_SECRET_ACCESS_KEY) {
   return createAttachmentStorage(
-    readAttachmentStorageConfig({
-      JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "s3",
-      JUNIOR_S3_ACCESS_KEY_ID: S3_ACCESS_KEY_ID,
-      JUNIOR_S3_BUCKET: S3_BUCKET,
-      JUNIOR_S3_ENDPOINT: S3_ENDPOINT,
-      JUNIOR_S3_SECRET_ACCESS_KEY: secretAccessKey,
-    }),
+    loadConfig({
+      env: {
+        ...process.env,
+        JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "s3",
+        JUNIOR_S3_ACCESS_KEY_ID: S3_ACCESS_KEY_ID,
+        JUNIOR_S3_BUCKET: S3_BUCKET,
+        JUNIOR_S3_ENDPOINT: S3_ENDPOINT,
+        JUNIOR_S3_SECRET_ACCESS_KEY: secretAccessKey,
+      },
+    }).attachmentStorage,
   );
 }
 

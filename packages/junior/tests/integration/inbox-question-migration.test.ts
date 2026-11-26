@@ -161,6 +161,13 @@ describe("inbox question migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, owner_id, created_at, updated_at, request) VALUES ('late', 'action', 'open', 'public', 'Hold v42?', 'A test is flaky.', 'hold:v42', 'slack:C123:1.000001', now(), now(), '${REQUEST}')`,
       );
+      // Its key still names one open item, so a second add of the same key
+      // in a race fails, as in that release.
+      await expect(
+        fixture.sql.execute(
+          `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, owner_id, created_at, updated_at, request) VALUES ('late-again', 'action', 'open', 'public', 'Hold v42?', 'A test is flaky.', 'hold:v42', 'slack:C123:1.000001', now(), now(), '${REQUEST}')`,
+        ),
+      ).rejects.toThrow("junior_inbox_items_open_dedupe_uidx");
       // It changes the question by its key and then closes it with an
       // answer, as that release does.
       await fixture.sql.execute(

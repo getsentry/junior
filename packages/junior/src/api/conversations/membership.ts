@@ -6,16 +6,17 @@ import {
   isNotNull,
   isNull,
   not,
-  notInArray,
   or,
+  sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
@@ -72,20 +73,51 @@ function privateSpaceIds() {
     .where(eq(juniorSpaces.visibility, "private"));
 }
 
-/** The private Spaces that the person is a member of. */
-function memberPrivateSpaceIds(member: ConversationMember) {
+const spaceLead = alias(juniorConversations, "membership_space_lead");
+
+/**
+ * The Leads of some Spaces, as one array. Every Conversation in a Space has
+ * its Lead as its tree root, so this finds the Space of every row. The
+ * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
+ * once, where a hashed subquery in a filter is charged on each index probe.
+ */
+function spaceLeadArray(spaceIds: SQLWrapper): SQL {
+  const leads = getDb()
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(
+      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
+    );
+  return sql`array(${leads})`;
+}
+
+/** True when the outer conversation is in no private Space. */
+function outsidePrivateSpaces(): SQL {
+  return or(
+    isNull(juniorConversations.rootConversationId),
+    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
+  )!;
+}
+
+/**
+ * True when the outer conversation is in a tree that the person is a
+ * Participant of. In a Space the Lead is the root, so this holds for every
+ * Conversation of each Space that the person is a member of.
+ */
+function inParticipantTree(member: ConversationMember): SQL {
   const rows = getDb()
-    .select({ id: juniorSpaceMembers.spaceId })
-    .from(juniorSpaceMembers)
-    .innerJoin(juniorSpaces, eq(juniorSpaces.id, juniorSpaceMembers.spaceId));
-  const isPrivate = eq(juniorSpaces.visibility, "private");
-  return "userId" in member
-    ? rows.where(and(eq(juniorSpaceMembers.userId, member.userId), isPrivate))
-    : rows
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorSpaceMembers.userId))
-        .where(
-          and(eq(juniorUsers.primaryEmailNormalized, member.email), isPrivate),
-        );
+    .select({ id: juniorConversationParticipants.rootConversationId })
+    .from(juniorConversationParticipants);
+  const roots =
+    "userId" in member
+      ? rows.where(eq(juniorConversationParticipants.userId, member.userId))
+      : rows
+          .innerJoin(
+            juniorUsers,
+            eq(juniorUsers.id, juniorConversationParticipants.userId),
+          )
+          .where(eq(juniorUsers.primaryEmailNormalized, member.email));
+  return sql`${juniorConversations.rootConversationId} = any(array(${roots}))`;
 }
 
 /**
@@ -94,11 +126,7 @@ function memberPrivateSpaceIds(member: ConversationMember) {
  * leaves a private Space no longer reads its roots.
  */
 export function rootSpaceReadableBy(member: ConversationMember): SQL {
-  return or(
-    isNull(juniorConversations.spaceId),
-    notInArray(juniorConversations.spaceId, privateSpaceIds()),
-    inArray(juniorConversations.spaceId, memberPrivateSpaceIds(member)),
-  )!;
+  return or(outsidePrivateSpaces(), inParticipantTree(member))!;
 }
 
 /**
@@ -109,28 +137,21 @@ export function rootSpaceReadableBy(member: ConversationMember): SQL {
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
     and(
-      or(
-        isNull(juniorConversations.spaceId),
-        notInArray(juniorConversations.spaceId, privateSpaceIds()),
-      ),
+      outsidePrivateSpaces(),
       or(
         isPublicConversation(juniorConversations),
         viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
       ),
     ),
-    viewerUserId
-      ? inArray(
-          juniorConversations.spaceId,
-          memberPrivateSpaceIds({ userId: viewerUserId }),
-        )
-      : undefined,
+    viewerUserId ? inParticipantTree({ userId: viewerUserId }) : undefined,
   )!;
 }
 
 /**
- * True when the person is a Participant of the conversation. Feeds filter
- * with this id set instead of a per-row membership check, so Postgres reads
- * only that person's conversations, not every root.
+ * True when the person is a Participant of the conversation, or of the Lead
+ * whose child it is, since a Lead's Participants are its Space's members.
+ * Feeds filter with this id set instead of a per-row membership check, so
+ * Postgres reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -149,7 +170,11 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  return inArray(juniorConversations.conversationId, memberRoots);
+  // Top-level filters keep only a parent match whose parent is a Lead.
+  return or(
+    inArray(juniorConversations.conversationId, memberRoots),
+    inArray(juniorConversations.parentConversationId, memberRoots),
+  )!;
 }
 
 /**
