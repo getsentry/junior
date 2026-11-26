@@ -114,11 +114,6 @@ test.describe("new UI", () => {
       page.getByLabel("6-hour rolling cost per merged change per hour"),
     ).toBeVisible();
     await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
-    // Recharts before 3.11 shows a hover one frame late. A scroll that moves a
-    // chart under the pointer, followed by a move away within that frame,
-    // leaves the tooltip open. So keep the pointer off the page while the
-    // steps below scroll it.
-    await page.mouse.move(-1, -1);
     await page.getByText("Largest cache writes", { exact: true }).click();
     const largestWrites = page.getByRole("table", {
       name: "Largest cache writes",
@@ -129,6 +124,7 @@ test.describe("new UI", () => {
     await expect(
       page.getByText(/They do not show individual calls/),
     ).toBeVisible();
+    // The scroll would move a chart under the pointer and show its tooltip.
     await page.mouse.move(-1, -1);
     await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-missing", { view: "desktop" });
