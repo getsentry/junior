@@ -195,3 +195,4 @@ groups and acts on its rows.
 - When an item closes, its push stays on a device until the next push to
   that User. This breaks "when the item closes, its push goes away on every
   device".
+- An item from a private Conversation cannot go to Everyone yet.

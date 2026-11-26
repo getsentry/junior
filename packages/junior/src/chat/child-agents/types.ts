@@ -1,0 +1,78 @@
+import { actorSchema } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { credentialContextSchema } from "@/chat/credentials/context";
+import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
+import { agentTypeSchema } from "./agent-types";
+import type { AgentStatus } from "@/chat/conversations/agent-status";
+import type { ConversationKind } from "@/chat/conversations/store";
+import { CHILD_AGENT_RESULTS } from "./results";
+
+const exactStringSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value === value.trim());
+
+export const agentNameSchema = exactStringSchema.max(64);
+
+/**
+ * Kind of a child agent, stored as its Conversation kind. A Thread is a
+ * child that people can message; a Task is one that only its parent messages.
+ */
+export const CHILD_AGENT_KINDS = ["thread", "task"] as const;
+export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
+
+/** `messageAgent` target for the parent of a child agent. */
+export const PARENT_AGENT_TARGET = "parent";
+
+export const agentBindingSchema = z
+  .object({
+    childConversationId: exactStringSchema,
+    name: agentNameSchema,
+    parentConversationId: exactStringSchema,
+  })
+  .strict();
+
+/** Input of one `startAgent` call that starts a child agent. */
+export const spawnChildAgentInputSchema = z
+  .object({
+    actor: actorSchema,
+    agentName: agentNameSchema.optional(),
+    credentialContext: credentialContextSchema.optional(),
+    idempotencyKey: exactStringSchema,
+    input: exactStringSchema,
+    kind: z.enum(CHILD_AGENT_KINDS).default("task"),
+    parentConversationId: exactStringSchema,
+    parentToolCallId: exactStringSchema,
+    agentType: agentTypeSchema.optional(),
+    fork: z.literal(true).optional(),
+    reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
+    title: exactStringSchema.optional(),
+  })
+  .strict();
+
+export type AgentBinding = z.output<typeof agentBindingSchema>;
+/** The child agent that sent one reply or message to its parent. */
+export type ChildAgentSender = {
+  agentName?: string;
+  childConversationId: string;
+  parentConversationId: string;
+  /** Kind of the parent Conversation, when storage gave it. */
+  parentKind?: ConversationKind;
+  title?: string;
+};
+export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
+
+/** Current state of one child agent, read from its Turns and mailbox. */
+export type ChildAgent = {
+  agentName?: string;
+  /** Set while the child Conversation is archived. */
+  archivedAtMs?: number;
+  childConversationId: string;
+  kind: ChildAgentKind;
+  /** How the newest Turn that finished without a stop ended. */
+  lastResult?: (typeof CHILD_AGENT_RESULTS)[number];
+  status: Extract<AgentStatus, "failed" | "idle" | "running" | "stopped">;
+  /** Short title of the latest task that the parent gave the child. */
+  title?: string;
+  updatedAtMs: number;
+};

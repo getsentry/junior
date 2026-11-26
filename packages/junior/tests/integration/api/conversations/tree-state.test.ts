@@ -21,7 +21,7 @@ import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
   startRunningChildAgent,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import {
   expectPlanCost,
   expectSqlBudget,
@@ -220,6 +220,38 @@ describe("conversation tree state", () => {
       watching: false,
     });
     await expect(fixture.feedTree(otherRootId)).resolves.toEqual(DONE);
+  });
+
+  it("gives each Thread in the feed its own tree state", async () => {
+    const fixture = await createStatusFixture();
+    const rootId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000470",
+    );
+    for (const childConversationId of ["agent:feed-ask", "agent:feed-done"]) {
+      await fixture.conversationStore.createChild({
+        childConversationId,
+        kind: "thread",
+        parentConversationId: rootId,
+      });
+    }
+
+    await addItem("agent:feed-ask", ACTION_ITEM);
+
+    const row = await fixture.feedRow(rootId);
+    // The sidebar orders a root's Threads by these, as the Threads panel
+    // orders a Conversation's children.
+    expect(
+      Object.fromEntries(
+        (row?.threads ?? []).map((thread) => [
+          thread.conversationId,
+          { treeState: thread.treeState, watching: thread.watching },
+        ]),
+      ),
+    ).toEqual({
+      "agent:feed-ask": { treeState: "needs_you", watching: false },
+      "agent:feed-done": DONE,
+    });
   });
 
   it("needs the viewer for their own sign-in waits anywhere in the tree", async () => {
@@ -525,7 +557,7 @@ describe("conversation tree state", () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const viewer = await resolveViewerUser(webTestActor.email);
     const space = await createSpace({
-      creatorUserId: viewer!.id,
+      creator: viewer!,
       description: null,
       name: "Release",
       visibility: "public",
@@ -589,9 +621,10 @@ describe("conversation tree state", () => {
       latestTurnFailed: true,
       treeState: "needs_you",
     });
+    // The failure starts a Turn of the Lead, which Bob sees as working.
     await expect(asBob()).resolves.toEqual({
       latestTurnFailed: true,
-      treeState: "done",
+      treeState: "working",
     });
 
     const [row] = await getDb()
@@ -605,8 +638,10 @@ describe("conversation tree state", () => {
       lastSeenAt: row!.lastActivityAt.toISOString(),
     });
     // An archived Conversation counts for nothing, and the one-off, which
-    // failed too, counts for no Space.
-    await expect(asViewer()).resolves.toEqual(idle);
-    await expect(asBob()).resolves.toEqual(idle);
+    // failed too, counts for no Space. The Lead's Turn for the failure
+    // still waits to run.
+    const leadWorking = { latestTurnFailed: false, treeState: "working" };
+    await expect(asViewer()).resolves.toEqual(leadWorking);
+    await expect(asBob()).resolves.toEqual(leadWorking);
   });
 });

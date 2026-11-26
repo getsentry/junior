@@ -14,8 +14,8 @@
  */
 import type { Actor, SubscribableResource } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
+import type { AgentUpdate } from "@/chat/child-agents/agent-update";
 import {
   CORE_EVENT_NAMESPACE,
   type EventRegistrationInput,
@@ -62,7 +62,7 @@ export function agentEvents(): EventRegistrationInput {
   };
 }
 
-/** Describe the Watch that `startConversation` offers for a new Conversation. */
+/** Describe the Watch that a tool offers for one Conversation. */
 export function agentWatch(input: {
   conversationId: string;
   title: string;

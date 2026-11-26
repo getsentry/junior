@@ -8,7 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -16,9 +16,9 @@ import { juniorConversationAnnotations } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { sendGitHubWebhook, stubGitHubApp } from "../fixtures/github-objects";
 import { createPluginTaskQueueTestAdapter } from "../fixtures/plugin-task-queue";
 import { seedLinkedPerson } from "../fixtures/slack-user";
@@ -27,7 +27,7 @@ import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com";
 const SECRET = "heartbeat-secret";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 // The objects that one slice reads, as the GitHub plugin sets it.
 const BATCH = 50;
 

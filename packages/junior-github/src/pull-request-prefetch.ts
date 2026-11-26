@@ -10,6 +10,7 @@ import pLimit, { type LimitFunction } from "p-limit";
 import type * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
+  clearGitHubReviewAfterRead,
   type GitHubPullRequestFields,
   githubObjectCacheKey,
   githubPullRequestEntry,
@@ -73,6 +74,7 @@ async function storeCard(
   ctx: ObjectLinkContext,
   key: string,
   node: z.output<typeof pullRequestCardNodeSchema>,
+  startedAtMs: number,
 ): Promise<void> {
   const fields = githubPullRequestFieldsFromNode(node);
   await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) =>
@@ -80,6 +82,9 @@ async function storeCard(
       ? undefined
       : githubPullRequestEntry({ ...current, ...fields }),
   );
+  // A review webhook during the read changes the decision after GitHub
+  // answered, often with the same `updated_at`.
+  await clearGitHubReviewAfterRead(ctx.cache, key, startedAtMs);
 }
 
 async function loadChunk(
@@ -87,7 +92,8 @@ async function loadChunk(
   refs: PullRequestRef[],
   deadlineMs: number,
 ): Promise<void> {
-  const leftMs = deadlineMs - Date.now();
+  const startedAtMs = Date.now();
+  const leftMs = deadlineMs - startedAtMs;
   if (leftMs <= 0) throw new Error("The page has no time left for cards");
   const response = await githubApi(ctx.egress, {
     body: {
@@ -111,7 +117,7 @@ async function loadChunk(
   );
   await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref, index) => {
     const node = nodes[index];
-    if (node) await storeCard(ctx, cacheKey(ref), node);
+    if (node) await storeCard(ctx, cacheKey(ref), node, startedAtMs);
   });
 }
 

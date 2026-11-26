@@ -6,7 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { loadAnnotationLabeler } from "@/chat/conversations/annotation-labels";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   ANNOTATION_SUBJECT_KINDS,
   CORE_ANNOTATION_PLUGIN,

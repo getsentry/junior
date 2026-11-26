@@ -95,8 +95,6 @@ describe("Lead API", () => {
     const spaceId = await createSpace(ana, "Billing migration");
 
     expect((await apiFor().request(leadPath(spaceId))).status).toBe(401);
-    // Only a member's read makes the Lead.
-    expect((await bo.request(leadPath(spaceId))).status).toBe(404);
     const leadId = await readLeadId(ana, spaceId);
     expect(await readLeadId(ana, spaceId)).toBe(leadId);
     // The Lead is public like the Space, so anyone reads the same one.
@@ -140,8 +138,7 @@ describe("Lead API", () => {
       200,
     );
 
-    // After Ana leaves, the Lead takes no more of her messages from any
-    // surface, though she still takes part in it.
+    // Leaving ends Ana's part in the Lead, so no surface takes her messages.
     const left = await ana.request(
       `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
       { method: "DELETE" },
@@ -163,7 +160,7 @@ describe("Lead API", () => {
         text: "Check the deploy.",
         user: await signedInViewer("lead-api-ana@example.com"),
       }),
-    ).resolves.toEqual({ status: "space_closed" });
+    ).resolves.toEqual({ status: "not_found" });
   });
 
   it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {

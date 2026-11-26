@@ -222,6 +222,36 @@ describe("advanceTurn", () => {
     expect(systemPromptOf(call)).toBe(layoutSystemPrompt(layouts.local));
   });
 
+  it("gives the model only agent history, not the host's events", async () => {
+    await createSqlConversationEventStore(harness.engineCtx.executor).append(
+      harness.conversationId,
+      [
+        {
+          data: {
+            type: "authorization_completed",
+            kind: "mcp",
+            provider: "linear",
+            actorId: "U123",
+            authorizationId: "auth-1",
+          },
+          idempotencyKey: "authorization_completed:auth-1",
+          createdAtMs: Date.now(),
+        },
+      ],
+    );
+    await setModelReplies([
+      createAssistantMessage({ type: "text", text: "Three." }),
+    ]);
+    await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    const [call] = await modelCalls();
+    const sent = JSON.stringify(call?.messages);
+    expect(sent).toContain("How many Turns?");
+    expect(sent).not.toContain("linear");
+  });
+
   it.each(["completed", "cancelled"] as const)(
     "does not run a step of a %s Turn",
     async (state) => {
@@ -324,6 +354,49 @@ describe("advanceTurn with tools", () => {
       }),
     );
     expect(history.at(-1)).toEqual(storedReply(reply));
+  });
+
+  it("does not run a host tool that needs review", async () => {
+    await startHarness(turnTools);
+    const call = createAssistantMessage({
+      type: "toolCalls",
+      calls: [
+        { name: "bash", arguments: { command: "rm -rf /" }, id: "call-1" },
+        { name: "systemTime", arguments: { timezone: "UTC" }, id: "call-2" },
+      ],
+    });
+    const reply = createAssistantMessage({ type: "text", text: "I can't." });
+    await setModelReplies([call, reply]);
+    const { turnId: bashTurnId } = await harness.send({
+      text: "Clean the disk.",
+    });
+
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(bashTurnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const history = await harness.history();
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        toolCallId: "call-1",
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: "Required action review is unavailable; the action was not executed.",
+          },
+        ],
+      }),
+    );
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        toolCallId: "call-2",
+        isError: false,
+      }),
+    );
   });
 
   it("stops a tool that respects the signal when the Turn is cancelled", async () => {

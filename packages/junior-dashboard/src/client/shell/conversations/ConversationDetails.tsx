@@ -63,6 +63,8 @@ export function ConversationDetails(props: {
   overview: ReactNode;
   /** The Participants card, or null when it has nothing to show. */
   participants: ReactNode;
+  /** A Lead's Space: its description, members, and settings. */
+  space?: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
@@ -168,7 +170,10 @@ export function ConversationDetails(props: {
           canEdit={props.isParticipant}
           conversationId={props.conversationId}
         />
-        {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
+        {threads.length > 0 ? (
+          // A key per Conversation resets which groups are open.
+          <ConversationThreads key={props.conversationId} threads={threads} />
+        ) : null}
         <ConversationLinkedWorkCard
           canCancelWatches={props.isParticipant}
           conversationId={props.conversationId}
@@ -184,6 +189,7 @@ export function ConversationDetails(props: {
             tasks={tasks}
           />
         ) : null}
+        {props.space}
         {props.participants}
         {props.usage}
         {props.overview != null ? (

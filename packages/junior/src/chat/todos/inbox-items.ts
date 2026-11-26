@@ -16,7 +16,6 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
-  readPrivateSpaceMemberships,
 } from "@/api/conversations/access";
 import { conversationIdsWithParticipantUser } from "@/api/conversations/membership";
 import {
@@ -139,24 +138,17 @@ export async function syncTodoInboxItems(
   const shown: string[] = [];
   /* oxlint-disable no-await-in-loop -- Reads share one transaction; a list has few people. */
   for (const userId of people) {
-    const [participantRoots, memberSpaces] = await Promise.all([
-      conversationIdsWithParticipantUser(
-        db,
-        accessRows.flatMap((row) => [
-          row.conversationId,
-          ...(row.storedRootConversationId
-            ? [row.storedRootConversationId]
-            : []),
-        ]),
-        userId,
-      ),
-      readPrivateSpaceMemberships(db, accessRows, userId),
-    ]);
-    const access = conversationAccessFromRows(
-      accessRows,
-      participantRoots,
-      memberSpaces,
-    ).get(conversationId);
+    const participantRoots = await conversationIdsWithParticipantUser(
+      db,
+      accessRows.flatMap((row) => [
+        row.conversationId,
+        ...(row.storedRootConversationId ? [row.storedRootConversationId] : []),
+      ]),
+      userId,
+    );
+    const access = conversationAccessFromRows(accessRows, participantRoots).get(
+      conversationId,
+    );
     canSee.set(userId, access?.canViewPrivateContent ?? false);
   }
 

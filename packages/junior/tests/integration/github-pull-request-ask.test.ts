@@ -12,7 +12,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -21,9 +21,9 @@ import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
@@ -34,7 +34,7 @@ const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
 // GitHub's id of the pull request, which names its Inbox item.
 const PULL_ID = "1592000";
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 
@@ -279,6 +279,8 @@ describe("the ask of a Junior pull request", () => {
       // The title on GitHub changed after Junior opened the pull request.
       const title = "fix: Check the build";
       let cardReads = 0;
+      // Runs once while a card read waits on GitHub.
+      let duringCardRead: (() => Promise<void>) | undefined;
       mswServer.use(
         http.get(API, () =>
           HttpResponse.json({
@@ -303,6 +305,10 @@ describe("the ask of a Junior pull request", () => {
           const { query } = (await request.json()) as { query: string };
           if (query.includes("PullRequestCards")) {
             cardReads += 1;
+            const reviewDecision = github.approved ? "APPROVED" : null;
+            const during = duringCardRead;
+            duringCardRead = undefined;
+            await during?.();
             return HttpResponse.json({
               data: {
                 p0: {
@@ -320,7 +326,7 @@ describe("the ask of a Junior pull request", () => {
                     mergeable: "MERGEABLE",
                     merged: false,
                     number: 1592,
-                    reviewDecision: github.approved ? "APPROVED" : null,
+                    reviewDecision,
                     reviewRequests: { nodes: [] },
                     state: "OPEN",
                     title,
@@ -450,6 +456,37 @@ describe("the ask of a Junior pull request", () => {
         },
       ]);
       expect(cardReads).toBe(1);
+
+      // Pat's approval is dismissed while a page waits on the card read
+      // that a new review started. GitHub answered that read before the
+      // dismissal, so its approval does not stay, and the next page reads
+      // the decision again.
+      await sendGitHubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 1592, user: { login: BOT } },
+        review: { state: "commented", user: { login: "sam" } },
+      });
+      duringCardRead = async () => {
+        github.approved = false;
+        await sendGitHubWebhook("pull_request_review", {
+          action: "dismissed",
+          pull_request: { number: 1592, user: { login: BOT } },
+          review: { state: "dismissed", user: { login: "pat" } },
+        });
+      };
+      const label = async () => {
+        const page = await api.request(
+          "http://localhost/api/inbox-items?for=viewer",
+        );
+        const read = (await page.json()) as {
+          items: Array<{ id: string; subject: { label?: string } }>;
+        };
+        return read.items.find((item) => item.id === review!.id)?.subject.label;
+      };
+      await label();
+      expect(cardReads).toBe(2);
+      expect(await label()).toBe("Review requested");
+      expect(cardReads).toBe(3);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

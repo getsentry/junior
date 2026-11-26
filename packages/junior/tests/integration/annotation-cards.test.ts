@@ -13,7 +13,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   createPluginAnnotations,
   listConversationAnnotations,

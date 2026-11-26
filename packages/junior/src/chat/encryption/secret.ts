@@ -20,7 +20,10 @@
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { getChatConfig } from "@/chat/config";
-import type { EncryptionKeyring } from "@/chat/encryption/keyring";
+import {
+  createEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 
 const ENVELOPE_PREFIX = "jenc:v1:";
 const ALGORITHM = "aes-256-gcm";
@@ -61,7 +64,9 @@ export function isEncryptedSecret(value: unknown): value is string {
 export function encryptSecret(
   plaintext: string,
   context: string,
-  keyring: EncryptionKeyring = getChatConfig().encryption,
+  keyring: EncryptionKeyring = createEncryptionKeyring(
+    getChatConfig().encryption,
+  ),
 ): string {
   const { id, key } = keyring.active;
   const iv = randomBytes(IV_BYTES);
@@ -83,7 +88,9 @@ export function encryptSecret(
 export function decryptSecret(
   envelope: string,
   context: string,
-  keyring: EncryptionKeyring = getChatConfig().encryption,
+  keyring: EncryptionKeyring = createEncryptionKeyring(
+    getChatConfig().encryption,
+  ),
 ): DecryptedSecret {
   if (!isEncryptedSecret(envelope)) {
     throw new Error("Stored secret is not an encryption envelope");

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attentionGroups,
+  attentionOrder,
   buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
@@ -135,6 +137,80 @@ describe("conversation activity sections", () => {
       "recent",
       "older",
       "tool-only",
+    ]);
+  });
+});
+
+describe("attention order", () => {
+  const at = (hour: number) =>
+    `2026-08-03T${String(hour).padStart(2, "0")}:00:00-07:00`;
+  const feed: Conversation[] = [
+    conversation("done-new", at(11)),
+    { ...conversation("working-old", at(2)), treeState: "working" },
+    {
+      ...conversation("waiting", at(9)),
+      treeState: "done",
+      watching: true,
+    },
+    { ...conversation("needs-old", at(1)), treeState: "needs_you" },
+    { ...conversation("working-new", at(10)), treeState: "working" },
+    { ...conversation("failed", at(8)), latestTurnFailed: true },
+    {
+      ...conversation("pinned-done", at(7)),
+      pinnedAt: "2026-08-03T08:00:00-07:00",
+    },
+    {
+      ...conversation("tool-only", at(12)),
+      lastMessageAt: at(3),
+      treeState: "needs_you",
+    },
+    conversation("done-old", at(4)),
+  ];
+
+  it("groups needs you, working, waiting, then done, each newest first", () => {
+    const rows = [
+      { group: "done", id: "done-old", time: 1 },
+      { group: "waiting", id: "waiting", time: 2 },
+      { group: "needs_you", id: "needs-old", time: 3 },
+      { group: "working", id: "working", time: 4 },
+      { group: "done", id: "done-new", time: 5 },
+      { group: "needs_you", id: "needs-new", time: 6 },
+    ] as const;
+    expect(
+      attentionGroups(rows, (row) => row).map(({ group, rows }) => ({
+        group,
+        ids: rows.map((row) => row.id),
+      })),
+    ).toEqual([
+      { group: "needs_you", ids: ["needs-new", "needs-old"] },
+      { group: "working", ids: ["working"] },
+      { group: "waiting", ids: ["waiting"] },
+      { group: "done", ids: ["done-new", "done-old"] },
+    ]);
+    // Groups with no rows are left out.
+    expect(
+      attentionGroups(
+        rows.filter((row) => row.group !== "working"),
+        (row) => row,
+      ).map(({ group }) => group),
+    ).toEqual(["needs_you", "waiting", "done"]);
+  });
+
+  it("orders feed rows by tree state, then last Message", () => {
+    expect(attentionOrder(feed).map((item) => item.id)).toEqual([
+      // A failed latest Turn needs the viewer. A tool event does not move a
+      // row: the last Message sorts it.
+      "failed",
+      "tool-only",
+      "needs-old",
+      "working-new",
+      "working-old",
+      // A watching tree waits.
+      "waiting",
+      // A pin does not change the group.
+      "done-new",
+      "pinned-done",
+      "done-old",
     ]);
   });
 });

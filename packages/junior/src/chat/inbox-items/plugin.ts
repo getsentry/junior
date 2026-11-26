@@ -9,7 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowInboxItem } from "./changes";

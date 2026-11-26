@@ -177,6 +177,9 @@ test("previews conversation images and pages through them", async ({
 
   await image.click();
   await expect(preview.getByText("1 of 2")).toBeVisible();
+  // The preview opens at 95% scale for one frame. A pinch in that frame
+  // measures the scaled image and zooms to another place.
+  await expect(preview).not.toHaveAttribute("data-starting-style");
   await pinch("touchStart", [
     { id: 1, x: 180, y: 450 },
     { id: 2, x: 210, y: 450 },

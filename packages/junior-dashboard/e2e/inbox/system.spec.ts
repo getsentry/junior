@@ -124,10 +124,9 @@ test.describe("new UI", () => {
     await expect(
       page.getByText(/They do not show individual calls/),
     ).toBeVisible();
-    await page.evaluate(() => window.scrollTo(0, 0));
-    // The scroll moves a chart under the pointer from the click above, and
-    // its tooltip shows only when a hover lands before the shot.
+    // The scroll would move a chart under the pointer and show its tooltip.
     await page.mouse.move(-1, -1);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-missing", { view: "desktop" });
     await page.getByRole("button", { name: "30d", exact: true }).click();
     await expect(largestWrites).toContainText("190k");

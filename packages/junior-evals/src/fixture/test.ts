@@ -35,6 +35,12 @@ interface TestAgent {
   run: RunAgent;
   /** Replace the agent's app with one that has these `createApp()` options. */
   redeploy: (options?: JuniorAppOptions) => Promise<void>;
+  /** Create a public Space as another person. The web person is not in it. */
+  createOtherSpace: (name: string) => Promise<{ id: string }>;
+  /** Read the Space of a Conversation as the web person sees it. */
+  readConversationSpace: (
+    conversationId: string,
+  ) => Promise<{ id: string; name: string } | null>;
 }
 
 interface AgentFixtures {
@@ -66,6 +72,10 @@ export const test = baseTest.extend<AgentFixtures>({
           runEvalWork(() => agent.run(input, callOptions)),
         redeploy: (next = {}) =>
           runEvalWork(() => agent.redeploy({ ...defaults, ...next })),
+        createOtherSpace: (name) =>
+          runEvalWork(() => agent.createOtherSpace(name)),
+        readConversationSpace: (conversationId) =>
+          runEvalWork(() => agent.readConversationSpace(conversationId)),
       };
     });
     await created?.close();

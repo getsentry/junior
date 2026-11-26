@@ -18,6 +18,7 @@ import {
   type ResolvedAssignees,
 } from "@/chat/inbox-items/assignees";
 import {
+  getOpenInboxItemBySubject,
   insertInboxItem,
   type InboxItem,
   type InboxItemVisibility,
@@ -175,19 +176,22 @@ export function createAddInboxItemTool(
         visibility,
       });
       const request = requestInput(question, related);
-      const item = await insertInboxItem(db, {
-        assignedToEveryone: assignees.everyone,
-        assigneeUserIds: assignees.userIds,
-        body: input.body,
-        conversationIds,
-        kind: input.kind,
-        subject,
-        title: input.title,
-        ...(request ? { request } : undefined),
-        owner: { id: context.conversationId, kind: "conversation" },
-        ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
-        nowMs: Date.now(),
-      });
+      // A Turn replays a call that committed before its result was saved.
+      // Its question already has the item, so the replay goes on with it.
+      const item =
+        (await insertInboxItem(db, {
+          assignedToEveryone: assignees.everyone,
+          assigneeUserIds: assignees.userIds,
+          body: input.body,
+          conversationIds,
+          kind: input.kind,
+          subject,
+          title: input.title,
+          ...(request ? { request } : undefined),
+          owner: { id: context.conversationId, kind: "conversation" },
+          ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
+          nowMs: Date.now(),
+        })) ?? (await getOpenInboxItemBySubject(db, subject));
       if (!item) {
         throw new ToolInputError(
           "This tool call already added its item. To change it, update it by its id.",

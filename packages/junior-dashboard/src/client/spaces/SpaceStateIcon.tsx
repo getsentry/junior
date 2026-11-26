@@ -4,11 +4,11 @@ import type { SpaceReport } from "@sentry/junior/api/schema";
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 
-/** What a Space row shows for the Conversations in the Space. */
+/** What a Space row shows for the Threads in the Space. */
 export type SpaceDisplayState = "needs_you" | "failed" | "working";
 
 /**
- * Pick one state for a Space row from the roll-up of its Conversations.
+ * Pick one state for a Space row from the roll-up of its Threads.
  * When more than one applies: `needs_you` > `failed` > `working`. An idle
  * Space shows nothing.
  */
@@ -22,7 +22,7 @@ export function spaceDisplayState(
 }
 
 const STATE_LABELS: Record<SpaceDisplayState, string> = {
-  failed: "A Conversation failed",
+  failed: "A Thread failed",
   needs_you: "Waiting on you",
   working: "Working",
 };

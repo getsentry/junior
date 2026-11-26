@@ -1,15 +1,11 @@
 import { HTTPException } from "hono/http-exception";
 import * as z from "zod";
 import { setConversationSpaceForViewer } from "@/api/conversations/space";
+import { SPACES_TOOL_SOURCE } from "@/chat/spaces/tool-source";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-
-const SPACES_TOOL_SOURCE = {
-  id: "spaces",
-  description: "Move a conversation into, out of, or between Spaces.",
-} as const;
 
 export const moveConversationToSpaceToolDefinition = zodToolDefinition({
   exposure: "deferred",
@@ -38,8 +34,9 @@ export const moveConversationToSpaceToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .nullable()
+        .optional()
         .describe(
-          "The Space to move it to: its ID, or a dashboard link to it that ends in /spaces/<id>. Names are not unique, so ask the person for the link when you do not have either. null takes the conversation out of its Space.",
+          "The Space to move it to: its ID, or a dashboard link that ends in /spaces/<id>. Omit it for the Space that this conversation is in. null takes it out of its Space. Names are not unique, so ask the person for the link when you have neither.",
         ),
     })
     .strict(),
@@ -65,6 +62,23 @@ function parseSpaceId(space: string): string {
   return parsed.data;
 }
 
+// null takes the Conversation out of its Space. With no Space named, a Lead
+// moves it into its own Space, so that ID comes from the runtime, not from
+// one that the model copies.
+function targetSpaceId(
+  space: string | null | undefined,
+  ownSpaceId: string | undefined,
+): string | null {
+  if (space === null) return null;
+  if (space !== undefined) return parseSpaceId(space);
+  if (!ownSpaceId) {
+    throw new ToolInputError(
+      "This conversation is in no Space. Pass the Space's ID or link, or ask the person for the link.",
+    );
+  }
+  return ownSpaceId;
+}
+
 /**
  * Build the tool that moves a top-level Conversation into, out of, or
  * between Spaces for the person who started the Turn. The registry offers
@@ -73,7 +87,10 @@ function parseSpaceId(space: string): string {
  * checks as the dashboard's Move to Space: `api/conversations/space.ts`.
  */
 export function createMoveConversationToSpaceTool(
-  context: Pick<ToolRuntimeContext, "conversationId" | "resolveActorIdentity">,
+  context: Pick<
+    ToolRuntimeContext,
+    "conversationId" | "resolveActorIdentity" | "spaceId"
+  >,
 ) {
   return zodTool({
     ...moveConversationToSpaceToolDefinition,
@@ -86,7 +103,7 @@ export function createMoveConversationToSpaceTool(
       }
       const conversationId = input.conversation_id ?? context.conversationId;
       try {
-        const spaceId = input.space === null ? null : parseSpaceId(input.space);
+        const spaceId = targetSpaceId(input.space, context.spaceId);
         const result = await setConversationSpaceForViewer(
           user,
           conversationId,

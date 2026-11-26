@@ -6,7 +6,7 @@ import {
   prReady,
   rollout,
 } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { mockConversationDetail } from "../mock-reports";
 
@@ -167,6 +167,11 @@ test.describe("new UI", () => {
       });
     });
 
+    // The shot is desktop only, so start at that size. At the default size,
+    // the Approve option sits at the top edge of the transcript, and the
+    // click can scroll it into view. That scroll leaves the latest message,
+    // and the shot then shows another place.
+    await page.setViewportSize(desktop);
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );

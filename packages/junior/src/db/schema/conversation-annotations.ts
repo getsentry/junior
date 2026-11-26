@@ -34,14 +34,14 @@ export const juniorConversationAnnotations = pgTable(
     key: text("key").notNull(),
     // The object: a subject kind in the Inbox form, `<plugin>:<kind>` or a
     // core kind, and the provider's id of the object. Null only until the
-    // trigger of `20261126011201_annotation_subjects` fills a row that an
+    // trigger of `20261126034201_annotation_subjects` fills a row that an
     // old worker wrote.
     subjectKind: text("subject_kind"),
     subjectId: text("subject_id"),
     action: text("action").$type<AnnotationAction>(),
     // The title and the link that search finds and a card shows when the
     // provider is down. A link that a person attached has no title. Until
-    // the trigger of `20261126011203_annotation_title_url` moves them, an
+    // the trigger of `20261126034203_annotation_title_url` moves them, an
     // old worker writes them in the JSON.
     title: text("title"),
     url: text("url"),

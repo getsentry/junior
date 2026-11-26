@@ -3,7 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { juniorInboxItemAssignees, juniorInboxItems } from "@/db/schema";
 import { inboxItemPlugin } from "./access";

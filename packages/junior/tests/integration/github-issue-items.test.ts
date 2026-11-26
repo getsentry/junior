@@ -13,7 +13,7 @@ import { recordConversationParticipant } from "@/chat/conversations/sql/particip
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -29,9 +29,9 @@ import {
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { signedInViewer } from "../fixtures/user";
@@ -41,7 +41,7 @@ const ISSUE_URL = "https://github.com/getsentry/junior/issues/4254";
 // GitHub's id of the issue, which names its Inbox item.
 const ISSUE_ID = 4254000;
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 

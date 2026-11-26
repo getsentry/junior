@@ -24,7 +24,8 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";

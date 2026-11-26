@@ -117,6 +117,12 @@ const legacyHandoffEventDataSchema = z
   })
   .strict();
 
+/** The data of an event that replaces the active agent history. */
+export const historyReplacementDataSchema = z.discriminatedUnion("type", [
+  historyReplacementEventDataSchema,
+  legacyHandoffEventDataSchema,
+]);
+
 /** Validate an event that intentionally replaces active model history. */
 export const historyReplacementSchema = z
   .object({
@@ -420,6 +426,8 @@ const turnFailedEventDataSchema = z
 
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
+// `subagentInvocationId` is the stored key of the marker id. Stored history
+// keeps it, so the name stays.
 const subagentStartedEventDataSchema = z
   .object({
     type: z.literal("subagent_started"),

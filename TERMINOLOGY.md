@@ -22,20 +22,22 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Visibility**: `public` or `private`, stored on each Conversation. Anyone
   can read a public Conversation. Only its Participants can read a private
   one. Every Conversation in a tree has its root's visibility.
-- **Lead**: a Space's public top-level Conversation that finds, starts,
-  and steers the Space's other Conversations. Each Space has one. It has no
-  child agents and does no work itself. `startConversation` starts a root in
-  the Space for the Member who asked.
-- **Space**: a named, shared home for a body of related work. A
-  **Member** of a Space is a User who joined it.
+- **Lead**: the root Conversation of a Space. Each Space has one. The
+  Space's other Conversations are its child agents. It finds, starts, and
+  steers them, and does no work itself.
+- **Top-level Conversation**: a Conversation with no parent, or a child of a
+  Lead. Top-level lists show these. It is not stored.
+- **Space**: a named, shared home for a body of related work: metadata on
+  its Lead. A **Member** of a Space is a Participant of its Lead.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
-  is a root, or a child agent that `startAgent` starts as a `thread`. Say
-  "Slack thread" for the Location. A bare "Thread" is the Conversation.
+  is a root, or a child agent that `startAgent` starts as a `thread`. The
+  dashboard calls each child of a Lead a Thread. Say "Slack thread" for the
+  Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. It sets who manages an agent, not access.
+- **Team**: an agent and its child agents. It sets who manages an agent,
+  not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
@@ -55,8 +57,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation is delivered to. The Run carries it. It grants no delivery or
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent.
+  assistant Messages are stored. Only a Conversation that has its own
+  Location delivers to it: a root, or a Conversation that moved into a
+  Space. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation status**: what one Conversation's own work needs, shared
@@ -86,7 +89,8 @@ Canonical words for Junior code and docs. One concept, one word.
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
 - **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. A Participant is active until they
+  its children, or who was invited to it. Children inherit the Participants
+  of their root, so in a Space they are the Lead's. A Participant is active until they
   Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
@@ -248,7 +252,7 @@ Canonical words for Junior code and docs. One concept, one word.
   the item closes, such as when someone else handles it, or until the User
   wakes it. **Snoozed** (Inbox): the view of the User's snoozed items.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
-  one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
+  one Conversation, changed with `todos_updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the
   Conversation's own agent, one of its child agents, or a User. Each change
   gets a new version. In code: `todo`. A User's open To-do shows in their

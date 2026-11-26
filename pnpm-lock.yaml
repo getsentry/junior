@@ -708,8 +708,8 @@ importers:
         specifier: ^7.18.2
         version: 7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       recharts:
-        specifier: 3.8.0
-        version: 3.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)
+        specifier: 3.11.1
+        version: 3.11.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)
       remark-breaks:
         specifier: ^4.0.0
         version: 4.0.0
@@ -7811,9 +7811,6 @@ packages:
     resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
     engines: {node: '>= 4'}
 
-  immer@10.2.0:
-    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
-
   immer@11.2.9:
     resolution: {integrity: sha512-IQ4UEtXjZjyefyWjtLEDXUSrF6T2hwjKPi6BIJl3bY/2XXW24d6cNGdXJSBOA/+KNnuiXkZY6DR0C3efolhitA==}
 
@@ -9537,13 +9534,17 @@ packages:
     resolution: {integrity: sha512-mFAyJq9vUbSTARLZUvAEf1z3YxlvAwswbmxMx2mPA/MSm4KmpwvwvhsH/NIrZhyOuwD60Lzyw2qh83uCbgTPYw==}
     engines: {node: '>= 4'}
 
-  recharts@3.8.0:
-    resolution: {integrity: sha512-Z/m38DX3L73ExO4Tpc9/iZWHmHnlzWG4njQbxsF5aSjwqmHNDDIm0rdEBArkwsBvR8U6EirlEHiQNYWCVh9sGQ==}
+  recharts@3.11.1:
+    resolution: {integrity: sha512-3XYqpdvpOYRDbi6NUMUEStTRXLmSmw9GJ/cp3xGbACLt+0PEa5CnWfg5Wi4VN7YLtVA5/hJiIhNPoxntWaTY/g==}
     engines: {node: '>=18'}
     peerDependencies:
+      '@types/react': '*'
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-is: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   rechoir@0.8.0:
     resolution: {integrity: sha512-/vxpCXddiX8NGfGO/mTafwjq4aFa/71pvamip0++IQk3zG8cbCj0fifNPrjjF1XMXUne91jL9OoxmdykoEtifQ==}
@@ -9651,8 +9652,8 @@ packages:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
 
-  reselect@5.1.1:
-    resolution: {integrity: sha512-K/BG6eIky/SBpzfHZv/dd+9JBFiS4SWV7FIujVyJRux6e45+73RaUHXLmIR1f7WOMaQ0U1km6qwklRQxpJJY0w==}
+  reselect@5.2.0:
+    resolution: {integrity: sha512-AgZ3UOZm3YndfrJ4OYjgrT7bmCm/1iqkjvEfH/oYjzh6PD2qw4QuT3jjnXIrpdt4MTpMXclMT3lXbmRY+XRakw==}
 
   reselect@5.3.0:
     resolution: {integrity: sha512-XGoLeRAVzUTcJ1qkxPQhDJyIZ5d6zzZD9nT7AEZOaaU9UbWclhycElmhO+VD5bFeLuzhPBaOV2oXC8uG35ZSpg==}
@@ -14125,7 +14126,7 @@ snapshots:
       immer: 11.2.9
       redux: 5.0.1
       redux-thunk: 3.1.0(redux@5.0.1)
-      reselect: 5.3.0
+      reselect: 5.2.0
     optionalDependencies:
       react: 19.2.6
       react-redux: 9.3.1(@types/react@19.2.15)(react@19.2.6)
@@ -14137,7 +14138,7 @@ snapshots:
       immer: 11.2.9
       redux: 5.0.1
       redux-thunk: 3.1.0(redux@5.0.1)
-      reselect: 5.3.0
+      reselect: 5.2.0
     optionalDependencies:
       react: 19.2.6
       react-redux: 9.3.1(react@19.2.6)
@@ -14488,7 +14489,7 @@ snapshots:
       react-markdown: 10.1.0(react@19.2.6)
       react-resizable-panels: 4.17.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react-router: 7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      recharts: 3.8.0(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)
+      recharts: 3.11.1(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6)
       remark-breaks: 4.0.0
       remark-gfm: 4.0.1
       shiki: 4.1.0
@@ -18552,8 +18553,6 @@ snapshots:
 
   ignore@7.0.5: {}
 
-  immer@10.2.0: {}
-
   immer@11.2.9: {}
 
   import-without-cache@0.4.1: {}
@@ -20643,44 +20642,44 @@ snapshots:
       tiny-invariant: 1.3.3
       tslib: 2.8.1
 
-  recharts@3.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6):
+  recharts@3.11.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6):
     dependencies:
       '@reduxjs/toolkit': 2.13.0(react-redux@9.3.1(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
       clsx: 2.1.1
       decimal.js-light: 2.5.1
       es-toolkit: 1.53.0
       eventemitter3: 5.0.4
-      immer: 10.2.0
+      immer: 11.2.9
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       react-is: 19.2.7
       react-redux: 9.3.1(@types/react@19.2.15)(react@19.2.6)
-      reselect: 5.1.1
+      reselect: 5.2.0
       tiny-invariant: 1.3.3
       use-sync-external-store: 1.7.0(react@19.2.6)
       victory-vendor: 37.4.1
+    optionalDependencies:
+      '@types/react': 19.2.15
     transitivePeerDependencies:
-      - '@types/react'
       - redux
 
-  recharts@3.8.0(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6):
+  recharts@3.11.1(react-dom@19.2.6(react@19.2.6))(react-is@19.2.7)(react@19.2.6):
     dependencies:
       '@reduxjs/toolkit': 2.13.0(react-redux@9.3.1(react@19.2.6))(react@19.2.6)
       clsx: 2.1.1
       decimal.js-light: 2.5.1
       es-toolkit: 1.53.0
       eventemitter3: 5.0.4
-      immer: 10.2.0
+      immer: 11.2.9
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       react-is: 19.2.7
       react-redux: 9.3.1(react@19.2.6)
-      reselect: 5.1.1
+      reselect: 5.2.0
       tiny-invariant: 1.3.3
       use-sync-external-store: 1.7.0(react@19.2.6)
       victory-vendor: 37.4.1
     transitivePeerDependencies:
-      - '@types/react'
       - redux
 
   rechoir@0.8.0:
@@ -20860,7 +20859,7 @@ snapshots:
 
   require-from-string@2.0.2: {}
 
-  reselect@5.1.1: {}
+  reselect@5.2.0: {}
 
   reselect@5.3.0: {}
 

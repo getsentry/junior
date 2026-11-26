@@ -1,10 +1,15 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, not } from "drizzle-orm";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { isThread } from "@/chat/conversations/kind-behavior";
 import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
   type ConversationTreeNode,
 } from "@/chat/conversations/sql/conversation-tree";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
 import {
   CONVERSATION_FEED_THREAD_LIMIT,
@@ -14,21 +19,26 @@ import type { ConversationAccess } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationFromRecordRow, selectConversationRecords } from "./record";
+import { readConversationTreeStates } from "./tree-state";
 
 /**
- * Find where a Thread nests: its nearest ancestor that is a listed root or a
- * Thread. A Thread under a Task moves up. Returns undefined when an ancestor
- * is archived, because an archive hides its whole subtree.
+ * Find where a Thread nests: its nearest ancestor that is a listed row or a
+ * Thread, and the listed row above it. A Thread under a Task moves up.
+ * Returns undefined when an ancestor is archived, because an archive hides
+ * its whole subtree.
  */
 function findThreadPlacement(
   threadId: string,
   tree: ReadonlyMap<string, ConversationTreeNode>,
   rootIds: ReadonlySet<string>,
-): string | undefined {
+): { listedId: string; parentId: string } | undefined {
   let placement: string | undefined;
   for (const ancestor of conversationAncestors(tree, threadId)) {
     if (rootIds.has(ancestor.conversationId)) {
-      return placement ?? ancestor.conversationId;
+      return {
+        listedId: ancestor.conversationId,
+        parentId: placement ?? ancestor.conversationId,
+      };
     }
     if (ancestor.archivedAt) return undefined;
     if (isThread(ancestor)) placement ??= ancestor.conversationId;
@@ -40,23 +50,32 @@ function findThreadPlacement(
 type FeedThreadRecords = Awaited<ReturnType<typeof readFeedThreadRecords>>;
 
 /**
- * Read the stored Threads of the listed roots for the feed, with their
- * read-time titles. It needs no access, so it can start with the other
- * feed reads. The caller passes only unarchived roots, so a root archive
+ * Read the stored Threads under the listed rows for the feed, with their
+ * read-time titles and each Thread's tree state for the viewer. It needs
+ * no access, so it can start with the other feed reads. The caller passes only unarchived roots, so a root archive
  * hides its tree with no writes to the children.
  */
 export async function readFeedThreadRecords(
   db: JuniorDatabase,
   rootIds: string[],
+  viewerUserId: string | undefined,
 ) {
   if (rootIds.length === 0) return undefined;
   const rows = await selectConversationRecords(db)
+    .innerJoin(
+      conversationSubtree(rootIds),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
     .where(
       and(
-        inArray(juniorConversations.rootConversationId, rootIds),
-        // A child Thread: a `thread` with a parent.
+        // A child Thread: a `thread` with a parent, other than a Lead's
+        // child, which is top-level Space work.
         eq(juniorConversations.kind, "thread"),
         isNotNull(juniorConversations.parentConversationId),
+        not(topLevelConversation()),
         isNull(juniorConversations.archivedAt),
       ),
     )
@@ -69,11 +88,23 @@ export async function readFeedThreadRecords(
     conversation: conversationFromRecordRow(row),
     row,
   }));
-  const firstHumanMessageTexts = await readFirstHumanMessageTexts(
-    db,
-    threads.map(({ conversation }) => conversation),
-  );
-  return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads };
+  const [firstHumanMessageTexts, treeStates] = await Promise.all([
+    readFirstHumanMessageTexts(
+      db,
+      threads.map(({ conversation }) => conversation),
+    ),
+    readConversationTreeStates(
+      db,
+      threads.map(({ conversation }) => conversation.conversationId),
+      viewerUserId,
+    ),
+  ]);
+  return {
+    firstHumanMessageTexts,
+    rootIds: new Set(rootIds),
+    threads,
+    treeStates,
+  };
 }
 
 /** The Threads that a feed row lists, and how many the cap left out. */
@@ -96,21 +127,21 @@ export function nestFeedThreads(
   accessByRoot: ReadonlyMap<string, ConversationAccess | undefined>,
 ): Map<string, FeedRowThreads> {
   if (!records) return new Map();
-  const { firstHumanMessageTexts, rootIds, threads } = records;
+  const { firstHumanMessageTexts, rootIds, threads, treeStates } = records;
   const childrenByParent = new Map<string, ConversationFeedItem[]>();
   const placedByRoot = new Map<string, number>();
   for (const { conversation, row } of threads) {
-    const parentId = findThreadPlacement(
+    const placement = findThreadPlacement(
       conversation.conversationId,
       tree,
       rootIds,
     );
-    if (!parentId) continue;
-    const rootId = row.conversation.rootConversationId;
-    if (rootId) placedByRoot.set(rootId, (placedByRoot.get(rootId) ?? 0) + 1);
+    if (!placement) continue;
+    const { listedId, parentId } = placement;
+    placedByRoot.set(listedId, (placedByRoot.get(listedId) ?? 0) + 1);
     // Thread usage covers only the Thread. Roots show tree totals.
     const summary = conversationSummaryFromStoredConversation({
-      access: rootId ? accessByRoot.get(rootId) : undefined,
+      access: accessByRoot.get(listedId),
       conversation,
       durationMs: row.conversation.durationMs,
       firstHumanMessageText: firstHumanMessageTexts.get(
@@ -122,7 +153,10 @@ export function nestFeedThreads(
         : undefined),
     });
     const siblings = childrenByParent.get(parentId) ?? [];
-    siblings.push(summary);
+    siblings.push({
+      ...summary,
+      ...treeStates.get(conversation.conversationId),
+    });
     childrenByParent.set(parentId, siblings);
   }
   // Parent edges are set once at create, so placements form a forest.

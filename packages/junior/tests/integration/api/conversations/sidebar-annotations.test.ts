@@ -11,7 +11,7 @@ import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   GITHUB_API,
