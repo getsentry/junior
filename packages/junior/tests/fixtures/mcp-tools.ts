@@ -22,6 +22,8 @@ export async function seedMcpConversation(args: {
   conversationId: string;
   email: string;
   title: string;
+  /** Public by default. */
+  visibility?: "private" | "public";
 }): Promise<void> {
   const sql = getSqlExecutor();
   await createSqlStore(sql).recordActivity({
@@ -29,7 +31,7 @@ export async function seedMcpConversation(args: {
     destination: DESTINATION,
     nowMs: Date.now(),
     title: args.title,
-    visibility: "public",
+    visibility: args.visibility ?? "public",
   });
   const viewer = await requireViewer(args.email);
   await sql.db().insert(juniorConversationParticipants).values({
@@ -71,12 +73,12 @@ export async function seedMcpInboxItem(args: {
 }): Promise<InboxItem> {
   const viewer = await requireViewer(args.email);
   const item = await insertInboxItem(getDb(), {
+    subject: { id: args.title, kind: "question" },
     owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [viewer.id],
     body: "Pick one.",
     conversationIds: [args.conversationId],
-    dedupeKey: args.title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -91,7 +93,6 @@ export async function seedMcpInboxItem(args: {
       ],
     },
     title: args.title,
-    visibility: "private",
   });
   if (!item) throw new Error(`Inbox item ${args.title} was not stored`);
   return item;

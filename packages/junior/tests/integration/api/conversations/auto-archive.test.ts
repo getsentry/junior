@@ -369,12 +369,12 @@ describe("conversation auto-archive API", () => {
     }
     // An open action item for the viewer keeps the conversation in the feed.
     await insertInboxItem(getDb(), {
+      subject: { id: "archive-done:waiting", kind: "question" },
       owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Merge or close the follow-up?",
       conversationIds: [waitingId],
-      dedupeKey: "archive-done:waiting",
       kind: "action",
       nowMs,
       request: {
@@ -389,7 +389,6 @@ describe("conversation auto-archive API", () => {
         question: "Merge or close the follow-up?",
       },
       title: "Follow-up",
-      visibility: "private",
     });
     // A Space's Lead is not a feed row, so it stays however long it has
     // been quiet.
@@ -670,17 +669,16 @@ describe("conversation auto-archive API", () => {
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
       const item = await insertInboxItem(getDb(), {
+        subject: { id: `archive-needs:${conversationId}`, kind: "question" },
         owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
         assigneeUserIds: [],
         body: "Ship the release now?",
         conversationIds: [`${conversationId}:child`],
-        dedupeKey: `archive-needs:${conversationId}`,
         kind: "action",
         nowMs: quietMs,
         request: REQUEST,
         title: "Release",
-        visibility: "public",
       });
       if (conversationId === childItemClosedId) {
         await closeInboxItem(getDb(), {
@@ -691,17 +689,16 @@ describe("conversation auto-archive API", () => {
       }
     }
     await insertInboxItem(getDb(), {
+      subject: { id: "archive-needs:linked", kind: "question" },
       owner: { id: `${childItemId}:child`, kind: "conversation" },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Ship the linked release now?",
       conversationIds: [`${childItemId}:child`, linkedItemId],
-      dedupeKey: "archive-needs:linked",
       kind: "action",
       nowMs: quietMs,
       request: REQUEST,
       title: "Linked release",
-      visibility: "public",
     });
     await stopConversationTree([stoppedId], { stoppedAtMs: quietMs });
     await stopConversationTree([stoppedRecentlyId], { stoppedAtMs: nowMs });

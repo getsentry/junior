@@ -228,6 +228,7 @@ async function reconcilePullRequest(
   // publish, a failed close keeps the change open for the next reconcile.
   await closeGitHubConflictItem({
     db: args.db,
+    pullRequestId: String(pullRequest.databaseId),
     ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
     inboxItems: args.inboxItems,
     ...(pullRequest.merged

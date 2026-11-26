@@ -13,7 +13,18 @@ import {
   EVERYONE_ASSIGNEE,
   type FindMentionedUserId,
 } from "@/chat/inbox-items/assignees";
-import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRelatedLink,
+  InboxItemRequest,
+} from "@/chat/inbox-items/request";
+import {
+  userInputFieldsSchema,
+  userInputQuestionSchema,
+  userInputRequestSchema,
+  type UserInputRequest,
+} from "@/chat/inbox-items/user-input-request";
+import { parseToolInput } from "@/chat/tool-support/zod-tool";
 import {
   getInboxItem,
   ownerConversationId,
@@ -107,11 +118,12 @@ export function itemResult(item: InboxItem) {
       ...item.assignees.map((assignee) => assignee.email),
     ],
     conversation_ids: item.conversationIds,
-    dedupe_key: item.dedupeKey,
     visibility: item.visibility,
     updated_at: item.updatedAt.toISOString(),
-    ...(item.subject ? { subject: item.subject } : undefined),
-    ...(item.automationId ? { automation_id: item.automationId } : undefined),
+    subject: item.subject,
+    ...(item.addedByAutomationId
+      ? { automation_id: item.addedByAutomationId }
+      : undefined),
     ...(item.request ? { request: requestResult(item.request) } : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.closedAt
@@ -124,13 +136,16 @@ export function itemResult(item: InboxItem) {
   };
 }
 
-/** Show the stored question with the tool's snake_case evidence keys. */
-function requestResult({ evidence, ...question }: InboxItemRequest) {
+/** Show the stored question with the tool's snake_case related link keys. */
+function requestResult({
+  related,
+  ...question
+}: InboxItemRequest | InboxItemNoticeRequest) {
   return {
     ...question,
-    ...(evidence
+    ...(related
       ? {
-          evidence: evidence.map(({ conversationId, ...entry }) => ({
+          related: related.map(({ conversationId, ...entry }) => ({
             ...entry,
             ...(conversationId
               ? { conversation_id: conversationId }
@@ -139,4 +154,138 @@ function requestResult({ evidence, ...question }: InboxItemRequest) {
         }
       : undefined),
   };
+}
+
+const relatedSchema = z
+  .array(
+    z
+      .object({
+        url: z
+          .string()
+          .url()
+          .max(2000)
+          .refine(
+            // `url()` also accepts `javascript:` and `data:` URLs.
+            (url) =>
+              URL.canParse(url) &&
+              ["http:", "https:"].includes(new URL(url).protocol),
+            "Use an http(s) URL.",
+          )
+          .nullable()
+          .optional()
+          .describe(
+            "A link, such as a chart, a log search, or the pull request that the item is about. The card shows these links.",
+          ),
+        conversation_id: z
+          .string()
+          .trim()
+          .min(1)
+          .max(500)
+          .nullable()
+          .optional()
+          .describe("A related Conversation. Set this or `url`."),
+        label: z
+          .string()
+          .trim()
+          .min(1)
+          .max(120)
+          .describe("Short name of the link, such as `Checkout p95 chart`."),
+        note: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .regex(/^[^\r\n]*$/, "Use one line.")
+          .nullable()
+          .optional()
+          .describe("One line: what this link shows."),
+      })
+      .strict(),
+  )
+  .max(10);
+
+const questionRequestSchema = z.object({
+  request: userInputRequestSchema,
+});
+
+/**
+ * Return the question of an action. An action needs one. A notice asks
+ * nothing, so its `request` may hold only related links.
+ */
+export function questionInput(
+  kind: InboxItem["kind"],
+  request: z.output<typeof requestInputSchema> | null | undefined,
+): UserInputRequest | undefined {
+  if (kind === "notice") {
+    if (request?.question || request?.fields) {
+      throw new ToolInputError(
+        "A notice asks nothing, so its `request` holds only `related`. To ask, use kind `action`.",
+      );
+    }
+    return undefined;
+  }
+  if (!request?.question || !request.fields) {
+    throw new ToolInputError(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
+  }
+  const { related: _related, ...question } = request;
+  return parseToolInput(questionRequestSchema, { request: question }).request;
+}
+
+/** The `request` param of the Inbox item tools that ask or change a question. */
+export const requestInputSchema = z.object({
+  question: userInputQuestionSchema
+    .optional()
+    .describe(
+      "The question, in markdown. Include the facts the person needs to decide. Required for an action. Not allowed for a notice.",
+    ),
+  fields: userInputFieldsSchema
+    .optional()
+    .describe(
+      "What to ask, in display order. Use one `choice` field for a simple decision. Required for an action. Not allowed for a notice.",
+    ),
+  related: relatedSchema
+    .nullable()
+    .optional()
+    .describe(
+      "Links related to the item: what it is about, such as a pull request, and the sources for its facts. With a suggested answer, link what supports it and what argues against it. Each entry has a `url` or a `conversation_id`.",
+    ),
+});
+
+/**
+ * Normalize the related links: each entry names exactly one link, null
+ * fields mean omitted, and a link is stored as `URL.href`, so it matches
+ * the link of the work that it names.
+ */
+export function relatedInput(
+  related: z.output<typeof relatedSchema> | null | undefined,
+): InboxItemRelatedLink[] {
+  return (related ?? []).map((entry) => {
+    if (Boolean(entry.url) === Boolean(entry.conversation_id)) {
+      throw new ToolInputError(
+        "Each `related` entry needs a `url` or a `conversation_id`, not both.",
+      );
+    }
+    return {
+      label: entry.label,
+      ...(entry.url ? { url: new URL(entry.url).href } : undefined),
+      ...(entry.conversation_id
+        ? { conversationId: entry.conversation_id }
+        : undefined),
+      ...(entry.note ? { note: entry.note } : undefined),
+    };
+  });
+}
+
+/**
+ * Store the question with its normalized related links, if it has any. A
+ * notice stores only its related links.
+ */
+export function requestInput(
+  question: UserInputRequest | undefined,
+  related: InboxItemRelatedLink[],
+): InboxItemRequest | InboxItemNoticeRequest | undefined {
+  if (!question) return related.length > 0 ? { related } : undefined;
+  return { ...question, ...(related.length > 0 ? { related } : undefined) };
 }

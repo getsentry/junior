@@ -57,6 +57,19 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
      * `pending` while the provider computes it for a new head.
      */
     mergeable: z.union([z.boolean(), z.literal("pending")]).optional(),
+    /**
+     * The title split by its change type, such as `feat(api)!: Add retries`,
+     * with the categories of the repository's release notes. Unset when the
+     * title names no change type.
+     */
+    titleParts: z
+      .strictObject({
+        breaking: z.boolean().optional(),
+        scope: text.optional(),
+        text: z.string().trim().min(1).max(512),
+        type: text.optional(),
+      })
+      .optional(),
     // The same counts as `codeChangeSizeSchema`.
     changedFiles: count.optional(),
     additions: count.optional(),

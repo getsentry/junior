@@ -1,21 +1,27 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, like, lte, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorInboxItemConversations, juniorInboxItems } from "@/db/schema";
+import {
+  juniorInboxItemConversations,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 import { inboxItemVisibleTo, type InboxItemReader } from "./access";
+import { inboxItemTitle, itemQuestion } from "./question-content";
 import { ownerConversationId, type InboxItem } from "./store";
+import { subjectKindPlugin } from "./subjects";
 
 // Each item keeps at most this many related items, newest first.
 const RELATED_ITEM_LIMIT = 10;
-// The reads keep this many of the newest candidates for each subject id,
-// subject URL, and linked Conversation, so a busy subject cannot crowd out
+// The reads keep this many of the newest candidates for each object and
+// linked Conversation, so a busy object cannot crowd out
 // the other items on the page. One more than the item limit, because an
-// item can be a candidate for its own subject.
+// item can be a candidate for its own object.
 const RELATED_CANDIDATE_LIMIT = RELATED_ITEM_LIMIT + 1;
 
-/** Other open work on the same subject or linked work as one item. */
+/** Other open work on the same object or linked work as one item. */
 export interface RelatedReviewWork {
   /**
    * The item's linked Conversations other than the one that added it, that
@@ -29,8 +35,6 @@ export interface RelatedReviewWork {
 type Candidate = {
   createdAt: Date;
   id: string;
-  subjectId: string | null;
-  subjectUrl: string | null;
   title: string;
 };
 
@@ -51,17 +55,26 @@ function newestInGroup(group: AnyPgColumn) {
 const candidateColumns = {
   createdAt: juniorInboxItems.createdAt,
   id: juniorInboxItems.id,
-  subjectId: juniorInboxItems.subjectId,
-  subjectUrl: juniorInboxItems.subjectUrl,
-  title: juniorInboxItems.title,
+  title: inboxItemTitle.as("title"),
 };
 
 /**
- * Read the related work of each open item in a page: the other open items
- * that the reader can see with the same subject id or URL, or linked to one
- * of the item's other linked Conversations, and those Conversations when the
- * viewer can see them. The reads cover the whole page at once, so the query
- * count does not grow with the page.
+ * The outside object that a plugin item is about, which related work
+ * matches: its subject id, such as a pull request. A question's related
+ * links show on its card, but they relate it to no other item. Other core
+ * kinds relate to nothing by object.
+ */
+function relatedObjects(item: InboxItem): string[] {
+  return subjectKindPlugin(item.subject.kind) ? [item.subject.id] : [];
+}
+
+/**
+ * Read the related work of each open item in a page: the other open plugin
+ * items that the reader can see about the same object
+ * (`relatedObjects`), or in one of the Conversations that the item links,
+ * and the linked Conversations when the viewer can see them. The reads
+ * cover the whole page at once, so the query count does not grow with the
+ * page.
  */
 export async function readRelatedReviewWork(
   db: JuniorDatabase,
@@ -70,34 +83,25 @@ export async function readRelatedReviewWork(
   items: readonly InboxItem[],
 ): Promise<Map<string, RelatedReviewWork>> {
   const open = items.filter((item) => item.status === "open");
-  const subjectIds = [
-    ...new Set(open.flatMap((item) => item.subject?.id ?? [])),
-  ];
-  const subjectUrls = [
-    ...new Set(open.flatMap((item) => item.subject?.url ?? [])),
-  ];
+  const objects = [...new Set(open.flatMap(relatedObjects))];
   const linkIds = [...new Set(open.flatMap(linkedWork))];
-  const subjectRanks = db
+  const objectRanks = db
     .select({
       ...candidateColumns,
-      idRank: newestInGroup(juniorInboxItems.subjectId).as("id_rank"),
-      urlRank: newestInGroup(juniorInboxItems.subjectUrl).as("url_rank"),
+      subjectId: juniorInboxItems.subjectId,
+      rank: newestInGroup(juniorInboxItems.subjectId).as("object_rank"),
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         openVisible(reader),
-        or(
-          ...(subjectIds.length > 0
-            ? [inArray(juniorInboxItems.subjectId, subjectIds)]
-            : []),
-          ...(subjectUrls.length > 0
-            ? [inArray(juniorInboxItems.subjectUrl, subjectUrls)]
-            : []),
-        ),
+        // Only a plugin kind names an outside object.
+        like(juniorInboxItems.subjectKind, "%:%"),
+        inArray(juniorInboxItems.subjectId, objects),
       ),
     )
-    .as("subject_ranks");
+    .as("object_ranks");
   const linkRanks = db
     .select({
       ...candidateColumns,
@@ -111,6 +115,7 @@ export async function readRelatedReviewWork(
       juniorInboxItems,
       eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
     )
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         inArray(juniorInboxItemConversations.conversationId, linkIds),
@@ -118,37 +123,17 @@ export async function readRelatedReviewWork(
       ),
     )
     .as("link_ranks");
-  const [bySubject, byLink, access] = await Promise.all([
-    subjectIds.length > 0 || subjectUrls.length > 0
+  const [byObject, byLink, access] = await Promise.all([
+    objects.length > 0
       ? db
           .select({
-            createdAt: subjectRanks.createdAt,
-            id: subjectRanks.id,
-            subjectId: subjectRanks.subjectId,
-            subjectUrl: subjectRanks.subjectUrl,
-            title: subjectRanks.title,
+            createdAt: objectRanks.createdAt,
+            id: objectRanks.id,
+            subjectId: objectRanks.subjectId,
+            title: objectRanks.title,
           })
-          .from(subjectRanks)
-          .where(
-            or(
-              ...(subjectIds.length > 0
-                ? [
-                    and(
-                      inArray(subjectRanks.subjectId, subjectIds),
-                      lte(subjectRanks.idRank, RELATED_CANDIDATE_LIMIT),
-                    ),
-                  ]
-                : []),
-              ...(subjectUrls.length > 0
-                ? [
-                    and(
-                      inArray(subjectRanks.subjectUrl, subjectUrls),
-                      lte(subjectRanks.urlRank, RELATED_CANDIDATE_LIMIT),
-                    ),
-                  ]
-                : []),
-            ),
-          )
+          .from(objectRanks)
+          .where(lte(objectRanks.rank, RELATED_CANDIDATE_LIMIT))
       : [],
     linkIds.length > 0
       ? db
@@ -156,8 +141,6 @@ export async function readRelatedReviewWork(
             conversationId: linkRanks.conversationId,
             createdAt: linkRanks.createdAt,
             id: linkRanks.id,
-            subjectId: linkRanks.subjectId,
-            subjectUrl: linkRanks.subjectUrl,
             title: linkRanks.title,
           })
           .from(linkRanks)
@@ -167,24 +150,20 @@ export async function readRelatedReviewWork(
   ]);
   const related = new Map<string, RelatedReviewWork>();
   for (const item of open) {
-    const links = new Set(linkedWork(item));
+    const about = new Set(relatedObjects(item));
+    const work = new Set(linkedWork(item));
     const matches = new Map<string, Candidate>();
-    for (const candidate of bySubject) {
-      if (
-        (item.subject?.id && candidate.subjectId === item.subject.id) ||
-        (item.subject?.url && candidate.subjectUrl === item.subject.url)
-      ) {
-        matches.set(candidate.id, candidate);
-      }
+    for (const candidate of byObject) {
+      if (about.has(candidate.subjectId)) matches.set(candidate.id, candidate);
     }
     for (const candidate of byLink) {
-      if (links.has(candidate.conversationId)) {
+      if (work.has(candidate.conversationId)) {
         matches.set(candidate.id, candidate);
       }
     }
     matches.delete(item.id);
     related.set(item.id, {
-      conversationIds: [...links].filter(
+      conversationIds: linkedWork(item).filter(
         (id) => access.get(id)?.canViewPrivateContent === true,
       ),
       items: [...matches.values()]
