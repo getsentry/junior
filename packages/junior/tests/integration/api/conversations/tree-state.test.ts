@@ -223,6 +223,38 @@ describe("conversation tree state", () => {
     await expect(fixture.feedTree(otherRootId)).resolves.toEqual(DONE);
   });
 
+  it("gives each Thread in the feed its own tree state", async () => {
+    const fixture = await createStatusFixture();
+    const rootId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000470",
+    );
+    for (const childConversationId of ["agent:feed-ask", "agent:feed-done"]) {
+      await fixture.conversationStore.createChild({
+        childConversationId,
+        kind: "thread",
+        parentConversationId: rootId,
+      });
+    }
+
+    await addItem("agent:feed-ask", ACTION_ITEM);
+
+    const row = await fixture.feedRow(rootId);
+    // The sidebar orders a root's Threads by these, as the Threads panel
+    // orders a Conversation's children.
+    expect(
+      Object.fromEntries(
+        (row?.threads ?? []).map((thread) => [
+          thread.conversationId,
+          { treeState: thread.treeState, watching: thread.watching },
+        ]),
+      ),
+    ).toEqual({
+      "agent:feed-ask": { treeState: "needs_you", watching: false },
+      "agent:feed-done": DONE,
+    });
+  });
+
   it("needs the viewer for their own sign-in waits anywhere in the tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(

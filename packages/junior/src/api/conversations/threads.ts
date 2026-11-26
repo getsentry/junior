@@ -19,6 +19,7 @@ import type { ConversationAccess } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationFromRecordRow, selectConversationRecords } from "./record";
+import { readConversationTreeStates } from "./tree-state";
 
 /**
  * Find where a Thread nests: its nearest ancestor that is a listed row or a
@@ -50,13 +51,14 @@ type FeedThreadRecords = Awaited<ReturnType<typeof readFeedThreadRecords>>;
 
 /**
  * Read the stored Threads under the listed rows for the feed, with their
- * read-time titles. It needs no access, so it can start with the other
- * feed reads. The caller passes only unarchived roots, so a root archive
+ * read-time titles and each Thread's tree state for the viewer. It needs
+ * no access, so it can start with the other feed reads. The caller passes only unarchived roots, so a root archive
  * hides its tree with no writes to the children.
  */
 export async function readFeedThreadRecords(
   db: JuniorDatabase,
   rootIds: string[],
+  viewerUserId: string | undefined,
 ) {
   if (rootIds.length === 0) return undefined;
   const rows = await selectConversationRecords(db)
@@ -86,11 +88,23 @@ export async function readFeedThreadRecords(
     conversation: conversationFromRecordRow(row),
     row,
   }));
-  const firstHumanMessageTexts = await readFirstHumanMessageTexts(
-    db,
-    threads.map(({ conversation }) => conversation),
-  );
-  return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads };
+  const [firstHumanMessageTexts, treeStates] = await Promise.all([
+    readFirstHumanMessageTexts(
+      db,
+      threads.map(({ conversation }) => conversation),
+    ),
+    readConversationTreeStates(
+      db,
+      threads.map(({ conversation }) => conversation.conversationId),
+      viewerUserId,
+    ),
+  ]);
+  return {
+    firstHumanMessageTexts,
+    rootIds: new Set(rootIds),
+    threads,
+    treeStates,
+  };
 }
 
 /** The Threads that a feed row lists, and how many the cap left out. */
@@ -113,7 +127,7 @@ export function nestFeedThreads(
   accessByRoot: ReadonlyMap<string, ConversationAccess | undefined>,
 ): Map<string, FeedRowThreads> {
   if (!records) return new Map();
-  const { firstHumanMessageTexts, rootIds, threads } = records;
+  const { firstHumanMessageTexts, rootIds, threads, treeStates } = records;
   const childrenByParent = new Map<string, ConversationFeedItem[]>();
   const placedByRoot = new Map<string, number>();
   for (const { conversation, row } of threads) {
@@ -139,7 +153,10 @@ export function nestFeedThreads(
         : undefined),
     });
     const siblings = childrenByParent.get(parentId) ?? [];
-    siblings.push(summary);
+    siblings.push({
+      ...summary,
+      ...treeStates.get(conversation.conversationId),
+    });
     childrenByParent.set(parentId, siblings);
   }
   // Parent edges are set once at create, so placements form a forest.

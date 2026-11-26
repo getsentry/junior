@@ -55,8 +55,10 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     page.getByText("Ask the Lead to start, find, or check on work…"),
   ).toBeVisible();
 
-  // The Space's details sit beside the Lead: its Threads and members.
-  const details = page.getByRole("complementary", { name: "Space details" });
+  // The Lead's details show its Threads and its Space's members.
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
@@ -114,8 +116,9 @@ test("loads a Space page within its request budget", async ({
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    // The Space's Threads are the Lead's child agents, one more read.
-    { requests: 15, serialRounds: 3 },
+    // A Lead shows Conversation details, so it reads its Inbox items,
+    // To-dos, and Watches as any Conversation does.
+    { requests: 18, serialRounds: 3 },
   );
 });
 
@@ -141,7 +144,7 @@ test("the Lead's own link keeps its Space's header", async ({
     page.getByRole("button", { name: "Conversation menu" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("complementary", { name: "Space details" }),
+    page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
 });
 
@@ -232,8 +235,8 @@ test.describe("on a touch screen", () => {
     await expect(
       page.getByRole("heading", { name: "Billing migration" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Space details" }).click();
-    const sheet = page.getByRole("dialog", { name: "Space details" });
+    await page.getByRole("button", { name: "Conversation details" }).click();
+    const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await sheet.getByRole("button", { name: "Done · 2" }).click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
