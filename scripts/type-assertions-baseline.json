@@ -75,7 +75,7 @@
   "packages/junior/src/chat/cache-warming/snapshot.ts": 1,
   "packages/junior/src/chat/codemode/bridge.ts": 1,
   "packages/junior/src/chat/codemode/script-tools.ts": 1,
-  "packages/junior/src/chat/config.ts": 2,
+  "packages/junior/src/chat/config.ts": 1,
   "packages/junior/src/chat/configuration/validation.ts": 1,
   "packages/junior/src/chat/conversation-privacy.ts": 2,
   "packages/junior/src/chat/conversations/event-access.ts": 2,

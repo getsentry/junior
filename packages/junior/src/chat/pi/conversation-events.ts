@@ -4,12 +4,14 @@
  * Conversation storage owns the ordered event log. This module turns its
  * stored messages into the active Pi context.
  */
+import {
+  type AgentHistoryItem,
+  agentHistoryItemSchema,
+} from "@/core/history/items";
 import type {
   ConversationEvent,
   ConversationEventData,
-  AgentHistoryItem,
 } from "@/chat/conversations/history";
-import { agentHistoryItemSchema } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { contextProvenance } from "@/chat/conversations/provenance";
